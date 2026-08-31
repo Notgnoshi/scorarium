@@ -1,6 +1,8 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use clap::Parser;
+use scorarium::{AppState, router};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -9,7 +11,7 @@ use tracing_subscriber::EnvFilter;
 #[command(version)]
 struct Args {
     /// Address and port to serve on.
-    #[arg(short, long, env = "SCORARIUM_BIND", default_value = "127.0.0.1:3000")]
+    #[arg(short, long, env = "SCORARIUM_BIND", default_value = "0.0.0.0:3000")]
     bind: SocketAddr,
 
     /// Default log level. RUST_LOG overrides this when set.
@@ -17,7 +19,8 @@ struct Args {
     log_level: LevelFilter,
 }
 
-fn main() -> color_eyre::Result<()> {
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
 
@@ -28,7 +31,24 @@ fn main() -> color_eyre::Result<()> {
                 .from_env_lossy(),
         )
         .init();
+
+    let app = router(Arc::new(AppState::default()));
     tracing::info!(bind = %args.bind, "starting scorarium");
+    let listener = tokio::net::TcpListener::bind(args.bind).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
     Ok(())
+}
+
+async fn shutdown_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut interrupt = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+    let mut terminate = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+    tokio::select! {
+        _ = interrupt.recv() => {},
+        _ = terminate.recv() => {},
+    }
 }
