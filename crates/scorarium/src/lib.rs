@@ -1,3 +1,5 @@
+pub mod db;
+
 use std::sync::Arc;
 
 use axum::Router;

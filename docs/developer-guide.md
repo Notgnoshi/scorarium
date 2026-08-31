@@ -18,6 +18,22 @@ cargo install cargo-edit
 cargo upgrade --dry-run --incompatible
 ```
 
+## Database
+
+Database queries use sqlx's compile-time checked macros. Normal builds need no database: the macros
+read the query metadata checked in under `.sqlx/`. When you add or change a query or a migration,
+regenerate that metadata against a migrated dev database and check in the result:
+
+```sh
+cargo install sqlx-cli --no-default-features --features sqlite
+export DATABASE_URL=sqlite://target/dev.db
+cargo sqlx database setup --source crates/scorarium/migrations
+cargo sqlx prepare --workspace -- --all-targets --all-features
+```
+
+While `DATABASE_URL` is exported, the macros check queries against that live database instead of
+`.sqlx/`, so schema mistakes surface immediately during development.
+
 This project values tests, but does not prioritize complete test coverage. Tests are code that needs
 to be reviewed and maintained just as well as any other, so this project prioritizes test quality
 over quantity. When adding a new test, consider if that test is actually valuable and justifies its
