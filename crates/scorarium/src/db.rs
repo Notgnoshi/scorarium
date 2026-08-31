@@ -1,4 +1,24 @@
+use std::path::Path;
+use std::time::Duration;
+
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+
+/// Open the database in the given data directory, creating and migrating it as necessary.
+pub async fn connect(data_dir: &Path) -> color_eyre::Result<SqlitePool> {
+    std::fs::create_dir_all(data_dir)?;
+    let options = SqliteConnectOptions::new()
+        .filename(data_dir.join("scorarium.db"))
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5));
+    let pool = SqlitePool::connect_with(options).await?;
+    MIGRATOR.run(&pool).await?;
+    Ok(pool)
+}
 
 /// A named container of publications.
 #[derive(Debug)]
@@ -27,6 +47,19 @@ mod tests {
     use sqlx::SqlitePool;
 
     use super::*;
+
+    #[tokio::test]
+    async fn create_and_migrate_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A directory that doesn't exist yet, to show connect() creates it
+        let data_dir = tmp.path().join("data");
+
+        let pool = connect(&data_dir).await.unwrap();
+
+        assert!(data_dir.join("scorarium.db").exists());
+        // The schema exists, i.e. migrations ran
+        assert_eq!(list_libraries(&pool).await.unwrap().len(), 0);
+    }
 
     #[sqlx::test]
     async fn create_and_list_libraries(pool: SqlitePool) {

@@ -1,8 +1,9 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use scorarium::{AppState, router};
+use scorarium::{AppState, db, router};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -17,6 +18,10 @@ struct Args {
     /// Default log level. RUST_LOG overrides this when set.
     #[arg(short, long, default_value = "debug")]
     log_level: LevelFilter,
+
+    /// Directory holding the database and managed files. Created if missing.
+    #[arg(short, long, env = "SCORARIUM_DATA_DIR", default_value = "./data")]
+    data_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -32,8 +37,9 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
-    let app = router(Arc::new(AppState::default()));
-    tracing::info!(bind = %args.bind, "starting scorarium");
+    let pool = db::connect(&args.data_dir).await?;
+    let app = router(Arc::new(AppState { pool }));
+    tracing::info!(bind = %args.bind, data_dir = %args.data_dir.display(), "starting scorarium");
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

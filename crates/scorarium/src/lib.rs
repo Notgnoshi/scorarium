@@ -4,11 +4,13 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::get;
+use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 
 /// Shared state for all request handlers.
-#[derive(Default)]
-pub struct AppState {}
+pub struct AppState {
+    pub pool: SqlitePool,
+}
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
