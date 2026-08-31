@@ -1,0 +1,10 @@
+[package]
+name = "scorarium"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A physical and digital sheet music library"
+
+[dependencies]
+
+[dev-dependencies]
