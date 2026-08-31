@@ -10,3 +10,9 @@ license = "MIT"
 [workspace.dependencies]
 # Internal crates
 scorarium = { path = "crates/scorarium" }
+
+# External crates
+clap = { version = "4.6.6", features = ["derive", "env"] }
+color-eyre = "0.6.5"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
