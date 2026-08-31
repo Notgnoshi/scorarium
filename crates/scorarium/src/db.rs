@@ -4,7 +4,7 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 
-static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
 /// Open the database in the given data directory, creating and migrating it as necessary.
 pub async fn connect(data_dir: &Path) -> color_eyre::Result<SqlitePool> {

@@ -10,6 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 # Internal crates
 scorarium = { path = "crates/scorarium" }
+scorarium-tests = { path = "crates/scorarium-tests" }
 
 # External crates
 axum = "0.8.9"

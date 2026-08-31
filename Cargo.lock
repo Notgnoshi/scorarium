@@ -1574,12 +1574,21 @@ dependencies = [
  "axum-test",
  "clap",
  "color-eyre",
+ "scorarium-tests",
  "sqlx",
  "tempfile",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "scorarium-tests"
+version = "0.1.0-rc0"
+dependencies = [
+ "scorarium",
+ "sqlx",
 ]
 
 [[package]]
