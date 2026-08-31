@@ -10,12 +10,15 @@ license = "MIT"
 [workspace.dependencies]
 # Internal crates
 scorarium = { path = "crates/scorarium" }
+scorarium-tests = { path = "crates/scorarium-tests" }
 
 # External crates
 axum = "0.8.9"
 axum-test = "21.1.0"
 clap = { version = "4.6.6", features = ["derive", "env"] }
 color-eyre = "0.6.5"
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal"] }
 tower-http = { version = "0.7.0", features = ["trace"] }
 tracing = "0.1.44"

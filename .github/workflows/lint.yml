@@ -3,6 +3,8 @@ on: push
 env:
     CARGO_BUILD_WARNINGS: deny
     CARGO_TERM_COLOR: always
+    # Tests should be done against the checkedin .sqlx/ metadata, not a dev database
+    SQLX_OFFLINE: "true"
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
@@ -42,6 +44,18 @@ jobs:
               run: cargo build --all-targets --all-features
             - name: Clippy
               run: cargo clippy --no-deps --all-targets --all-features
+            - name: Setup sqlx-cli
+              uses: taiki-e/install-action@v2
+              with:
+                tool: sqlx-cli
+            # 'cargo sqlx prepare' overrides SQLX_OFFLINE, so this checks the .sqlx/ metadata
+            # against the database
+            - name: Check .sqlx query metadata freshness
+              env:
+                DATABASE_URL: sqlite://target/dev.db
+              run: |
+                  sqlx database setup --source crates/scorarium/migrations
+                  cargo sqlx prepare --check --workspace -- --all-targets --all-features
 
     test:
         runs-on: ubuntu-latest
