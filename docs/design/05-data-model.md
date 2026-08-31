@@ -287,6 +287,22 @@ again.
 * `id`: integer primary key
 * `password_hash`: text, the KDF output (salt and parameters included in the encoded form)
 
+### pending_import
+
+An import in progress, created when the user picks a lookup candidate (or chooses manual entry) on
+the import page and deleted when the import is accepted or discarded, or when its library is
+deleted. Pending imports sit outside the catalog: they are invisible to the public, participate in
+no garbage collection, and persist only the user's entry page input. The resolved lookup candidate
+and all enrichment results are ephemeral application state, re-derived after a restart. The import
+design document describes the flow.
+
+* `id`: integer primary key
+* `library_id`: references library
+* `query`: text, the identifier or title as typed; empty for manual entry
+* `kind`: text, CHECK one of `physical`, `digital`; becomes the first holding on accept
+* `file`: text, nullable; uploaded file path relative to `assets/`, required for digital
+* `created_at`: timestamp
+
 ## Access control
 
 Visible to logged-out visitors:

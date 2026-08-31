@@ -8,9 +8,9 @@ publications, and one long page is scannable and ctrl-F-able.
 ## Conventions
 
 * **Shared header** on every page: a search box (scoped to the current library when inside one, all
-  libraries elsewhere) and a login link, or, when logged in, a logout button and links to the loans
-  and settings pages. Breadcrumbs render horizontally beneath the header, reflecting the URL
-  hierarchy.
+  libraries elsewhere) and a login link, or, when logged in, a logout button and links to the review
+  queue (with a count of imports awaiting review), the loans page, and the settings page.
+  Breadcrumbs render horizontally beneath the header, reflecting the URL hierarchy.
 * **View and edit modes.** Entity pages render in view mode with empty fields hidden. An edit button
   (logged in) exposes the full form, empty fields included, with save and cancel buttons: save
   commits all the changes at once, cancel discards them, and both return to view mode.
@@ -36,10 +36,12 @@ page, the all-libraries search, and the loans page.
 /search?q=                          all-library search results
 /login                              login (first login claims the password)
 /loans                              loaned-out holdings across all libraries
+/review                             review queue for pending imports
 /settings                           change password, predefined operations, debugging views
 /library/{id}                       publications listing
 /library/{id}/search?q=             single-library search results
-/library/{id}/import                import flow entry point
+/library/{id}/import                import entry page
+/library/{id}/import/{pending_id}   review page for a pending import
 /library/{id}/publication/{id}      publication detail
 /library/{id}/work/{id}             work detail
 /library/{id}/person/{id}           person detail
@@ -72,13 +74,21 @@ below), year, and holding kinds. Default sort is composer/author surname then ti
 shelf is scanned. Links to the composers and authors listings and, when logged in, the tags listing
 and an import button leading to the import flow.
 
-### Import: /library/{id}/import
+### Import: /library/{id}/import and /library/{id}/import/{pending_id}
 
-Only when logged in. The entry point for adding publications. Requirements: accepts an ISBN, ISMN,
-or title for metadata lookup; falls back to fully manual entry; proposed works and contributors are
-matched against existing records and confirmed before creation; ends with a created publication and
-its first holding. The flow's internals are deliberately undesigned here; they will be designed
-together with the enrichment pipeline, since the screens depend on how the metadata sources behave.
+Both pages require login. The entry page takes an identifier or a title, plus a physical/digital
+toggle with a conditional file upload. Local matches are offered before external ones, so the page
+suggests adding a holding to an existing publication instead of importing a duplicate; picked
+candidates become pending imports that enrich in the background. The review page for a pending
+import shares its implementation with the publication page's edit mode; accepting creates the
+publication, its works, and its first holding in one transaction. The import document designs the
+full flow.
+
+### Review queue: /review
+
+A logged-in, cross-library worklist of pending imports, each with a progress indicator, a cancel
+button, and a link to its review page. The header links here with a count of imports awaiting
+review. The import document has the details.
 
 ### Publication: /library/{id}/publication/{id}
 
@@ -92,7 +102,9 @@ Edit mode covers every field, plus: add/remove contained works and contributors 
 manage identifiers, upload cover art or supply a URL to fetch it from (fetched once and stored, not
 hotlinked), add a holding including file upload for digital ones, and delete the publication or
 individual holdings, with the deletion and garbage-collection semantics from the data model
-document.
+document. Edit mode also offers the on-demand enrich action from the import document, which fetches
+metadata and (for sheet music) contents suggestions with the same accept/reject affordances as
+import review; this is how a publication accepted without works gains them later.
 
 ### Work: /library/{id}/work/{id}
 
@@ -100,8 +112,9 @@ Public except where noted. Shows title, catalog numbers, key, time signature, in
 contributors with roles, external links, and stars; logged in, also tags, familiarity, and note. The
 page lists the publications containing the work, each with its holdings inline (kinds always;
 locations when logged in), so "do I have the sheet music for this piece?" is answered on this page
-alone. Edit mode covers the work's own fields, catalog numbers, contributors, and external ids;
-works are created and removed through publications, not here.
+alone. Edit mode covers the work's own fields, catalog numbers, contributors, and external ids, and
+offers the same on-demand enrich action as publications; works are created and removed through
+publications, not here.
 
 ### Person: /library/{id}/person/{id}
 
