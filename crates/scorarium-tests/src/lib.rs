@@ -1,10 +1,11 @@
-use scorarium::{AppState, db};
+use scorarium::{AppState, auth, db};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 /// Builds an [AppState] backed by a fresh in-memory database with the given contents.
 #[derive(Default)]
 pub struct TestDb {
     libraries: Vec<String>,
+    password: Option<String>,
 }
 
 impl TestDb {
@@ -14,6 +15,12 @@ impl TestDb {
 
     pub fn library(mut self, name: &str) -> Self {
         self.libraries.push(name.to_string());
+        self
+    }
+
+    /// Claim the login password, as if a first login already happened.
+    pub fn password(mut self, password: &str) -> Self {
+        self.password = Some(password.to_string());
         self
     }
 
@@ -39,6 +46,11 @@ impl TestDb {
             db::create_library(&pool, name)
                 .await
                 .expect("failed to create test library");
+        }
+        if let Some(password) = &self.password {
+            auth::claim_password(&pool, password)
+                .await
+                .expect("failed to claim test password");
         }
         AppState::new(pool)
     }
