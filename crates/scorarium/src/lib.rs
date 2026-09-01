@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod db;
+pub mod session;
 
 use std::sync::Arc;
 
@@ -14,6 +15,16 @@ use tower_http::trace::TraceLayer;
 /// Shared state for all request handlers.
 pub struct AppState {
     pub pool: SqlitePool,
+    pub sessions: session::SessionStore,
+}
+
+impl AppState {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self {
+            pool,
+            sessions: session::SessionStore::default(),
+        }
+    }
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

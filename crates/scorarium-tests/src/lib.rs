@@ -40,6 +40,6 @@ impl TestDb {
                 .await
                 .expect("failed to create test library");
         }
-        AppState { pool }
+        AppState::new(pool)
     }
 }

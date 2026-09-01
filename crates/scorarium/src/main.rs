@@ -38,7 +38,7 @@ async fn main() -> color_eyre::Result<()> {
         .init();
 
     let pool = db::connect(&args.data_dir).await?;
-    let app = router(Arc::new(AppState { pool }));
+    let app = router(Arc::new(AppState::new(pool)));
     tracing::info!(bind = %args.bind, data_dir = %args.data_dir.display(), "starting scorarium");
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     axum::serve(listener, app)
