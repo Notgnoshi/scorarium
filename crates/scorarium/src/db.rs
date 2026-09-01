@@ -42,6 +42,34 @@ pub async fn list_libraries(pool: &SqlitePool) -> sqlx::Result<Vec<Library>> {
         .await
 }
 
+pub async fn get_password_hash(pool: &SqlitePool) -> sqlx::Result<Option<String>> {
+    let row = sqlx::query!("SELECT password_hash FROM password WHERE id = 1")
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| r.password_hash))
+}
+
+pub async fn insert_password_hash(pool: &SqlitePool, hash: &str) -> sqlx::Result<bool> {
+    let result = sqlx::query!(
+        "INSERT INTO password (id, password_hash) VALUES (1, ?) ON CONFLICT DO NOTHING",
+        hash
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// Update an existing password hash
+///
+/// Does not upsert the password hash if it's missing. This is so that two racing clients both
+/// attempting to set the password cannot both succeed.
+pub async fn update_password_hash(pool: &SqlitePool, hash: &str) -> sqlx::Result<()> {
+    sqlx::query!("UPDATE password SET password_hash = ? WHERE id = 1", hash)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::SqlitePool;
