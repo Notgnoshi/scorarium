@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Set password</h1>
+    <p>Admin password is not set yet</p>
+    {% if let Some(error) = error %}<p>{{ error }}</p>{% endif %}
+    <form method="post" action="/login">
+        <label>
+            Password
+            <input type="password" name="password" required />
+        </label>
+        <label>
+            Confirm
+            <input type="password" name="confirm" required />
+        </label>
+        <button>Set password</button>
+    </form>
+{% endblock %}

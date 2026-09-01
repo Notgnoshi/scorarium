@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use askama::Template;
 use axum::Form;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -7,7 +8,7 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::Deserialize;
 
-use super::{AppError, SESSION_COOKIE};
+use super::{AppError, BaseContext, Crumb, SESSION_COOKIE};
 use crate::auth::PasswordCheck;
 use crate::{AppState, auth, db, session};
 
@@ -23,10 +24,10 @@ pub async fn login_form(
     let claimed = db::get_password_hash(&state.pool).await?.is_some();
     let page = if claimed {
         // the initial password has been set; show the login form
-        login_page(None)
+        login_page(None)?
     } else {
         // no password has been set; assume the first login attempt is the admin user
-        claim_page(None)
+        claim_page(None)?
     };
     Ok(Html(page).into_response())
 }
@@ -49,21 +50,21 @@ pub async fn login(
     let page = match (claimed, form.confirm) {
         (false, Some(confirm)) => {
             if form.password.is_empty() {
-                claim_page(Some("The password must not be empty."))
+                claim_page(Some("The password must not be empty."))?
             } else if confirm != form.password {
-                claim_page(Some("The passwords did not match."))
+                claim_page(Some("The passwords did not match."))?
             } else if auth::claim_password(&state.pool, &form.password).await? {
                 return Ok(start_session(&state, jar));
             } else {
                 // Lost a race against a concurrent claim
-                login_page(Some("A password was already set. Log in with it."))
+                login_page(Some("A password was already set. Log in with it."))?
             }
         }
-        (false, None) => claim_page(Some("No password is set yet. Set one first.")),
-        (true, Some(_)) => login_page(Some("A password is already set. Log in with it.")),
+        (false, None) => claim_page(Some("No password is set yet. Set one first."))?,
+        (true, Some(_)) => login_page(Some("A password is already set. Log in with it."))?,
         (true, None) => match auth::verify_password(&state.pool, &form.password).await? {
             PasswordCheck::Correct => return Ok(start_session(&state, jar)),
-            PasswordCheck::Wrong | PasswordCheck::Unclaimed => login_page(Some("Login failed")),
+            PasswordCheck::Wrong | PasswordCheck::Unclaimed => login_page(Some("Login failed"))?,
         },
     };
     Ok(Html(page).into_response())
@@ -90,32 +91,32 @@ fn start_session(state: &AppState, jar: CookieJar) -> Response {
     (jar.add(cookie), Redirect::to("/")).into_response()
 }
 
-fn login_page(error: Option<&str>) -> String {
-    let error = error.map(|e| format!("<p>{e}</p>\n")).unwrap_or_default();
-    format!(
-        "<!doctype html>\n\
-         <title>Log in</title>\n\
-         <h1>Log in</h1>\n\
-         {error}\
-         <form method=\"post\" action=\"/login\">\n\
-         <label>Password <input type=\"password\" name=\"password\" required></label>\n\
-         <button>Log in</button>\n\
-         </form>\n"
-    )
+#[derive(Template)]
+#[template(path = "login.html")]
+struct LoginPage {
+    base: BaseContext,
+    error: Option<&'static str>,
 }
 
-fn claim_page(error: Option<&str>) -> String {
-    let error = error.map(|e| format!("<p>{e}</p>\n")).unwrap_or_default();
-    format!(
-        "<!doctype html>\n\
-         <title>Set password</title>\n\
-         <h1>Set password</h1>\n\
-         <p>No password is set yet. The first login sets it.</p>\n\
-         {error}\
-         <form method=\"post\" action=\"/login\">\n\
-         <label>Password <input type=\"password\" name=\"password\" required></label>\n\
-         <label>Confirm <input type=\"password\" name=\"confirm\" required></label>\n\
-         <button>Set password</button>\n\
-         </form>\n"
-    )
+#[derive(Template)]
+#[template(path = "claim.html")]
+struct ClaimPage {
+    base: BaseContext,
+    error: Option<&'static str>,
+}
+
+fn login_page(error: Option<&'static str>) -> askama::Result<String> {
+    LoginPage {
+        base: BaseContext::new("Log in", "/login", false, vec![Crumb::home()]),
+        error,
+    }
+    .render()
+}
+
+fn claim_page(error: Option<&'static str>) -> askama::Result<String> {
+    ClaimPage {
+        base: BaseContext::new("Set password", "/login", false, vec![Crumb::home()]),
+        error,
+    }
+    .render()
 }

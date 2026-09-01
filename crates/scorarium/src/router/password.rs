@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
+use askama::Template;
 use axum::Form;
 use axum::extract::State;
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
-use super::{AppError, Session};
+use super::{AppError, BaseContext, Crumb, Session};
 use crate::auth::PasswordCheck;
 use crate::{AppState, auth};
 
 /// GET /password
-pub async fn password_form(_session: Session) -> Response {
-    no_store(password_page(None))
+pub async fn password_form(_session: Session) -> Result<Response, AppError> {
+    Ok(no_store(password_page(None)?))
 }
 
 #[derive(Deserialize)]
@@ -31,17 +32,17 @@ pub async fn change_password(
     if form.new != form.confirm {
         return Ok(no_store(password_page(Some(
             "The new passwords did not match.",
-        ))));
+        ))?));
     }
     if form.new.is_empty() {
         return Ok(no_store(password_page(Some(
             "The new password must not be empty.",
-        ))));
+        ))?));
     }
     match auth::verify_password(&state.pool, &form.current).await? {
         PasswordCheck::Correct => {}
         PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
-            return Ok(no_store(password_page(Some("Wrong current password."))));
+            return Ok(no_store(password_page(Some("Wrong current password."))?));
         }
     }
     auth::change_password(&state.pool, &form.new).await?;
@@ -56,18 +57,17 @@ fn no_store(page: String) -> Response {
     ([(header::CACHE_CONTROL, "no-store")], Html(page)).into_response()
 }
 
-fn password_page(error: Option<&str>) -> String {
-    let error = error.map(|e| format!("<p>{e}</p>\n")).unwrap_or_default();
-    format!(
-        "<!doctype html>\n\
-         <title>Change password</title>\n\
-         <h1>Change password</h1>\n\
-         {error}\
-         <form method=\"post\" action=\"/password\">\n\
-         <label>Current password <input type=\"password\" name=\"current\" required></label>\n\
-         <label>New password <input type=\"password\" name=\"new\" required></label>\n\
-         <label>Confirm new password <input type=\"password\" name=\"confirm\" required></label>\n\
-         <button>Change password</button>\n\
-         </form>\n"
-    )
+#[derive(Template)]
+#[template(path = "password.html")]
+struct PasswordPage {
+    base: BaseContext,
+    error: Option<&'static str>,
+}
+
+fn password_page(error: Option<&'static str>) -> askama::Result<String> {
+    PasswordPage {
+        base: BaseContext::new("Change password", "/password", true, vec![Crumb::home()]),
+        error,
+    }
+    .render()
 }
