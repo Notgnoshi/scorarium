@@ -1,12 +1,16 @@
 mod index;
 mod login;
+mod password;
 
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::http::request::Parts;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
+use axum_extra::extract::CookieJar;
 use tower_http::trace::TraceLayer;
 
 use crate::AppState;
@@ -19,9 +23,39 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/", get(index::index))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
+        .route(
+            "/password",
+            get(password::password_form).post(password::change_password),
+        )
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())
+}
+
+/// Does this request's cookie belong to a live session?
+fn logged_in(state: &AppState, jar: &CookieJar) -> bool {
+    jar.get(SESSION_COOKIE)
+        .is_some_and(|cookie| state.sessions.validate(cookie.value()))
+}
+
+/// The session token of a logged-in request.
+struct Session(String);
+
+impl FromRequestParts<Arc<AppState>> for Session {
+    type Rejection = Redirect;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let jar = CookieJar::from_headers(&parts.headers);
+        match jar.get(SESSION_COOKIE) {
+            Some(cookie) if state.sessions.validate(cookie.value()) => {
+                Ok(Session(cookie.value().to_string()))
+            }
+            _ => Err(Redirect::to("/login")),
+        }
+    }
 }
 
 struct AppError(color_eyre::Report);

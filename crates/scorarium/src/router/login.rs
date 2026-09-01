@@ -16,9 +16,7 @@ pub async fn login_form(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Result<Response, AppError> {
-    if let Some(cookie) = jar.get(SESSION_COOKIE)
-        && state.sessions.validate(cookie.value())
-    {
+    if super::logged_in(&state, &jar) {
         // already logged in; redirect to index
         return Ok(Redirect::to("/").into_response());
     }
