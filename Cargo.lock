@@ -1738,6 +1738,7 @@ dependencies = [
 name = "scorarium-tests"
 version = "0.1.0-rc0"
 dependencies = [
+ "axum-test",
  "scorarium",
  "sqlx",
 ]

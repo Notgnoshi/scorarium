@@ -6,5 +6,6 @@ license.workspace = true
 description = "Test fixtures for scorarium"
 
 [dependencies]
+axum-test.workspace = true
 scorarium.workspace = true
 sqlx.workspace = true
