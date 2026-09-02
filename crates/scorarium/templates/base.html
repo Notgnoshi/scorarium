@@ -16,7 +16,7 @@
         </header>
         {% if !base.breadcrumbs.is_empty() %}
             <nav aria-label="breadcrumbs">
-                {% for crumb in base.breadcrumbs %}{% if !loop.first %} / {% endif %}<a href="{{ crumb.href }}">{{ crumb.label }}</a>{% endfor %}
+                {% for crumb in base.breadcrumbs %}<a href="{{ crumb.href }}">{{ crumb.label }}</a> / {% endfor %}{{ base.title }}
             </nav>
         {% endif %}
         <main>
