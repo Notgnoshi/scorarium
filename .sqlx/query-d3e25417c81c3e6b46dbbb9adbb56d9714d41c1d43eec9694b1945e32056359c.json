@@ -1,0 +1,12 @@
+{
+    "db_name": "SQLite",
+    "query": "UPDATE library SET name = ? WHERE id = ?",
+    "describe": {
+        "columns": [],
+        "parameters": {
+            "Right": 2
+        },
+        "nullable": []
+    },
+    "hash": "d3e25417c81c3e6b46dbbb9adbb56d9714d41c1d43eec9694b1945e32056359c"
+}

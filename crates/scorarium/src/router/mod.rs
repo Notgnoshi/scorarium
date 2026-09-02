@@ -1,4 +1,5 @@
 mod index;
+mod library;
 mod login;
 mod password;
 
@@ -18,6 +19,44 @@ use crate::AppState;
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
 
+pub struct Crumb {
+    pub label: String,
+    pub href: String,
+}
+
+impl Crumb {
+    pub fn home() -> Self {
+        Self {
+            label: "Home".to_string(),
+            href: "/".to_string(),
+        }
+    }
+}
+
+pub struct BaseContext {
+    pub title: String,
+    /// The request path, so header links to the current page can be hidden.
+    pub path: String,
+    pub logged_in: bool,
+    pub breadcrumbs: Vec<Crumb>,
+}
+
+impl BaseContext {
+    pub fn new(
+        title: impl Into<String>,
+        path: impl Into<String>,
+        logged_in: bool,
+        breadcrumbs: Vec<Crumb>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            path: path.into(),
+            logged_in,
+            breadcrumbs,
+        }
+    }
+}
+
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index::index))
@@ -27,6 +66,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/password",
             get(password::password_form).post(password::change_password),
         )
+        .route("/library", post(library::create))
+        .route("/library/{id}", get(library::library))
+        .route("/library/{id}/rename", post(library::rename))
+        .route("/library/{id}/delete", post(library::delete))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())

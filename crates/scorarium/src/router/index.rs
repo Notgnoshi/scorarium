@@ -1,38 +1,38 @@
 use std::sync::Arc;
 
+use askama::Template;
 use axum::extract::State;
 use axum::response::Html;
 use axum_extra::extract::CookieJar;
+use sqlx::SqlitePool;
 
-use super::AppError;
+use super::{AppError, BaseContext};
 use crate::{AppState, db};
+
+#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexPage {
+    base: BaseContext,
+    libraries: Vec<db::Library>,
+    error: Option<&'static str>,
+}
 
 pub async fn index(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Result<Html<String>, AppError> {
-    let libraries = db::list_libraries(&state.pool).await?;
-    let items = libraries.into_iter().fold(String::new(), |mut items, lib| {
-        items.push_str("<li>");
-        items.push_str(&html_escape::encode_text(&lib.name));
-        items.push_str("</li>\n");
-        items
-    });
-    let auth_controls = if super::logged_in(&state, &jar) {
-        "<a href=\"/password\">Change password</a>\n\
-         <form method=\"post\" action=\"/logout\">\n\
-         <button>Log out</button>\n\
-         </form>\n"
-    } else {
-        "<a href=\"/login\">Log in</a>\n"
+    render(&state.pool, super::logged_in(&state, &jar), None).await
+}
+
+pub(super) async fn render(
+    pool: &SqlitePool,
+    logged_in: bool,
+    error: Option<&'static str>,
+) -> Result<Html<String>, AppError> {
+    let page = IndexPage {
+        base: BaseContext::new("Libraries", "/", logged_in, Vec::new()),
+        libraries: db::list_libraries(pool).await?,
+        error,
     };
-    Ok(Html(format!(
-        "<!doctype html>\n\
-         <title>Scorarium</title>\n\
-         <h1>Libraries</h1>\n\
-         <ul>\n\
-         {items}\
-         </ul>\n\
-         {auth_controls}"
-    )))
+    Ok(Html(page.render()?))
 }

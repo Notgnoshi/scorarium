@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>{{ base.title }} - Scorarium</title>
+    </head>
+    <body>
+        <header>
+            <a href="/">Scorarium</a>
+            {% if base.logged_in %}
+                {% if base.path != "/password" %}<a href="/password">Change password</a>{% endif %}
+                <form method="post" action="/logout">
+                    <button>Log out</button>
+                </form>
+            {% else %}{% if base.path != "/login" %}<a href="/login">Log in</a>{% endif %}{% endif %}
+        </header>
+        {% if !base.breadcrumbs.is_empty() %}
+            <nav aria-label="breadcrumbs">
+                {% for crumb in base.breadcrumbs %}<a href="{{ crumb.href }}">{{ crumb.label }}</a> / {% endfor %}{{ base.title }}
+            </nav>
+        {% endif %}
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+        <footer>
+            <p>Powered by <a href="https://github.com/Notgnoshi/scorarium">Scorarium</a></p>
+        </footer>
+    </body>
+</html>

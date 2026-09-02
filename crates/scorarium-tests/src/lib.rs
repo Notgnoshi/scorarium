@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use axum_test::TestServer;
 use scorarium::{AppState, auth, db};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
@@ -54,4 +57,11 @@ impl TestDb {
         }
         AppState::new(pool)
     }
+}
+
+/// A test server that, like a browser, saves cookies across requests.
+pub fn browser(state: AppState) -> TestServer {
+    let mut server = TestServer::new(scorarium::router(Arc::new(state)));
+    server.save_cookies();
+    server
 }
