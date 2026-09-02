@@ -1,4 +1,5 @@
 mod index;
+mod library;
 mod login;
 mod password;
 
@@ -65,6 +66,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/password",
             get(password::password_form).post(password::change_password),
         )
+        .route("/library/{id}", get(library::library))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())

@@ -3,7 +3,7 @@
     <h1>Libraries</h1>
     <ul>
         {% for library in libraries %}
-            <li>{{ library.name }}</li>
+            <li><a href="/library/{{ library.id }}">{{ library.name }}</a></li>
         {% endfor %}
     </ul>
 {% endblock %}

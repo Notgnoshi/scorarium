@@ -35,6 +35,13 @@ pub async fn create_library(pool: &SqlitePool, name: &str) -> sqlx::Result<i64> 
     Ok(result.last_insert_rowid())
 }
 
+/// Look up a library by id.
+pub async fn get_library(pool: &SqlitePool, id: i64) -> sqlx::Result<Option<Library>> {
+    sqlx::query_as!(Library, "SELECT id, name FROM library WHERE id = ?", id)
+        .fetch_optional(pool)
+        .await
+}
+
 /// List all libraries, sorted by name.
 pub async fn list_libraries(pool: &SqlitePool) -> sqlx::Result<Vec<Library>> {
     sqlx::query_as!(Library, "SELECT id, name FROM library ORDER BY name")
