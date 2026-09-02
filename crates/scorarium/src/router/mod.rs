@@ -66,7 +66,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/password",
             get(password::password_form).post(password::change_password),
         )
+        .route("/library", post(library::create))
         .route("/library/{id}", get(library::library))
+        .route("/library/{id}/rename", post(library::rename))
+        .route("/library/{id}/delete", post(library::delete))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())

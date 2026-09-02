@@ -1,9 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>Libraries</h1>
+    {% if let Some(error) = error %}<p>{{ error }}</p>{% endif %}
     <ul>
         {% for library in libraries %}
             <li><a href="/library/{{ library.id }}">{{ library.name }}</a></li>
         {% endfor %}
     </ul>
+    {% if base.logged_in %}
+        <button onclick="document.getElementById('create-library').showModal()">Add library</button>
+        <dialog id="create-library">
+            <form method="post" action="/library">
+                <label>
+                    Name
+                    <input name="name" required autofocus />
+                </label>
+                <button>Create</button>
+                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+            </form>
+        </dialog>
+    {% endif %}
 {% endblock %}

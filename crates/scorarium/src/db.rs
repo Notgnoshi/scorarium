@@ -42,6 +42,22 @@ pub async fn get_library(pool: &SqlitePool, id: i64) -> sqlx::Result<Option<Libr
         .await
 }
 
+/// Rename a library. Returns false when no library has that id.
+pub async fn rename_library(pool: &SqlitePool, id: i64, name: &str) -> sqlx::Result<bool> {
+    let result = sqlx::query!("UPDATE library SET name = ? WHERE id = ?", name, id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Delete a library. Returns false when no library has that id.
+pub async fn delete_library(pool: &SqlitePool, id: i64) -> sqlx::Result<bool> {
+    let result = sqlx::query!("DELETE FROM library WHERE id = ?", id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
+}
+
 /// List all libraries, sorted by name.
 pub async fn list_libraries(pool: &SqlitePool) -> sqlx::Result<Vec<Library>> {
     sqlx::query_as!(Library, "SELECT id, name FROM library ORDER BY name")

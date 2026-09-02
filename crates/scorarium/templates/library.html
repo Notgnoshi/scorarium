@@ -1,4 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ library.name }}</h1>
+    {% if let Some(error) = error %}<p>{{ error }}</p>{% endif %}
+    {% if base.logged_in %}
+        <button onclick="document.getElementById('rename-library').showModal()">Rename</button>
+        <button onclick="document.getElementById('delete-library').showModal()">Delete</button>
+        <dialog id="rename-library">
+            <form method="post" action="/library/{{ library.id }}/rename">
+                <label>
+                    Name
+                    <input name="name" value="{{ library.name }}" required autofocus />
+                </label>
+                <button>Rename</button>
+                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+            </form>
+        </dialog>
+        <dialog id="delete-library">
+            <form method="post" action="/library/{{ library.id }}/delete">
+                <p>Delete {{ library.name }}?</p>
+                <button>Delete</button>
+                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+            </form>
+        </dialog>
+    {% endif %}
 {% endblock %}
