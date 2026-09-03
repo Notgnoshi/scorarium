@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO person (library_id, name, sort_name) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6f72fb676115bce50e0473cac9ab8320d6caaf3a61382c6f768129c2eac8fdd4"
+}

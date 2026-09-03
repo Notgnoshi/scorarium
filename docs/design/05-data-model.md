@@ -51,6 +51,7 @@ erDiagram
     }
     person {
         text name
+        text sort_name
     }
     holding {
         text kind
@@ -207,8 +208,13 @@ are cleaned up by the same future admin merge operation as works.
 * `id`: integer primary key
 * `library_id`: references library
 * `name`: text, the display form
+* `sort_name`: text, the form that sorts by surname ("Satie, Erik"). Filled at import time by
+  heuristics and API lookups; the user doesn't enter the same name twice - that'd be silly.
 
 ### person_alias
+
+**TODO:** I'm uncertain I need this - it seems as though I could use auto-complete like suggestions
+on the name fields to eliminate duplicates?
 
 Alternate spellings and transliterations ("Rachmaninov", "Tschaikowsky"). The search index matches
 aliases, so any known spelling finds the person.

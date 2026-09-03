@@ -1,3 +1,4 @@
+pub mod person;
 pub mod publication;
 
 use std::path::Path;

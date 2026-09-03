@@ -111,6 +111,12 @@ mod tests {
         create_identifier(&pool, publication_id, identifier::Kind::Isbn, &isbn)
             .await
             .unwrap();
+        let person_id = db::person::create_person(&pool, library_id, "Drew Neil", "Neil, Drew")
+            .await
+            .unwrap();
+        db::person::create_contributor(&pool, publication_id, person_id, "author")
+            .await
+            .unwrap();
 
         assert!(db::delete_library(&pool, library_id).await.unwrap());
 
@@ -124,5 +130,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(identifiers, 0);
+        let persons = sqlx::query_scalar!("SELECT COUNT(*) FROM person")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(persons, 0);
+        let contributors = sqlx::query_scalar!("SELECT COUNT(*) FROM publication_contributor")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(contributors, 0);
     }
 }
