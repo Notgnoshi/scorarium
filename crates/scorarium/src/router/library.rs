@@ -17,6 +17,7 @@ use crate::{AppState, db};
 struct LibraryPage {
     base: BaseContext,
     library: db::Library,
+    publications: Vec<db::publication::Publication>,
     error: Option<&'static str>,
 }
 
@@ -45,6 +46,7 @@ async fn render(
             logged_in,
             vec![Crumb::home()],
         ),
+        publications: db::publication::list(pool, id).await?,
         library,
         error,
     };

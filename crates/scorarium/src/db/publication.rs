@@ -1,8 +1,43 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use sqlx::SqlitePool;
 
 use crate::identifier::{self, Normalized};
+
+/// A publication with its children, as read back. Pages pick the fields they show.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Publication {
+    pub id: i64,
+    pub library_id: i64,
+    pub title: String,
+    pub publisher: Option<String>,
+    pub year: Option<i64>,
+    pub identifiers: Vec<Identifier>,
+    pub contributors: Vec<Contributor>,
+    pub holdings: Vec<Holding>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Identifier {
+    pub id: i64,
+    pub kind: identifier::Kind,
+    pub value: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Contributor {
+    pub person_id: i64,
+    pub name: String,
+    pub role: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Holding {
+    pub id: i64,
+    pub kind: HoldingKind,
+    pub location: Option<String>,
+}
 
 pub struct NewPublication<'a> {
     pub library_id: i64,
@@ -36,6 +71,101 @@ impl FromStr for HoldingKind {
             _ => Err(format!("unknown holding kind: {s}")),
         }
     }
+}
+
+fn decode_error(message: String) -> sqlx::Error {
+    sqlx::Error::Decode(message.into())
+}
+
+/// All publications in a library, with their children, in arbitrary order.
+pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Publication>> {
+    let mut publications: Vec<Publication> = sqlx::query!(
+        "SELECT id, library_id, title, publisher, year FROM publication WHERE library_id = ?",
+        library_id
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| Publication {
+        id: row.id,
+        library_id: row.library_id,
+        title: row.title,
+        publisher: row.publisher,
+        year: row.year,
+        identifiers: Vec::new(),
+        contributors: Vec::new(),
+        holdings: Vec::new(),
+    })
+    .collect();
+    let index: HashMap<i64, usize> = publications
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p.id, i))
+        .collect();
+
+    let identifiers = sqlx::query!(
+        "SELECT id, publication_id, kind, value FROM publication_identifier
+         WHERE publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
+        library_id
+    )
+    .fetch_all(pool)
+    .await?;
+    for row in identifiers {
+        let kind = row.kind.parse().map_err(decode_error)?;
+        publications[index[&row.publication_id]]
+            .identifiers
+            .push(Identifier {
+                id: row.id,
+                kind,
+                value: row.value,
+            });
+    }
+
+    let contributors = sqlx::query!(
+        "SELECT c.publication_id, c.person_id, p.name, c.role
+         FROM publication_contributor c JOIN person p ON p.id = c.person_id
+         WHERE c.publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
+        library_id
+    )
+    .fetch_all(pool)
+    .await?;
+    for row in contributors {
+        publications[index[&row.publication_id]]
+            .contributors
+            .push(Contributor {
+                person_id: row.person_id,
+                name: row.name,
+                role: row.role,
+            });
+    }
+
+    let holdings = sqlx::query!(
+        "SELECT id, publication_id, kind, location FROM holding
+         WHERE publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
+        library_id
+    )
+    .fetch_all(pool)
+    .await?;
+    for row in holdings {
+        let kind = row.kind.parse().map_err(decode_error)?;
+        publications[index[&row.publication_id]]
+            .holdings
+            .push(Holding {
+                id: row.id,
+                kind,
+                location: row.location,
+            });
+    }
+
+    Ok(publications)
+}
+
+/// One publication, or None when it does not exist or belongs to another library.
+pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
+    Ok(list(pool, library_id)
+        .await?
+        .into_iter()
+        .find(|p| p.id == id))
 }
 
 pub async fn create_publication(pool: &SqlitePool, new: &NewPublication<'_>) -> sqlx::Result<i64> {
@@ -92,6 +222,116 @@ pub async fn create_identifier(
 mod tests {
     use super::*;
     use crate::db;
+
+    #[sqlx::test]
+    async fn list_assembles_children(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let pro_git = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Pro Git",
+                publisher: Some("Apress"),
+                year: Some(2014),
+            },
+        )
+        .await
+        .unwrap();
+        let bare = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Bare",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let chacon = db::person::create_person(&pool, library_id, "Scott Chacon", "Chacon, Scott")
+            .await
+            .unwrap();
+        let straub = db::person::create_person(&pool, library_id, "Ben Straub", "Straub, Ben")
+            .await
+            .unwrap();
+        db::person::create_contributor(&pool, pro_git, chacon, "author")
+            .await
+            .unwrap();
+        db::person::create_contributor(&pool, pro_git, straub, "author")
+            .await
+            .unwrap();
+        let isbn = identifier::normalize(identifier::Kind::Isbn, "978-1-4842-0077-3").unwrap();
+        let isbn_id = create_identifier(&pool, pro_git, identifier::Kind::Isbn, &isbn)
+            .await
+            .unwrap();
+        let shelf = create_holding(&pool, pro_git, HoldingKind::Physical, None)
+            .await
+            .unwrap();
+        let pdf = create_holding(&pool, pro_git, HoldingKind::Digital, Some("pro-git.pdf"))
+            .await
+            .unwrap();
+
+        let mut publications = list(&pool, library_id).await.unwrap();
+        publications.sort_by_key(|p| p.id);
+        assert_eq!(
+            publications,
+            [
+                Publication {
+                    id: pro_git,
+                    library_id,
+                    title: "Pro Git".into(),
+                    publisher: Some("Apress".into()),
+                    year: Some(2014),
+                    identifiers: vec![Identifier {
+                        id: isbn_id,
+                        kind: identifier::Kind::Isbn,
+                        value: "978-1-4842-0077-3".into(),
+                    }],
+                    contributors: vec![
+                        Contributor {
+                            person_id: chacon,
+                            name: "Scott Chacon".into(),
+                            role: "author".into(),
+                        },
+                        Contributor {
+                            person_id: straub,
+                            name: "Ben Straub".into(),
+                            role: "author".into(),
+                        },
+                    ],
+                    holdings: vec![
+                        Holding {
+                            id: shelf,
+                            kind: HoldingKind::Physical,
+                            location: None,
+                        },
+                        Holding {
+                            id: pdf,
+                            kind: HoldingKind::Digital,
+                            location: Some("pro-git.pdf".into()),
+                        },
+                    ],
+                },
+                Publication {
+                    id: bare,
+                    library_id,
+                    title: "Bare".into(),
+                    publisher: None,
+                    year: None,
+                    identifiers: vec![],
+                    contributors: vec![],
+                    holdings: vec![],
+                },
+            ]
+        );
+
+        assert_eq!(
+            get(&pool, library_id, pro_git).await.unwrap().unwrap().id,
+            pro_git
+        );
+        let other_library = db::create_library(&pool, "other").await.unwrap();
+        assert_eq!(get(&pool, other_library, pro_git).await.unwrap(), None);
+    }
 
     /// Deleting a library must take its publications and their children with it.
     #[sqlx::test]
