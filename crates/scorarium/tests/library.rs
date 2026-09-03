@@ -40,6 +40,10 @@ async fn library_page_lists_publications() {
         "href=\"/library/{}/publication/{}\"",
         library.id, gymnopedies.id
     );
+    let satie_link = format!(
+        "href=\"/library/{}/person/{}\"",
+        library.id, gymnopedies.contributors[0].person_id
+    );
     let server = TestServer::new(router(Arc::new(state)));
 
     let response = server.get(&format!("/library/{}", library.id)).await;
@@ -48,6 +52,37 @@ async fn library_page_lists_publications() {
     response.assert_text_contains("Three gymnopedies for the piano");
     response.assert_text_contains("Erik Satie");
     response.assert_text_contains(link);
+    response.assert_text_contains(satie_link);
+}
+
+/// A library links only to the listings that would have something in them.
+#[tokio::test]
+async fn library_page_links_to_listings() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
+    let sheet_music = libraries
+        .iter()
+        .find(|l| l.name == "Sheet music")
+        .unwrap()
+        .id;
+    let server = TestServer::new(router(Arc::new(state)));
+
+    let response = server.get(&format!("/library/{sheet_music}")).await;
+    response.assert_text_contains(format!("href=\"/library/{sheet_music}/composers\""));
+    assert!(
+        !response
+            .text()
+            .contains(&format!("href=\"/library/{sheet_music}/authors\""))
+    );
+
+    let response = server.get(&format!("/library/{books}")).await;
+    response.assert_text_contains(format!("href=\"/library/{books}/authors\""));
+    assert!(
+        !response
+            .text()
+            .contains(&format!("href=\"/library/{books}/composers\""))
+    );
 }
 
 #[tokio::test]

@@ -17,12 +17,20 @@ pub struct Work {
 }
 
 impl Work {
-    /// Names of the contributors credited with `role`, for listings with one column per role.
-    pub fn names_with_role(&self, role: &str) -> Vec<&str> {
+    /// The contributors credited with `role`, for listings with one column per role.
+    pub fn with_role(&self, role: &str) -> Vec<&Contributor> {
         self.contributors
             .iter()
             .filter(|c| c.role == role)
-            .map(|c| c.name.as_str())
+            .collect()
+    }
+
+    /// The roles one person is credited with, for pages about that person.
+    pub fn roles_of(&self, person_id: i64) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|c| c.person_id == person_id)
+            .map(|c| c.role.as_str())
             .collect()
     }
 }

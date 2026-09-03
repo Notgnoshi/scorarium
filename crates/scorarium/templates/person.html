@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ person.name }}</h1>
+    <h2>Publications</h2>
+    {% for (p, works) in publications %}
+        <h3>
+            <a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a>
+            {% let roles = p.roles_of(*person.id) %}
+            {% if !roles.is_empty() %}({{ roles | join(", ") }}){% endif %}
+        </h3>
+        {% if !works.is_empty() %}
+            <ul>
+                {% for w in works %}
+                    <li><a href="/library/{{ w.library_id }}/work/{{ w.id }}">{{ w.title }}</a> ({{ w.roles_of(*person.id) | join(", ") }})</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endfor %}
+{% endblock %}

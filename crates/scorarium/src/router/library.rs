@@ -18,6 +18,9 @@ struct LibraryPage {
     base: BaseContext,
     library: db::Library,
     publications: Vec<db::publication::Publication>,
+    // Link only to listings with something in them
+    has_composers: bool,
+    has_authors: bool,
     error: Option<&'static str>,
 }
 
@@ -39,6 +42,7 @@ async fn render(
     let Some(library) = db::get_library(pool, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let roles = db::person::list_roles(pool, id).await?;
     let page = LibraryPage {
         base: BaseContext::new(
             library.name.clone(),
@@ -47,6 +51,8 @@ async fn render(
             vec![Crumb::home()],
         ),
         publications: db::publication::list(pool, id).await?,
+        has_composers: roles.iter().any(|r| r == "composer"),
+        has_authors: roles.iter().any(|r| r == "author"),
         library,
         error,
     };

@@ -2,6 +2,7 @@ mod index;
 mod library;
 mod login;
 mod password;
+mod person;
 mod publication;
 mod work;
 
@@ -84,6 +85,9 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(publication::publication),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
+        .route("/library/{library_id}/person/{id}", get(person::person))
+        .route("/library/{id}/composers", get(person::composers))
+        .route("/library/{id}/authors", get(person::authors))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())

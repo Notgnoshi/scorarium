@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    <ul>
+        {% for p in persons %}
+            <li><a href="/library/{{ p.library_id }}/person/{{ p.id }}">{{ p.name }}</a></li>
+        {% endfor %}
+    </ul>
+{% endblock %}

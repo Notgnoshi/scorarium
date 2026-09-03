@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, publication_id, kind, value FROM publication_identifier\n         WHERE publication_id IN\n            (SELECT id FROM publication\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
+  "query": "SELECT id, publication_id, kind, value FROM publication_identifier\n         WHERE publication_id IN\n            (SELECT id FROM publication\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))\n               AND (?4 IS NULL\n                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)\n                    OR id IN (SELECT pw.publication_id FROM publication_work pw\n                              JOIN work_contributor wc ON wc.work_id = pw.work_id\n                              WHERE wc.person_id = ?4)))",
   "describe": {
     "columns": [
       {
@@ -49,7 +49,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "47699ed0a4fd0156b7f194ea87a143ea3b28700cc33b6b5617221862d721068b"
+  "hash": "e6819f4fce168d6644c6f0c38fbea7c994fec52cc42d8b4efeb94696175fb92d"
 }

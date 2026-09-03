@@ -43,12 +43,17 @@ async fn work_page() {
         "href=\"/library/{}/publication/{}\"",
         sheet_music.id, masterpieces.id
     );
+    let composer_href = format!(
+        "href=\"/library/{}/person/{}\"",
+        sheet_music.id, prelude.contributors[0].person_id
+    );
     for expected in [
         "Prelude in C-sharp minor",
         "Op. 3 No. 2",
         "C-sharp minor",
         "piano",
         "Sergei Rachmaninoff",
+        composer_href.as_str(),
         "composer",
         // The work is in two publications, both of which are listed
         "Russian piano album",
