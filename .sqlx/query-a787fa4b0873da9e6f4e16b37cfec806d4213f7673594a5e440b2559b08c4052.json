@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) FROM work w WHERE NOT EXISTS (SELECT 1 FROM publication_work pw WHERE pw.work_id = w.id)",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a787fa4b0873da9e6f4e16b37cfec806d4213f7673594a5e440b2559b08c4052"
+}
