@@ -28,6 +28,39 @@ pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Op
     .await
 }
 
+/// Persons credited with `role` on any publication or work in the library, sorted by sort name.
+pub async fn list_with_role(
+    pool: &SqlitePool,
+    library_id: i64,
+    role: &str,
+) -> sqlx::Result<Vec<Person>> {
+    sqlx::query_as!(
+        Person,
+        "SELECT id, library_id, name, sort_name FROM person
+         WHERE library_id = ?1
+           AND (id IN (SELECT person_id FROM publication_contributor WHERE role = ?2)
+                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?2))
+         ORDER BY sort_name",
+        library_id,
+        role
+    )
+    .fetch_all(pool)
+    .await
+}
+
+/// The distinct contributor roles used anywhere in the library, sorted.
+pub async fn list_roles(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar!(
+        "SELECT role FROM publication_contributor WHERE library_id = ?1
+         UNION
+         SELECT role FROM work_contributor WHERE library_id = ?1
+         ORDER BY role",
+        library_id
+    )
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn create_person(
     pool: &SqlitePool,
     library_id: i64,
@@ -91,6 +124,115 @@ mod tests {
         );
         assert_eq!(get(&pool, other_library, id).await.unwrap(), None);
         assert_eq!(get(&pool, library_id, id + 1).await.unwrap(), None);
+    }
+
+    #[sqlx::test]
+    async fn list_with_role_spans_publications_and_works(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let second = db::create_library(&pool, "second").await.unwrap();
+        let publication = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Album",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let work = db::work::create_work(
+            &pool,
+            &db::work::NewWork {
+                library_id,
+                title: "Piece",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        db::work::add_to_publication(&pool, library_id, publication, work)
+            .await
+            .unwrap();
+        let elsewhere = create_publication(
+            &pool,
+            &NewPublication {
+                library_id: second,
+                title: "Elsewhere",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Sort names chosen so that insertion order differs from sort order
+        let work_only = create_person(&pool, library_id, "Work Only", "Only, Work")
+            .await
+            .unwrap();
+        db::work::create_contributor(&pool, library_id, work, work_only, "composer")
+            .await
+            .unwrap();
+        let publication_only =
+            create_person(&pool, library_id, "Publication Only", "Only, Publication")
+                .await
+                .unwrap();
+        create_contributor(&pool, library_id, publication, publication_only, "composer")
+            .await
+            .unwrap();
+        let both = create_person(&pool, library_id, "Both", "Both")
+            .await
+            .unwrap();
+        create_contributor(&pool, library_id, publication, both, "composer")
+            .await
+            .unwrap();
+        db::work::create_contributor(&pool, library_id, work, both, "composer")
+            .await
+            .unwrap();
+        let editor = create_person(&pool, library_id, "Editor", "Editor")
+            .await
+            .unwrap();
+        create_contributor(&pool, library_id, publication, editor, "editor")
+            .await
+            .unwrap();
+        let far = create_person(&pool, second, "Elsewhere", "Elsewhere")
+            .await
+            .unwrap();
+        create_contributor(&pool, second, elsewhere, far, "composer")
+            .await
+            .unwrap();
+
+        let composers = list_with_role(&pool, library_id, "composer").await.unwrap();
+        assert_eq!(
+            composers,
+            [
+                Person {
+                    id: both,
+                    library_id,
+                    name: "Both".into(),
+                    sort_name: "Both".into(),
+                },
+                Person {
+                    id: publication_only,
+                    library_id,
+                    name: "Publication Only".into(),
+                    sort_name: "Only, Publication".into(),
+                },
+                Person {
+                    id: work_only,
+                    library_id,
+                    name: "Work Only".into(),
+                    sort_name: "Only, Work".into(),
+                },
+            ]
+        );
+        assert_eq!(
+            list_roles(&pool, library_id).await.unwrap(),
+            ["composer", "editor"]
+        );
+        assert_eq!(list_roles(&pool, second).await.unwrap(), ["composer"]);
     }
 
     #[sqlx::test]

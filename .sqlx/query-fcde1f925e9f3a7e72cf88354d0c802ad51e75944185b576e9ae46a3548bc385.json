@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, library_id, name, sort_name FROM person\n         WHERE library_id = ?1\n           AND (id IN (SELECT person_id FROM publication_contributor WHERE role = ?2)\n                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?2))\n         ORDER BY sort_name",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "library_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "sort_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "sort_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fcde1f925e9f3a7e72cf88354d0c802ad51e75944185b576e9ae46a3548bc385"
+}

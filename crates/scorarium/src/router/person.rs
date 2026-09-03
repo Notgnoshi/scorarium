@@ -53,3 +53,50 @@ pub async fn person(
     };
     Ok(Html(page.render()?).into_response())
 }
+
+#[derive(Template)]
+#[template(path = "persons.html")]
+struct PersonsPage {
+    base: BaseContext,
+    persons: Vec<db::person::Person>,
+}
+
+/// GET /library/{id}/composers
+pub async fn composers(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    listing(&state, &jar, id, "composer", "Composers").await
+}
+
+/// GET /library/{id}/authors
+pub async fn authors(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    listing(&state, &jar, id, "author", "Authors").await
+}
+
+async fn listing(
+    state: &AppState,
+    jar: &CookieJar,
+    library_id: i64,
+    role: &str,
+    title: &str,
+) -> Result<Response, AppError> {
+    let Some(library) = db::get_library(&state.pool, library_id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let page = PersonsPage {
+        base: BaseContext::new(
+            title,
+            format!("/library/{library_id}/{}", title.to_lowercase()),
+            super::logged_in(state, jar),
+            vec![Crumb::home(), Crumb::library(&library)],
+        ),
+        persons: db::person::list_with_role(&state.pool, library_id, role).await?,
+    };
+    Ok(Html(page.render()?).into_response())
+}

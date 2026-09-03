@@ -104,3 +104,51 @@ async fn person_page() {
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn composers_and_authors_pages() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
+    let sheet_music = libraries
+        .iter()
+        .find(|l| l.name == "Sheet music")
+        .unwrap()
+        .id;
+    let composers = db::person::list_with_role(&state.pool, sheet_music, "composer")
+        .await
+        .unwrap();
+    let server = TestServer::new(router(Arc::new(state)));
+
+    let response = server
+        .get(&format!("/library/{sheet_music}/composers"))
+        .await;
+    response.assert_status_ok();
+    // Kabalevsky is credited only on a publication, the others on works too
+    for name in ["Sergei Rachmaninoff", "Erik Satie", "Dmitri Kabalevsky"] {
+        let person = composers.iter().find(|p| p.name == name).unwrap();
+        response.assert_text_contains(name);
+        response.assert_text_contains(format!(
+            "href=\"/library/{sheet_music}/person/{}\"",
+            person.id
+        ));
+    }
+    assert!(!response.text().contains("Ambrose Bierce"));
+
+    let response = server.get(&format!("/library/{books}/authors")).await;
+    response.assert_status_ok();
+    for name in ["Ambrose Bierce", "Drew Neil", "Scott Chacon", "Ben Straub"] {
+        response.assert_text_contains(name);
+    }
+
+    // No authors in the sheet music library: an empty page, not an error
+    let response = server.get(&format!("/library/{sheet_music}/authors")).await;
+    response.assert_status_ok();
+    assert!(!response.text().contains("/person/"));
+
+    let missing = libraries.iter().map(|l| l.id).max().unwrap() + 1;
+    for listing in ["composers", "authors"] {
+        let response = server.get(&format!("/library/{missing}/{listing}")).await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+}

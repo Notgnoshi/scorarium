@@ -22,6 +22,8 @@
             {% endfor %}
         </tbody>
     </table>
+    {% if has_composers %}<a href="/library/{{ library.id }}/composers">Composers</a>{% endif %}
+    {% if has_authors %}<a href="/library/{{ library.id }}/authors">Authors</a>{% endif %}
     {% if base.logged_in %}
         <button onclick="document.getElementById('rename-library').showModal()">Rename</button>
         <button onclick="document.getElementById('delete-library').showModal()">Delete</button>
