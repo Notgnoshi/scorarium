@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use scorarium::{AppState, db, router};
+use scorarium::{AppState, db, demo, router};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -22,6 +22,10 @@ struct Args {
     /// Directory holding the database and managed files. Created if missing.
     #[arg(short, long, env = "SCORARIUM_DATA_DIR", default_value = "./data")]
     data_dir: PathBuf,
+
+    /// Serve an in-memory demo library instead of the data directory.
+    #[arg(long)]
+    demo: bool,
 }
 
 #[tokio::main]
@@ -37,9 +41,16 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
-    let pool = db::connect(&args.data_dir).await?;
+    let pool = if args.demo {
+        let pool = db::connect_in_memory().await?;
+        demo::populate(&pool).await?;
+        tracing::info!(bind = %args.bind, "starting scorarium with in-memory demo data");
+        pool
+    } else {
+        tracing::info!(bind = %args.bind, data_dir = %args.data_dir.display(), "starting scorarium");
+        db::connect(&args.data_dir).await?
+    };
     let app = router(Arc::new(AppState::new(pool)));
-    tracing::info!(bind = %args.bind, data_dir = %args.data_dir.display(), "starting scorarium");
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

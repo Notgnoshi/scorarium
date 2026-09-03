@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
@@ -19,6 +19,21 @@ pub async fn connect(data_dir: &Path) -> color_eyre::Result<SqlitePool> {
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(5));
     let pool = SqlitePool::connect_with(options).await?;
+    MIGRATOR.run(&pool).await?;
+    Ok(pool)
+}
+
+/// Open a fresh, migrated in-memory database
+pub async fn connect_in_memory() -> sqlx::Result<SqlitePool> {
+    let options = SqliteConnectOptions::new()
+        .in_memory(true)
+        .foreign_keys(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
+        .await?;
     MIGRATOR.run(&pool).await?;
     Ok(pool)
 }
