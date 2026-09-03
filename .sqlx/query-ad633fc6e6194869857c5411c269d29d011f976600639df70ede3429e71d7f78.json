@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.publication_id, c.person_id, p.name, c.role\n         FROM publication_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
+  "query": "SELECT c.publication_id, c.person_id, p.name, c.role\n         FROM publication_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.publication_id IN\n            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
   "describe": {
     "columns": [
       {
@@ -49,7 +49,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "608c1f18bed56faf90bb2f5797b0a20d9bc48c722cf6d7418ca8f3871ff7307a"
+  "hash": "ad633fc6e6194869857c5411c269d29d011f976600639df70ede3429e71d7f78"
 }

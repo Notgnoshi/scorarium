@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, publisher, year FROM publication WHERE library_id = ?",
+  "query": "SELECT id, library_id, title, publisher, year FROM publication\n         WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2)",
   "describe": {
     "columns": [
       {
@@ -60,7 +60,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -70,5 +70,5 @@
       true
     ]
   },
-  "hash": "b2eef14c0ba6a2d5c6075ec1621088f5b014f051e79ae7e5cea6a5c7d9ed9332"
+  "hash": "e0318401633605a0a6200ddf29cd0dec2016211f81c0edcf86409a6f2ea47088"
 }

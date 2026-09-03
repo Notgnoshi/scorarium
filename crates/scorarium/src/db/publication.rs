@@ -79,11 +79,31 @@ fn decode_error(message: String) -> sqlx::Error {
 
 /// All publications in a library, with their children, in arbitrary order.
 pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Publication>> {
+    load(pool, library_id, None).await
+}
+
+/// One publication, or None when it does not exist or belongs to another library.
+pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
+    Ok(load(pool, library_id, Some(id)).await?.pop())
+}
+
+/// Load a library's publications with their children: all of them, or just the one with `id`.
+///
+/// The four reads share a transaction so they see one snapshot. Otherwise a child row for a
+/// publication created between the parent read and the child reads would have no parent here.
+async fn load(
+    pool: &SqlitePool,
+    library_id: i64,
+    id: Option<i64>,
+) -> sqlx::Result<Vec<Publication>> {
+    let mut tx = pool.begin().await?;
     let mut publications: Vec<Publication> = sqlx::query!(
-        "SELECT id, library_id, title, publisher, year FROM publication WHERE library_id = ?",
-        library_id
+        "SELECT id, library_id, title, publisher, year FROM publication
+         WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2)",
+        library_id,
+        id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?
     .into_iter()
     .map(|row| Publication {
@@ -105,10 +125,12 @@ pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Public
 
     let identifiers = sqlx::query!(
         "SELECT id, publication_id, kind, value FROM publication_identifier
-         WHERE publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
-        library_id
+         WHERE publication_id IN
+            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+        library_id,
+        id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
     for row in identifiers {
         let kind = row.kind.parse().map_err(decode_error)?;
@@ -124,10 +146,12 @@ pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Public
     let contributors = sqlx::query!(
         "SELECT c.publication_id, c.person_id, p.name, c.role
          FROM publication_contributor c JOIN person p ON p.id = c.person_id
-         WHERE c.publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
-        library_id
+         WHERE c.publication_id IN
+            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+        library_id,
+        id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
     for row in contributors {
         publications[index[&row.publication_id]]
@@ -141,10 +165,12 @@ pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Public
 
     let holdings = sqlx::query!(
         "SELECT id, publication_id, kind, location FROM holding
-         WHERE publication_id IN (SELECT id FROM publication WHERE library_id = ?)",
-        library_id
+         WHERE publication_id IN
+            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+        library_id,
+        id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
     for row in holdings {
         let kind = row.kind.parse().map_err(decode_error)?;
@@ -157,15 +183,8 @@ pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Public
             });
     }
 
+    tx.commit().await?;
     Ok(publications)
-}
-
-/// One publication, or None when it does not exist or belongs to another library.
-pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
-    Ok(list(pool, library_id)
-        .await?
-        .into_iter()
-        .find(|p| p.id == id))
 }
 
 pub async fn create_publication(pool: &SqlitePool, new: &NewPublication<'_>) -> sqlx::Result<i64> {
