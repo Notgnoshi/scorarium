@@ -11,12 +11,14 @@ concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
-permissions:
-    contents: write
+env:
+    IMAGE: ghcr.io/notgnoshi/scorarium
 
 jobs:
     release:
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
         steps:
             - uses: actions/checkout@v6
 
@@ -53,3 +55,46 @@ jobs:
                         --notes-file release.md \
                         $PRERELEASE_FLAG
                 fi
+
+    # The image is a static musl binary built here on the runner and copied into a scratch base.
+    image:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        env:
+            # Build against the checked-in .sqlx/ metadata, not a dev database
+            SQLX_OFFLINE: "true"
+        steps:
+            - uses: actions/checkout@v6
+            - name: Setup Rust toolchain
+              uses: dtolnay/rust-toolchain@master
+              with:
+                toolchain: stable
+                targets: x86_64-unknown-linux-musl
+            - name: Install musl C compiler
+              run: |
+                sudo apt-get update
+                sudo apt-get install --yes musl-tools
+            - name: Setup Rust cache
+              uses: swatinem/rust-cache@v2
+            - name: Build
+              run: cargo build --release --target x86_64-unknown-linux-musl
+            - name: Build image
+              run: docker build --tag "$IMAGE:latest" .
+            - name: Smoke test
+              run: docker run --rm "$IMAGE:latest" --version
+            - name: Push
+              if: github.ref_name == github.event.repository.default_branch
+              run: |
+                echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+                docker push "$IMAGE:latest"
+            # Pushing a new :latest is what untags the previous one, so prune here rather than on a schedule.
+            - name: Prune untagged images
+              if: github.ref_name == github.event.repository.default_branch
+              uses: actions/delete-package-versions@v5
+              with:
+                package-name: scorarium
+                package-type: container
+                min-versions-to-keep: 0
+                delete-only-untagged-versions: "true"
