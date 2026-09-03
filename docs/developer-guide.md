@@ -8,6 +8,8 @@ It's a "usual" Rust project, so you can use `cargo` as normal:
 ```sh
 cargo build
 cargo run -- ...
+# Serve an in-memory demo database for demo and testing purposes
+cargo run -- --demo
 # nextest is preferred over 'cargo test' for better speed; both will work
 cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
@@ -33,6 +35,14 @@ cargo sqlx prepare --workspace -- --all-targets --all-features
 
 While `DATABASE_URL` is exported, the macros check queries against that live database instead of
 `.sqlx/`, so schema mistakes surface immediately during development.
+
+## Identifiers
+
+ISBN validation and hyphenation need the ISBN agency's range table, which the `isbn` crate embeds at
+build time. The crate publishes a new date-suffixed patch version as the table changes, so
+`cargo update` needs to be done periodically to keep the table up-to-date.
+
+## Maintenance notes
 
 This project values tests, but does not prioritize complete test coverage. Tests are code that needs
 to be reviewed and maintained just as well as any other, so this project prioritizes test quality

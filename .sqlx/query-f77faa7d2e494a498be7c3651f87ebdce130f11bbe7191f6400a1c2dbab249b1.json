@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, publication_id, kind, location FROM holding\n         WHERE publication_id IN\n            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "publication_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "location"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "f77faa7d2e494a498be7c3651f87ebdce130f11bbe7191f6400a1c2dbab249b1"
+}

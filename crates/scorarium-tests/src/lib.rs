@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use axum_test::TestServer;
-use scorarium::{AppState, auth, db};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use scorarium::{AppState, auth, db, demo};
 
 /// Builds an [AppState] backed by a fresh in-memory database with the given contents.
 #[derive(Default)]
 pub struct TestDb {
+    demo: bool,
     libraries: Vec<String>,
     password: Option<String>,
 }
@@ -14,6 +14,12 @@ pub struct TestDb {
 impl TestDb {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Start from the demo libraries that `--demo` serves.
+    pub fn demo(mut self) -> Self {
+        self.demo = true;
+        self
     }
 
     pub fn library(mut self, name: &str) -> Self {
@@ -28,22 +34,14 @@ impl TestDb {
     }
 
     pub async fn build(self) -> AppState {
-        let options = SqliteConnectOptions::new()
-            .in_memory(true)
-            .foreign_keys(true);
-        // Each connection to an in-memory SQLite database is its own separate database, so pin the
-        // pool to a single connection that is never recycled.
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .idle_timeout(None)
-            .max_lifetime(None)
-            .connect_with(options)
+        let pool = db::connect_in_memory()
             .await
             .expect("failed to open in-memory database");
-        db::MIGRATOR
-            .run(&pool)
-            .await
-            .expect("failed to migrate test database");
+        if self.demo {
+            demo::populate(&pool)
+                .await
+                .expect("failed to populate demo data");
+        }
 
         for name in &self.libraries {
             db::create_library(&pool, name)

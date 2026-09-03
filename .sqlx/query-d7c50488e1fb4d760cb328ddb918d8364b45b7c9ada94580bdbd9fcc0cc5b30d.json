@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) FROM publication p WHERE NOT EXISTS (SELECT 1 FROM holding h WHERE h.publication_id = p.id)",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d7c50488e1fb4d760cb328ddb918d8364b45b7c9ada94580bdbd9fcc0cc5b30d"
+}

@@ -51,6 +51,7 @@ erDiagram
     }
     person {
         text name
+        text sort_name
     }
     holding {
         text kind
@@ -60,7 +61,6 @@ erDiagram
     publication_identifier {
         text kind
         text value
-        text normalized
     }
     work_catalog_number {
         text catalog
@@ -134,16 +134,19 @@ The numbers printed on a publication to identify it. Publications can have multi
 * `id`: integer primary key
 * `publication_id`: references publication
 * `kind`: text, one of `isbn`, `ismn`, `publisher_number`, `plate_number`
-* `value`: text, exactly as printed on the object
-* `normalized`: text, derived from value
+* `value`: text, the normalized form
 
-Unique on (`publication_id`, `kind`, `value`): the same printed identifier cannot be entered twice,
-but a volume printing both ISBN-10 and ISBN-13 gets two rows that normalize identically. Identifiers
-are deliberately not unique across publications (publishers reuse ISBNs, and volumes of a set
-sometimes share one); the duplicate check at import time is a lookup on `normalized` that warns, not
-a constraint. Normalization rules: `isbn` strips separators, validates the check digit, and
-upconverts ISBN-10 to ISBN-13; `ismn` strips separators, expands the legacy `M-` prefix to `979-0`,
-and validates; `publisher_number` and `plate_number` trim and uppercase only.
+Identifiers are normalized at entry and only the normalized form is stored. `isbn` normalizes to
+hyphenated ISBN-13 using the ISBN agency's range table as embedded in the `isbn` crate. `ismn`
+normalizes to the hyphenated `979-0` form, expanding the legacy `M-` prefix; its registrant ranges
+are fixed by the standard. `publisher_number` and `plate_number` are trimmed and uppercased. An
+identifier that fails validation or whose ISBN range is not in the embedded table is rejected at
+entry.
+
+Unique on (`publication_id`, `kind`, `value`): a volume printing both ISBN-10 and ISBN-13 has one
+row, since both normalize to the same value. Identifiers are deliberately not unique across
+publications (publishers reuse ISBNs, and volumes of a set sometimes share one); the duplicate check
+at import time is a lookup on `value` that warns, not a constraint.
 
 ### work
 
@@ -205,8 +208,13 @@ are cleaned up by the same future admin merge operation as works.
 * `id`: integer primary key
 * `library_id`: references library
 * `name`: text, the display form
+* `sort_name`: text, the form that sorts by surname ("Satie, Erik"). Filled at import time by
+  heuristics and API lookups; the user doesn't enter the same name twice - that'd be silly.
 
 ### person_alias
+
+**TODO:** I'm uncertain I need this - it seems as though I could use auto-complete like suggestions
+on the name fields to eliminate duplicates?
 
 Alternate spellings and transliterations ("Rachmaninov", "Tschaikowsky"). The search index matches
 aliases, so any known spelling finds the person.
@@ -236,9 +244,13 @@ Who did what, on the publication ("edited by") and on the work ("composed by"). 
 conventional values: `composer`, `editor`, `arranger`, `translator`, ...
 
 * `id`: integer primary key
+* `library_id`: references library
 * `publication_id` / `work_id`: references the parent
 * `person_id`: references person
 * `role`: text
+
+The parent and person are referenced by composite `(id, library_id)` foreign keys, so the database
+rejects a link between a publication and a person from different libraries.
 
 ### holding
 

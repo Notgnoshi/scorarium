@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT c.publication_id, c.person_id, p.name, c.role\n         FROM publication_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.publication_id IN\n            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+  "describe": {
+    "columns": [
+      {
+        "name": "publication_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "person_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "role",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ad633fc6e6194869857c5411c269d29d011f976600639df70ede3429e71d7f78"
+}

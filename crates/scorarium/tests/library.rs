@@ -25,6 +25,32 @@ async fn library_page() {
 }
 
 #[tokio::test]
+async fn library_page_lists_publications() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publications = db::publication::list(&state.pool, library.id)
+        .await
+        .unwrap();
+    let gymnopedies = publications
+        .iter()
+        .find(|p| p.title.starts_with("Three gymnopedies"))
+        .unwrap();
+    let link = format!(
+        "href=\"/library/{}/publication/{}\"",
+        library.id, gymnopedies.id
+    );
+    let server = TestServer::new(router(Arc::new(state)));
+
+    let response = server.get(&format!("/library/{}", library.id)).await;
+    response.assert_status_ok();
+    response.assert_text_contains("Russian piano album");
+    response.assert_text_contains("Three gymnopedies for the piano");
+    response.assert_text_contains("Erik Satie");
+    response.assert_text_contains(link);
+}
+
+#[tokio::test]
 async fn library_crud_flow() {
     let state = TestDb::new().password("hunter2").build().await;
     // Keep a handle on the database to look up ids the UI only exposes as links

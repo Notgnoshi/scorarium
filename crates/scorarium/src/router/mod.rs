@@ -2,6 +2,7 @@ mod index;
 mod library;
 mod login;
 mod password;
+mod publication;
 
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use tower_http::trace::TraceLayer;
 
-use crate::AppState;
+use crate::{AppState, db};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -29,6 +30,13 @@ impl Crumb {
         Self {
             label: "Home".to_string(),
             href: "/".to_string(),
+        }
+    }
+
+    pub fn library(library: &db::Library) -> Self {
+        Self {
+            label: library.name.clone(),
+            href: format!("/library/{}", library.id),
         }
     }
 }
@@ -70,6 +78,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/library/{id}", get(library::library))
         .route("/library/{id}/rename", post(library::rename))
         .route("/library/{id}/delete", post(library::delete))
+        .route(
+            "/library/{library_id}/publication/{id}",
+            get(publication::publication),
+        )
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())

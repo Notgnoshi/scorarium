@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, publication_id, kind, value FROM publication_identifier\n         WHERE publication_id IN\n            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_identifier",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "publication_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_identifier",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_identifier",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "value",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_identifier",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ac81a2d316868171c210ec523b9c0fdb4596eab2102f11067ff0a5cfe1a9ebc8"
+}
