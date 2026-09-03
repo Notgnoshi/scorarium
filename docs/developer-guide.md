@@ -42,6 +42,25 @@ ISBN validation and hyphenation need the ISBN agency's range table, which the `i
 build time. The crate publishes a new date-suffixed patch version as the table changes, so
 `cargo update` needs to be done periodically to keep the table up-to-date.
 
+## Docker build
+
+The CI pipeline builds a static musl binary and packages it into a Docker image. This is how you can
+build that image yourself:
+
+```sh
+# Fedora
+sudo dnf install musl-gcc
+# Ubuntu
+sudo apt install musl-tools
+```
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+docker build --tag scorarium:dev .
+docker run --user "$(id -u):$(id -g)" --volume ./data:/data --publish 3000:3000 scorarium:dev
+```
+
 ## Maintenance notes
 
 This project values tests, but does not prioritize complete test coverage. Tests are code that needs
