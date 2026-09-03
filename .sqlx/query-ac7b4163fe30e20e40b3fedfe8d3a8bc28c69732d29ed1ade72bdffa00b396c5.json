@@ -1,26 +1,26 @@
 {
-    "db_name": "SQLite",
-    "query": "SELECT password_hash FROM password WHERE id = 1",
-    "describe": {
-        "columns": [
-            {
-                "name": "password_hash",
-                "ordinal": 0,
-                "type_info": "Text",
-                "origin": {
-                    "Table": {
-                        "table": "password",
-                        "name": "password_hash"
-                    }
-                }
-            }
-        ],
-        "parameters": {
-            "Right": 0
-        },
-        "nullable": [
-            false
-        ]
+  "db_name": "SQLite",
+  "query": "SELECT password_hash FROM password WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "password_hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "password",
+            "name": "password_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
     },
-    "hash": "ac7b4163fe30e20e40b3fedfe8d3a8bc28c69732d29ed1ade72bdffa00b396c5"
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ac7b4163fe30e20e40b3fedfe8d3a8bc28c69732d29ed1ade72bdffa00b396c5"
 }

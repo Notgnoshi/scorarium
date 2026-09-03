@@ -1,12 +1,12 @@
 {
-    "db_name": "SQLite",
-    "query": "INSERT INTO password (id, password_hash) VALUES (1, ?) ON CONFLICT DO NOTHING",
-    "describe": {
-        "columns": [],
-        "parameters": {
-            "Right": 1
-        },
-        "nullable": []
+  "db_name": "SQLite",
+  "query": "INSERT INTO password (id, password_hash) VALUES (1, ?) ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
     },
-    "hash": "c3cd385f2fe7e37ff0f443e1a875411ba202f6eee8c52f7947b836b0021fbbdc"
+    "nullable": []
+  },
+  "hash": "c3cd385f2fe7e37ff0f443e1a875411ba202f6eee8c52f7947b836b0021fbbdc"
 }

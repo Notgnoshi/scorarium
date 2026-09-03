@@ -15,6 +15,27 @@
             <li>{{ c.name }} ({{ c.role }})</li>
         {% endfor %}
     </ul>
+    {% if !works.is_empty() %}
+        <h2>Works</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
+                    {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in works %}
+                    <tr>
+                        <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
+                        {% if show_catalog_numbers %}<td>{{ w.catalog_numbers | join(", ") }}</td>{% endif %}
+                        {% for role in roles %}<td>{{ w.names_with_role(role) | join(", ") }}</td>{% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
     <h2>Holdings</h2>
     <ul>
         {% for h in publication.holdings %}

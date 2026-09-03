@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use sqlx::SqlitePool;
 
+use crate::db::person::Contributor;
 use crate::identifier::{self, Normalized};
 
 /// A publication with its children, as read back. Pages pick the fields they show.
@@ -23,13 +24,6 @@ pub struct Identifier {
     pub id: i64,
     pub kind: identifier::Kind,
     pub value: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Contributor {
-    pub person_id: i64,
-    pub name: String,
-    pub role: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,15 +73,25 @@ fn decode_error(message: String) -> sqlx::Error {
 
 /// All publications in a library, with their children, in arbitrary order.
 pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Publication>> {
-    load(pool, library_id, None).await
+    load(pool, library_id, None, None).await
 }
 
 /// One publication, or None when it does not exist or belongs to another library.
 pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
-    Ok(load(pool, library_id, Some(id)).await?.pop())
+    Ok(load(pool, library_id, Some(id), None).await?.pop())
 }
 
-/// Load a library's publications with their children: all of them, or just the one with `id`.
+/// The publications containing a work, with their children, in arbitrary order.
+pub async fn list_containing(
+    pool: &SqlitePool,
+    library_id: i64,
+    work_id: i64,
+) -> sqlx::Result<Vec<Publication>> {
+    load(pool, library_id, None, Some(work_id)).await
+}
+
+/// Load a library's publications with their children: all of them, just the one with `id`, or
+/// those containing `work_id`.
 ///
 /// The four reads share a transaction so they see one snapshot. Otherwise a child row for a
 /// publication created between the parent read and the child reads would have no parent here.
@@ -95,13 +99,17 @@ async fn load(
     pool: &SqlitePool,
     library_id: i64,
     id: Option<i64>,
+    work_id: Option<i64>,
 ) -> sqlx::Result<Vec<Publication>> {
     let mut tx = pool.begin().await?;
     let mut publications: Vec<Publication> = sqlx::query!(
         "SELECT id, library_id, title, publisher, year FROM publication
-         WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2)",
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?
@@ -126,9 +134,13 @@ async fn load(
     let identifiers = sqlx::query!(
         "SELECT id, publication_id, kind, value FROM publication_identifier
          WHERE publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -147,9 +159,13 @@ async fn load(
         "SELECT c.publication_id, c.person_id, p.name, c.role
          FROM publication_contributor c JOIN person p ON p.id = c.person_id
          WHERE c.publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -166,9 +182,13 @@ async fn load(
     let holdings = sqlx::query!(
         "SELECT id, publication_id, kind, location FROM holding
          WHERE publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -376,6 +396,27 @@ mod tests {
         db::person::create_contributor(&pool, library_id, publication_id, person_id, "author")
             .await
             .unwrap();
+        let work_id = db::work::create_work(
+            &pool,
+            &db::work::NewWork {
+                library_id,
+                title: "Chapter 1",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        db::work::create_catalog_number(&pool, work_id, "Ch. 1")
+            .await
+            .unwrap();
+        db::work::add_to_publication(&pool, library_id, publication_id, work_id)
+            .await
+            .unwrap();
+        db::work::create_contributor(&pool, library_id, work_id, person_id, "author")
+            .await
+            .unwrap();
 
         assert!(db::delete_library(&pool, library_id).await.unwrap());
 
@@ -399,5 +440,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(contributors, 0);
+        let works = sqlx::query_scalar!("SELECT COUNT(*) FROM work")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(works, 0);
+        let catalog_numbers = sqlx::query_scalar!("SELECT COUNT(*) FROM work_catalog_number")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(catalog_numbers, 0);
+        let publication_works = sqlx::query_scalar!("SELECT COUNT(*) FROM publication_work")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(publication_works, 0);
+        let work_contributors = sqlx::query_scalar!("SELECT COUNT(*) FROM work_contributor")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(work_contributors, 0);
     }
 }
