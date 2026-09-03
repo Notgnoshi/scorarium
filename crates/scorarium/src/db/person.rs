@@ -1,5 +1,13 @@
 use sqlx::SqlitePool;
 
+/// A person credited on a publication or work, as read back.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Contributor {
+    pub person_id: i64,
+    pub name: String,
+    pub role: String,
+}
+
 pub async fn create_person(
     pool: &SqlitePool,
     library_id: i64,

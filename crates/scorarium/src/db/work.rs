@@ -1,4 +1,31 @@
+use std::collections::HashMap;
+
 use sqlx::SqlitePool;
+
+use crate::db::person::Contributor;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Work {
+    pub id: i64,
+    pub library_id: i64,
+    pub title: String,
+    pub key: Option<String>,
+    pub time_signature: Option<String>,
+    pub instrumentation: Option<String>,
+    pub catalog_numbers: Vec<String>,
+    pub contributors: Vec<Contributor>,
+}
+
+impl Work {
+    /// Names of the contributors credited as composer, for listings that show only the composer.
+    pub fn composers(&self) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|c| c.role == "composer")
+            .map(|c| c.name.as_str())
+            .collect()
+    }
+}
 
 pub struct NewWork<'a> {
     pub library_id: i64,
@@ -6,6 +33,92 @@ pub struct NewWork<'a> {
     pub key: Option<&'a str>,
     pub time_signature: Option<&'a str>,
     pub instrumentation: Option<&'a str>,
+}
+
+/// The works a publication contains, with their children, in arbitrary order.
+pub async fn list_in_publication(
+    pool: &SqlitePool,
+    library_id: i64,
+    publication_id: i64,
+) -> sqlx::Result<Vec<Work>> {
+    load(pool, library_id, None, Some(publication_id)).await
+}
+
+/// Load a library's works with their children: the one with `id`, or those contained in
+/// `publication_id`.
+async fn load(
+    pool: &SqlitePool,
+    library_id: i64,
+    id: Option<i64>,
+    publication_id: Option<i64>,
+) -> sqlx::Result<Vec<Work>> {
+    let mut tx = pool.begin().await?;
+    let mut works: Vec<Work> = sqlx::query!(
+        "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .map(|row| Work {
+        id: row.id,
+        library_id: row.library_id,
+        title: row.title,
+        key: row.key,
+        time_signature: row.time_signature,
+        instrumentation: row.instrumentation,
+        catalog_numbers: Vec::new(),
+        contributors: Vec::new(),
+    })
+    .collect();
+    let index: HashMap<i64, usize> = works.iter().enumerate().map(|(i, w)| (w.id, i)).collect();
+
+    let catalog_numbers = sqlx::query!(
+        "SELECT work_id, value FROM work_catalog_number
+         WHERE work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in catalog_numbers {
+        works[index[&row.work_id]].catalog_numbers.push(row.value);
+    }
+
+    let contributors = sqlx::query!(
+        "SELECT c.work_id, c.person_id, p.name, c.role
+         FROM work_contributor c JOIN person p ON p.id = c.person_id
+         WHERE c.work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in contributors {
+        works[index[&row.work_id]].contributors.push(Contributor {
+            person_id: row.person_id,
+            name: row.name,
+            role: row.role,
+        });
+    }
+
+    tx.commit().await?;
+    Ok(works)
 }
 
 pub async fn create_work(pool: &SqlitePool, new: &NewWork<'_>) -> sqlx::Result<i64> {
@@ -81,6 +194,123 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::db::publication::{NewPublication, create_publication};
+
+    #[sqlx::test]
+    async fn list_assembles_children(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let album = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Album",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let other_album = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Other album",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let mikrokosmos = create_work(
+            &pool,
+            &NewWork {
+                library_id,
+                title: "Mikrokosmos",
+                key: None,
+                time_signature: Some("2/4"),
+                instrumentation: Some("piano"),
+            },
+        )
+        .await
+        .unwrap();
+        let bare = create_work(
+            &pool,
+            &NewWork {
+                library_id,
+                title: "Bare",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        let elsewhere = create_work(
+            &pool,
+            &NewWork {
+                library_id,
+                title: "Elsewhere",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        add_to_publication(&pool, library_id, album, mikrokosmos)
+            .await
+            .unwrap();
+        add_to_publication(&pool, library_id, album, bare)
+            .await
+            .unwrap();
+        add_to_publication(&pool, library_id, other_album, elsewhere)
+            .await
+            .unwrap();
+        create_catalog_number(&pool, mikrokosmos, "Sz. 107")
+            .await
+            .unwrap();
+        create_catalog_number(&pool, mikrokosmos, "BB 105")
+            .await
+            .unwrap();
+        let bartok = db::person::create_person(&pool, library_id, "Bela Bartok", "Bartok, Bela")
+            .await
+            .unwrap();
+        create_contributor(&pool, library_id, mikrokosmos, bartok, "composer")
+            .await
+            .unwrap();
+
+        let mut works = list_in_publication(&pool, library_id, album).await.unwrap();
+        works.sort_by_key(|w| w.id);
+        works.iter_mut().for_each(|w| w.catalog_numbers.sort());
+        assert_eq!(
+            works,
+            [
+                Work {
+                    id: mikrokosmos,
+                    library_id,
+                    title: "Mikrokosmos".into(),
+                    key: None,
+                    time_signature: Some("2/4".into()),
+                    instrumentation: Some("piano".into()),
+                    catalog_numbers: vec!["BB 105".into(), "Sz. 107".into()],
+                    contributors: vec![Contributor {
+                        person_id: bartok,
+                        name: "Bela Bartok".into(),
+                        role: "composer".into(),
+                    }],
+                },
+                Work {
+                    id: bare,
+                    library_id,
+                    title: "Bare".into(),
+                    key: None,
+                    time_signature: None,
+                    instrumentation: None,
+                    catalog_numbers: vec![],
+                    contributors: vec![],
+                },
+            ]
+        );
+    }
 
     #[sqlx::test]
     async fn publication_work_must_share_library(pool: SqlitePool) {

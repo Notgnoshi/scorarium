@@ -14,6 +14,7 @@ use crate::{AppState, db};
 struct PublicationPage {
     base: BaseContext,
     publication: db::publication::Publication,
+    works: Vec<db::work::Work>,
 }
 
 /// GET /library/{library_id}/publication/{id}
@@ -28,6 +29,7 @@ pub async fn publication(
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let works = db::work::list_in_publication(&state.pool, library_id, id).await?;
     let page = PublicationPage {
         base: BaseContext::new(
             publication.title.clone(),
@@ -36,6 +38,7 @@ pub async fn publication(
             vec![Crumb::home(), Crumb::library(&library)],
         ),
         publication,
+        works,
     };
     Ok(Html(page.render()?).into_response())
 }

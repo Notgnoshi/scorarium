@@ -15,6 +15,27 @@
             <li>{{ c.name }} ({{ c.role }})</li>
         {% endfor %}
     </ul>
+    {% if !works.is_empty() %}
+        <h2>Works</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Catalog numbers</th>
+                    <th>Composers</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in works %}
+                    <tr>
+                        <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
+                        <td>{{ w.catalog_numbers | join(", ") }}</td>
+                        <td>{{ w.composers() | join(", ") }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
     <h2>Holdings</h2>
     <ul>
         {% for h in publication.holdings %}

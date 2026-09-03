@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use sqlx::SqlitePool;
 
+use crate::db::person::Contributor;
 use crate::identifier::{self, Normalized};
 
 /// A publication with its children, as read back. Pages pick the fields they show.
@@ -23,13 +24,6 @@ pub struct Identifier {
     pub id: i64,
     pub kind: identifier::Kind,
     pub value: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Contributor {
-    pub person_id: i64,
-    pub name: String,
-    pub role: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
