@@ -25,11 +25,14 @@ async fn publication_page() {
         .iter()
         .find(|w| w.title == "Gymnopedie No. 1")
         .unwrap();
-    let practical_vim = db::publication::list(&state.pool, books.id)
-        .await
-        .unwrap()
-        .into_iter()
+    let book_publications = db::publication::list(&state.pool, books.id).await.unwrap();
+    let practical_vim = book_publications
+        .iter()
         .find(|p| p.title == "Practical Vim")
+        .unwrap();
+    let bierce_writings = book_publications
+        .iter()
+        .find(|p| p.title.ends_with("Ambrose Bierce"))
         .unwrap();
     let server = TestServer::new(router(Arc::new(state)));
 
@@ -60,6 +63,22 @@ async fn publication_page() {
     ] {
         response.assert_text_contains(expected);
     }
+    // None of the gymnopedies has a catalog number, so the column is left out
+    assert!(!response.text().contains("Catalog numbers"));
+    assert!(!response.text().contains("Author"));
+
+    // A book's works have authors, not composers, and never catalog numbers
+    let response = server
+        .get(&format!(
+            "/library/{}/publication/{}",
+            books.id, bierce_writings.id
+        ))
+        .await;
+    response.assert_status_ok();
+    response.assert_text_contains("The Parenticide Club");
+    response.assert_text_contains("Author");
+    assert!(!response.text().contains("Composer"));
+    assert!(!response.text().contains("Catalog numbers"));
 
     // A publication without works hides the section rather than showing an empty table
     let response = server

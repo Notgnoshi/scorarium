@@ -43,6 +43,42 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     let ben_straub = person::create_person(pool, books, "Ben Straub", "Straub, Ben").await?;
     person::create_contributor(pool, books, pro_git, ben_straub, "author").await?;
 
+    // A book with works, so pages show works without any music-specific fields
+    let bierce_writings = publication::create_publication(
+        pool,
+        &NewPublication {
+            library_id: books,
+            title: "The Collected Writings of Ambrose Bierce",
+            publisher: Some("Citadel Press"),
+            year: Some(1979),
+        },
+    )
+    .await?;
+    publication::create_holding(pool, bierce_writings, HoldingKind::Physical, None).await?;
+    add_identifier(pool, bierce_writings, Kind::Isbn, "0-8065-0180-4").await?;
+    let bierce = person::create_person(pool, books, "Ambrose Bierce", "Bierce, Ambrose").await?;
+    person::create_contributor(pool, books, bierce_writings, bierce, "author").await?;
+    for title in [
+        "In the Midst of Life",
+        "The Devil's Dictionary",
+        "The Parenticide Club",
+    ] {
+        add_work(
+            pool,
+            bierce_writings,
+            (bierce, "author"),
+            &NewWork {
+                library_id: books,
+                title,
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+            &[],
+        )
+        .await?;
+    }
+
     let russian_album = publication::create_publication(
         pool,
         &NewPublication {
@@ -79,7 +115,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     let prelude = add_work(
         pool,
         russian_album,
-        rachmaninoff,
+        (rachmaninoff, "composer"),
         &NewWork {
             library_id: sheet_music,
             title: "Prelude in C-sharp minor",
@@ -93,7 +129,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     add_work(
         pool,
         russian_album,
-        rachmaninoff,
+        (rachmaninoff, "composer"),
         &NewWork {
             library_id: sheet_music,
             title: "Etude-Tableau",
@@ -123,7 +159,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     add_work(
         pool,
         masterpieces,
-        rachmaninoff,
+        (rachmaninoff, "composer"),
         &NewWork {
             library_id: sheet_music,
             title: "Polichinelle",
@@ -164,7 +200,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
         add_work(
             pool,
             gymnopedies,
-            satie,
+            (satie, "composer"),
             &NewWork {
                 library_id: sheet_music,
                 title,
@@ -180,17 +216,17 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     Ok(())
 }
 
-/// Create a work in a publication with its composer and catalog numbers, returning its id.
+/// Create a work in a publication with one contributor and its catalog numbers, returning its id.
 async fn add_work(
     pool: &SqlitePool,
     publication_id: i64,
-    composer: i64,
+    (person_id, role): (i64, &str),
     work: &NewWork<'_>,
     catalog_numbers: &[&str],
 ) -> color_eyre::Result<i64> {
     let work_id = work::create_work(pool, work).await?;
     work::add_to_publication(pool, work.library_id, publication_id, work_id).await?;
-    work::create_contributor(pool, work.library_id, work_id, composer, "composer").await?;
+    work::create_contributor(pool, work.library_id, work_id, person_id, role).await?;
     for value in catalog_numbers {
         work::create_catalog_number(pool, work_id, value).await?;
     }

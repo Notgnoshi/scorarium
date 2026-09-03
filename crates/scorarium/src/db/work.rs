@@ -17,11 +17,11 @@ pub struct Work {
 }
 
 impl Work {
-    /// Names of the contributors credited as composer, for listings that show only the composer.
-    pub fn composers(&self) -> Vec<&str> {
+    /// Names of the contributors credited with `role`, for listings with one column per role.
+    pub fn names_with_role(&self, role: &str) -> Vec<&str> {
         self.contributors
             .iter()
-            .filter(|c| c.role == "composer")
+            .filter(|c| c.role == role)
             .map(|c| c.name.as_str())
             .collect()
     }

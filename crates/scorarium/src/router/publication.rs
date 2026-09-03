@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use askama::Template;
@@ -15,6 +16,11 @@ struct PublicationPage {
     base: BaseContext,
     publication: db::publication::Publication,
     works: Vec<db::work::Work>,
+    // Columns that would be empty for every work are left out: books have no catalog numbers, and
+    // their works have authors where scores have composers.
+    show_catalog_numbers: bool,
+    /// The distinct contributor roles across the works, one column each.
+    roles: Vec<String>,
 }
 
 /// GET /library/{library_id}/publication/{id}
@@ -37,6 +43,14 @@ pub async fn publication(
             super::logged_in(&state, &jar),
             vec![Crumb::home(), Crumb::library(&library)],
         ),
+        show_catalog_numbers: works.iter().any(|w| !w.catalog_numbers.is_empty()),
+        roles: works
+            .iter()
+            .flat_map(|w| &w.contributors)
+            .map(|c| c.role.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         publication,
         works,
     };
