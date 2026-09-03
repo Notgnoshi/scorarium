@@ -19,6 +19,17 @@ pub struct Publication {
     pub holdings: Vec<Holding>,
 }
 
+impl Publication {
+    /// The roles one person is credited with, for pages about that person.
+    pub fn roles_of(&self, person_id: i64) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|c| c.person_id == person_id)
+            .map(|c| c.role.as_str())
+            .collect()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Identifier {
     pub id: i64,
@@ -73,12 +84,12 @@ fn decode_error(message: String) -> sqlx::Error {
 
 /// All publications in a library, with their children, in arbitrary order.
 pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Publication>> {
-    load(pool, library_id, None, None).await
+    load(pool, library_id, None, None, None).await
 }
 
 /// One publication, or None when it does not exist or belongs to another library.
 pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
-    Ok(load(pool, library_id, Some(id), None).await?.pop())
+    Ok(load(pool, library_id, Some(id), None, None).await?.pop())
 }
 
 /// The publications containing a work, with their children, in arbitrary order.
@@ -87,11 +98,21 @@ pub async fn list_containing(
     library_id: i64,
     work_id: i64,
 ) -> sqlx::Result<Vec<Publication>> {
-    load(pool, library_id, None, Some(work_id)).await
+    load(pool, library_id, None, Some(work_id), None).await
 }
 
-/// Load a library's publications with their children: all of them, just the one with `id`, or
-/// those containing `work_id`.
+/// The publications a person is credited on, directly or through a contained work, with their
+/// children, in arbitrary order.
+pub async fn list_by_person(
+    pool: &SqlitePool,
+    library_id: i64,
+    person_id: i64,
+) -> sqlx::Result<Vec<Publication>> {
+    load(pool, library_id, None, None, Some(person_id)).await
+}
+
+/// Load a library's publications with their children: all of them, just the one with `id`, those
+/// containing `work_id`, or those crediting `person_id` directly or through a contained work.
 ///
 /// The four reads share a transaction so they see one snapshot. Otherwise a child row for a
 /// publication created between the parent read and the child reads would have no parent here.
@@ -100,16 +121,23 @@ async fn load(
     library_id: i64,
     id: Option<i64>,
     work_id: Option<i64>,
+    person_id: Option<i64>,
 ) -> sqlx::Result<Vec<Publication>> {
     let mut tx = pool.begin().await?;
     let mut publications: Vec<Publication> = sqlx::query!(
         "SELECT id, library_id, title, publisher, year FROM publication
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
-           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))",
+           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+           AND (?4 IS NULL
+                OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                OR id IN (SELECT pw.publication_id FROM publication_work pw
+                          JOIN work_contributor wc ON wc.work_id = pw.work_id
+                          WHERE wc.person_id = ?4))",
         library_id,
         id,
-        work_id
+        work_id,
+        person_id
     )
     .fetch_all(&mut *tx)
     .await?
@@ -137,10 +165,16 @@ async fn load(
             (SELECT id FROM publication
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))",
         library_id,
         id,
-        work_id
+        work_id,
+        person_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -162,10 +196,16 @@ async fn load(
             (SELECT id FROM publication
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))",
         library_id,
         id,
-        work_id
+        work_id,
+        person_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -185,10 +225,16 @@ async fn load(
             (SELECT id FROM publication
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))",
         library_id,
         id,
-        work_id
+        work_id,
+        person_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -370,6 +416,70 @@ mod tests {
         );
         let other_library = db::create_library(&pool, "other").await.unwrap();
         assert_eq!(get(&pool, other_library, pro_git).await.unwrap(), None);
+    }
+
+    /// A person's publications are those crediting them directly and those containing a work that
+    /// credits them.
+    #[sqlx::test]
+    async fn list_by_person_unions_credits(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let person = db::person::create_person(&pool, library_id, "Erik Satie", "Satie, Erik")
+            .await
+            .unwrap();
+        let other = db::person::create_person(&pool, library_id, "Other", "Other")
+            .await
+            .unwrap();
+        let mut ids = Vec::new();
+        for title in ["Edited", "Contains work", "Unrelated"] {
+            let id = create_publication(
+                &pool,
+                &NewPublication {
+                    library_id,
+                    title,
+                    publisher: None,
+                    year: None,
+                },
+            )
+            .await
+            .unwrap();
+            ids.push(id);
+        }
+        let [edited, contains_work, unrelated] = ids[..] else {
+            unreachable!()
+        };
+        db::person::create_contributor(&pool, library_id, edited, person, "editor")
+            .await
+            .unwrap();
+        db::person::create_contributor(&pool, library_id, unrelated, other, "composer")
+            .await
+            .unwrap();
+        for (publication, composer) in [(contains_work, person), (unrelated, other)] {
+            let work = db::work::create_work(
+                &pool,
+                &db::work::NewWork {
+                    library_id,
+                    title: "Piece",
+                    key: None,
+                    time_signature: None,
+                    instrumentation: None,
+                },
+            )
+            .await
+            .unwrap();
+            db::work::add_to_publication(&pool, library_id, publication, work)
+                .await
+                .unwrap();
+            db::work::create_contributor(&pool, library_id, work, composer, "composer")
+                .await
+                .unwrap();
+        }
+
+        let mut publications = list_by_person(&pool, library_id, person).await.unwrap();
+        publications.sort_by_key(|p| p.id);
+        let found: Vec<i64> = publications.iter().map(|p| p.id).collect();
+        assert_eq!(found, [edited, contains_work]);
+        assert_eq!(publications[0].roles_of(person), ["editor"]);
+        assert_eq!(publications[1].roles_of(person), [] as [&str; 0]);
     }
 
     /// Deleting a library must take its publications and their children with it.
