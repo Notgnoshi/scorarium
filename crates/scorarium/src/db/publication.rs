@@ -273,10 +273,10 @@ mod tests {
         let straub = db::person::create_person(&pool, library_id, "Ben Straub", "Straub, Ben")
             .await
             .unwrap();
-        db::person::create_contributor(&pool, pro_git, chacon, "author")
+        db::person::create_contributor(&pool, library_id, pro_git, chacon, "author")
             .await
             .unwrap();
-        db::person::create_contributor(&pool, pro_git, straub, "author")
+        db::person::create_contributor(&pool, library_id, pro_git, straub, "author")
             .await
             .unwrap();
         let isbn = identifier::normalize(identifier::Kind::Isbn, "978-1-4842-0077-3").unwrap();
@@ -373,7 +373,7 @@ mod tests {
         let person_id = db::person::create_person(&pool, library_id, "Drew Neil", "Neil, Drew")
             .await
             .unwrap();
-        db::person::create_contributor(&pool, publication_id, person_id, "author")
+        db::person::create_contributor(&pool, library_id, publication_id, person_id, "author")
             .await
             .unwrap();
 

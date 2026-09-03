@@ -7,7 +7,9 @@ CREATE TABLE publication (
     private INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0, 1)),
     cover TEXT,
     note TEXT,
-    stars INTEGER CHECK (stars BETWEEN 1 AND 5)
+    stars INTEGER CHECK (stars BETWEEN 1 AND 5),
+    -- Lets link tables reference (id, library_id) so their parents must share a library
+    UNIQUE (library_id, id)
 ) STRICT;
 
 CREATE TABLE publication_identifier (

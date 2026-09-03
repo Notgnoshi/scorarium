@@ -244,9 +244,13 @@ Who did what, on the publication ("edited by") and on the work ("composed by"). 
 conventional values: `composer`, `editor`, `arranger`, `translator`, ...
 
 * `id`: integer primary key
+* `library_id`: references library
 * `publication_id` / `work_id`: references the parent
 * `person_id`: references person
 * `role`: text
+
+The parent and person are referenced by composite `(id, library_id)` foreign keys, so the database
+rejects a link between a publication and a person from different libraries.
 
 ### holding
 

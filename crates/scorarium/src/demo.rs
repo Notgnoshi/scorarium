@@ -22,7 +22,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     publication::create_holding(pool, practical_vim, HoldingKind::Physical, Some("Desk")).await?;
     add_identifier(pool, practical_vim, Kind::Isbn, "978-1-68050-127-8").await?;
     let drew_neil = person::create_person(pool, books, "Drew Neil", "Neil, Drew").await?;
-    person::create_contributor(pool, practical_vim, drew_neil, "author").await?;
+    person::create_contributor(pool, books, practical_vim, drew_neil, "author").await?;
 
     let pro_git = publication::create_publication(
         pool,
@@ -38,9 +38,9 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     publication::create_holding(pool, pro_git, HoldingKind::Digital, Some("pro-git.pdf")).await?;
     add_identifier(pool, pro_git, Kind::Isbn, "978-1-4842-0077-3").await?;
     let scott_chacon = person::create_person(pool, books, "Scott Chacon", "Chacon, Scott").await?;
-    person::create_contributor(pool, pro_git, scott_chacon, "author").await?;
+    person::create_contributor(pool, books, pro_git, scott_chacon, "author").await?;
     let ben_straub = person::create_person(pool, books, "Ben Straub", "Straub, Ben").await?;
-    person::create_contributor(pool, pro_git, ben_straub, "author").await?;
+    person::create_contributor(pool, books, pro_git, ben_straub, "author").await?;
 
     let russian_album = publication::create_publication(
         pool,
@@ -76,7 +76,7 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
     add_identifier(pool, gymnopedies, Kind::Isbn, "978-0-7935-2590-4").await?;
     add_identifier(pool, gymnopedies, Kind::PublisherNumber, "Vol 1869").await?;
     let satie = person::create_person(pool, sheet_music, "Erik Satie", "Satie, Erik").await?;
-    person::create_contributor(pool, gymnopedies, satie, "composer").await?;
+    person::create_contributor(pool, sheet_music, gymnopedies, satie, "composer").await?;
 
     Ok(())
 }
