@@ -19,16 +19,21 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+        outputs:
+            version: ${{ steps.metadata.outputs.version }}
+            created: ${{ steps.create.outputs.created }}
         steps:
             - uses: actions/checkout@v6
 
             - name: Extract Release Metadata
+              id: metadata
               shell: bash
               run: |
                 VERSION="$(.github/parse-manifest-key.sh Cargo.toml version)"
                 DESCRIPTION="${{ github.event.repository.description }}"
                 echo "VERSION=$VERSION" >> "$GITHUB_ENV"
                 echo "DESCRIPTION=$DESCRIPTION" >> "$GITHUB_ENV"
+                echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
             # Always generate release notes for the current version. If the version from the Cargo
             # manifest isn't found in the CHANGELOG.md, then fail the pipeline (even in PRs)
@@ -37,6 +42,7 @@ jobs:
               run: .github/get-release-notes.sh "$VERSION" "$DESCRIPTION" | tee release.md
 
             - name: Create Release
+              id: create
               shell: bash
               if: github.ref_name == github.event.repository.default_branch
               env:
@@ -54,17 +60,22 @@ jobs:
                         --title "v$VERSION" \
                         --notes-file release.md \
                         $PRERELEASE_FLAG
+                    echo "created=true" >> "$GITHUB_OUTPUT"
                 fi
 
     # The image is a static musl binary built here on the runner and copied into a scratch base.
     image:
         runs-on: ubuntu-latest
+        # Waits on the release job so this job knows whether a release was just created
+        needs: release
         permissions:
-            contents: read
+            contents: write
             packages: write
         env:
             # Build against the checked-in .sqlx/ metadata, not a dev database
             SQLX_OFFLINE: "true"
+            VERSION: ${{ needs.release.outputs.version }}
+            RELEASE_CREATED: ${{ needs.release.outputs.created }}
         steps:
             - uses: actions/checkout@v6
             - name: Setup Rust toolchain
@@ -86,9 +97,18 @@ jobs:
               run: docker run --rm "$IMAGE:latest" --version
             - name: Push
               if: github.ref_name == github.event.repository.default_branch
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
                 docker push "$IMAGE:latest"
+                if [[ "$RELEASE_CREATED" == "true" ]]; then
+                    docker tag "$IMAGE:latest" "$IMAGE:v$VERSION"
+                    docker push "$IMAGE:v$VERSION"
+                    # gh names the asset after the file
+                    cp target/x86_64-unknown-linux-musl/release/scorarium scorarium-x86_64-unknown-linux-musl
+                    gh release upload "v$VERSION" scorarium-x86_64-unknown-linux-musl
+                fi
             # Pushing a new :latest is what untags the previous one, so prune here rather than on a schedule.
             - name: Prune untagged images
               if: github.ref_name == github.event.repository.default_branch
