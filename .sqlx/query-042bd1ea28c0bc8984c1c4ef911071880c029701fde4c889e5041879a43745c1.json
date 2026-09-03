@@ -1,38 +1,38 @@
 {
-    "db_name": "SQLite",
-    "query": "SELECT id, name FROM library WHERE id = ?",
-    "describe": {
-        "columns": [
-            {
-                "name": "id",
-                "ordinal": 0,
-                "type_info": "Integer",
-                "origin": {
-                    "Table": {
-                        "table": "library",
-                        "name": "id"
-                    }
-                }
-            },
-            {
-                "name": "name",
-                "ordinal": 1,
-                "type_info": "Text",
-                "origin": {
-                    "Table": {
-                        "table": "library",
-                        "name": "name"
-                    }
-                }
-            }
-        ],
-        "parameters": {
-            "Right": 1
-        },
-        "nullable": [
-            false,
-            false
-        ]
+  "db_name": "SQLite",
+  "query": "SELECT id, name FROM library WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
     },
-    "hash": "042bd1ea28c0bc8984c1c4ef911071880c029701fde4c889e5041879a43745c1"
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "042bd1ea28c0bc8984c1c4ef911071880c029701fde4c889e5041879a43745c1"
 }

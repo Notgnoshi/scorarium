@@ -1,5 +1,6 @@
 pub mod person;
 pub mod publication;
+pub mod work;
 
 use std::path::Path;
 use std::time::Duration;

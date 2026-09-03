@@ -376,6 +376,27 @@ mod tests {
         db::person::create_contributor(&pool, library_id, publication_id, person_id, "author")
             .await
             .unwrap();
+        let work_id = db::work::create_work(
+            &pool,
+            &db::work::NewWork {
+                library_id,
+                title: "Chapter 1",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        db::work::create_catalog_number(&pool, work_id, "Ch. 1")
+            .await
+            .unwrap();
+        db::work::add_to_publication(&pool, library_id, publication_id, work_id)
+            .await
+            .unwrap();
+        db::work::create_contributor(&pool, library_id, work_id, person_id, "author")
+            .await
+            .unwrap();
 
         assert!(db::delete_library(&pool, library_id).await.unwrap());
 
@@ -399,5 +420,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(contributors, 0);
+        let works = sqlx::query_scalar!("SELECT COUNT(*) FROM work")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(works, 0);
+        let catalog_numbers = sqlx::query_scalar!("SELECT COUNT(*) FROM work_catalog_number")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(catalog_numbers, 0);
+        let publication_works = sqlx::query_scalar!("SELECT COUNT(*) FROM publication_work")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(publication_works, 0);
+        let work_contributors = sqlx::query_scalar!("SELECT COUNT(*) FROM work_contributor")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(work_contributors, 0);
     }
 }
