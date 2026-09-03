@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod db;
+pub mod identifier;
 pub mod router;
 pub mod session;
 

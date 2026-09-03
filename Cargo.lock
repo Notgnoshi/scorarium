@@ -110,6 +110,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+
+[[package]]
 name = "askama"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -467,6 +473,15 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
+name = "codegen"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "573800db6c3319bc125ddbf9b9cb001ad1602957f53642ba8d09ff3ddd4da7f1"
+dependencies = [
+ "indexmap",
+]
 
 [[package]]
 name = "color-eyre"
@@ -1235,6 +1250,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
+name = "isbn"
+version = "0.8.20260902"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ee80660540c980f9aa92b6879f44f654d891bcc28481b8e82075b6855e7e81c"
+dependencies = [
+ "arrayvec",
+ "codegen",
+ "roxmltree",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1654,6 +1680,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "rust-multipart-rfc7578_2"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1724,6 +1759,7 @@ dependencies = [
  "color-eyre",
  "cookie",
  "getrandom",
+ "isbn",
  "scorarium-tests",
  "serde",
  "sqlx",

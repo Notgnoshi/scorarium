@@ -34,6 +34,14 @@ cargo sqlx prepare --workspace -- --all-targets --all-features
 While `DATABASE_URL` is exported, the macros check queries against that live database instead of
 `.sqlx/`, so schema mistakes surface immediately during development.
 
+## Identifiers
+
+ISBN validation and hyphenation need the ISBN agency's range table, which the `isbn` crate embeds at
+build time. The crate publishes a new date-suffixed patch version as the table changes, so
+`cargo update` needs to be done periodically to keep the table up-to-date.
+
+## Maintenance notes
+
 This project values tests, but does not prioritize complete test coverage. Tests are code that needs
 to be reviewed and maintained just as well as any other, so this project prioritizes test quality
 over quantity. When adding a new test, consider if that test is actually valuable and justifies its
