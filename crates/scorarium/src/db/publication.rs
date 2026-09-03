@@ -73,15 +73,25 @@ fn decode_error(message: String) -> sqlx::Error {
 
 /// All publications in a library, with their children, in arbitrary order.
 pub async fn list(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<Publication>> {
-    load(pool, library_id, None).await
+    load(pool, library_id, None, None).await
 }
 
 /// One publication, or None when it does not exist or belongs to another library.
 pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Publication>> {
-    Ok(load(pool, library_id, Some(id)).await?.pop())
+    Ok(load(pool, library_id, Some(id), None).await?.pop())
 }
 
-/// Load a library's publications with their children: all of them, or just the one with `id`.
+/// The publications containing a work, with their children, in arbitrary order.
+pub async fn list_containing(
+    pool: &SqlitePool,
+    library_id: i64,
+    work_id: i64,
+) -> sqlx::Result<Vec<Publication>> {
+    load(pool, library_id, None, Some(work_id)).await
+}
+
+/// Load a library's publications with their children: all of them, just the one with `id`, or
+/// those containing `work_id`.
 ///
 /// The four reads share a transaction so they see one snapshot. Otherwise a child row for a
 /// publication created between the parent read and the child reads would have no parent here.
@@ -89,13 +99,17 @@ async fn load(
     pool: &SqlitePool,
     library_id: i64,
     id: Option<i64>,
+    work_id: Option<i64>,
 ) -> sqlx::Result<Vec<Publication>> {
     let mut tx = pool.begin().await?;
     let mut publications: Vec<Publication> = sqlx::query!(
         "SELECT id, library_id, title, publisher, year FROM publication
-         WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2)",
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?
@@ -120,9 +134,13 @@ async fn load(
     let identifiers = sqlx::query!(
         "SELECT id, publication_id, kind, value FROM publication_identifier
          WHERE publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -141,9 +159,13 @@ async fn load(
         "SELECT c.publication_id, c.person_id, p.name, c.role
          FROM publication_contributor c JOIN person p ON p.id = c.person_id
          WHERE c.publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;
@@ -160,9 +182,13 @@ async fn load(
     let holdings = sqlx::query!(
         "SELECT id, publication_id, kind, location FROM holding
          WHERE publication_id IN
-            (SELECT id FROM publication WHERE library_id = ?1 AND (?2 IS NULL OR id = ?2))",
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3)))",
         library_id,
-        id
+        id,
+        work_id
     )
     .fetch_all(&mut *tx)
     .await?;

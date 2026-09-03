@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ work.title }}</h1>
+    <table>
+        {% if !work.catalog_numbers.is_empty() %}
+            <tr>
+                <th>Catalog numbers</th>
+                <td>{{ work.catalog_numbers | join(", ") }}</td>
+            </tr>
+        {% endif %}
+        {% if let Some(key) = work.key %}
+            <tr>
+                <th>Key</th>
+                <td>{{ key }}</td>
+            </tr>
+        {% endif %}
+        {% if let Some(time_signature) = work.time_signature %}
+            <tr>
+                <th>Time signature</th>
+                <td>{{ time_signature }}</td>
+            </tr>
+        {% endif %}
+        {% if let Some(instrumentation) = work.instrumentation %}
+            <tr>
+                <th>Instrumentation</th>
+                <td>{{ instrumentation }}</td>
+            </tr>
+        {% endif %}
+        {% if !work.contributors.is_empty() %}
+            <tr>
+                <th>Contributors</th>
+                <td>{% for c in work.contributors %}{% if !loop.first %}, {% endif %}{{ c.name }} ({{ c.role }}){% endfor %}</td>
+            </tr>
+        {% endif %}
+    </table>
+    <h2>Publications</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Holdings</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in publications %}
+                <tr>
+                    <td><a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
+                    <td>{% for h in p.holdings %}{% if !loop.first %}, {% endif %}{{ h.kind.as_str() }}{% if let Some(location) = h.location %} ({{ location }}){% endif %}{% endfor %}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

@@ -35,6 +35,11 @@ pub struct NewWork<'a> {
     pub instrumentation: Option<&'a str>,
 }
 
+/// One work, or None when it does not exist or belongs to another library.
+pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Work>> {
+    Ok(load(pool, library_id, Some(id), None).await?.pop())
+}
+
 /// The works a publication contains, with their children, in arbitrary order.
 pub async fn list_in_publication(
     pool: &SqlitePool,
@@ -193,7 +198,7 @@ pub async fn create_contributor(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::db::publication::{NewPublication, create_publication};
+    use crate::db::publication::{NewPublication, create_publication, list_containing};
 
     #[sqlx::test]
     async fn list_assembles_children(pool: SqlitePool) {
@@ -265,6 +270,9 @@ mod tests {
         add_to_publication(&pool, library_id, other_album, elsewhere)
             .await
             .unwrap();
+        add_to_publication(&pool, library_id, other_album, mikrokosmos)
+            .await
+            .unwrap();
         create_catalog_number(&pool, mikrokosmos, "Sz. 107")
             .await
             .unwrap();
@@ -310,6 +318,26 @@ mod tests {
                 },
             ]
         );
+
+        assert_eq!(
+            get(&pool, library_id, mikrokosmos)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            mikrokosmos
+        );
+        let other_library = db::create_library(&pool, "other").await.unwrap();
+        assert_eq!(get(&pool, other_library, mikrokosmos).await.unwrap(), None);
+
+        let mut containing: Vec<i64> = list_containing(&pool, library_id, mikrokosmos)
+            .await
+            .unwrap()
+            .iter()
+            .map(|p| p.id)
+            .collect();
+        containing.sort();
+        assert_eq!(containing, [album, other_album]);
     }
 
     #[sqlx::test]

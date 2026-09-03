@@ -3,6 +3,7 @@ mod library;
 mod login;
 mod password;
 mod publication;
+mod work;
 
 use std::sync::Arc;
 
@@ -82,6 +83,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/library/{library_id}/publication/{id}",
             get(publication::publication),
         )
+        .route("/library/{library_id}/work/{id}", get(work::work))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http())
