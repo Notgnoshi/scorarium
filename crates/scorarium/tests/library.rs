@@ -40,6 +40,10 @@ async fn library_page_lists_publications() {
         "href=\"/library/{}/publication/{}\"",
         library.id, gymnopedies.id
     );
+    let satie_link = format!(
+        "href=\"/library/{}/person/{}\"",
+        library.id, gymnopedies.contributors[0].person_id
+    );
     let server = TestServer::new(router(Arc::new(state)));
 
     let response = server.get(&format!("/library/{}", library.id)).await;
@@ -48,6 +52,7 @@ async fn library_page_lists_publications() {
     response.assert_text_contains("Three gymnopedies for the piano");
     response.assert_text_contains("Erik Satie");
     response.assert_text_contains(link);
+    response.assert_text_contains(satie_link);
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@
     <h2>Contributors</h2>
     <ul>
         {% for c in publication.contributors %}
-            <li>{{ c.name }} ({{ c.role }})</li>
+            <li><a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> ({{ c.role }})</li>
         {% endfor %}
     </ul>
     {% if !works.is_empty() %}
@@ -30,7 +30,7 @@
                     <tr>
                         <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
                         {% if show_catalog_numbers %}<td>{{ w.catalog_numbers | join(", ") }}</td>{% endif %}
-                        {% for role in roles %}<td>{{ w.names_with_role(role) | join(", ") }}</td>{% endfor %}
+                        {% for role in roles %}<td>{% for c in w.with_role(role) %}{% if !loop.first %}, {% endif %}<a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>{% endfor %}
                     </tr>
                 {% endfor %}
             </tbody>

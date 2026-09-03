@@ -63,6 +63,13 @@ async fn publication_page() {
     ] {
         response.assert_text_contains(expected);
     }
+    // Satie is credited on the publication and on every work, so his page is linked from both the
+    // contributors list and the works table
+    let satie_href = format!(
+        "href=\"/library/{}/person/{}\"",
+        sheet_music.id, gymnopedies.contributors[0].person_id
+    );
+    assert!(response.text().matches(&satie_href).count() >= 2);
     // None of the gymnopedies has a catalog number, so the column is left out
     assert!(!response.text().contains("Catalog numbers"));
     assert!(!response.text().contains("Author"));

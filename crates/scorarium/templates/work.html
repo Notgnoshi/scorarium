@@ -29,7 +29,7 @@
         {% if !work.contributors.is_empty() %}
             <tr>
                 <th>Contributors</th>
-                <td>{% for c in work.contributors %}{% if !loop.first %}, {% endif %}{{ c.name }} ({{ c.role }}){% endfor %}</td>
+                <td>{% for c in work.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ work.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> ({{ c.role }}){% endfor %}</td>
             </tr>
         {% endif %}
     </table>

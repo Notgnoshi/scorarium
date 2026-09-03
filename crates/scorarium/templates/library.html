@@ -15,7 +15,7 @@
             {% for p in publications %}
                 <tr>
                     <td><a href="/library/{{ library.id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
-                    <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}{{ c.name }}{% endfor %}</td>
+                    <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ library.id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>
                     <td>{% if let Some(year) = p.year %}{{ year }}{% endif %}</td>
                     <td>{% for h in p.holdings %}{% if !loop.first %}, {% endif %}{{ h.kind.as_str() }}{% endfor %}</td>
                 </tr>
