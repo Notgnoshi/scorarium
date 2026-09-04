@@ -29,6 +29,22 @@ jobs:
             - name: Setup dprint
               uses: dprint/check@v2.2
 
+    djlint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Setup djlint
+              run: pipx install djlint
+            - name: Check HTML template formatting
+              run: |
+                  djlint --check \
+                      --profile django \
+                      --indent 4 \
+                      --max-line-length 120 \
+                      --format-css \
+                      --format-js \
+                      crates/scorarium/templates/
+
     build:
         runs-on: ubuntu-latest
         steps:

@@ -14,6 +14,8 @@ cargo run -- --demo
 cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
 cargo clippy --all-targets --all-features
+# pip install djlint
+djlint --reformat --profile django --indent 4 --max-line-length 120 --format-css --format-js crates/scorarium/templates
 
 # For updating or auditing dependencies
 cargo install cargo-edit
