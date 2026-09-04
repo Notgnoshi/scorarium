@@ -1,48 +1,99 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ library.name }}</h1>
-    {% if let Some(error) = error %}<p>{{ error }}</p>{% endif %}
-    <table>
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>People</th>
-                <th>Year</th>
-                <th>Holdings</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in publications %}
+    {% if let Some(error) = error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
                 <tr>
-                    <td><a href="/library/{{ library.id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
-                    <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ library.id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>
-                    <td>{% if let Some(year) = p.year %}{{ year }}{% endif %}</td>
-                    <td>{% for h in p.holdings %}{% if !loop.first %}, {% endif %}{{ h.kind.as_str() }}{% endfor %}</td>
+                    <th>Title</th>
+                    <th>People</th>
+                    <th>Year</th>
+                    <th>Holdings</th>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                {% for p in publications %}
+                    <tr>
+                        <td><a href="/library/{{ library.id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
+                        <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ library.id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>
+                        <td>{% if let Some(year) = p.year %}{{ year }}{% endif %}</td>
+                        <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {% endfor %}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% if has_composers %}<a href="/library/{{ library.id }}/composers">Composers</a>{% endif %}
     {% if has_authors %}<a href="/library/{{ library.id }}/authors">Authors</a>{% endif %}
     {% if base.logged_in %}
-        <button onclick="document.getElementById('rename-library').showModal()">Rename</button>
-        <button onclick="document.getElementById('delete-library').showModal()">Delete</button>
-        <dialog id="rename-library">
-            <form method="post" action="/library/{{ library.id }}/rename">
-                <label>
-                    Name
-                    <input name="name" value="{{ library.name }}" required autofocus />
-                </label>
-                <button>Rename</button>
-                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
-            </form>
-        </dialog>
-        <dialog id="delete-library">
-            <form method="post" action="/library/{{ library.id }}/delete">
-                <p>Delete {{ library.name }}?</p>
-                <button>Delete</button>
-                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
-            </form>
-        </dialog>
+        <div class="d-flex gap-2">
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#rename-library">Rename</button>
+            <button type="button"
+                    class="btn btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#delete-library">Delete</button>
+        </div>
+        <div class="modal fade"
+             id="rename-library"
+             tabindex="-1"
+             aria-labelledby="rename-library-title"
+             aria-hidden="true">
+            <div class="modal-dialog">
+                <form class="modal-content"
+                      method="post"
+                      action="/library/{{ library.id }}/rename">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="rename-library-title">Rename library</h1>
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label" for="rename-library-name">Name</label>
+                        <input class="form-control"
+                               id="rename-library-name"
+                               name="name"
+                               value="{{ library.name }}"
+                               required
+                               autofocus />
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button class="btn btn-primary">Rename</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal fade"
+             id="delete-library"
+             tabindex="-1"
+             aria-labelledby="delete-library-title"
+             aria-hidden="true">
+            <div class="modal-dialog">
+                <form class="modal-content"
+                      method="post"
+                      action="/library/{{ library.id }}/delete">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="delete-library-title">Delete library</h1>
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">Delete {{ library.name }}?</div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button class="btn btn-danger">Delete</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     {% endif %}
 {% endblock %}

@@ -5,27 +5,80 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{{ base.title }} - Scorarium</title>
         <link rel="stylesheet" href="{{ base.bootstrap_css }}" />
+        <link rel="stylesheet" href="{{ base.bootstrap_icons_css }}" />
+        <script>
+            // Run before the body paints so the page never flashes light first.
+            (() => {
+                const dark = window.matchMedia("(prefers-color-scheme: dark)");
+                const apply = () => document.documentElement.setAttribute("data-bs-theme", dark.matches ? "dark" : "light");
+                apply();
+                dark.addEventListener("change", apply);
+            })();
+        </script>
     </head>
-    <body>
-        <header>
-            <a href="/">Scorarium</a>
-            {% if base.logged_in %}
-                {% if base.path != "/password" %}<a href="/password">Change password</a>{% endif %}
-                <form method="post" action="/logout">
-                    <button>Log out</button>
-                </form>
-            {% else %}{% if base.path != "/login" %}<a href="/login">Log in</a>{% endif %}{% endif %}
-        </header>
-        {% if !base.breadcrumbs.is_empty() %}
-            <nav aria-label="breadcrumbs">
-                {% for crumb in base.breadcrumbs %}<a href="{{ crumb.href }}">{{ crumb.label }}</a> / {% endfor %}{{ base.title }}
-            </nav>
-        {% endif %}
-        <main>
+    <body class="d-flex flex-column min-vh-100">
+        <nav class="navbar navbar-expand-md bg-body-tertiary">
+            <div class="container">
+                <a class="navbar-brand" href="/">Scorarium</a>
+                <button class="navbar-toggler"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#navbar"
+                        aria-controls="navbar"
+                        aria-expanded="false"
+                        aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbar">
+                    <ul class="navbar-nav ms-auto">
+                        {% if base.logged_in %}
+                            {% if base.path != "/password" %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/password">Change password</a>
+                                </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <form method="post" action="/logout">
+                                    <button class="nav-link">Log out</button>
+                                </form>
+                            </li>
+                        {% else if base.path != "/login" %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="/login">Log in</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <main class="container py-3">
+            {% if !base.breadcrumbs.is_empty() %}
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        {% for crumb in base.breadcrumbs %}
+                            <li class="breadcrumb-item">
+                                <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+                            </li>
+                        {% endfor %}
+                        <li class="breadcrumb-item active" aria-current="page">{{ base.title }}</li>
+                    </ol>
+                </nav>
+            {% endif %}
             {% block content %}{% endblock %}
         </main>
-        <footer>
-            <p>Powered by <a href="https://github.com/Notgnoshi/scorarium">Scorarium</a></p>
+        <footer class="container py-3 mt-auto text-body-secondary small">
+            Powered by
+            <a href="https://github.com/Notgnoshi/scorarium">
+                <i class="bi bi-github" aria-hidden="true"></i>
+                Scorarium
+            </a>
         </footer>
+        <script src="{{ base.bootstrap_js }}"></script>
+        <script>
+            // Bootstrap modals ignore autofocus; so we honor it ourselves.
+            //
+            // https://getbootstrap.com/docs/5.3/components/modal/#how-it-works
+            document.addEventListener("shown.bs.modal", (e) => e.target.querySelector("[autofocus]")?.focus());
+        </script>
     </body>
 </html>

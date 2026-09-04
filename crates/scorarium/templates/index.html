@@ -1,23 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>Libraries</h1>
-    {% if let Some(error) = error %}<p>{{ error }}</p>{% endif %}
-    <ul>
+    {% if let Some(error) = error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+    <ul class="list-group mb-3">
         {% for library in libraries %}
-            <li><a href="/library/{{ library.id }}">{{ library.name }}</a></li>
+            <li class="list-group-item list-group-item-action">
+                <a href="/library/{{ library.id }}">{{ library.name }}</a>
+            </li>
         {% endfor %}
     </ul>
     {% if base.logged_in %}
-        <button onclick="document.getElementById('create-library').showModal()">Add library</button>
-        <dialog id="create-library">
-            <form method="post" action="/library">
-                <label>
-                    Name
-                    <input name="name" required autofocus />
-                </label>
-                <button>Create</button>
-                <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
-            </form>
-        </dialog>
+        <button type="button"
+                class="btn btn-primary"
+                data-bs-toggle="modal"
+                data-bs-target="#create-library">Add library</button>
+        <div class="modal fade"
+             id="create-library"
+             tabindex="-1"
+             aria-labelledby="create-library-title"
+             aria-hidden="true">
+            <div class="modal-dialog">
+                <form class="modal-content" method="post" action="/library">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="create-library-title">Add library</h1>
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="form-label" for="create-library-name">Name</label>
+                        <input class="form-control"
+                               id="create-library-name"
+                               name="name"
+                               required
+                               autofocus />
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button class="btn btn-primary">Create</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     {% endif %}
 {% endblock %}

@@ -51,6 +51,8 @@ pub struct BaseContext {
     pub logged_in: bool,
     pub breadcrumbs: Vec<Crumb>,
     pub bootstrap_css: String,
+    pub bootstrap_icons_css: String,
+    pub bootstrap_js: String,
 }
 
 impl BaseContext {
@@ -66,6 +68,8 @@ impl BaseContext {
             logged_in,
             breadcrumbs,
             bootstrap_css: assets::url("bootstrap.min.css"),
+            bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),
+            bootstrap_js: assets::url("bootstrap.bundle.min.js"),
         }
     }
 }
