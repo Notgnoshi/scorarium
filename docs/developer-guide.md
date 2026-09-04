@@ -44,6 +44,14 @@ ISBN validation and hyphenation need the ISBN agency's range table, which the `i
 build time. The crate publishes a new date-suffixed patch version as the table changes, so
 `cargo update` needs to be done periodically to keep the table up-to-date.
 
+## Vendored assets
+
+This project vendors and self-serves its Bootstrap assets. To update them, run the following script:
+
+```sh
+tools/vendor-assets.sh
+```
+
 ## Docker build
 
 The CI pipeline builds a static musl binary and packages it into a Docker image. This is how you can
