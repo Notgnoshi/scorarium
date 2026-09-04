@@ -1,40 +1,42 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ work.title }}</h1>
-    <table>
+    <dl class="row">
         {% if !work.catalog_numbers.is_empty() %}
-            <tr>
-                <th>Catalog numbers</th>
-                <td>{{ work.catalog_numbers | join(", ") }}</td>
-            </tr>
+            <dt class="col-sm-3">Catalog numbers</dt>
+            <dd class="col-sm-9">
+                {{ work.catalog_numbers | join(", ") }}
+            </dd>
         {% endif %}
         {% if let Some(key) = work.key %}
-            <tr>
-                <th>Key</th>
-                <td>{{ key }}</td>
-            </tr>
+            <dt class="col-sm-3">Key</dt>
+            <dd class="col-sm-9">
+                {{ key }}
+            </dd>
         {% endif %}
         {% if let Some(time_signature) = work.time_signature %}
-            <tr>
-                <th>Time signature</th>
-                <td>{{ time_signature }}</td>
-            </tr>
+            <dt class="col-sm-3">Time signature</dt>
+            <dd class="col-sm-9">
+                {{ time_signature }}
+            </dd>
         {% endif %}
         {% if let Some(instrumentation) = work.instrumentation %}
-            <tr>
-                <th>Instrumentation</th>
-                <td>{{ instrumentation }}</td>
-            </tr>
+            <dt class="col-sm-3">Instrumentation</dt>
+            <dd class="col-sm-9">
+                {{ instrumentation }}
+            </dd>
         {% endif %}
         {% if !work.contributors.is_empty() %}
-            <tr>
-                <th>Contributors</th>
-                <td>{% for c in work.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ work.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> ({{ c.role }}){% endfor %}</td>
-            </tr>
+            <dt class="col-sm-3">Contributors</dt>
+            <dd class="col-sm-9">
+                {% for c in work.contributors %}
+                    {% if !loop.first %}, {% endif %}<a href="/library/{{ work.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> <span class="badge text-bg-secondary">{{ c.role }}</span>
+                {% endfor %}
+            </dd>
         {% endif %}
-    </table>
+    </dl>
     <h2>Publications</h2>
-    <table>
+    <table class="table table-hover">
         <thead>
             <tr>
                 <th>Title</th>
@@ -45,7 +47,7 @@
             {% for p in publications %}
                 <tr>
                     <td><a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
-                    <td>{% for h in p.holdings %}{% if !loop.first %}, {% endif %}{{ h.kind.as_str() }}{% if let Some(location) = h.location %} ({{ location }}){% endif %}{% endfor %}</td>
+                    <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>{% if let Some(location) = h.location %} {{ location }}{% endif %} {% endfor %}</td>
                 </tr>
             {% endfor %}
         </tbody>

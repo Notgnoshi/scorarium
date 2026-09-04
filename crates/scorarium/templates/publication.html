@@ -1,45 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ publication.title }}</h1>
-    {% if let Some(publisher) = publication.publisher %}<p>Publisher: {{ publisher }}</p>{% endif %}
-    {% if let Some(year) = publication.year %}<p>Year: {{ year }}</p>{% endif %}
-    <h2>Identifiers</h2>
-    <ul>
+    <dl class="row">
+        {% if let Some(publisher) = publication.publisher %}
+            <dt class="col-sm-3">Publisher</dt>
+            <dd class="col-sm-9">
+                {{ publisher }}
+            </dd>
+        {% endif %}
+        {% if let Some(year) = publication.year %}
+            <dt class="col-sm-3">Year</dt>
+            <dd class="col-sm-9">
+                {{ year }}
+            </dd>
+        {% endif %}
         {% for i in publication.identifiers %}
-            <li>{{ i.kind.as_str() }}: {{ i.value }}</li>
+            <dt class="col-sm-3">{{ i.kind.as_str() }}</dt>
+            <dd class="col-sm-9">
+                {{ i.value }}
+            </dd>
         {% endfor %}
-    </ul>
+    </dl>
     <h2>Contributors</h2>
     <ul>
         {% for c in publication.contributors %}
-            <li><a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> ({{ c.role }})</li>
+            <li>
+                <a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>
+                <span class="badge text-bg-secondary">{{ c.role }}</span>
+            </li>
         {% endfor %}
     </ul>
     {% if !works.is_empty() %}
         <h2>Works</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
-                    {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for w in works %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
                     <tr>
-                        <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
-                        {% if show_catalog_numbers %}<td>{{ w.catalog_numbers | join(", ") }}</td>{% endif %}
-                        {% for role in roles %}<td>{% for c in w.with_role(role) %}{% if !loop.first %}, {% endif %}<a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>{% endfor %}
+                        <th>Title</th>
+                        {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
+                        {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {% for w in works %}
+                        <tr>
+                            <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
+                            {% if show_catalog_numbers %}<td>{{ w.catalog_numbers | join(", ") }}</td>{% endif %}
+                            {% for role in roles %}<td>{% for c in w.with_role(role) %}{% if !loop.first %}, {% endif %}<a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>{% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     {% endif %}
     <h2>Holdings</h2>
     <ul>
         {% for h in publication.holdings %}
-            <li>{{ h.kind.as_str() }}{% if let Some(location) = h.location %}: {{ location }}{% endif %}</li>
+            <li>
+                <span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>
+                {% if let Some(location) = h.location %}{{ location }}{% endif %}
+            </li>
         {% endfor %}
     </ul>
 {% endblock %}

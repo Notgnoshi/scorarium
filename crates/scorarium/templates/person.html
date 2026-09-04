@@ -3,17 +3,23 @@
     <h1>{{ person.name }}</h1>
     <h2>Publications</h2>
     {% for (p, works) in publications %}
-        <h3>
-            <a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a>
-            {% let roles = p.roles_of(*person.id) %}
-            {% if !roles.is_empty() %}({{ roles | join(", ") }}){% endif %}
-        </h3>
-        {% if !works.is_empty() %}
-            <ul>
-                {% for w in works %}
-                    <li><a href="/library/{{ w.library_id }}/work/{{ w.id }}">{{ w.title }}</a> ({{ w.roles_of(*person.id) | join(", ") }})</li>
-                {% endfor %}
-            </ul>
-        {% endif %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a>
+                {% for role in p.roles_of(*person.id) %}<span class="badge text-bg-secondary">{{ role }}</span>{% endfor %}
+            </div>
+            {% if !works.is_empty() %}
+                <div class="card-body">
+                    <ul class="mb-0">
+                        {% for w in works %}
+                            <li>
+                                <a href="/library/{{ w.library_id }}/work/{{ w.id }}">{{ w.title }}</a>
+                                {% for role in w.roles_of(*person.id) %}<span class="badge text-bg-secondary">{{ role }}</span>{% endfor %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
     {% endfor %}
 {% endblock %}

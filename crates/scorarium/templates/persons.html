@@ -1,9 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    <ul>
+    <ul class="list-group">
         {% for p in persons %}
-            <li><a href="/library/{{ p.library_id }}/person/{{ p.id }}">{{ p.name }}</a></li>
+            <li class="list-group-item list-group-item-action">
+                <a href="/library/{{ p.library_id }}/person/{{ p.id }}">{{ p.name }}</a>
+            </li>
         {% endfor %}
     </ul>
 {% endblock %}

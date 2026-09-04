@@ -14,6 +14,8 @@ cargo run -- --demo
 cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
 cargo clippy --all-targets --all-features
+# pip install djlint
+djlint --reformat --profile django --indent 4 --max-line-length 120 --format-css --format-js crates/scorarium/templates
 
 # For updating or auditing dependencies
 cargo install cargo-edit
@@ -41,6 +43,14 @@ While `DATABASE_URL` is exported, the macros check queries against that live dat
 ISBN validation and hyphenation need the ISBN agency's range table, which the `isbn` crate embeds at
 build time. The crate publishes a new date-suffixed patch version as the table changes, so
 `cargo update` needs to be done periodically to keep the table up-to-date.
+
+## Vendored assets
+
+This project vendors and self-serves its Bootstrap assets. To update them, run the following script:
+
+```sh
+tools/vendor-assets.sh
+```
 
 ## Docker build
 

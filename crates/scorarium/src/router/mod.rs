@@ -1,3 +1,4 @@
+mod assets;
 mod index;
 mod library;
 mod login;
@@ -49,6 +50,9 @@ pub struct BaseContext {
     pub path: String,
     pub logged_in: bool,
     pub breadcrumbs: Vec<Crumb>,
+    pub bootstrap_css: String,
+    pub bootstrap_icons_css: String,
+    pub bootstrap_js: String,
 }
 
 impl BaseContext {
@@ -63,6 +67,9 @@ impl BaseContext {
             path: path.into(),
             logged_in,
             breadcrumbs,
+            bootstrap_css: assets::url("bootstrap.min.css"),
+            bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),
+            bootstrap_js: assets::url("bootstrap.bundle.min.js"),
         }
     }
 }
@@ -70,6 +77,7 @@ impl BaseContext {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index::index))
+        .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
         .route(

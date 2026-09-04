@@ -29,6 +29,22 @@ jobs:
             - name: Setup dprint
               uses: dprint/check@v2.2
 
+    djlint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Setup djlint
+              run: pipx install djlint
+            - name: Check HTML template formatting
+              run: |
+                  djlint --check \
+                      --profile django \
+                      --indent 4 \
+                      --max-line-length 120 \
+                      --format-css \
+                      --format-js \
+                      crates/scorarium/templates/
+
     build:
         runs-on: ubuntu-latest
         steps:
@@ -97,3 +113,25 @@ jobs:
                 valColorRange: ${{ env.COVERAGE_PERCENT }}
                 minColorRange: 40
                 maxColorRange: 95
+
+    check-vendored-versions:
+        runs-on: ubuntu-latest
+        # Don't fail the pipeline, but do send a strong enough signal to get noticed.
+        continue-on-error: true
+        steps:
+            - uses: actions/checkout@v6
+            - name: Check vendored Bootstrap and Bootstrap Icons freshness
+              run: |
+                  outdated=0
+                  for spec in "bootstrap bootstrap.min.css" "icons bootstrap-icons.min.css"; do
+                      set -- $spec
+                      vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium/assets/$2")
+                      latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/twbs/$1/releases/latest")
+                      latest=${latest##*/v}
+                      echo "$1: vendored=$vendored latest=$latest"
+                      if [ "$vendored" != "$latest" ]; then
+                          echo "::warning title=$1 outdated::Vendored $vendored is behind $latest. Run tools/vendor-assets.sh"
+                          outdated=1
+                      fi
+                  done
+                  exit $outdated
