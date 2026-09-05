@@ -3,6 +3,7 @@ pub mod db;
 pub mod demo;
 pub mod identifier;
 pub mod import;
+pub mod publication_form;
 pub mod router;
 pub mod session;
 

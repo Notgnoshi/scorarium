@@ -12,8 +12,8 @@ use serde::Deserialize;
 use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::import::{ContributorRow, Draft, Errors, HoldingRow, IdentifierRow};
-use crate::{AppState, db, import};
+use crate::publication_form::{ContributorRow, Errors, HoldingRow, IdentifierRow, PublicationForm};
+use crate::{AppState, db, import, publication_form};
 
 const UNTITLED: &str = "Untitled import";
 
@@ -36,7 +36,7 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
             let draft = state
                 .drafts
                 .get(import.id)
-                .unwrap_or_else(|| Draft::seed(&import));
+                .unwrap_or_else(|| PublicationForm::seed(&import));
             PendingRow {
                 title: label(&import, &draft),
                 holdings: draft.holdings,
@@ -48,7 +48,7 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
 }
 
 /// What to call a pending import: its draft's title, else what was typed, else a placeholder.
-fn label(import: &PendingImport, draft: &Draft) -> String {
+fn label(import: &PendingImport, draft: &PublicationForm) -> String {
     [draft.title.as_str(), import.query.as_str(), UNTITLED]
         .into_iter()
         .find(|s| !s.is_empty())
@@ -174,7 +174,7 @@ pub async fn start(
 ) -> Result<Response, AppError> {
     let rows = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
     let mut errors = Errors::default();
-    let holdings = import::parse_holdings(&rows, &mut errors);
+    let holdings = publication_form::parse_holdings(&rows, &mut errors);
     let more = form.more.is_some();
     if !errors.is_empty() {
         return render_entry(&state, id, base, form.query, more, rows, errors).await;
@@ -210,7 +210,7 @@ struct ReviewPage {
     library: db::Library,
     import: PendingImport,
     age: String,
-    draft: Draft,
+    draft: PublicationForm,
     errors: Errors,
     // Draft rows paired with their error, empty when there is none, so the row macro takes plain
     // strings for both the saved rows and the blank template row.
@@ -247,7 +247,7 @@ pub async fn review(
             let errors = draft.parse().err().unwrap_or_default();
             (draft, errors)
         }
-        None => (Draft::seed(&import), Errors::default()),
+        None => (PublicationForm::seed(&import), Errors::default()),
     };
     let title = label(&import, &draft);
     let holding_rows = draft
@@ -362,7 +362,7 @@ fn holding_rows(
         .collect()
 }
 
-impl From<ReviewForm> for Draft {
+impl From<ReviewForm> for PublicationForm {
     fn from(form: ReviewForm) -> Self {
         let holdings = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
         let identifiers = form
@@ -383,7 +383,7 @@ impl From<ReviewForm> for Draft {
                 role: role.trim().to_string(),
             })
             .collect();
-        Draft {
+        PublicationForm {
             title: form.title.trim().to_string(),
             publisher: form.publisher.trim().to_string(),
             year: form.year.trim().to_string(),
@@ -421,7 +421,7 @@ pub async fn submit(
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let draft: Draft = form.into();
+    let draft: PublicationForm = form.into();
     let validated = match draft.parse() {
         Ok(validated) => validated,
         // Keep the edits so the review page can show what is wrong with them
