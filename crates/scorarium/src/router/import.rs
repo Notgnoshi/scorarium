@@ -23,8 +23,9 @@ const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor
 
 pub struct PendingRow {
     pub import: PendingImport,
-    /// The draft's title when one has been saved, else a placeholder
     pub title: String,
+    pub kind: HoldingKind,
+    pub location: String,
     pub age: String,
 }
 
@@ -33,17 +34,29 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
     Ok(pending_import::list(&state.pool, library_id)
         .await?
         .into_iter()
-        .map(|import| PendingRow {
-            title: state
+        .map(|import| {
+            let draft = state
                 .drafts
                 .get(import.id)
-                .filter(|d| !d.title.is_empty())
-                .map(|d| d.title)
-                .unwrap_or_else(|| UNTITLED.to_string()),
-            age: age(import.created_at),
-            import,
+                .unwrap_or_else(|| Draft::seed(&import));
+            PendingRow {
+                title: label(&import, &draft),
+                kind: draft.kind,
+                location: draft.location,
+                age: age(import.created_at),
+                import,
+            }
         })
         .collect())
+}
+
+/// What to call a pending import: its draft's title, else what was typed, else a placeholder.
+fn label(import: &PendingImport, draft: &Draft) -> String {
+    [draft.title.as_str(), import.query.as_str(), UNTITLED]
+        .into_iter()
+        .find(|s| !s.is_empty())
+        .unwrap_or(UNTITLED)
+        .to_string()
 }
 
 fn age(created_at: i64) -> String {
@@ -67,7 +80,8 @@ fn age(created_at: i64) -> String {
 struct EntryPage {
     base: BaseContext,
     library: db::Library,
-    more: bool,
+    /// What to show in the form: blank on a visit, the rejected submission on an error
+    form: StartForm,
     error: Option<&'static str>,
     pending: Vec<PendingRow>,
     /// The shared list fragment shows a library column only on the cross-library queue.
@@ -87,14 +101,18 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    render_entry(&state, id, base, query.more.is_some(), None).await
+    let form = StartForm {
+        more: query.more,
+        ..StartForm::default()
+    };
+    render_entry(&state, id, base, form, None).await
 }
 
 async fn render_entry(
     state: &AppState,
     id: i64,
     base: BaseContext,
-    more: bool,
+    form: StartForm,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, id).await? else {
@@ -105,7 +123,7 @@ async fn render_entry(
         pending: pending_rows(state, Some(id)).await?,
         show_library: false,
         library,
-        more,
+        form,
         error,
     };
     Ok(Html(page.render()?).into_response())
@@ -113,11 +131,28 @@ async fn render_entry(
 
 #[derive(Deserialize)]
 pub struct StartForm {
-    kind: String,
-    location: Option<String>,
-    file: Option<String>,
+    #[serde(default)]
+    query: String,
+    kind: HoldingKind,
+    // Both inputs submit and the kind picks which one counts
+    #[serde(default)]
+    location: String,
+    #[serde(default)]
+    file: String,
     /// Present when the "Import more" box is checked; browsers send "on".
     more: Option<String>,
+}
+
+impl Default for StartForm {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            kind: HoldingKind::Physical,
+            location: String::new(),
+            file: String::new(),
+            more: None,
+        }
+    }
 }
 
 /// POST /library/{id}/import
@@ -128,22 +163,17 @@ pub async fn start(
     Path(id): Path<i64>,
     Form(form): Form<StartForm>,
 ) -> Result<Response, AppError> {
-    let more = form.more.is_some();
-    let Ok(kind) = form.kind.parse::<HoldingKind>() else {
-        return Ok(StatusCode::BAD_REQUEST.into_response());
-    };
-    let location = match kind {
-        HoldingKind::Physical => form.location,
-        HoldingKind::Digital => form.file,
+    let location = match form.kind {
+        HoldingKind::Physical => form.location.trim(),
+        HoldingKind::Digital => form.file.trim(),
     }
-    .map(|s| s.trim().to_string())
-    .filter(|s| !s.is_empty());
-    if kind == HoldingKind::Digital && location.is_none() {
+    .to_string();
+    if form.kind == HoldingKind::Digital && location.is_empty() {
         return render_entry(
             &state,
             id,
             base,
-            more,
+            form,
             Some("Choose a file for a digital copy."),
         )
         .await;
@@ -151,13 +181,14 @@ pub async fn start(
     if db::get_library(&state.pool, id).await?.is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
+    let more = form.more.is_some();
     let pending_id = pending_import::create(
         &state.pool,
         &NewPendingImport {
             library_id: id,
-            query: "",
-            kind,
-            location: location.as_deref(),
+            query: form.query.trim(),
+            kind: form.kind,
+            location: (!location.is_empty()).then_some(location.as_str()),
         },
     )
     .await?;
@@ -211,13 +242,9 @@ pub async fn review(
             let errors = draft.parse().err().unwrap_or_default();
             (draft, errors)
         }
-        None => (Draft::default(), Errors::default()),
+        None => (Draft::seed(&import), Errors::default()),
     };
-    let title = if draft.title.is_empty() {
-        UNTITLED
-    } else {
-        &draft.title
-    };
+    let title = label(&import, &draft);
     let identifier_rows = draft
         .identifiers
         .iter()
@@ -265,6 +292,12 @@ pub struct ReviewForm {
     title: String,
     publisher: String,
     year: String,
+    kind: HoldingKind,
+    // Like the entry page, both inputs submit and the kind picks which one counts
+    #[serde(default)]
+    location: String,
+    #[serde(default)]
+    file: String,
     // Parallel repeated keys, one entry per row; `default` covers a submission with no rows
     #[serde(default)]
     identifier_kind: Vec<String>,
@@ -303,6 +336,13 @@ impl From<ReviewForm> for Draft {
             title: form.title.trim().to_string(),
             publisher: form.publisher.trim().to_string(),
             year: form.year.trim().to_string(),
+            kind: form.kind,
+            location: match form.kind {
+                HoldingKind::Physical => form.location,
+                HoldingKind::Digital => form.file,
+            }
+            .trim()
+            .to_string(),
             identifiers,
             contributors,
         }

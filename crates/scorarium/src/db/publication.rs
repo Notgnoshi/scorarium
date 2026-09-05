@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::db::person::Contributor;
@@ -51,7 +52,8 @@ pub struct NewPublication<'a> {
     pub year: Option<i64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HoldingKind {
     Physical,
     Digital,

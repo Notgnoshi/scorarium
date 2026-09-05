@@ -15,6 +15,18 @@
         <form class="col-md-6 col-lg-4"
               method="post"
               action="/library/{{ library.id }}/import">
+            <div class="mb-3">
+                <label class="form-label" for="query">Title or identifier</label>
+                <input class="form-control"
+                       id="query"
+                       name="query"
+                       value="{{ form.query }}"
+                       placeholder="978-0-486-23134-1 or Three gymnopedies"
+                       autofocus />
+                <div class="form-text">
+                    A title, ISBN, or ISMN identifier
+                </div>
+            </div>
             <div class="btn-group mb-3" role="group" aria-label="Kind of copy">
                 <input type="radio"
                        class="btn-check"
@@ -22,14 +34,15 @@
                        id="kind-physical"
                        value="physical"
                        autocomplete="off"
-                       checked />
+                       {% if form.kind.as_str() == "physical" %}checked{% endif %} />
                 <label class="btn btn-outline-primary" for="kind-physical">Physical</label>
                 <input type="radio"
                        class="btn-check"
                        name="kind"
                        id="kind-digital"
                        value="digital"
-                       autocomplete="off" />
+                       autocomplete="off"
+                       {% if form.kind.as_str() == "digital" %}checked{% endif %} />
                 <label class="btn btn-outline-primary" for="kind-digital">Digital</label>
             </div>
             <div class="mb-3 physical-only">
@@ -39,6 +52,7 @@
                     <input class="form-control"
                            id="location"
                            name="location"
+                           value="{{ form.location }}"
                            placeholder="Piano bench" />
                 </div>
                 <div class="form-text">Optional. Where this copy lives.</div>
@@ -56,7 +70,7 @@
                        type="checkbox"
                        id="more"
                        name="more"
-                       {% if more %}checked{% endif %} />
+                       {% if form.more.is_some() %}checked{% endif %} />
                 <label class="form-check-label" for="more">Import more</label>
             </div>
             <p>More metadata will be fetched in the background</p>

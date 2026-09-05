@@ -62,9 +62,9 @@ Every path through enrichment (success, partial results, total failure, timeout,
 The entry page at `/library/{id}/import` requires login and is reached from the import button on the
 library page. Its elements are a physical/digital toggle defaulting to physical, a location field (a
 shelf or place for physical; a file chooser for digital, whose file the application stores under
-`assets/` and names itself), an "Import more" checkbox, and, once lookup exists, a text box. A
+`assets/` and names itself), an "Import more" checkbox, and a text box for a title or identifier. A
 digital publication's file is at hand at import time the same way a physical volume is. The toggle
-and location become the publication's first holding on accept.
+and location seed the publication's first holding, which the review page can still change.
 
 The text box takes an identifier or a title, with different behavior per kind:
 
@@ -92,7 +92,8 @@ the user lands: when checked, the user stays on the entry page, cleared and read
 input, with the box still checked; when unchecked, the new import's review page opens. The expected
 batch usage is importing several publications back to back and then working through the review
 queue, so the entry page lists its own library's pending imports beneath the form, showing what was
-just queued.
+just queued. Whatever was typed seeds the draft: a valid ISBN or ISMN as its first identifier row,
+anything else as its title. Lookup, once it exists, builds on that seed rather than replacing it.
 
 ## Lookup and enrichment
 
@@ -185,11 +186,12 @@ to create a newly-linked entity; anything deeper waits for the entity's own page
 Concretely, a contributor row is a name, a role, and a use-existing-or-create-new choice. A proposed
 work row is a title, composer, and catalog number, editable inline; each row shows its probable
 existing match and can be individually accepted, rejected, or replaced, and manual rows can be
-added. The first holding was fixed on the entry page and is shown read-only. Keys, time signatures,
-instrumentation, aliases, and other entity depths are not edited here: a proposed work row carries
-its enrichment as payload, and accepting the row creates the work with that depth, but editing the
-depth happens on the work and person pages, after accept. With live progression, rows can gain
-enrichment while being reviewed; late arrivals land as row updates to inspect before accepting.
+added. The first holding's physical/digital choice and location are seeded from the entry page and
+edited here like any other field. Keys, time signatures, instrumentation, aliases, and other entity
+depths are not edited here: a proposed work row carries its enrichment as payload, and accepting the
+row creates the work with that depth, but editing the depth happens on the work and person pages,
+after accept. With live progression, rows can gain enrichment while being reviewed; late arrivals
+land as row updates to inspect before accepting.
 
 A publication can be accepted with no works at all. Contents data is scarce, so an empty works
 section is a normal outcome, and works can be added later on the publication page, by hand or

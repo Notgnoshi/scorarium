@@ -1,16 +1,21 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Mutex;
 
+use crate::db::pending_import::PendingImport;
+use crate::db::publication::HoldingKind;
 use crate::identifier;
 
 /// Unsaved review-page edits for one pending import.
 ///
 /// Values are kept as typed; they are parsed only on submit.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Draft {
     pub title: String,
     pub publisher: String,
     pub year: String,
+    pub kind: HoldingKind,
+    /// Freeform for physical, a file path for digital; empty means none
+    pub location: String,
     pub identifiers: Vec<IdentifierRow>,
     pub contributors: Vec<ContributorRow>,
 }
@@ -26,6 +31,35 @@ pub struct IdentifierRow {
 pub struct ContributorRow {
     pub name: String,
     pub role: String,
+}
+
+impl Draft {
+    /// The draft a pending import starts from before anything is saved: the holding as entered,
+    /// and a valid ISBN or ISMN as the first identifier row, anything else as the title. Derived
+    /// on every view rather than stored, so it survives a restart the same way the row does.
+    pub fn seed(pending: &PendingImport) -> Self {
+        let query = pending.query.trim();
+        let mut draft = Draft {
+            title: String::new(),
+            publisher: String::new(),
+            year: String::new(),
+            kind: pending.kind,
+            location: pending.location.clone().unwrap_or_default(),
+            identifiers: Vec::new(),
+            contributors: Vec::new(),
+        };
+        for kind in [identifier::Kind::Isbn, identifier::Kind::Ismn] {
+            if let Ok(normalized) = identifier::normalize(kind, query) {
+                draft.identifiers.push(IdentifierRow {
+                    kind: kind.as_str().to_string(),
+                    value: normalized.as_str().to_string(),
+                });
+                return draft;
+            }
+        }
+        draft.title = query.to_string();
+        draft
+    }
 }
 
 /// Drafts by pending import id
@@ -62,6 +96,8 @@ pub struct Validated {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
+    pub kind: HoldingKind,
+    pub location: Option<String>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
 }
@@ -71,6 +107,7 @@ pub struct Validated {
 pub struct Errors {
     pub title: Option<String>,
     pub year: Option<String>,
+    pub location: Option<String>,
     /// One slot per row, aligned with the draft's rows
     pub identifiers: Vec<Option<String>>,
     pub contributors: Vec<Option<String>>,
@@ -80,6 +117,7 @@ impl Errors {
     fn is_empty(&self) -> bool {
         self.title.is_none()
             && self.year.is_none()
+            && self.location.is_none()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
     }
@@ -103,6 +141,9 @@ impl Draft {
                 }
             }
         };
+        if self.kind == HoldingKind::Digital && self.location.is_empty() {
+            errors.location = Some("Choose a file for a digital copy.".into());
+        }
 
         let mut identifiers = Vec::new();
         let mut seen = BTreeSet::new();
@@ -154,6 +195,8 @@ impl Draft {
             title: self.title.clone(),
             publisher: Some(self.publisher.clone()).filter(|p| !p.is_empty()),
             year,
+            kind: self.kind,
+            location: Some(self.location.clone()).filter(|l| !l.is_empty()),
             identifiers,
             contributors: self.contributors.clone(),
         })
@@ -170,6 +213,8 @@ mod tests {
             title: String::new(),
             publisher: String::new(),
             year: "abc".into(),
+            kind: HoldingKind::Digital,
+            location: String::new(),
             identifiers: vec![
                 IdentifierRow {
                     kind: "isbn".into(),
@@ -204,6 +249,7 @@ mod tests {
             Errors {
                 title: Some("A title is required.".into()),
                 year: Some("The year must be a number.".into()),
+                location: Some("Choose a file for a digital copy.".into()),
                 identifiers: vec![
                     Some("invalid ISBN".into()),
                     None,
@@ -221,6 +267,8 @@ mod tests {
             title: "Three gymnopedies".into(),
             publisher: String::new(),
             year: String::new(),
+            kind: HoldingKind::Physical,
+            location: String::new(),
             identifiers: vec![IdentifierRow {
                 kind: "isbn".into(),
                 value: "0-486-23134-8".into(),
@@ -234,6 +282,8 @@ mod tests {
         assert_eq!(validated.title, "Three gymnopedies");
         assert_eq!(validated.publisher, None);
         assert_eq!(validated.year, None);
+        assert_eq!(validated.kind, HoldingKind::Physical);
+        assert_eq!(validated.location, None);
         assert_eq!(
             validated.identifiers,
             [(

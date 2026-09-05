@@ -17,8 +17,8 @@
                     <tr>
                         <td><a href="/library/{{ row.import.library_id }}/import/{{ row.import.id }}">{{ row.title }}</a></td>
                         {% if show_library %}<td>{{ row.import.library_name }}</td>{% endif %}
-                        <td><span class="badge text-bg-secondary">{{ row.import.kind.as_str() }}</span></td>
-                        <td>{% if let Some(location) = row.import.location %}{{ location }}{% endif %}</td>
+                        <td><span class="badge text-bg-secondary">{{ row.kind.as_str() }}</span></td>
+                        <td>{{ row.location }}</td>
                         <td>{{ row.age }}</td>
                     </tr>
                 {% endfor %}

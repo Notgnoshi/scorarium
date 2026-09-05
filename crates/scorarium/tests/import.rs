@@ -21,6 +21,15 @@ async fn manual_import_flow() {
     response.assert_header("location", "/login");
     server.post("/login").form(&[("password", "hunter2")]).await;
 
+    // A digital copy needs a file; the rejected form comes back as typed
+    let response = server
+        .post(&entry)
+        .form(&[("query", "Gnossiennes"), ("kind", "digital"), ("file", "")])
+        .await;
+    response.assert_status_ok();
+    response.assert_text_contains("Choose a file for a digital copy.");
+    response.assert_text_contains("value=\"Gnossiennes\"");
+
     let response = server
         .post(&entry)
         .form(&[("kind", "digital"), ("file", "satie.pdf")])
@@ -54,6 +63,8 @@ async fn manual_import_flow() {
             ("title", ""),
             ("publisher", ""),
             ("year", "abc"),
+            ("kind", "digital"),
+            ("file", ""),
             ("identifier_kind", "isbn"),
             ("identifier_value", "not-an-isbn"),
             ("contributor_name", "Erik Satie"),
@@ -64,6 +75,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("A title is required.");
     response.assert_text_contains("The year must be a number.");
     response.assert_text_contains("value=\"abc\"");
+    response.assert_text_contains("Choose a file for a digital copy.");
     response.assert_text_contains("invalid ISBN");
     response.assert_text_contains("A role is required.");
 
@@ -74,6 +86,8 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
+            ("kind", "digital"),
+            ("file", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -85,10 +99,47 @@ async fn manual_import_flow() {
     let response = server.get(&review).await;
     response.assert_text_contains("value=\"Three gymnopedies\"");
     response.assert_text_contains("value=\"1888\"");
+    response.assert_text_contains("value=\"satie.pdf\"");
     response.assert_text_contains("value=\"0-486-23134-8\"");
     response.assert_text_contains("value=\"Erik Satie\"");
     server
         .get(&entry)
         .await
         .assert_text_contains("Three gymnopedies");
+
+    // A typed identifier seeds the draft's identifier row, in normalized form, and the holding
+    // typed on the entry page seeds the review page's holding controls
+    let response = server
+        .post(&entry)
+        .form(&[
+            ("query", "0486231348"),
+            ("kind", "physical"),
+            ("location", "Piano bench"),
+        ])
+        .await;
+    let seeded = response.header("location").to_str().unwrap().to_string();
+    let response = server.get(&seeded).await;
+    response.assert_text_contains("value=\"978-0-486-23134-1\"");
+    response.assert_text_contains("value=\"Piano bench\"");
+    server
+        .post(&format!("{seeded}/delete"))
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    server
+        .get(&seeded)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    // Anything else seeds the title, which the lists show before any save
+    let response = server
+        .post(&entry)
+        .form(&[("query", "Gnossiennes"), ("kind", "physical")])
+        .await;
+    let seeded = response.header("location").to_str().unwrap().to_string();
+    server
+        .get(&seeded)
+        .await
+        .assert_text_contains("value=\"Gnossiennes\"");
+    server.get(&entry).await.assert_text_contains("Gnossiennes");
+    server.post(&format!("{seeded}/delete")).await;
 }

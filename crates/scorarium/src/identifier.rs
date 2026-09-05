@@ -76,8 +76,8 @@ impl Normalized {
 /// and publisher and plate numbers are trimmed and uppercased.
 pub fn normalize(kind: Kind, value: &str) -> Result<Normalized, Error> {
     match kind {
-        Kind::Isbn => normalize_isbn(value),
-        Kind::Ismn => normalize_ismn(value),
+        Kind::Isbn => normalize_isbn(strip_label(value, "ISBN")),
+        Kind::Ismn => normalize_ismn(strip_label(value, "ISMN")),
         Kind::PublisherNumber | Kind::PlateNumber => {
             let value = value.trim();
             if value.is_empty() {
@@ -86,6 +86,27 @@ pub fn normalize(kind: Kind, value: &str) -> Result<Normalized, Error> {
             Ok(Normalized(value.to_uppercase()))
         }
     }
+}
+
+/// Drop the label a number is printed with, so "ISBN 978-...", "ISBN-13: 978-...", "ISBN 10: 0-...",
+/// and "ISMN M-..." can be typed as they appear on the page.
+fn strip_label<'a>(value: &'a str, label: &str) -> &'a str {
+    let value = value.trim();
+    let Some(rest) = value
+        .get(..label.len())
+        .filter(|head| head.eq_ignore_ascii_case(label))
+        .map(|_| &value[label.len()..])
+    else {
+        return value;
+    };
+    // "ISBN-13", "ISBN 13", and "ISBN13" all name the form. A digit right after the 13 or 10
+    // means it is the number itself: an unhyphenated ISBN-10 in group 1 can begin with either.
+    let rest = rest.trim_start_matches(|c: char| c == '-' || c.is_whitespace());
+    let rest = match rest.strip_prefix("13").or_else(|| rest.strip_prefix("10")) {
+        Some(after) if !after.starts_with(|c: char| c.is_ascii_digit()) => after,
+        _ => rest,
+    };
+    rest.trim_start_matches(|c: char| c == ':' || c.is_whitespace())
 }
 
 fn normalize_isbn(value: &str) -> Result<Normalized, Error> {
@@ -162,9 +183,27 @@ mod tests {
 
     #[test]
     fn isbn13_hyphenates_regardless_of_input_separators() {
-        for input in ["978-1-4950-0871-9", "978 1 4950 0871 9", "9781495008719"] {
+        for input in [
+            "978-1-4950-0871-9",
+            "978 1 4950 0871 9",
+            "9781495008719",
+            "ISBN 978-1-4950-0871-9",
+            "ISBN: 978-1-4950-0871-9",
+            "ISBN\t978-1-4950-0871-9",
+            "isbn-13: 9781495008719",
+            "ISBN 13: 9781495008719",
+            "ISBN13 9781495008719",
+        ] {
             assert_eq!(n(Kind::Isbn, input), Ok("978-1-4950-0871-9".into()));
         }
+        for input in ["ISBN-10 0-7935-7224-X", "ISBN 10: 0-7935-7224-X"] {
+            assert_eq!(n(Kind::Isbn, input), Ok("978-0-7935-7224-3".into()));
+        }
+        // The leading 10 is part of the number, not the form's name
+        assert_eq!(
+            n(Kind::Isbn, "ISBN 108456789X"),
+            Ok("978-1-0845-6789-4".into())
+        );
     }
 
     #[test]
@@ -183,10 +222,14 @@ mod tests {
             n(Kind::Ismn, "M-060-08002-9"),
             Ok("979-0-060-08002-9".into())
         );
-        assert_eq!(
-            n(Kind::Ismn, "979-0-060-08002-9"),
-            Ok("979-0-060-08002-9".into())
-        );
+        for input in [
+            "ISMN M-060-08002-9",
+            "ISMN: 979-0-060-08002-9",
+            "ISMN-13 979-0-060-08002-9",
+            "979-0-060-08002-9",
+        ] {
+            assert_eq!(n(Kind::Ismn, input), Ok("979-0-060-08002-9".into()));
+        }
         assert_eq!(
             n(Kind::Ismn, "9790299102349"),
             Ok("979-0-2991-0234-9".into())
