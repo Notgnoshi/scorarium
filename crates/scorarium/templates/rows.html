@@ -31,6 +31,7 @@
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
                name="contributor_name"
                value="{{ name }}"
+               list="names"
                placeholder="Name"
                aria-label="Name" />
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"

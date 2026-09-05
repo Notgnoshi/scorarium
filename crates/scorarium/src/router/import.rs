@@ -217,8 +217,9 @@ struct ReviewPage {
     holding_rows: Vec<(HoldingRow, String)>,
     identifier_rows: Vec<(IdentifierRow, String)>,
     contributor_rows: Vec<(ContributorRow, String)>,
-    // Datalist suggestions for the role input
+    // Datalist suggestions for the role and name inputs
     roles: Vec<String>,
+    names: Vec<String>,
 }
 
 /// The message for row `i`. A draft that parsed clean has no error slots at all, so the rows
@@ -277,6 +278,7 @@ pub async fn review(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
+    let names = db::person::list_names(&state.pool, library_id).await?;
     let page = ReviewPage {
         base: base.page(
             title,
@@ -295,6 +297,7 @@ pub async fn review(
         identifier_rows,
         contributor_rows,
         roles,
+        names,
     };
     Ok(Html(page.render()?).into_response())
 }

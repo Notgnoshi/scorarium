@@ -210,4 +210,20 @@ async fn manual_import_flow() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
     assert!(!server.get("/").await.text().contains("rounded-pill"));
+
+    // The person the submit created is offered on the next import's review page
+    let response = server
+        .post(&entry)
+        .form(&[
+            ("holding_kind", "physical"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
+        .await;
+    let next = response.header("location").to_str().unwrap().to_string();
+    // A fresh review page has no contributor rows, so the value can only be the datalist's
+    server
+        .get(&next)
+        .await
+        .assert_text_contains("value=\"Erik Satie\"");
 }

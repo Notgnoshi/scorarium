@@ -79,6 +79,9 @@
         <datalist id="roles">
             {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
         </datalist>
+        <datalist id="names">
+            {% for name in names %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>
             <a class="btn btn-outline-secondary"

@@ -76,6 +76,16 @@ pub async fn list_roles(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<
     .await
 }
 
+/// Every person's display name in the library, by sort name, for name suggestions.
+pub async fn list_names(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar!(
+        "SELECT name FROM person WHERE library_id = ? ORDER BY sort_name",
+        library_id
+    )
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn create_person(
     executor: impl SqliteExecutor<'_>,
     library_id: i64,
