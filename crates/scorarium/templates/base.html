@@ -24,7 +24,10 @@
     <body class="d-flex flex-column min-vh-100">
         <nav class="navbar navbar-expand-md bg-body-tertiary">
             <div class="container">
-                <a class="navbar-brand" href="/">Scorarium</a>
+                <a class="navbar-brand" href="/">
+                    Scorarium
+                    {% if base.demo %}<span class="badge text-bg-warning">demo</span>{% endif %}
+                </a>
                 <button class="navbar-toggler"
                         type="button"
                         data-bs-toggle="collapse"
@@ -47,16 +50,18 @@
                                     </a>
                                 </li>
                             {% endif %}
-                            {% if base.path != "/password" %}
+                            {% if !base.demo %}
+                                {% if base.path != "/password" %}
+                                    <li class="nav-item">
+                                        <a class="nav-link" href="/password">Change password</a>
+                                    </li>
+                                {% endif %}
                                 <li class="nav-item">
-                                    <a class="nav-link" href="/password">Change password</a>
+                                    <form method="post" action="/logout">
+                                        <button class="nav-link">Log out</button>
+                                    </form>
                                 </li>
                             {% endif %}
-                            <li class="nav-item">
-                                <form method="post" action="/logout">
-                                    <button class="nav-link">Log out</button>
-                                </form>
-                            </li>
                         {% else if base.path != "/login" %}
                             <li class="nav-item">
                                 <a class="nav-link" href="/login">Log in</a>

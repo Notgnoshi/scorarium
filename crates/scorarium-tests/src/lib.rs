@@ -53,6 +53,9 @@ impl TestDb {
                 .await
                 .expect("failed to claim test password");
         }
+        if self.demo {
+            return AppState::demo(pool);
+        }
         // The test server speaks plain HTTP, so mirror a development run
         AppState::new(pool, false)
     }

@@ -57,6 +57,7 @@ pub struct BaseContext {
     /// The request path, so header links to the current page can be hidden.
     pub path: String,
     pub logged_in: bool,
+    pub demo: bool,
     /// Imports awaiting review, for the header badge. Zero when logged out.
     pub pending_import_count: i64,
     pub breadcrumbs: Vec<Crumb>,
@@ -74,9 +75,10 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
-        let logged_in = jar
-            .get(SESSION_COOKIE)
-            .is_some_and(|cookie| state.sessions.validate(cookie.value()));
+        let logged_in = state.demo
+            || jar
+                .get(SESSION_COOKIE)
+                .is_some_and(|cookie| state.sessions.validate(cookie.value()));
         let pending_import_count = if logged_in {
             db::pending_import::count(&state.pool).await?
         } else {
@@ -86,6 +88,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
             title: String::new(),
             path: parts.uri.path().to_string(),
             logged_in,
+            demo: state.demo,
             pending_import_count,
             breadcrumbs: Vec::new(),
             bootstrap_css: assets::url("bootstrap.min.css"),
@@ -156,6 +159,9 @@ impl FromRequestParts<Arc<AppState>> for Session {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
+        if state.demo {
+            return Ok(Session(String::new()));
+        }
         let jar = CookieJar::from_headers(&parts.headers);
         match jar.get(SESSION_COOKIE) {
             Some(cookie) if state.sessions.validate(cookie.value()) => {

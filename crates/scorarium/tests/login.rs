@@ -1,4 +1,5 @@
 use axum::http::StatusCode;
+use scorarium::db;
 use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
@@ -28,6 +29,23 @@ async fn claim_flow() {
     // The claim also logged us in: the login page now redirects home
     let response = server.get("/login").await;
     response.assert_status(StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn demo_needs_no_login() {
+    let state = TestDb::new().demo().build().await;
+    let library = db::list_libraries(&state.pool).await.unwrap()[0].id;
+    let server = browser(state);
+
+    // A page that would otherwise redirect to /login
+    let response = server.get(&format!("/library/{library}/import")).await;
+    response.assert_status_ok();
+    response.assert_text_contains("demo</span>");
+    assert!(!response.text().contains("Log out"));
+
+    let response = server.get("/login").await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/");
 }
 
 #[tokio::test]
