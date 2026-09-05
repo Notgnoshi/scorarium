@@ -133,6 +133,7 @@ pub struct FormFields {
     // Datalist suggestions for the role and name inputs
     pub roles: Vec<String>,
     pub names: Vec<String>,
+    pub no_copies_warning: String,
 }
 
 impl FormFields {
@@ -154,10 +155,17 @@ impl FormFields {
             identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
             contributor_rows: pair_errors(&form.contributors, &errors.contributors),
             names: db::person::list_names(pool, library_id).await?,
+            no_copies_warning: String::new(),
             roles,
             form,
             errors,
         })
+    }
+
+    /// What to warn when the last copy row is removed, on the page that can act on it.
+    pub fn warn_when_empty(mut self, warning: &str) -> Self {
+        self.no_copies_warning = warning.to_string();
+        self
     }
 }
 
@@ -207,6 +215,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/library/{library_id}/publication/{id}/edit",
             get(publication::edit).post(publication::save),
+        )
+        .route(
+            "/library/{library_id}/publication/{id}/delete",
+            post(publication::delete),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
         .route("/library/{library_id}/person/{id}", get(person::person))

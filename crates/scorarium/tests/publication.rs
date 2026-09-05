@@ -155,8 +155,11 @@ async fn publication_edit_flow() {
     let view = format!("/library/{library}/publication/{publication}");
     let edit = format!("{view}/edit");
 
-    // Editing requires login, and the button that leads there is hidden until then
+    // Editing and deleting require login, and the button that leads there is hidden until then
     let response = server.get(&edit).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/login");
+    let response = server.post(&format!("{view}/delete")).await;
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", "/login");
     let response = server.get(&view).await;
@@ -253,4 +256,36 @@ async fn publication_edit_flow() {
     response.assert_text_contains("Pragmatic Bookshelf");
     response.assert_text_contains("Piano bench");
     response.assert_text_contains("practical-vim.pdf");
+
+    // Removing the last copy is what the delete dialog warns about, so the form says so up front
+    let response = server.get(&edit).await;
+    response.assert_text_contains("will delete this publication");
+    response.assert_text_contains("Delete this publication and its contents?");
+
+    // Deleting takes the publication and the person left credited nowhere
+    let response = server
+        .post(&format!(
+            "/library/{library}/publication/{publication}/delete"
+        ))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &format!("/library/{library}"));
+    assert_eq!(
+        db::publication::get(&pool, library, publication)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db::person::list_names(&pool, library).await.unwrap(),
+        [] as [String; 0]
+    );
+
+    // Deleting again is a miss, not a second delete
+    let response = server
+        .post(&format!(
+            "/library/{library}/publication/{publication}/delete"
+        ))
+        .await;
+    response.assert_status(StatusCode::NOT_FOUND);
 }

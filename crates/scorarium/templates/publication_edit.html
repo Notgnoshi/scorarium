@@ -2,13 +2,58 @@
 {% block content %}
     <h1>{{ base.title }}</h1>
     <form method="post"
-          action="/library/{{ library.id }}/publication/{{ publication.id }}/edit">
+          action="/library/{{ library.id }}/publication/{{ publication.id }}/edit"
+          data-publication-edit>
         {% include "publication_fields.html" %}
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save</button>
             <a class="btn btn-outline-secondary"
                href="/library/{{ library.id }}/publication/{{ publication.id }}">Cancel</a>
+            <button type="button"
+                    class="btn btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#delete-publication">Delete</button>
         </div>
     </form>
     {% include "publication_works.html" %}
+    <div class="modal fade"
+         id="delete-publication"
+         tabindex="-1"
+         aria-labelledby="delete-publication-title"
+         aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content"
+                  method="post"
+                  action="/library/{{ library.id }}/publication/{{ publication.id }}/delete">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5"
+                        id="delete-publication-title">Delete this publication and its contents?</h1>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Its identifiers and copies go with it. Works that appear in no other publication, and people
+                    credited nowhere else, are removed too. This cannot be undone.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Removing the last copy deletes the publication, so saving without one asks first. The
+        // dialog's own button is what posts the deletion; this form never deletes anything.
+        const editForm = document.querySelector("[data-publication-edit]");
+        const copies = editForm.querySelector("[data-copies] [data-rows-list]");
+        editForm.addEventListener("submit", (e) => {
+            if (!copies.querySelector("[data-row]")) {
+                e.preventDefault();
+                bootstrap.Modal.getOrCreateInstance(document.querySelector("#delete-publication")).show();
+            }
+        });
+    </script>
 {% endblock %}

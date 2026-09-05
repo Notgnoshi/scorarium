@@ -20,7 +20,6 @@ struct PublicationPage {
     works: Vec<db::work::Work>,
     show_catalog_numbers: bool,
     roles: Vec<String>,
-    editing: bool,
 }
 
 #[derive(Template)]
@@ -32,9 +31,10 @@ struct EditPage {
     works: Vec<db::work::Work>,
     show_catalog_numbers: bool,
     roles: Vec<String>,
-    editing: bool,
     fields: FormFields,
 }
+
+const NO_COPIES: &str = "Removing the last copy will delete this publication and its contents.";
 
 /// The works table and its columns. Columns that would be empty for every work are left out:
 /// books have no catalog numbers, and their works have authors where scores have composers.
@@ -77,7 +77,6 @@ pub async fn publication(
         works,
         show_catalog_numbers,
         roles,
-        editing: false,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -127,6 +126,18 @@ pub async fn save(
     Ok(Redirect::to(&format!("/library/{library_id}/publication/{id}")).into_response())
 }
 
+/// POST /library/{library_id}/publication/{id}/delete
+pub async fn delete(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    Path((library_id, id)): Path<(i64, i64)>,
+) -> Result<Response, AppError> {
+    if !db::publication::delete(&state.pool, library_id, id).await? {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    Ok(Redirect::to(&format!("/library/{library_id}")).into_response())
+}
+
 async fn render_edit(
     state: &AppState,
     base: BaseContext,
@@ -146,11 +157,12 @@ async fn render_edit(
                 Crumb::publication(&publication),
             ],
         ),
-        fields: FormFields::build(&state.pool, library.id, form, errors).await?,
+        fields: FormFields::build(&state.pool, library.id, form, errors)
+            .await?
+            .warn_when_empty(NO_COPIES),
         works,
         show_catalog_numbers,
         roles,
-        editing: true,
         library,
         publication,
     };

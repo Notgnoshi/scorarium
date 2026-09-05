@@ -64,7 +64,7 @@
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
     </fieldset>
-    {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings) %}
+    {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
     <datalist id="roles">
         {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
