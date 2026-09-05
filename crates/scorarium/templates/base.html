@@ -6,6 +6,11 @@
         <title>{{ base.title }} - Scorarium</title>
         <link rel="stylesheet" href="{{ base.bootstrap_css }}" />
         <link rel="stylesheet" href="{{ base.bootstrap_icons_css }}" />
+        <style>
+            .form-control::placeholder {
+                opacity: 0.5;
+            }
+        </style>
         <script>
             // Run before the body paints so the page never flashes light first.
             (() => {
