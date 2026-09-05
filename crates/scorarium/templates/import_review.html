@@ -74,28 +74,8 @@
                 <i class="bi bi-plus-lg" aria-hidden="true"></i>
             </button>
         </fieldset>
-        <fieldset class="border rounded p-3 mb-3" data-rows>
-            <legend class="float-none w-auto px-2 fs-6">Copies</legend>
-            <div data-rows-list>
-                {% for (row, error) in holding_rows %}
-                    {% call rows::holding_row(row.kind.as_str(), row.location, error) %}
-                    {% endcall %}
-                {% endfor %}
-            </div>
-            {% if let Some(error) = errors.no_holdings %}
-                <div class="invalid-feedback d-block mb-2">{{ error }}</div>
-            {% endif %}
-            <template>
-                {% call rows::holding_row("physical", "", "") %}
-                {% endcall %}
-            </template>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm"
-                    data-rows-add
-                    aria-label="Add copy">
-                <i class="bi bi-plus-lg" aria-hidden="true"></i>
-            </button>
-        </fieldset>
+        {% call rows::holdings_box(holding_rows, errors.no_holdings) %}
+        {% endcall %}
         <datalist id="roles">
             {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
         </datalist>

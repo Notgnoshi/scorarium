@@ -24,15 +24,35 @@ async fn manual_import_flow() {
     // A digital copy needs a file; the rejected form comes back as typed
     let response = server
         .post(&entry)
-        .form(&[("query", "Gnossiennes"), ("kind", "digital"), ("file", "")])
+        .form(&[
+            ("query", "Gnossiennes"),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
         .await;
     response.assert_status_ok();
     response.assert_text_contains("Choose a file for a digital copy.");
     response.assert_text_contains("value=\"Gnossiennes\"");
 
+    // Start needs at least one copy
+    let response = server.post(&entry).form(&[("query", "")]).await;
+    response.assert_status_ok();
+    response.assert_text_contains("A publication needs at least one copy.");
+
+    // Several copies go through to the review page
     let response = server
         .post(&entry)
-        .form(&[("kind", "digital"), ("file", "satie.pdf")])
+        .form(&[
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", "satie.pdf"),
+            ("holding_kind", "physical"),
+            ("holding_location", "Piano bench"),
+            ("holding_file", ""),
+        ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let review = response.header("location").to_str().unwrap().to_string();
@@ -40,7 +60,8 @@ async fn manual_import_flow() {
 
     let response = server.get(&review).await;
     response.assert_status_ok();
-    response.assert_text_contains("satie.pdf");
+    response.assert_text_contains("value=\"satie.pdf\"");
+    response.assert_text_contains("value=\"Piano bench\"");
     response.assert_text_contains("Untitled import");
 
     // The entry page lists what was just started
@@ -120,8 +141,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "0486231348"),
-            ("kind", "physical"),
-            ("location", "Piano bench"),
+            ("holding_kind", "physical"),
+            ("holding_location", "Piano bench"),
+            ("holding_file", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -140,7 +162,12 @@ async fn manual_import_flow() {
     // Anything else seeds the title, which the lists show before any save
     let response = server
         .post(&entry)
-        .form(&[("query", "Gnossiennes"), ("kind", "physical")])
+        .form(&[
+            ("query", "Gnossiennes"),
+            ("holding_kind", "physical"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
     server

@@ -128,7 +128,7 @@ pub struct Errors {
 }
 
 impl Errors {
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.title.is_none()
             && self.year.is_none()
             && self.holdings.iter().all(Option::is_none)
@@ -157,24 +157,7 @@ impl Draft {
                 }
             }
         };
-        if self.holdings.is_empty() {
-            errors.no_holdings = Some("A publication needs at least one copy.".into());
-        }
-        let mut holdings = Vec::new();
-        errors.holdings = self
-            .holdings
-            .iter()
-            .map(|row| {
-                if row.kind == HoldingKind::Digital && row.location.is_empty() {
-                    return Some("Choose a file for a digital copy.".to_string());
-                }
-                holdings.push((
-                    row.kind,
-                    Some(row.location.clone()).filter(|l| !l.is_empty()),
-                ));
-                None
-            })
-            .collect();
+        let holdings = parse_holdings(&self.holdings, &mut errors);
 
         let mut identifiers = Vec::new();
         let mut seen = BTreeSet::new();
@@ -237,6 +220,31 @@ impl Draft {
             contributors: self.contributors.clone(),
         })
     }
+}
+
+/// Check copy rows, filling the holding slots of `errors`
+pub fn parse_holdings(
+    rows: &[HoldingRow],
+    errors: &mut Errors,
+) -> Vec<(HoldingKind, Option<String>)> {
+    if rows.is_empty() {
+        errors.no_holdings = Some("A publication needs at least one copy.".into());
+    }
+    let mut holdings = Vec::new();
+    errors.holdings = rows
+        .iter()
+        .map(|row| {
+            if row.kind == HoldingKind::Digital && row.location.is_empty() {
+                return Some("Choose a file for a digital copy.".to_string());
+            }
+            holdings.push((
+                row.kind,
+                Some(row.location.clone()).filter(|l| !l.is_empty()),
+            ));
+            None
+        })
+        .collect();
+    holdings
 }
 
 /// "Erik Satie" sorts as "Satie, Erik". Compound surnames ("Ralph Vaughan Williams") come out

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
-use axum::Form;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -79,8 +78,10 @@ struct EntryPage {
     base: BaseContext,
     library: db::Library,
     /// What to show in the form: blank on a visit, the rejected submission on an error
-    form: StartForm,
-    error: Option<&'static str>,
+    query: String,
+    more: bool,
+    holding_rows: Vec<(HoldingRow, String)>,
+    errors: Errors,
     pending: Vec<PendingRow>,
     /// The shared list fragment shows a library column only on the cross-library queue.
     show_library: bool,
@@ -99,30 +100,51 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    let form = StartForm {
-        more: query.more,
-        ..StartForm::default()
-    };
-    render_entry(&state, id, base, form, None).await
+    let rows = vec![HoldingRow {
+        kind: HoldingKind::Physical,
+        location: String::new(),
+    }];
+    render_entry(
+        &state,
+        id,
+        base,
+        String::new(),
+        query.more.is_some(),
+        rows,
+        Errors::default(),
+    )
+    .await
 }
 
 async fn render_entry(
     state: &AppState,
     id: i64,
     base: BaseContext,
-    form: StartForm,
-    error: Option<&'static str>,
+    query: String,
+    more: bool,
+    rows: Vec<HoldingRow>,
+    errors: Errors,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let holding_rows = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let error = row_error(&errors.holdings, i);
+            (row, error)
+        })
+        .collect();
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(state, Some(id)).await?,
         show_library: false,
         library,
-        form,
-        error,
+        query,
+        more,
+        holding_rows,
+        errors,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -131,26 +153,15 @@ async fn render_entry(
 pub struct StartForm {
     #[serde(default)]
     query: String,
-    kind: HoldingKind,
-    // Both inputs submit and the kind picks which one counts
+    // Copy rows as parallel repeated keys, decoded as on the review page
     #[serde(default)]
-    location: String,
+    holding_kind: Vec<HoldingKind>,
     #[serde(default)]
-    file: String,
+    holding_location: Vec<String>,
+    #[serde(default)]
+    holding_file: Vec<String>,
     /// Present when the "Import more" box is checked; browsers send "on".
     more: Option<String>,
-}
-
-impl Default for StartForm {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            kind: HoldingKind::Physical,
-            location: String::new(),
-            file: String::new(),
-            more: None,
-        }
-    }
 }
 
 /// POST /library/{id}/import
@@ -159,31 +170,22 @@ pub async fn start(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path(id): Path<i64>,
-    Form(form): Form<StartForm>,
+    MultiForm(form): MultiForm<StartForm>,
 ) -> Result<Response, AppError> {
-    let location = match form.kind {
-        HoldingKind::Physical => form.location.trim(),
-        HoldingKind::Digital => form.file.trim(),
-    }
-    .to_string();
-    if form.kind == HoldingKind::Digital && location.is_empty() {
-        return render_entry(
-            &state,
-            id,
-            base,
-            form,
-            Some("Choose a file for a digital copy."),
-        )
-        .await;
+    let rows = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
+    let mut errors = Errors::default();
+    let holdings = import::parse_holdings(&rows, &mut errors);
+    let more = form.more.is_some();
+    if !errors.is_empty() {
+        return render_entry(&state, id, base, form.query, more, rows, errors).await;
     }
     if db::get_library(&state.pool, id).await?.is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let more = form.more.is_some();
-    let holdings = [PendingHolding {
-        kind: form.kind,
-        location: (!location.is_empty()).then_some(location),
-    }];
+    let holdings: Vec<PendingHolding> = holdings
+        .into_iter()
+        .map(|(kind, location)| PendingHolding { kind, location })
+        .collect();
     let pending_id = pending_import::create(
         &state.pool,
         &NewPendingImport {
@@ -334,22 +336,32 @@ fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
     kinds
 }
 
+/// Copy rows from a form's parallel keys. Every row submits a location and a file, and the kind
+/// picks which one counts.
+fn holding_rows(
+    kind: Vec<HoldingKind>,
+    location: Vec<String>,
+    file: Vec<String>,
+) -> Vec<HoldingRow> {
+    holding_kinds(kind)
+        .into_iter()
+        .zip(location)
+        .zip(file)
+        .map(|((kind, location), file)| HoldingRow {
+            kind,
+            location: match kind {
+                HoldingKind::Physical => location,
+                HoldingKind::Digital => file,
+            }
+            .trim()
+            .to_string(),
+        })
+        .collect()
+}
+
 impl From<ReviewForm> for Draft {
     fn from(form: ReviewForm) -> Self {
-        let holdings = holding_kinds(form.holding_kind)
-            .into_iter()
-            .zip(form.holding_location)
-            .zip(form.holding_file)
-            .map(|((kind, location), file)| HoldingRow {
-                kind,
-                location: match kind {
-                    HoldingKind::Physical => location,
-                    HoldingKind::Digital => file,
-                }
-                .trim()
-                .to_string(),
-            })
-            .collect();
+        let holdings = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
         let identifiers = form
             .identifier_kind
             .into_iter()
