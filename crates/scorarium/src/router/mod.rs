@@ -1,4 +1,5 @@
 mod assets;
+mod import;
 mod index;
 mod library;
 mod login;
@@ -40,6 +41,13 @@ impl Crumb {
         Self {
             label: library.name.clone(),
             href: format!("/library/{}", library.id),
+        }
+    }
+
+    pub fn import(library: &db::Library) -> Self {
+        Self {
+            label: "Import".to_string(),
+            href: format!("/library/{}/import", library.id),
         }
     }
 }
@@ -88,6 +96,15 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/library/{id}", get(library::library))
         .route("/library/{id}/rename", post(library::rename))
         .route("/library/{id}/delete", post(library::delete))
+        .route(
+            "/library/{id}/import",
+            get(import::entry).post(import::start),
+        )
+        .route("/library/{library_id}/import/{id}", get(import::review))
+        .route(
+            "/library/{library_id}/import/{id}/delete",
+            post(import::delete),
+        )
         .route(
             "/library/{library_id}/publication/{id}",
             get(publication::publication),

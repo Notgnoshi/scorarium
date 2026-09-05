@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Untitled import</h1>
+    <dl class="row">
+        <dt class="col-sm-3">Copy</dt>
+        <dd class="col-sm-9">
+            <span class="badge text-bg-secondary">{{ import.kind.as_str() }}</span>
+            {% if let Some(location) = import.location %}{{ location }}{% endif %}
+        </dd>
+        <dt class="col-sm-3">Started</dt>
+        <dd class="col-sm-9">
+            {{ age }}
+        </dd>
+    </dl>
+    <button type="button"
+            class="btn btn-outline-danger"
+            data-bs-toggle="modal"
+            data-bs-target="#delete-draft">Delete draft</button>
+    <div class="modal fade"
+         id="delete-draft"
+         tabindex="-1"
+         aria-labelledby="delete-draft-title"
+         aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content"
+                  method="post"
+                  action="/library/{{ library.id }}/import/{{ import.id }}/delete">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="delete-draft-title">Delete draft</h1>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">Delete this import? Nothing has been added to the library yet.</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
