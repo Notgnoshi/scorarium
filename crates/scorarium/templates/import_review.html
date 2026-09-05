@@ -153,5 +153,13 @@
                 list.appendChild(template.content.cloneNode(true));
             });
         }
+        // Browsers open a datalist only on the second click or on typing. Open it on the first instead
+        document.querySelector("form[action$='/save']").addEventListener("click", (e) => {
+            if (e.target.matches("input[list]")) {
+                try {
+                    e.target.showPicker();
+                } catch {}
+            }
+        });
     </script>
 {% endblock %}
