@@ -154,6 +154,9 @@ impl Draft {
             .identifiers
             .iter()
             .map(|row| {
+                if row.value.is_empty() {
+                    return Some("Fill this in or remove it.".to_string());
+                }
                 let kind: identifier::Kind = match row.kind.parse() {
                     Ok(kind) => kind,
                     Err(_) => return Some("Unknown identifier kind.".to_string()),
@@ -178,6 +181,9 @@ impl Draft {
             .contributors
             .iter()
             .map(|row| {
+                if row.name.is_empty() && row.role.is_empty() {
+                    return Some("Fill this in or remove it.".to_string());
+                }
                 if row.name.is_empty() {
                     return Some("A name is required.".to_string());
                 }
@@ -377,6 +383,10 @@ mod tests {
                     kind: "isbn".into(),
                     value: "978-0-486-23134-1".into(),
                 },
+                IdentifierRow {
+                    kind: "isbn".into(),
+                    value: String::new(),
+                },
             ],
             contributors: vec![
                 ContributorRow {
@@ -391,6 +401,10 @@ mod tests {
                     name: "Erik Satie".into(),
                     role: "composer".into(),
                 },
+                ContributorRow {
+                    name: String::new(),
+                    role: String::new(),
+                },
             ],
         };
         assert_eq!(
@@ -403,11 +417,13 @@ mod tests {
                     Some("invalid ISBN".into()),
                     None,
                     Some("Already listed.".into()),
+                    Some("Fill this in or remove it.".into()),
                 ],
                 contributors: vec![
                     Some("A role is required.".into()),
                     None,
                     Some("Already listed.".into()),
+                    Some("Fill this in or remove it.".into()),
                 ],
             }
         );

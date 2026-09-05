@@ -319,8 +319,6 @@ impl From<ReviewForm> for Draft {
                 kind: kind.trim().to_string(),
                 value: value.trim().to_string(),
             })
-            // Clearing a row is how it is removed
-            .filter(|row| !row.value.is_empty())
             .collect();
         let contributors = form
             .contributor_name
@@ -330,7 +328,6 @@ impl From<ReviewForm> for Draft {
                 name: name.trim().to_string(),
                 role: role.trim().to_string(),
             })
-            .filter(|row| !row.name.is_empty() || !row.role.is_empty())
             .collect();
         Draft {
             title: form.title.trim().to_string(),

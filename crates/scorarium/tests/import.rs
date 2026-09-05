@@ -67,6 +67,8 @@ async fn manual_import_flow() {
             ("file", ""),
             ("identifier_kind", "isbn"),
             ("identifier_value", "not-an-isbn"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", ""),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", ""),
         ])
@@ -77,6 +79,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("value=\"abc\"");
     response.assert_text_contains("Choose a file for a digital copy.");
     response.assert_text_contains("invalid ISBN");
+    response.assert_text_contains("Fill this in or remove it.");
     response.assert_text_contains("A role is required.");
 
     // Save a draft; the review page and the lists pick up its title

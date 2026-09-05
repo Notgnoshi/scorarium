@@ -1,0 +1,64 @@
+{% macro identifier_row(kind, value, error) %}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <select class="form-select flex-grow-0 w-auto"
+                name="identifier_kind"
+                aria-label="Identifier kind">
+            <option value="isbn" {% if kind == "isbn" %}selected{% endif %}>ISBN</option>
+            <option value="ismn" {% if kind == "ismn" %}selected{% endif %}>ISMN</option>
+            <option value="publisher_number"
+                    {% if kind == "publisher_number" %}selected{% endif %}>Publisher number</option>
+            <option value="plate_number"
+                    {% if kind == "plate_number" %}selected{% endif %}>Plate number</option>
+        </select>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="identifier_value"
+               value="{{ value }}"
+               aria-label="Identifier" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro contributor_row(name, role, error) %}
+    {# The message names the field at fault, so both inputs share the outline #}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_name"
+               value="{{ name }}"
+               placeholder="Name"
+               aria-label="Name" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_role"
+               value="{{ role }}"
+               list="roles"
+               placeholder="Role"
+               aria-label="Role" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro script() %}
+    <script>
+        for (const section of document.querySelectorAll("[data-rows]")) {
+            const list = section.querySelector("[data-rows-list]");
+            const template = section.querySelector("template");
+            section.querySelector("[data-rows-add]").addEventListener("click", () => {
+                list.appendChild(template.content.cloneNode(true));
+            });
+            list.addEventListener("click", (e) => {
+                e.target.closest("[data-rows-remove]")?.closest("[data-row]").remove();
+            });
+        }
+    </script>
+{% endmacro %}
