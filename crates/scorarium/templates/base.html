@@ -32,6 +32,16 @@
                 <div class="collapse navbar-collapse" id="navbar">
                     <ul class="navbar-nav ms-auto">
                         {% if base.logged_in %}
+                            {% if base.path != "/review" %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/review">
+                                        Review
+                                        {% if base.pending_import_count > 0 %}
+                                            <span class="badge text-bg-primary rounded-pill">{{ base.pending_import_count }}</span>
+                                        {% endif %}
+                                    </a>
+                                </li>
+                            {% endif %}
                             {% if base.path != "/password" %}
                                 <li class="nav-item">
                                     <a class="nav-link" href="/password">Change password</a>

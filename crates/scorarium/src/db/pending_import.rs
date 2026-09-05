@@ -83,6 +83,13 @@ async fn load(
     .collect()
 }
 
+/// How many imports await review, for the header.
+pub async fn count(pool: &SqlitePool) -> sqlx::Result<i64> {
+    sqlx::query_scalar!("SELECT COUNT(*) FROM pending_import")
+        .fetch_one(pool)
+        .await
+}
+
 /// Returns false when no pending import matches
 pub async fn delete(
     executor: impl SqliteExecutor<'_>,

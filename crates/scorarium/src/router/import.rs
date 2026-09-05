@@ -68,15 +68,17 @@ pub struct EntryQuery {
 pub async fn entry(
     _session: Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    render_entry(&state.pool, id, query.more.is_some(), None).await
+    render_entry(&state.pool, id, base, query.more.is_some(), None).await
 }
 
 async fn render_entry(
     pool: &SqlitePool,
     id: i64,
+    base: BaseContext,
     more: bool,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
@@ -84,12 +86,7 @@ async fn render_entry(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     let page = EntryPage {
-        base: BaseContext::new(
-            "Import",
-            format!("/library/{id}/import"),
-            true,
-            vec![Crumb::home(), Crumb::library(&library)],
-        ),
+        base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(pool, Some(id)).await?,
         show_library: false,
         library,
@@ -112,6 +109,7 @@ pub struct StartForm {
 pub async fn start(
     _session: Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Path(id): Path<i64>,
     Form(form): Form<StartForm>,
 ) -> Result<Response, AppError> {
@@ -129,6 +127,7 @@ pub async fn start(
         return render_entry(
             &state.pool,
             id,
+            base,
             more,
             Some("Choose a file for a digital copy."),
         )
@@ -168,6 +167,7 @@ struct ReviewPage {
 pub async fn review(
     _session: Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, library_id).await? else {
@@ -177,10 +177,8 @@ pub async fn review(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     let page = ReviewPage {
-        base: BaseContext::new(
+        base: base.page(
             "Untitled import",
-            format!("/library/{library_id}/import/{id}"),
-            true,
             vec![
                 Crumb::home(),
                 Crumb::library(&library),
@@ -190,6 +188,28 @@ pub async fn review(
         age: age(import.created_at),
         library,
         import,
+    };
+    Ok(Html(page.render()?).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "review.html")]
+struct QueuePage {
+    base: BaseContext,
+    pending: Vec<PendingRow>,
+    show_library: bool,
+}
+
+/// GET /review
+pub async fn queue(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    base: BaseContext,
+) -> Result<Response, AppError> {
+    let page = QueuePage {
+        base: base.page("Review queue", vec![Crumb::home()]),
+        pending: pending_rows(&state.pool, None).await?,
+        show_library: true,
     };
     Ok(Html(page.render()?).into_response())
 }

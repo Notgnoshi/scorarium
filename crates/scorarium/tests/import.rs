@@ -37,4 +37,13 @@ async fn manual_import_flow() {
     // The entry page lists what was just started
     let response = server.get(&entry).await;
     response.assert_text_contains(format!("href=\"{review}\""));
+
+    // The cross-library queue names the library, and the header counts the import
+    let response = server.get("/review").await;
+    response.assert_status_ok();
+    response.assert_text_contains("Scores");
+    response.assert_text_contains(format!("href=\"{review}\""));
+    let home = server.get("/").await;
+    home.assert_text_contains("href=\"/review\"");
+    home.assert_text_contains("<span class=\"badge text-bg-primary rounded-pill\">1</span>");
 }

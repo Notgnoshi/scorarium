@@ -4,7 +4,6 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use axum_extra::extract::CookieJar;
 
 use super::{AppError, BaseContext, Crumb};
 use crate::{AppState, db};
@@ -21,7 +20,7 @@ struct PersonPage {
 /// GET /library/{library_id}/person/{id}
 pub async fn person(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, library_id).await? else {
@@ -42,10 +41,8 @@ pub async fn person(
         nested.push((publication, works));
     }
     let page = PersonPage {
-        base: BaseContext::new(
+        base: base.page(
             person.name.clone(),
-            format!("/library/{library_id}/person/{id}"),
-            super::logged_in(&state, &jar),
             vec![Crumb::home(), Crumb::library(&library)],
         ),
         person,
@@ -64,24 +61,24 @@ struct PersonsPage {
 /// GET /library/{id}/composers
 pub async fn composers(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    listing(&state, &jar, id, "composer", "Composers").await
+    listing(&state, base, id, "composer", "Composers").await
 }
 
 /// GET /library/{id}/authors
 pub async fn authors(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    listing(&state, &jar, id, "author", "Authors").await
+    listing(&state, base, id, "author", "Authors").await
 }
 
 async fn listing(
     state: &AppState,
-    jar: &CookieJar,
+    base: BaseContext,
     library_id: i64,
     role: &str,
     title: &str,
@@ -90,12 +87,7 @@ async fn listing(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     let page = PersonsPage {
-        base: BaseContext::new(
-            title,
-            format!("/library/{library_id}/{}", title.to_lowercase()),
-            super::logged_in(state, jar),
-            vec![Crumb::home(), Crumb::library(&library)],
-        ),
+        base: base.page(title, vec![Crumb::home(), Crumb::library(&library)]),
         persons: db::person::list_with_role(&state.pool, library_id, role).await?,
     };
     Ok(Html(page.render()?).into_response())
