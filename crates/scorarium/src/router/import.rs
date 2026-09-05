@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,16 +8,13 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, Session};
+use super::{AppError, BaseContext, Crumb, FormFields, Session, pair_errors};
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::publication_form::{ContributorRow, Errors, HoldingRow, IdentifierRow, PublicationForm};
+use crate::publication_form::{Errors, HoldingRow, PublicationForm, Submission};
 use crate::{AppState, db, import, publication_form};
 
 const UNTITLED: &str = "Untitled import";
-
-/// Suggested alongside the library's existing roles, so a new library still gets a datalist.
-const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
 pub struct PendingRow {
     pub import: PendingImport,
@@ -129,14 +125,7 @@ async fn render_entry(
     let Some(library) = db::get_library(&state.pool, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let holding_rows = rows
-        .into_iter()
-        .enumerate()
-        .map(|(i, row)| {
-            let error = row_error(&errors.holdings, i);
-            (row, error)
-        })
-        .collect();
+    let holding_rows = pair_errors(&rows, &errors.holdings);
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(state, Some(id)).await?,
@@ -156,6 +145,8 @@ pub struct StartForm {
     query: String,
     // Copy rows as parallel repeated keys, decoded as on the review page
     #[serde(default)]
+    holding_id: Vec<String>,
+    #[serde(default)]
     holding_kind: Vec<HoldingKind>,
     #[serde(default)]
     holding_location: Vec<String>,
@@ -173,7 +164,12 @@ pub async fn start(
     Path(id): Path<i64>,
     MultiForm(form): MultiForm<StartForm>,
 ) -> Result<Response, AppError> {
-    let rows = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
+    let rows = publication_form::holding_rows(
+        form.holding_id,
+        form.holding_kind,
+        form.holding_location,
+        form.holding_file,
+    );
     let mut errors = Errors::default();
     let holdings = publication_form::parse_holdings(&rows, &mut errors);
     let more = form.more.is_some();
@@ -214,22 +210,7 @@ struct ReviewPage {
     library: db::Library,
     import: PendingImport,
     age: String,
-    draft: PublicationForm,
-    errors: Errors,
-    // Draft rows paired with their error, empty when there is none, so the row macro takes plain
-    // strings for both the saved rows and the blank template row.
-    holding_rows: Vec<(HoldingRow, String)>,
-    identifier_rows: Vec<(IdentifierRow, String)>,
-    contributor_rows: Vec<(ContributorRow, String)>,
-    // Datalist suggestions for the role and name inputs
-    roles: Vec<String>,
-    names: Vec<String>,
-}
-
-/// The message for row `i`. A draft that parsed clean has no error slots at all, so the rows
-/// cannot simply be zipped with the errors.
-fn row_error(errors: &[Option<String>], i: usize) -> String {
-    errors.get(i).cloned().flatten().unwrap_or_default()
+    fields: FormFields,
 }
 
 /// GET /library/{library_id}/import/{id}
@@ -254,35 +235,6 @@ pub async fn review(
         None => (PublicationForm::seed(&import), Errors::default()),
     };
     let title = label(&import, &draft);
-    let holding_rows = draft
-        .holdings
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(i, row)| (row, row_error(&errors.holdings, i)))
-        .collect();
-    let identifier_rows = draft
-        .identifiers
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(i, row)| (row, row_error(&errors.identifiers, i)))
-        .collect();
-    let contributor_rows = draft
-        .contributors
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(i, row)| (row, row_error(&errors.contributors, i)))
-        .collect();
-    let roles = db::person::list_roles(&state.pool, library_id)
-        .await?
-        .into_iter()
-        .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let names = db::person::list_names(&state.pool, library_id).await?;
     let page = ReviewPage {
         base: base.page(
             title,
@@ -293,110 +245,11 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
+        fields: FormFields::build(&state.pool, library_id, draft, errors).await?,
         library,
         import,
-        draft,
-        errors,
-        holding_rows,
-        identifier_rows,
-        contributor_rows,
-        roles,
-        names,
     };
     Ok(Html(page.render()?).into_response())
-}
-
-#[derive(Deserialize)]
-pub struct ReviewForm {
-    title: String,
-    publisher: String,
-    year: String,
-    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows.
-    // Each copy row submits a location and a file, and the kind picks which one counts
-    #[serde(default)]
-    holding_kind: Vec<HoldingKind>,
-    #[serde(default)]
-    holding_location: Vec<String>,
-    #[serde(default)]
-    holding_file: Vec<String>,
-    #[serde(default)]
-    identifier_kind: Vec<String>,
-    #[serde(default)]
-    identifier_value: Vec<String>,
-    #[serde(default)]
-    contributor_name: Vec<String>,
-    #[serde(default)]
-    contributor_role: Vec<String>,
-}
-
-/// A copy row's kind arrives as a constant "physical" followed by a "digital" when the row's
-/// toggle is checked: the toggle is a checkbox, which submits nothing while unchecked, so the
-/// constant is what keeps the rows countable.
-fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
-    let mut kinds = Vec::new();
-    for token in tokens {
-        match (token, kinds.last_mut()) {
-            (HoldingKind::Digital, Some(last)) => *last = HoldingKind::Digital,
-            (token, _) => kinds.push(token),
-        }
-    }
-    kinds
-}
-
-/// Copy rows from a form's parallel keys. Every row submits a location and a file, and the kind
-/// picks which one counts.
-fn holding_rows(
-    kind: Vec<HoldingKind>,
-    location: Vec<String>,
-    file: Vec<String>,
-) -> Vec<HoldingRow> {
-    holding_kinds(kind)
-        .into_iter()
-        .zip(location)
-        .zip(file)
-        .map(|((kind, location), file)| HoldingRow {
-            id: None,
-            kind,
-            location: match kind {
-                HoldingKind::Physical => location,
-                HoldingKind::Digital => file,
-            }
-            .trim()
-            .to_string(),
-        })
-        .collect()
-}
-
-impl From<ReviewForm> for PublicationForm {
-    fn from(form: ReviewForm) -> Self {
-        let holdings = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
-        let identifiers = form
-            .identifier_kind
-            .into_iter()
-            .zip(form.identifier_value)
-            .map(|(kind, value)| IdentifierRow {
-                kind: kind.trim().to_string(),
-                value: value.trim().to_string(),
-            })
-            .collect();
-        let contributors = form
-            .contributor_name
-            .into_iter()
-            .zip(form.contributor_role)
-            .map(|(name, role)| ContributorRow {
-                name: name.trim().to_string(),
-                role: role.trim().to_string(),
-            })
-            .collect();
-        PublicationForm {
-            title: form.title.trim().to_string(),
-            publisher: form.publisher.trim().to_string(),
-            year: form.year.trim().to_string(),
-            holdings,
-            identifiers,
-            contributors,
-        }
-    }
 }
 
 /// POST /library/{library_id}/import/{id}/save
@@ -404,7 +257,7 @@ pub async fn save(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(form): MultiForm<ReviewForm>,
+    MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
     if pending_import::get(&state.pool, library_id, id)
         .await?
@@ -412,7 +265,7 @@ pub async fn save(
     {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    state.drafts.save(id, form.into());
+    state.drafts.save(id, submission.into());
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
 }
 
@@ -421,12 +274,12 @@ pub async fn submit(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(form): MultiForm<ReviewForm>,
+    MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let draft: PublicationForm = form.into();
+    let draft = PublicationForm::from(submission);
     let validated = match draft.parse() {
         Ok(validated) => validated,
         // Keep the edits so the review page can show what is wrong with them

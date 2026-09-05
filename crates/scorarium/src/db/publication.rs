@@ -173,7 +173,8 @@ async fn load(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))",
+                              WHERE wc.person_id = ?4)))
+         ORDER BY id",
         library_id,
         id,
         work_id,
@@ -204,7 +205,8 @@ async fn load(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))",
+                              WHERE wc.person_id = ?4)))
+         ORDER BY c.id",
         library_id,
         id,
         work_id,
@@ -233,7 +235,8 @@ async fn load(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))",
+                              WHERE wc.person_id = ?4)))
+         ORDER BY id",
         library_id,
         id,
         work_id,

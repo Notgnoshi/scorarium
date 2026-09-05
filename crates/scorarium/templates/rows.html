@@ -49,8 +49,10 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro holding_row(kind, location, error) %}
+{% macro holding_row(id, kind, location, error) %}
     <div class="d-flex gap-2 mb-2" data-row>
+        {# Identifies the stored copy this row edits, so it keeps its identity; empty when adding one #}
+        <input type="hidden" name="holding_id" value="{{ id }}" />
         {# Using a radio group would require a unique ID per row, so build it with a checkbox #}
         <input type="hidden" name="holding_kind" value="physical" />
         <label class="kind-toggle d-inline-flex">
@@ -106,7 +108,7 @@
         <legend class="float-none w-auto px-2 fs-6">Copies</legend>
         <div data-rows-list>
             {% for (row, error) in rows %}
-                {% call holding_row(row.kind.as_str(), row.location, error) %}
+                {% call holding_row(row.id_value(), row.kind.as_str(), row.location, error) %}
                 {% endcall %}
             {% endfor %}
         </div>
@@ -114,7 +116,7 @@
             <div class="invalid-feedback d-block mb-2">{{ error }}</div>
         {% endif %}
         <template>
-            {% call holding_row("physical", "", "") %}
+            {% call holding_row("", "physical", "", "") %}
             {% endcall %}
         </template>
         <button type="button"

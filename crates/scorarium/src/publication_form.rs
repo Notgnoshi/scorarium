@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::db::publication::HoldingKind;
+use serde::Deserialize;
+
+use crate::db::publication::{HoldingKind, Publication};
 use crate::identifier;
 
 /// A publication's editable fields as typed, before validation.
@@ -20,6 +22,13 @@ pub struct HoldingRow {
     pub kind: HoldingKind,
     /// Freeform for physical, a file path for digital; empty means none
     pub location: String,
+}
+
+impl HoldingRow {
+    /// The hidden id field's value, empty for a copy being added.
+    pub fn id_value(&self) -> String {
+        self.id.map(|id| id.to_string()).unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -181,6 +190,148 @@ pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<Validated
         })
         .collect();
     holdings
+}
+
+/// A submitted form, as the browser sends it: one repeated key per column, so every row list
+/// arrives as parallel arrays. The import review page and the publication edit page post the same
+/// shape.
+#[derive(Deserialize)]
+pub struct Submission {
+    title: String,
+    publisher: String,
+    year: String,
+    // `default` covers a submission with no rows at all
+    #[serde(default)]
+    holding_id: Vec<String>,
+    #[serde(default)]
+    holding_kind: Vec<HoldingKind>,
+    #[serde(default)]
+    holding_location: Vec<String>,
+    #[serde(default)]
+    holding_file: Vec<String>,
+    #[serde(default)]
+    identifier_kind: Vec<String>,
+    #[serde(default)]
+    identifier_value: Vec<String>,
+    #[serde(default)]
+    contributor_name: Vec<String>,
+    #[serde(default)]
+    contributor_role: Vec<String>,
+}
+
+impl From<Submission> for PublicationForm {
+    fn from(submission: Submission) -> Self {
+        let identifiers = submission
+            .identifier_kind
+            .into_iter()
+            .zip(submission.identifier_value)
+            .map(|(kind, value)| IdentifierRow {
+                kind: kind.trim().to_string(),
+                value: value.trim().to_string(),
+            })
+            .collect();
+        let contributors = submission
+            .contributor_name
+            .into_iter()
+            .zip(submission.contributor_role)
+            .map(|(name, role)| ContributorRow {
+                name: name.trim().to_string(),
+                role: role.trim().to_string(),
+            })
+            .collect();
+        PublicationForm {
+            title: submission.title.trim().to_string(),
+            publisher: submission.publisher.trim().to_string(),
+            year: submission.year.trim().to_string(),
+            holdings: holding_rows(
+                submission.holding_id,
+                submission.holding_kind,
+                submission.holding_location,
+                submission.holding_file,
+            ),
+            identifiers,
+            contributors,
+        }
+    }
+}
+
+/// A copy row's kind arrives as a constant "physical" followed by a "digital" when the row's
+/// toggle is checked: the toggle is a checkbox, which submits nothing while unchecked, so the
+/// constant is what keeps the rows countable.
+fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
+    let mut kinds = Vec::new();
+    for token in tokens {
+        match (token, kinds.last_mut()) {
+            (HoldingKind::Digital, Some(last)) => *last = HoldingKind::Digital,
+            (token, _) => kinds.push(token),
+        }
+    }
+    kinds
+}
+
+/// Copy rows from a submission's parallel keys. Every row submits a location and a file, and the
+/// kind picks which one counts.
+///
+/// The ids are read by position rather than zipped: a missing or short id list leaves the rows it
+/// does not reach naming no stored copy, which is what a page with nothing stored yet submits.
+pub fn holding_rows(
+    id: Vec<String>,
+    kind: Vec<HoldingKind>,
+    location: Vec<String>,
+    file: Vec<String>,
+) -> Vec<HoldingRow> {
+    holding_kinds(kind)
+        .into_iter()
+        .zip(location)
+        .zip(file)
+        .enumerate()
+        .map(|(i, ((kind, location), file))| HoldingRow {
+            id: id.get(i).and_then(|id| id.trim().parse().ok()),
+            kind,
+            location: match kind {
+                HoldingKind::Physical => location,
+                HoldingKind::Digital => file,
+            }
+            .trim()
+            .to_string(),
+        })
+        .collect()
+}
+
+/// The form a stored publication opens in: its values as typed, every copy naming itself.
+impl From<&Publication> for PublicationForm {
+    fn from(publication: &Publication) -> Self {
+        PublicationForm {
+            title: publication.title.clone(),
+            publisher: publication.publisher.clone().unwrap_or_default(),
+            year: publication.year.map(|y| y.to_string()).unwrap_or_default(),
+            holdings: publication
+                .holdings
+                .iter()
+                .map(|h| HoldingRow {
+                    id: Some(h.id),
+                    kind: h.kind,
+                    location: h.location.clone().unwrap_or_default(),
+                })
+                .collect(),
+            identifiers: publication
+                .identifiers
+                .iter()
+                .map(|i| IdentifierRow {
+                    kind: i.kind.as_str().to_string(),
+                    value: i.value.clone(),
+                })
+                .collect(),
+            contributors: publication
+                .contributors
+                .iter()
+                .map(|c| ContributorRow {
+                    name: c.name.clone(),
+                    role: c.role.clone(),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// "Erik Satie" sorts as "Satie, Erik". Compound surnames ("Ralph Vaughan Williams") come out
