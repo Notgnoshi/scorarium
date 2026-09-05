@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use serde::Deserialize;
-use sqlx::SqlitePool;
+use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::Contributor;
 use crate::identifier::{self, Normalized};
@@ -255,7 +255,10 @@ async fn load(
     Ok(publications)
 }
 
-pub async fn create_publication(pool: &SqlitePool, new: &NewPublication<'_>) -> sqlx::Result<i64> {
+pub async fn create_publication(
+    executor: impl SqliteExecutor<'_>,
+    new: &NewPublication<'_>,
+) -> sqlx::Result<i64> {
     let result = sqlx::query!(
         "INSERT INTO publication (library_id, title, publisher, year) VALUES (?, ?, ?, ?)",
         new.library_id,
@@ -263,13 +266,13 @@ pub async fn create_publication(pool: &SqlitePool, new: &NewPublication<'_>) -> 
         new.publisher,
         new.year,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 pub async fn create_holding(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     publication_id: i64,
     kind: HoldingKind,
     location: Option<&str>,
@@ -281,13 +284,13 @@ pub async fn create_holding(
         kind,
         location,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 pub async fn create_identifier(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     publication_id: i64,
     kind: identifier::Kind,
     value: &Normalized,
@@ -300,7 +303,7 @@ pub async fn create_identifier(
         kind,
         value,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
