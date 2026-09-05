@@ -4,10 +4,9 @@ use std::sync::Mutex;
 use sqlx::SqlitePool;
 
 use crate::db::pending_import::{self, PendingImport};
-use crate::db::person;
 use crate::db::publication::{self, NewPublication};
 use crate::identifier;
-use crate::publication_form::{HoldingRow, IdentifierRow, PublicationForm, Validated, sort_name};
+use crate::publication_form::{HoldingRow, IdentifierRow, PublicationForm, Validated};
 
 impl PublicationForm {
     /// The form a pending import starts from before anything is saved: the holding as entered,
@@ -23,6 +22,7 @@ impl PublicationForm {
                 .holdings
                 .iter()
                 .map(|h| HoldingRow {
+                    id: None,
                     kind: h.kind,
                     location: h.location.clone().unwrap_or_default(),
                 })
@@ -93,24 +93,7 @@ pub async fn accept(
         },
     )
     .await?;
-    for (kind, value) in &validated.identifiers {
-        publication::create_identifier(&mut *tx, publication_id, *kind, value).await?;
-    }
-    for (kind, location) in &validated.holdings {
-        publication::create_holding(&mut *tx, publication_id, *kind, location.as_deref()).await?;
-    }
-    for row in &validated.contributors {
-        // A person created by an earlier row is found by a later one: same transaction
-        let person_id = match person::find_by_name(&mut *tx, library_id, &row.name).await? {
-            Some(id) => id,
-            None => {
-                person::create_person(&mut *tx, library_id, &row.name, &sort_name(&row.name))
-                    .await?
-            }
-        };
-        person::create_contributor(&mut *tx, library_id, publication_id, person_id, &row.role)
-            .await?;
-    }
+    publication::write_children(&mut tx, library_id, publication_id, validated).await?;
     if !pending_import::delete(&mut *tx, library_id, pending.id).await? {
         tx.rollback().await?;
         return Ok(None);
@@ -125,7 +108,7 @@ mod tests {
     use crate::db;
     use crate::db::pending_import::{NewPendingImport, PendingHolding};
     use crate::db::publication::HoldingKind;
-    use crate::publication_form::ContributorRow;
+    use crate::publication_form::{ContributorRow, ValidatedHolding};
 
     #[sqlx::test]
     async fn accept_creates_publication_once(pool: SqlitePool) {
@@ -157,8 +140,16 @@ mod tests {
             year: Some(1888),
             // The form's copies, not the pending row's: the review page may have changed them
             holdings: vec![
-                (HoldingKind::Digital, Some("satie.pdf".into())),
-                (HoldingKind::Physical, None),
+                ValidatedHolding {
+                    id: None,
+                    kind: HoldingKind::Digital,
+                    location: Some("satie.pdf".into()),
+                },
+                ValidatedHolding {
+                    id: None,
+                    kind: HoldingKind::Physical,
+                    location: None,
+                },
             ],
             identifiers: vec![(identifier::Kind::Isbn, isbn)],
             contributors: vec![

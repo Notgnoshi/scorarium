@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM holding WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "e2ffc39d2bea651d70feb5656bdb0e6fdf04eaedf6d56ccb46ad4b70980fd3dd"
+}

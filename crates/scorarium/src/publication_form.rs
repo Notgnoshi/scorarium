@@ -16,6 +16,7 @@ pub struct PublicationForm {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HoldingRow {
+    pub id: Option<i64>,
     pub kind: HoldingKind,
     /// Freeform for physical, a file path for digital; empty means none
     pub location: String,
@@ -40,9 +41,16 @@ pub struct Validated {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
-    pub holdings: Vec<(HoldingKind, Option<String>)>,
+    pub holdings: Vec<ValidatedHolding>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ValidatedHolding {
+    pub id: Option<i64>,
+    pub kind: HoldingKind,
+    pub location: Option<String>,
 }
 
 /// Problems with a form, one message per field. Empty means it can be submitted.
@@ -153,10 +161,7 @@ impl PublicationForm {
 }
 
 /// Check copy rows, filling the holding slots of `errors`
-pub fn parse_holdings(
-    rows: &[HoldingRow],
-    errors: &mut Errors,
-) -> Vec<(HoldingKind, Option<String>)> {
+pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<ValidatedHolding> {
     if rows.is_empty() {
         errors.no_holdings = Some("A publication needs at least one copy.".into());
     }
@@ -167,10 +172,11 @@ pub fn parse_holdings(
             if row.kind == HoldingKind::Digital && row.location.is_empty() {
                 return Some("Choose a file for a digital copy.".to_string());
             }
-            holdings.push((
-                row.kind,
-                Some(row.location.clone()).filter(|l| !l.is_empty()),
-            ));
+            holdings.push(ValidatedHolding {
+                id: row.id,
+                kind: row.kind,
+                location: Some(row.location.clone()).filter(|l| !l.is_empty()),
+            });
             None
         })
         .collect();
@@ -199,6 +205,7 @@ mod tests {
             publisher: String::new(),
             year: "abc".into(),
             holdings: vec![HoldingRow {
+                id: None,
                 kind: HoldingKind::Digital,
                 location: String::new(),
             }],
@@ -282,6 +289,7 @@ mod tests {
             publisher: String::new(),
             year: String::new(),
             holdings: vec![HoldingRow {
+                id: None,
                 kind: HoldingKind::Physical,
                 location: String::new(),
             }],
@@ -298,7 +306,14 @@ mod tests {
         assert_eq!(validated.title, "Three gymnopedies");
         assert_eq!(validated.publisher, None);
         assert_eq!(validated.year, None);
-        assert_eq!(validated.holdings, [(HoldingKind::Physical, None)]);
+        assert_eq!(
+            validated.holdings,
+            [ValidatedHolding {
+                id: None,
+                kind: HoldingKind::Physical,
+                location: None,
+            }]
+        );
         assert_eq!(
             validated.identifiers,
             [(

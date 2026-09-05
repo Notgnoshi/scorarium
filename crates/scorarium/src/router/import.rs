@@ -101,6 +101,7 @@ pub async fn entry(
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
     let rows = vec![HoldingRow {
+        id: None,
         kind: HoldingKind::Physical,
         location: String::new(),
     }];
@@ -184,7 +185,10 @@ pub async fn start(
     }
     let holdings: Vec<PendingHolding> = holdings
         .into_iter()
-        .map(|(kind, location)| PendingHolding { kind, location })
+        .map(|h| PendingHolding {
+            kind: h.kind,
+            location: h.location,
+        })
         .collect();
     let pending_id = pending_import::create(
         &state.pool,
@@ -351,6 +355,7 @@ fn holding_rows(
         .zip(location)
         .zip(file)
         .map(|((kind, location), file)| HoldingRow {
+            id: None,
             kind,
             location: match kind {
                 HoldingKind::Physical => location,
