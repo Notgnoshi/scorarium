@@ -77,12 +77,12 @@ and an import button leading to the import flow.
 ### Import: /library/{id}/import and /library/{id}/import/{pending_id}
 
 Both pages require login. The entry page takes an identifier or a title, plus a physical/digital
-toggle with a conditional file upload. Local matches are offered before external ones, so the page
-suggests adding a holding to an existing publication instead of importing a duplicate; picked
-candidates become pending imports that enrich in the background. The review page for a pending
-import shares its implementation with the publication page's edit mode; accepting creates the
-publication, its works, and its first holding in one transaction. The import document designs the
-full flow.
+toggle, a location or file field, and an import-more checkbox for batch entry. Local matches are
+offered before external ones, so the page suggests adding a holding to an existing publication
+instead of importing a duplicate; picked candidates become pending imports that enrich in the
+background. The review page for a pending import shares its implementation with the publication
+page's edit mode; accepting creates the publication, its works, and its first holding in one
+transaction. The import document designs the full flow.
 
 ### Review queue: /review
 

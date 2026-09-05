@@ -78,7 +78,7 @@ impl FromStr for HoldingKind {
     }
 }
 
-fn decode_error(message: String) -> sqlx::Error {
+pub fn decode_error(message: String) -> sqlx::Error {
     sqlx::Error::Decode(message.into())
 }
 

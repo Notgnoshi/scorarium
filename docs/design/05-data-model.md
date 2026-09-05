@@ -312,7 +312,8 @@ design document describes the flow.
 * `library_id`: references library
 * `query`: text, the identifier or title as typed; empty for manual entry
 * `kind`: text, CHECK one of `physical`, `digital`; becomes the first holding on accept
-* `file`: text, nullable; uploaded file path relative to `assets/`, required for digital
+* `location`: text, nullable; becomes the first holding's `location`: freeform for physical, a path
+  relative to `assets/` for digital, where the application requires it
 * `created_at`: timestamp
 
 ## Access control
