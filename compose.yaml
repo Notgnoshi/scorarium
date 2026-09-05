@@ -4,12 +4,20 @@ networks:
         external: true
 
 services:
-    demo:
+    scorarium:
         image: ghcr.io/notgnoshi/scorarium:latest
         restart: unless-stopped
         networks:
             - nginx_proxy
-        command: ["--demo"]
+        volumes:
+            # The scorarium image is a scratch image, and doesn't have a shell to create and chown
+            # this directory itself, so the user must create it themselves.
+            - type: bind
+              source: ./data
+              target: /data
+              bind:
+                  create_host_path: false
+        command: ["--demo"]  # Remove to switch to a persistent production deployment
         environment:
             - VIRTUAL_HOST=library.agill.xyz,library.agill.net
             - LETSENCRYPT_HOST=library.agill.xyz,library.agill.net
