@@ -12,8 +12,8 @@ use crate::auth::PasswordCheck;
 use crate::{AppState, auth};
 
 /// GET /password
-pub async fn password_form(_session: Session) -> Result<Response, AppError> {
-    Ok(no_store(password_page(None)?))
+pub async fn password_form(_session: Session, base: BaseContext) -> Result<Response, AppError> {
+    Ok(no_store(password_page(base, None)?))
 }
 
 #[derive(Deserialize)]
@@ -27,22 +27,28 @@ pub struct PasswordForm {
 pub async fn change_password(
     Session(token): Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Form(form): Form<PasswordForm>,
 ) -> Result<Response, AppError> {
     if form.new != form.confirm {
-        return Ok(no_store(password_page(Some(
-            "The new passwords did not match.",
-        ))?));
+        return Ok(no_store(password_page(
+            base,
+            Some("The new passwords did not match."),
+        )?));
     }
     if form.new.is_empty() {
-        return Ok(no_store(password_page(Some(
-            "The new password must not be empty.",
-        ))?));
+        return Ok(no_store(password_page(
+            base,
+            Some("The new password must not be empty."),
+        )?));
     }
     match auth::verify_password(&state.pool, &form.current).await? {
         PasswordCheck::Correct => {}
         PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
-            return Ok(no_store(password_page(Some("Wrong current password."))?));
+            return Ok(no_store(password_page(
+                base,
+                Some("Wrong current password."),
+            )?));
         }
     }
     auth::change_password(&state.pool, &form.new).await?;
@@ -64,9 +70,9 @@ struct PasswordPage {
     error: Option<&'static str>,
 }
 
-fn password_page(error: Option<&'static str>) -> askama::Result<String> {
+fn password_page(base: BaseContext, error: Option<&'static str>) -> askama::Result<String> {
     PasswordPage {
-        base: BaseContext::new("Change password", "/password", true, vec![Crumb::home()]),
+        base: base.page("Change password", vec![Crumb::home()]),
         error,
     }
     .render()

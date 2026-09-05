@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sqlx::SqlitePool;
+use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::Contributor;
 
@@ -134,7 +134,10 @@ async fn load(
     Ok(works)
 }
 
-pub async fn create_work(pool: &SqlitePool, new: &NewWork<'_>) -> sqlx::Result<i64> {
+pub async fn create_work(
+    executor: impl SqliteExecutor<'_>,
+    new: &NewWork<'_>,
+) -> sqlx::Result<i64> {
     let result = sqlx::query!(
         "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation)
          VALUES (?, ?, ?, ?, ?)",
@@ -144,13 +147,13 @@ pub async fn create_work(pool: &SqlitePool, new: &NewWork<'_>) -> sqlx::Result<i
         new.time_signature,
         new.instrumentation,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 pub async fn create_catalog_number(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     work_id: i64,
     value: &str,
 ) -> sqlx::Result<i64> {
@@ -159,14 +162,14 @@ pub async fn create_catalog_number(
         work_id,
         value,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 /// Record that a publication contains a work. Fails unless both belong to `library_id`.
 pub async fn add_to_publication(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     library_id: i64,
     publication_id: i64,
     work_id: i64,
@@ -177,14 +180,14 @@ pub async fn add_to_publication(
         publication_id,
         work_id,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 /// Link a person to a work. Fails unless both belong to `library_id`.
 pub async fn create_contributor(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     library_id: i64,
     work_id: i64,
     person_id: i64,
@@ -197,7 +200,7 @@ pub async fn create_contributor(
         person_id,
         role,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }

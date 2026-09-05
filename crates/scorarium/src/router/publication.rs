@@ -5,7 +5,6 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
-use axum_extra::extract::CookieJar;
 
 use super::{AppError, BaseContext, Crumb};
 use crate::{AppState, db};
@@ -26,7 +25,7 @@ struct PublicationPage {
 /// GET /library/{library_id}/publication/{id}
 pub async fn publication(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, library_id).await? else {
@@ -37,10 +36,8 @@ pub async fn publication(
     };
     let works = db::work::list_in_publication(&state.pool, library_id, id).await?;
     let page = PublicationPage {
-        base: BaseContext::new(
+        base: base.page(
             publication.title.clone(),
-            format!("/library/{library_id}/publication/{id}"),
-            super::logged_in(&state, &jar),
             vec![Crumb::home(), Crumb::library(&library)],
         ),
         show_catalog_numbers: works.iter().any(|w| !w.catalog_numbers.is_empty()),

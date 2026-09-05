@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.library_id, l.name AS library_name, p.query, p.kind, p.location, p.created_at\n         FROM pending_import p JOIN library l ON l.id = p.library_id\n         WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 IS NULL OR p.id = ?2)\n         ORDER BY p.created_at, p.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "library_id"
+          }
+        }
+      },
+      {
+        "name": "library_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "query",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "query"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_import",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "cd77d8d3d2bbd66d659a6b3253f3905f1d4fd588173540010ecd325c99fd58ed"
+}

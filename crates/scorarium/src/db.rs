@@ -1,3 +1,4 @@
+pub mod pending_import;
 pub mod person;
 pub mod publication;
 pub mod work;

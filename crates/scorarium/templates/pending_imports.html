@@ -1,0 +1,28 @@
+{% if pending.is_empty() %}
+    <p class="text-body-secondary">Nothing pending.</p>
+{% else %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    {% if show_library %}<th>Library</th>{% endif %}
+                    <th>Kind</th>
+                    <th>Location</th>
+                    <th>Started</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in pending %}
+                    <tr>
+                        <td><a href="/library/{{ row.import.library_id }}/import/{{ row.import.id }}">{{ row.title }}</a></td>
+                        {% if show_library %}<td>{{ row.import.library_name }}</td>{% endif %}
+                        <td><span class="badge text-bg-secondary">{{ row.kind.as_str() }}</span></td>
+                        <td>{{ row.location }}</td>
+                        <td>{{ row.age }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}

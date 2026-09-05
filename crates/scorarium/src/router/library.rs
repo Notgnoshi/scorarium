@@ -5,11 +5,11 @@ use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum_extra::extract::CookieJar;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use super::{AppError, BaseContext, Crumb, Session, index};
+use crate::db::pending_import;
 use crate::{AppState, db};
 
 #[derive(Template)]
@@ -27,16 +27,16 @@ struct LibraryPage {
 /// GET /library/{id}
 pub async fn library(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    render(&state.pool, id, super::logged_in(&state, &jar), None).await
+    render(&state.pool, id, base, None).await
 }
 
 async fn render(
     pool: &SqlitePool,
     id: i64,
-    logged_in: bool,
+    base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(pool, id).await? else {
@@ -44,12 +44,7 @@ async fn render(
     };
     let roles = db::person::list_roles(pool, id).await?;
     let page = LibraryPage {
-        base: BaseContext::new(
-            library.name.clone(),
-            format!("/library/{id}"),
-            logged_in,
-            vec![Crumb::home()],
-        ),
+        base: base.page(library.name.clone(), vec![Crumb::home()]),
         publications: db::publication::list(pool, id).await?,
         has_composers: roles.iter().any(|r| r == "composer"),
         has_authors: roles.iter().any(|r| r == "author"),
@@ -70,11 +65,12 @@ const EMPTY_NAME: &str = "The library name must not be empty.";
 pub async fn create(
     _session: Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Form(form): Form<NameForm>,
 ) -> Result<Response, AppError> {
     let name = form.name.trim();
     if name.is_empty() {
-        return Ok(index::render(&state.pool, true, Some(EMPTY_NAME))
+        return Ok(index::render(&state.pool, base, Some(EMPTY_NAME))
             .await?
             .into_response());
     }
@@ -86,12 +82,13 @@ pub async fn create(
 pub async fn rename(
     _session: Session,
     State(state): State<Arc<AppState>>,
+    base: BaseContext,
     Path(id): Path<i64>,
     Form(form): Form<NameForm>,
 ) -> Result<Response, AppError> {
     let name = form.name.trim();
     if name.is_empty() {
-        return render(&state.pool, id, true, Some(EMPTY_NAME)).await;
+        return render(&state.pool, id, base, Some(EMPTY_NAME)).await;
     }
     if !db::rename_library(&state.pool, id, name).await? {
         return Ok(StatusCode::NOT_FOUND.into_response());
@@ -105,8 +102,13 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    // The library's pending imports cascade away with it, but their drafts live in memory
+    let pending = pending_import::list(&state.pool, Some(id)).await?;
     if !db::delete_library(&state.pool, id).await? {
         return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    for import in pending {
+        state.drafts.remove(import.id);
     }
     Ok(Redirect::to("/").into_response())
 }

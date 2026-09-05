@@ -1,4 +1,4 @@
-use sqlx::SqlitePool;
+use sqlx::{SqliteExecutor, SqlitePool};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Person {
@@ -14,6 +14,21 @@ pub struct Contributor {
     pub person_id: i64,
     pub name: String,
     pub role: String,
+}
+
+/// The person with exactly this name in the library, if any.
+pub async fn find_by_name(
+    executor: impl SqliteExecutor<'_>,
+    library_id: i64,
+    name: &str,
+) -> sqlx::Result<Option<i64>> {
+    sqlx::query_scalar!(
+        "SELECT id FROM person WHERE library_id = ? AND name = ?",
+        library_id,
+        name
+    )
+    .fetch_optional(executor)
+    .await
 }
 
 /// One person, or None when they do not exist or belong to another library.
@@ -62,7 +77,7 @@ pub async fn list_roles(pool: &SqlitePool, library_id: i64) -> sqlx::Result<Vec<
 }
 
 pub async fn create_person(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     library_id: i64,
     name: &str,
     sort_name: &str,
@@ -73,14 +88,14 @@ pub async fn create_person(
         name,
         sort_name,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }
 
 /// Link a person to a publication. Fails unless both belong to `library_id`.
 pub async fn create_contributor(
-    pool: &SqlitePool,
+    executor: impl SqliteExecutor<'_>,
     library_id: i64,
     publication_id: i64,
     person_id: i64,
@@ -94,7 +109,7 @@ pub async fn create_contributor(
         person_id,
         role,
     )
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(result.last_insert_rowid())
 }

@@ -60,10 +60,11 @@ Every path through enrichment (success, partial results, total failure, timeout,
 ## Entry page
 
 The entry page at `/library/{id}/import` requires login and is reached from the import button on the
-library page. It has three elements: a text box, a physical/digital toggle defaulting to physical,
-and a file upload that appears when digital is chosen, because a digital publication's file is at
-hand at import time the same way a physical volume is. The file is written to `assets/` at upload
-time; the toggle and file become the publication's first holding on accept.
+library page. Its elements are a physical/digital toggle defaulting to physical, a location field (a
+shelf or place for physical; a file chooser for digital, whose file the application stores under
+`assets/` and names itself), an "Import more" checkbox, and a text box for a title or identifier. A
+digital publication's file is at hand at import time the same way a physical volume is. The toggle
+and location seed the publication's first holding, which the review page can still change.
 
 The text box takes an identifier or a title, with different behavior per kind:
 
@@ -84,12 +85,15 @@ review. An import-as-new escape remains, because publishers reuse ISBNs and volu
 sometimes share one. The title typeahead behaves the same way: library matches appear above the
 external candidates, visually distinct, and picking one leads to the same offer.
 
-Picking an external candidate creates the pending import and starts enrichment in the background.
-The user stays on the entry page, cleared and ready for the next input, with a note that the import
-was queued; the expected usage is importing several publications back to back and then working
-through the review queue. A manual-entry escape hatch creates a pending import with no candidate and
-goes straight to its review page, since there is nothing to wait for. This is also the path when
-every lookup comes up empty.
+Picking an external candidate creates the pending import and starts enrichment in the background. A
+manual-entry escape hatch creates a pending import with no candidate, since there is nothing to wait
+for. This is also the path when every lookup comes up empty. Either way, "Import more" decides where
+the user lands: when checked, the user stays on the entry page, cleared and ready for the next
+input, with the box still checked; when unchecked, the new import's review page opens. The expected
+batch usage is importing several publications back to back and then working through the review
+queue, so the entry page lists its own library's pending imports beneath the form, showing what was
+just queued. Whatever was typed seeds the draft: a valid ISBN or ISMN as its first identifier row,
+anything else as its title. Lookup, once it exists, builds on that seed rather than replacing it.
 
 ## Lookup and enrichment
 
@@ -147,7 +151,8 @@ amount of outstanding work enrichment, so the indicator communicates activity an
 rather than an exact fraction.
 
 The header link shows a count of the imports in `needs_review`. Imports still in `importing` appear
-in the list but are not counted; they become actionable when enrichment settles.
+in the list but are not counted; they become actionable when enrichment settles. The entry page
+shows the same list filtered to its own library.
 
 ## Review page
 
@@ -181,18 +186,23 @@ to create a newly-linked entity; anything deeper waits for the entity's own page
 Concretely, a contributor row is a name, a role, and a use-existing-or-create-new choice. A proposed
 work row is a title, composer, and catalog number, editable inline; each row shows its probable
 existing match and can be individually accepted, rejected, or replaced, and manual rows can be
-added. The first holding is the physical/digital choice, the uploaded file, and an optional
-location. Keys, time signatures, instrumentation, aliases, and other entity depths are not edited
-here: a proposed work row carries its enrichment as payload, and accepting the row creates the work
-with that depth, but editing the depth happens on the work and person pages, after accept. With live
-progression, rows can gain enrichment while being reviewed; late arrivals land as row updates to
-inspect before accepting.
+added. The first holding's physical/digital choice and location are seeded from the entry page and
+edited here like any other field. Keys, time signatures, instrumentation, aliases, and other entity
+depths are not edited here: a proposed work row carries its enrichment as payload, and accepting the
+row creates the work with that depth, but editing the depth happens on the work and person pages,
+after accept. With live progression, rows can gain enrichment while being reviewed; late arrivals
+land as row updates to inspect before accepting.
 
 A publication can be accepted with no works at all. Contents data is scarce, so an empty works
 section is a normal outcome, and works can be added later on the publication page, by hand or
 through on-demand enrichment (below). Accepting commits everything in one transaction and deletes
 the pending import. Discarding deletes the pending import; uploaded files remain, per the data
 model's archive rule.
+
+The page has four buttons. Save Draft stores the edits in application memory, Discard Edits restores
+the form to the stored draft, Delete Draft removes the pending import, and Submit Draft accepts.
+Validation runs on every view of a saved draft and on submit; save never refuses a half-filled
+draft, so the user can put a session down and pick it up with the errors still marked.
 
 ## Enriching existing entries
 
@@ -212,7 +222,7 @@ accepted match seed the next source's lookup.
 ## Restarts and durability
 
 The pending import row persists only what the user provided on the entry page: the library, the
-typed query, the physical/digital choice, the uploaded file's path, and a timestamp. Uploaded files
+typed query, the physical/digital choice, the holding's location, and a timestamp. Uploaded files
 are already durable on disk. Everything else (the resolved candidate, enrichment results and
 per-source progress, suggestions, and unaccepted review edits) is application memory.
 

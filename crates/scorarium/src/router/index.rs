@@ -3,7 +3,6 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::State;
 use axum::response::Html;
-use axum_extra::extract::CookieJar;
 use sqlx::SqlitePool;
 
 use super::{AppError, BaseContext};
@@ -19,18 +18,18 @@ struct IndexPage {
 
 pub async fn index(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    base: BaseContext,
 ) -> Result<Html<String>, AppError> {
-    render(&state.pool, super::logged_in(&state, &jar), None).await
+    render(&state.pool, base, None).await
 }
 
 pub(super) async fn render(
     pool: &SqlitePool,
-    logged_in: bool,
+    base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Html<String>, AppError> {
     let page = IndexPage {
-        base: BaseContext::new("Libraries", "/", logged_in, Vec::new()),
+        base: base.page("Libraries", Vec::new()),
         libraries: db::list_libraries(pool).await?,
         error,
     };

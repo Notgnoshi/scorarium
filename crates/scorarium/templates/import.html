@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Import</h1>
+    {% if let Some(error) = error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+    <style>
+        /* Show the location or file input that matches the selected kind */
+        form:has(#kind-physical:checked) .digital-only,
+        form:has(#kind-digital:checked) .physical-only {
+            display: none;
+        }
+    </style>
+    <div class="row">
+        <form class="col-md-6 col-lg-4"
+              method="post"
+              action="/library/{{ library.id }}/import">
+            <div class="mb-3">
+                <label class="form-label" for="query">Title or identifier</label>
+                <input class="form-control"
+                       id="query"
+                       name="query"
+                       value="{{ form.query }}"
+                       placeholder="978-0-486-23134-1 or Three gymnopedies"
+                       autofocus />
+                <div class="form-text">A title, ISBN, or ISMN identifier</div>
+            </div>
+            <div class="btn-group mb-3" role="group" aria-label="Kind of copy">
+                <input type="radio"
+                       class="btn-check"
+                       name="kind"
+                       id="kind-physical"
+                       value="physical"
+                       autocomplete="off"
+                       {% if form.kind.as_str() == "physical" %}checked{% endif %} />
+                <label class="btn btn-outline-primary" for="kind-physical">Physical</label>
+                <input type="radio"
+                       class="btn-check"
+                       name="kind"
+                       id="kind-digital"
+                       value="digital"
+                       autocomplete="off"
+                       {% if form.kind.as_str() == "digital" %}checked{% endif %} />
+                <label class="btn btn-outline-primary" for="kind-digital">Digital</label>
+            </div>
+            <div class="mb-3 physical-only">
+                <label class="form-label" for="location">Location</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
+                    <input class="form-control"
+                           id="location"
+                           name="location"
+                           value="{{ form.location }}"
+                           placeholder="Piano bench" />
+                </div>
+                <div class="form-text">Optional. Where this copy lives.</div>
+            </div>
+            <div class="mb-3 digital-only">
+                <label class="form-label" for="file">File</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-upload" aria-hidden="true"></i></span>
+                    {# TODO: switch the form to multipart and upload the file (#25). URL-encoded forms submit only the file's name, which is all the holding stores today. #}
+                    <input class="form-control" type="file" id="file" name="file" />
+                </div>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input"
+                       type="checkbox"
+                       id="more"
+                       name="more"
+                       {% if form.more.is_some() %}checked{% endif %} />
+                <label class="form-check-label" for="more">Import more</label>
+            </div>
+            <p>More metadata will be fetched in the background</p>
+            <button class="btn btn-primary">Start</button>
+        </form>
+    </div>
+    <h2>Pending imports</h2>
+    {% include "pending_imports.html" %}
+{% endblock %}
