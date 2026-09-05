@@ -1,4 +1,40 @@
 {% extends "base.html" %}
+{% macro identifier_row(kind, value, error) %}
+    <div class="input-group mb-2 has-validation">
+        <select class="form-select flex-grow-0 w-auto"
+                name="identifier_kind"
+                aria-label="Identifier kind">
+            <option value="isbn" {% if kind == "isbn" %}selected{% endif %}>ISBN</option>
+            <option value="ismn" {% if kind == "ismn" %}selected{% endif %}>ISMN</option>
+            <option value="publisher_number"
+                    {% if kind == "publisher_number" %}selected{% endif %}>Publisher number</option>
+            <option value="plate_number"
+                    {% if kind == "plate_number" %}selected{% endif %}>Plate number</option>
+        </select>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="identifier_value"
+               value="{{ value }}"
+               aria-label="Identifier" />
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro contributor_row(name, role, error) %}
+    {# The message names the field at fault, so both inputs share the outline #}
+    <div class="input-group mb-2 has-validation">
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_name"
+               value="{{ name }}"
+               placeholder="Name"
+               aria-label="Name" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_role"
+               value="{{ role }}"
+               list="roles"
+               placeholder="Role"
+               aria-label="Role" />
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
 {% block content %}
     <h1>{{ base.title }}</h1>
     <dl class="row">
@@ -38,6 +74,41 @@
                    value="{{ draft.year }}" />
             {% if let Some(error) = errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
         </div>
+        <fieldset class="mb-3" data-rows>
+            <legend class="fs-6">Identifiers</legend>
+            <div data-rows-list>
+                {% for (row, error) in identifier_rows %}
+                    {% call identifier_row(row.kind, row.value, error) %}
+                    {% endcall %}
+                {% endfor %}
+                {% call identifier_row("isbn", "", "") %}
+                {% endcall %}
+            </div>
+            <template>
+                {% call identifier_row("isbn", "", "") %}
+                {% endcall %}
+            </template>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-rows-add>Add identifier</button>
+        </fieldset>
+        <fieldset class="mb-3" data-rows>
+            <legend class="fs-6">Contributors</legend>
+            <div data-rows-list>
+                {% for (row, error) in contributor_rows %}
+                    {% call contributor_row(row.name, row.role, error) %}
+                    {% endcall %}
+                {% endfor %}
+                {% call contributor_row("", "", "") %}
+                {% endcall %}
+            </div>
+            <template>
+                {% call contributor_row("", "", "") %}
+                {% endcall %}
+            </template>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-rows-add>Add contributor</button>
+        </fieldset>
+        <datalist id="roles">
+            {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
+        </datalist>
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>
             <button type="reset" class="btn btn-outline-secondary">Discard edits</button>
@@ -72,4 +143,15 @@
             </form>
         </div>
     </div>
+    <script>
+        // Rows are repeated form keys, so a clone needs no renumbering; the one blank row rendered
+        // above is the fallback without script.
+        for (const section of document.querySelectorAll("[data-rows]")) {
+            const list = section.querySelector("[data-rows-list]");
+            const template = section.querySelector("template");
+            section.querySelector("[data-rows-add]").addEventListener("click", () => {
+                list.appendChild(template.content.cloneNode(true));
+            });
+        }
+    </script>
 {% endblock %}

@@ -16,7 +16,7 @@ scorarium-tests = { path = "crates/scorarium-tests" }
 argon2 = "0.6.0"
 askama = "0.16.1"
 axum = "0.8.9"
-axum-extra = { version = "0.12.6", features = ["cookie"] }
+axum-extra = { version = "0.12.6", features = ["cookie", "form"] }
 axum-test = "21.1.0"
 clap = { version = "4.6.6", features = ["derive", "env"] }
 color-eyre = "0.6.5"

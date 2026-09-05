@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -6,15 +7,19 @@ use axum::Form;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum_extra::extract::Form as MultiForm;
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::import::{Draft, Errors};
+use crate::import::{ContributorRow, Draft, Errors, IdentifierRow};
 use crate::{AppState, db};
 
 const UNTITLED: &str = "Untitled import";
+
+/// Suggested alongside the library's existing roles, so a new library still gets a datalist.
+const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
 pub struct PendingRow {
     pub import: PendingImport,
@@ -173,6 +178,18 @@ struct ReviewPage {
     age: String,
     draft: Draft,
     errors: Errors,
+    // Draft rows paired with their error, empty when there is none, so the row macro takes plain
+    // strings for both the saved rows and the blank template row.
+    identifier_rows: Vec<(IdentifierRow, String)>,
+    contributor_rows: Vec<(ContributorRow, String)>,
+    // Datalist suggestions for the role input
+    roles: Vec<String>,
+}
+
+/// The message for row `i`. A draft that parsed clean has no error slots at all, so the rows
+/// cannot simply be zipped with the errors.
+fn row_error(errors: &[Option<String>], i: usize) -> String {
+    errors.get(i).cloned().flatten().unwrap_or_default()
 }
 
 /// GET /library/{library_id}/import/{id}
@@ -201,6 +218,27 @@ pub async fn review(
     } else {
         &draft.title
     };
+    let identifier_rows = draft
+        .identifiers
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, row)| (row, row_error(&errors.identifiers, i)))
+        .collect();
+    let contributor_rows = draft
+        .contributors
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, row)| (row, row_error(&errors.contributors, i)))
+        .collect();
+    let roles = db::person::list_roles(&state.pool, library_id)
+        .await?
+        .into_iter()
+        .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let page = ReviewPage {
         base: base.page(
             title,
@@ -215,6 +253,9 @@ pub async fn review(
         import,
         draft,
         errors,
+        identifier_rows,
+        contributor_rows,
+        roles,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -224,14 +265,46 @@ pub struct ReviewForm {
     title: String,
     publisher: String,
     year: String,
+    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows
+    #[serde(default)]
+    identifier_kind: Vec<String>,
+    #[serde(default)]
+    identifier_value: Vec<String>,
+    #[serde(default)]
+    contributor_name: Vec<String>,
+    #[serde(default)]
+    contributor_role: Vec<String>,
 }
 
 impl From<ReviewForm> for Draft {
     fn from(form: ReviewForm) -> Self {
+        let identifiers = form
+            .identifier_kind
+            .into_iter()
+            .zip(form.identifier_value)
+            .map(|(kind, value)| IdentifierRow {
+                kind: kind.trim().to_string(),
+                value: value.trim().to_string(),
+            })
+            // Clearing a row is how it is removed
+            .filter(|row| !row.value.is_empty())
+            .collect();
+        let contributors = form
+            .contributor_name
+            .into_iter()
+            .zip(form.contributor_role)
+            .map(|(name, role)| ContributorRow {
+                name: name.trim().to_string(),
+                role: role.trim().to_string(),
+            })
+            .filter(|row| !row.name.is_empty() || !row.role.is_empty())
+            .collect();
         Draft {
             title: form.title.trim().to_string(),
             publisher: form.publisher.trim().to_string(),
             year: form.year.trim().to_string(),
+            identifiers,
+            contributors,
         }
     }
 }
@@ -241,7 +314,7 @@ pub async fn save(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    Form(form): Form<ReviewForm>,
+    MultiForm(form): MultiForm<ReviewForm>,
 ) -> Result<Response, AppError> {
     if pending_import::get(&state.pool, library_id, id)
         .await?

@@ -50,12 +50,22 @@ async fn manual_import_flow() {
     // A bad draft still saves, and the review page flags every field
     server
         .post(&format!("{review}/save"))
-        .form(&[("title", ""), ("publisher", ""), ("year", "abc")])
+        .form(&[
+            ("title", ""),
+            ("publisher", ""),
+            ("year", "abc"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", "not-an-isbn"),
+            ("contributor_name", "Erik Satie"),
+            ("contributor_role", ""),
+        ])
         .await;
     let response = server.get(&review).await;
     response.assert_text_contains("A title is required.");
     response.assert_text_contains("The year must be a number.");
     response.assert_text_contains("value=\"abc\"");
+    response.assert_text_contains("invalid ISBN");
+    response.assert_text_contains("A role is required.");
 
     // Save a draft; the review page and the lists pick up its title
     let response = server
@@ -64,6 +74,10 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", "0-486-23134-8"),
+            ("contributor_name", "Erik Satie"),
+            ("contributor_role", "composer"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -71,6 +85,8 @@ async fn manual_import_flow() {
     let response = server.get(&review).await;
     response.assert_text_contains("value=\"Three gymnopedies\"");
     response.assert_text_contains("value=\"1888\"");
+    response.assert_text_contains("value=\"0-486-23134-8\"");
+    response.assert_text_contains("value=\"Erik Satie\"");
     server
         .get(&entry)
         .await
