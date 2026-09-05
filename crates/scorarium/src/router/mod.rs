@@ -126,6 +126,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/library/{library_id}/import/{id}", get(import::review))
         .route("/library/{library_id}/import/{id}/save", post(import::save))
         .route(
+            "/library/{library_id}/import/{id}/submit",
+            post(import::submit),
+        )
+        .route(
             "/library/{library_id}/import/{id}/delete",
             post(import::delete),
         )

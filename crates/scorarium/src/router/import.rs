@@ -14,7 +14,7 @@ use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingImport};
 use crate::db::publication::HoldingKind;
 use crate::import::{ContributorRow, Draft, Errors, IdentifierRow};
-use crate::{AppState, db};
+use crate::{AppState, db, import};
 
 const UNTITLED: &str = "Untitled import";
 
@@ -364,6 +364,37 @@ pub async fn save(
     }
     state.drafts.save(id, form.into());
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+}
+
+/// POST /library/{library_id}/import/{id}/submit
+pub async fn submit(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    Path((library_id, id)): Path<(i64, i64)>,
+    MultiForm(form): MultiForm<ReviewForm>,
+) -> Result<Response, AppError> {
+    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let draft: Draft = form.into();
+    let validated = match draft.parse() {
+        Ok(validated) => validated,
+        // Keep the edits so the review page can show what is wrong with them
+        Err(_) => {
+            state.drafts.save(id, draft);
+            return Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response());
+        }
+    };
+    let publication_id = import::accept(&state.pool, &pending, &validated).await?;
+    // Accepted here or already gone from another tab: either way the draft is finished with
+    state.drafts.remove(id);
+    match publication_id {
+        Some(publication_id) => Ok(Redirect::to(&format!(
+            "/library/{library_id}/publication/{publication_id}"
+        ))
+        .into_response()),
+        None => Ok(StatusCode::NOT_FOUND.into_response()),
+    }
 }
 
 #[derive(Template)]

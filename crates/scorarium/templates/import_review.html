@@ -163,7 +163,8 @@
                     class="btn btn-outline-danger"
                     data-bs-toggle="modal"
                     data-bs-target="#delete-draft">Delete draft</button>
-            <button class="btn btn-success" disabled>Submit draft</button>
+            <button class="btn btn-success"
+                    formaction="/library/{{ library.id }}/import/{{ import.id }}/submit">Submit draft</button>
         </div>
     </form>
     <div class="modal fade"

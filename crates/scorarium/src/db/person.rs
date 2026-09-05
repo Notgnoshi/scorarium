@@ -16,6 +16,21 @@ pub struct Contributor {
     pub role: String,
 }
 
+/// The person with exactly this name in the library, if any.
+pub async fn find_by_name(
+    executor: impl SqliteExecutor<'_>,
+    library_id: i64,
+    name: &str,
+) -> sqlx::Result<Option<i64>> {
+    sqlx::query_scalar!(
+        "SELECT id FROM person WHERE library_id = ? AND name = ?",
+        library_id,
+        name
+    )
+    .fetch_optional(executor)
+    .await
+}
+
 /// One person, or None when they do not exist or belong to another library.
 pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Option<Person>> {
     sqlx::query_as!(

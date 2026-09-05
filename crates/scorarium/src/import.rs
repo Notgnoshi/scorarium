@@ -1,8 +1,11 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Mutex;
 
-use crate::db::pending_import::PendingImport;
-use crate::db::publication::HoldingKind;
+use sqlx::SqlitePool;
+
+use crate::db::pending_import::{self, PendingImport};
+use crate::db::person;
+use crate::db::publication::{self, HoldingKind, NewPublication};
 use crate::identifier;
 
 /// Unsaved review-page edits for one pending import.
@@ -203,9 +206,155 @@ impl Draft {
     }
 }
 
+/// "Erik Satie" sorts as "Satie, Erik". Compound surnames ("Ralph Vaughan Williams") come out
+/// wrong and get fixed on the person page; the heuristic only has to be right often enough that
+/// the user rarely types a name twice.
+pub fn sort_name(name: &str) -> String {
+    let mut parts: Vec<&str> = name.split_whitespace().collect();
+    match parts.pop() {
+        Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),
+        _ => name.to_string(),
+    }
+}
+
+/// Turn a reviewed import into catalog rows in one transaction and delete the pending import.
+///
+/// Returns None, having changed nothing, when the pending import no longer exists: a second
+/// submit from another tab must not create a second publication.
+pub async fn accept(
+    pool: &SqlitePool,
+    pending: &PendingImport,
+    validated: &Validated,
+) -> sqlx::Result<Option<i64>> {
+    let library_id = pending.library_id;
+    let mut tx = pool.begin().await?;
+    let publication_id = publication::create_publication(
+        &mut *tx,
+        &NewPublication {
+            library_id,
+            title: &validated.title,
+            publisher: validated.publisher.as_deref(),
+            year: validated.year,
+        },
+    )
+    .await?;
+    for (kind, value) in &validated.identifiers {
+        publication::create_identifier(&mut *tx, publication_id, *kind, value).await?;
+    }
+    publication::create_holding(
+        &mut *tx,
+        publication_id,
+        validated.kind,
+        validated.location.as_deref(),
+    )
+    .await?;
+    for row in &validated.contributors {
+        // A person created by an earlier row is found by a later one: same transaction
+        let person_id = match person::find_by_name(&mut *tx, library_id, &row.name).await? {
+            Some(id) => id,
+            None => {
+                person::create_person(&mut *tx, library_id, &row.name, &sort_name(&row.name))
+                    .await?
+            }
+        };
+        person::create_contributor(&mut *tx, library_id, publication_id, person_id, &row.role)
+            .await?;
+    }
+    if !pending_import::delete(&mut *tx, library_id, pending.id).await? {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+    tx.commit().await?;
+    Ok(Some(publication_id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
+    use crate::db::pending_import::NewPendingImport;
+
+    #[sqlx::test]
+    async fn accept_creates_publication_once(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let satie = db::person::create_person(&pool, library_id, "Erik Satie", "Satie, Erik")
+            .await
+            .unwrap();
+        let pending_id = db::pending_import::create(
+            &pool,
+            &NewPendingImport {
+                library_id,
+                query: "",
+                kind: HoldingKind::Physical,
+                location: None,
+            },
+        )
+        .await
+        .unwrap();
+        let pending = db::pending_import::get(&pool, library_id, pending_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let isbn = identifier::normalize(identifier::Kind::Isbn, "0-486-23134-8").unwrap();
+        let validated = Validated {
+            title: "Three gymnopedies".into(),
+            publisher: Some("Schirmer".into()),
+            year: Some(1888),
+            // The draft's holding, not the pending row's: the review page may have changed it
+            kind: HoldingKind::Digital,
+            location: Some("satie.pdf".into()),
+            identifiers: vec![(identifier::Kind::Isbn, isbn)],
+            contributors: vec![
+                // An existing person by exact name, and a new one
+                ContributorRow {
+                    name: "Erik Satie".into(),
+                    role: "composer".into(),
+                },
+                ContributorRow {
+                    name: "Claude Debussy".into(),
+                    role: "editor".into(),
+                },
+            ],
+        };
+
+        let publication_id = accept(&pool, &pending, &validated).await.unwrap().unwrap();
+
+        let publication = db::publication::get(&pool, library_id, publication_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(publication.title, "Three gymnopedies");
+        assert_eq!(publication.publisher.as_deref(), Some("Schirmer"));
+        assert_eq!(publication.year, Some(1888));
+        assert_eq!(publication.identifiers[0].value, "978-0-486-23134-1");
+        assert_eq!(publication.contributors[0].person_id, satie);
+        let debussy = db::person::get(&pool, library_id, publication.contributors[1].person_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(debussy.sort_name, "Debussy, Claude");
+        assert_eq!(publication.holdings[0].kind, HoldingKind::Digital);
+        assert_eq!(
+            publication.holdings[0].location.as_deref(),
+            Some("satie.pdf")
+        );
+        assert_eq!(
+            db::pending_import::get(&pool, library_id, pending_id)
+                .await
+                .unwrap(),
+            None
+        );
+
+        // A second submit of the same import (another tab) must not create a second publication
+        assert_eq!(accept(&pool, &pending, &validated).await.unwrap(), None);
+        assert_eq!(
+            db::publication::list(&pool, library_id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
 
     #[test]
     fn draft_errors() {

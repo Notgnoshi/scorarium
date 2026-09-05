@@ -142,4 +142,36 @@ async fn manual_import_flow() {
         .assert_text_contains("value=\"Gnossiennes\"");
     server.get(&entry).await.assert_text_contains("Gnossiennes");
     server.post(&format!("{seeded}/delete")).await;
+
+    // Submit: the publication exists, the import is gone, the header badge is gone
+    let response = server
+        .post(&format!("{review}/submit"))
+        .form(&[
+            ("title", "Three gymnopedies"),
+            ("publisher", "Schirmer"),
+            ("year", "1888"),
+            ("kind", "digital"),
+            ("file", "satie.pdf"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", "0-486-23134-8"),
+            ("contributor_name", "Erik Satie"),
+            ("contributor_role", "composer"),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let publication = response.header("location").to_str().unwrap().to_string();
+    assert!(
+        publication.starts_with(&format!("/library/{library}/publication/")),
+        "{publication}"
+    );
+    let response = server.get(&publication).await;
+    response.assert_status_ok();
+    response.assert_text_contains("978-0-486-23134-1");
+    response.assert_text_contains("Erik Satie");
+    response.assert_text_contains("satie.pdf");
+    server
+        .get(&review)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    assert!(!server.get("/").await.text().contains("rounded-pill"));
 }
