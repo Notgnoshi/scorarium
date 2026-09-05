@@ -1,49 +1,9 @@
 {% extends "base.html" %}
-{% macro identifier_row(kind, value, error) %}
-    <div class="input-group mb-2 has-validation">
-        <select class="form-select flex-grow-0 w-auto"
-                name="identifier_kind"
-                aria-label="Identifier kind">
-            <option value="isbn" {% if kind == "isbn" %}selected{% endif %}>ISBN</option>
-            <option value="ismn" {% if kind == "ismn" %}selected{% endif %}>ISMN</option>
-            <option value="publisher_number"
-                    {% if kind == "publisher_number" %}selected{% endif %}>Publisher number</option>
-            <option value="plate_number"
-                    {% if kind == "plate_number" %}selected{% endif %}>Plate number</option>
-        </select>
-        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
-               name="identifier_value"
-               value="{{ value }}"
-               aria-label="Identifier" />
-        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-    </div>
-{% endmacro %}
-{% macro contributor_row(name, role, error) %}
-    {# The message names the field at fault, so both inputs share the outline #}
-    <div class="input-group mb-2 has-validation">
-        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
-               name="contributor_name"
-               value="{{ name }}"
-               placeholder="Name"
-               aria-label="Name" />
-        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
-               name="contributor_role"
-               value="{{ role }}"
-               list="roles"
-               placeholder="Role"
-               aria-label="Role" />
-        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-    </div>
-{% endmacro %}
+{% import "rows.html" as rows %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    <style>
-        /* Show the location or file input that matches the selected kind */
-        form:has(#kind-physical:checked) .digital-only,
-        form:has(#kind-digital:checked) .physical-only {
-            display: none;
-        }
-    </style>
+    {% call rows::style() %}
+    {% endcall %}
     <dl class="row">
         <dt class="col-sm-3">Started</dt>
         <dd class="col-sm-9">
@@ -76,89 +36,56 @@
                    value="{{ draft.year }}" />
             {% if let Some(error) = errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
         </div>
-        <fieldset class="mb-3" data-rows>
-            <legend class="fs-6">Identifiers</legend>
+        <fieldset class="border rounded p-3 mb-3" data-rows>
+            <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
             <div data-rows-list>
                 {% for (row, error) in identifier_rows %}
-                    {% call identifier_row(row.kind, row.value, error) %}
+                    {% call rows::identifier_row(row.kind, row.value, error) %}
                     {% endcall %}
                 {% endfor %}
-                {% call identifier_row("isbn", "", "") %}
-                {% endcall %}
             </div>
             <template>
-                {% call identifier_row("isbn", "", "") %}
+                {% call rows::identifier_row("isbn", "", "") %}
                 {% endcall %}
             </template>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-rows-add>Add identifier</button>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-rows-add
+                    aria-label="Add identifier">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
         </fieldset>
-        <fieldset class="mb-3" data-rows>
-            <legend class="fs-6">Contributors</legend>
+        <fieldset class="border rounded p-3 mb-3" data-rows>
+            <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
             <div data-rows-list>
                 {% for (row, error) in contributor_rows %}
-                    {% call contributor_row(row.name, row.role, error) %}
+                    {% call rows::contributor_row(row.name, row.role, error) %}
                     {% endcall %}
                 {% endfor %}
-                {% call contributor_row("", "", "") %}
-                {% endcall %}
             </div>
             <template>
-                {% call contributor_row("", "", "") %}
+                {% call rows::contributor_row("", "", "") %}
                 {% endcall %}
             </template>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-rows-add>Add contributor</button>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-rows-add
+                    aria-label="Add contributor">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
         </fieldset>
-        <fieldset class="mb-3">
-            <legend class="fs-6">Copy</legend>
-            <div class="btn-group mb-3" role="group" aria-label="Kind of copy">
-                <input type="radio"
-                       class="btn-check"
-                       name="kind"
-                       id="kind-physical"
-                       value="physical"
-                       autocomplete="off"
-                       {% if draft.kind.as_str() == "physical" %}checked{% endif %} />
-                <label class="btn btn-outline-primary" for="kind-physical">Physical</label>
-                <input type="radio"
-                       class="btn-check"
-                       name="kind"
-                       id="kind-digital"
-                       value="digital"
-                       autocomplete="off"
-                       {% if draft.kind.as_str() == "digital" %}checked{% endif %} />
-                <label class="btn btn-outline-primary" for="kind-digital">Digital</label>
-            </div>
-            <div class="mb-3 physical-only">
-                <label class="form-label" for="location">Location</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
-                    <input class="form-control"
-                           id="location"
-                           name="location"
-                           placeholder="Piano bench"
-                           value="{% if draft.kind.as_str() == "physical" %}{{ draft.location }}{% endif %}" />
-                </div>
-                <div class="form-text">Optional. Where this copy lives.</div>
-            </div>
-            <div class="mb-3 digital-only">
-                <label class="form-label" for="file">File</label>
-                <div class="input-group has-validation">
-                    <span class="input-group-text"><i class="bi bi-file-earmark" aria-hidden="true"></i></span>
-                    {# TODO: a file chooser that keeps the current file unless a new one is chosen (#25) #}
-                    <input class="form-control{% if errors.location.is_some() %} is-invalid{% endif %}"
-                           id="file"
-                           name="file"
-                           value="{% if draft.kind.as_str() == "digital" %}{{ draft.location }}{% endif %}" />
-                    {% if let Some(error) = errors.location %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-                </div>
-            </div>
-        </fieldset>
+        {% call rows::holdings_box(holding_rows, errors.no_holdings) %}
+        {% endcall %}
         <datalist id="roles">
             {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
         </datalist>
+        <datalist id="names">
+            {% for name in names %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>
-            <button type="reset" class="btn btn-outline-secondary">Discard edits</button>
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library.id }}/import/{{ import.id }}">Discard edits</a>
             <button type="button"
                     class="btn btn-outline-danger"
                     data-bs-toggle="modal"
@@ -191,16 +118,9 @@
             </form>
         </div>
     </div>
+    {% call rows::script() %}
+    {% endcall %}
     <script>
-        // Rows are repeated form keys, so a clone needs no renumbering; the one blank row rendered
-        // above is the fallback without script.
-        for (const section of document.querySelectorAll("[data-rows]")) {
-            const list = section.querySelector("[data-rows-list]");
-            const template = section.querySelector("template");
-            section.querySelector("[data-rows-add]").addEventListener("click", () => {
-                list.appendChild(template.content.cloneNode(true));
-            });
-        }
         // Browsers open a datalist only on the second click or on typing. Open it on the first instead
         document.querySelector("form[action$='/save']").addEventListener("click", (e) => {
             if (e.target.matches("input[list]")) {

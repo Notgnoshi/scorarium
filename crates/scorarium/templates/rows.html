@@ -1,0 +1,197 @@
+{% macro identifier_row(kind, value, error) %}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <select class="form-select flex-grow-0 w-auto"
+                name="identifier_kind"
+                aria-label="Identifier kind">
+            <option value="isbn" {% if kind == "isbn" %}selected{% endif %}>ISBN</option>
+            <option value="ismn" {% if kind == "ismn" %}selected{% endif %}>ISMN</option>
+            <option value="publisher_number"
+                    {% if kind == "publisher_number" %}selected{% endif %}>Publisher number</option>
+            <option value="plate_number"
+                    {% if kind == "plate_number" %}selected{% endif %}>Plate number</option>
+        </select>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="identifier_value"
+               value="{{ value }}"
+               aria-label="Identifier" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro contributor_row(name, role, error) %}
+    {# The message names the field at fault, so both inputs share the outline #}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_name"
+               value="{{ name }}"
+               list="names"
+               placeholder="Name"
+               aria-label="Name" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="contributor_role"
+               value="{{ role }}"
+               list="roles"
+               placeholder="Role"
+               aria-label="Role" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro holding_row(kind, location, error) %}
+    <div class="d-flex gap-2 mb-2" data-row>
+        {# Using a radio group would require a unique ID per row, so build it with a checkbox #}
+        <input type="hidden" name="holding_kind" value="physical" />
+        <label class="kind-toggle d-inline-flex">
+            <input type="checkbox"
+                   class="visually-hidden"
+                   name="holding_kind"
+                   value="digital"
+                   aria-label="Digital"
+                   {% if kind == "digital" %}checked{% endif %} />
+            <span class="btn btn-outline-secondary">Physical</span>
+            <span class="btn btn-outline-secondary">Digital</span>
+        </label>
+        {# Each input carries the value only for its own kind, so switching kinds starts the other empty #}
+        <div class="input-group flex-fill w-auto{% if !error.is_empty() %} has-validation{% endif %}">
+            <span class="input-group-text">
+                <i class="bi bi-geo-alt physical-only" aria-hidden="true"></i>
+                <i class="bi bi-file-earmark digital-only" aria-hidden="true"></i>
+            </span>
+            <input class="form-control physical-only{% if !error.is_empty() %} is-invalid{% endif %}"
+                   name="holding_location"
+                   value="{% if kind == "physical" %}{{ location }}{% endif %}"
+                   placeholder="Piano bench"
+                   aria-label="Location" />
+            {# The path is chosen, not typed, so it is shown as text and submitted from a hidden input #}
+            {% if kind == "digital" && !location.is_empty() %}
+                <span class="input-group-text flex-fill text-truncate file-name digital-only"
+                      data-file-name>{{ location }}</span>
+                <input type="hidden" name="holding_file" value="{{ location }}" />
+            {% else %}
+                <span class="input-group-text flex-fill text-truncate file-name digital-only{% if !error.is_empty() %} border-danger{% endif %}"
+                      data-file-name><span class="opacity-50">No file chosen</span></span>
+                <input type="hidden" name="holding_file" value="" />
+            {% endif %}
+            {# A label forwards clicks to the chooser inside it, so cloned rows need no unique id #}
+            <label class="btn btn-outline-secondary digital-only"
+                   aria-label="Choose file">
+                <i class="bi bi-upload" aria-hidden="true"></i>
+                {# TODO: name this input and switch the form to multipart to upload the file (#25) #}
+                <input type="file" hidden data-upload />
+            </label>
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-rows-remove
+                    aria-label="Remove">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+            {% if !error.is_empty() %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
+        </div>
+    </div>
+{% endmacro %}
+{% macro holdings_box(rows, no_holdings) %}
+    <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Copies</legend>
+        <div data-rows-list>
+            {% for (row, error) in rows %}
+                {% call holding_row(row.kind.as_str(), row.location, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        {% if let Some(error) = no_holdings %}
+            <div class="invalid-feedback d-block mb-2">{{ error }}</div>
+        {% endif %}
+        <template>
+            {% call holding_row("physical", "", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add copy">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+{% endmacro %}
+{% macro style() %}
+    <style>
+        [data-row]:has([name="holding_kind"]:checked) .physical-only,
+        [data-row]:not(:has([name="holding_kind"]:checked)) .digital-only {
+            display: none;
+        }
+
+        .kind-toggle {
+            pointer-events: none;
+        }
+
+        .kind-toggle .btn {
+            pointer-events: auto;
+        }
+
+        .kind-toggle .btn:first-of-type {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .kind-toggle .btn:last-of-type {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            margin-left: calc(-1 * var(--bs-border-width));
+        }
+
+        .kind-toggle:has(:checked) .btn:last-of-type,
+        .kind-toggle:not(:has(:checked)) .btn:first-of-type {
+            color: var(--bs-btn-active-color);
+            background-color: var(--bs-btn-active-bg);
+            border-color: var(--bs-btn-active-border-color);
+            pointer-events: none;
+            /* Over the neighbor's overlapping border */
+            position: relative;
+            z-index: 1;
+        }
+
+        .kind-toggle:has(:focus-visible) .btn {
+            box-shadow: var(--bs-btn-focus-box-shadow);
+        }
+
+        /* Block rather than Bootstrap's flex, so a long path gets an ellipsis */
+        .file-name {
+            display: block;
+        }
+    </style>
+{% endmacro %}
+{% macro script() %}
+    <script>
+        for (const section of document.querySelectorAll("[data-rows]")) {
+            const list = section.querySelector("[data-rows-list]");
+            const template = section.querySelector("template");
+            section.querySelector("[data-rows-add]").addEventListener("click", () => {
+                list.appendChild(template.content.cloneNode(true));
+            });
+            list.addEventListener("click", (e) => {
+                e.target.closest("[data-rows-remove]")?.closest("[data-row]").remove();
+            });
+        }
+        // Until #25 uploads the file, the chooser only feeds its name to the row's path
+        document.addEventListener("change", (e) => {
+            if (e.target.matches("[data-upload]") && e.target.files.length) {
+                const row = e.target.closest("[data-row]");
+                const name = e.target.files[0].name;
+                row.querySelector("[name=holding_file]").value = name;
+                row.querySelector("[data-file-name]").textContent = name;
+            }
+        });
+    </script>
+{% endmacro %}

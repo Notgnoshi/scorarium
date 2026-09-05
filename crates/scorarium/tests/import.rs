@@ -24,15 +24,35 @@ async fn manual_import_flow() {
     // A digital copy needs a file; the rejected form comes back as typed
     let response = server
         .post(&entry)
-        .form(&[("query", "Gnossiennes"), ("kind", "digital"), ("file", "")])
+        .form(&[
+            ("query", "Gnossiennes"),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
         .await;
     response.assert_status_ok();
     response.assert_text_contains("Choose a file for a digital copy.");
     response.assert_text_contains("value=\"Gnossiennes\"");
 
+    // Start needs at least one copy
+    let response = server.post(&entry).form(&[("query", "")]).await;
+    response.assert_status_ok();
+    response.assert_text_contains("A publication needs at least one copy.");
+
+    // Several copies go through to the review page
     let response = server
         .post(&entry)
-        .form(&[("kind", "digital"), ("file", "satie.pdf")])
+        .form(&[
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", "satie.pdf"),
+            ("holding_kind", "physical"),
+            ("holding_location", "Piano bench"),
+            ("holding_file", ""),
+        ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let review = response.header("location").to_str().unwrap().to_string();
@@ -40,7 +60,8 @@ async fn manual_import_flow() {
 
     let response = server.get(&review).await;
     response.assert_status_ok();
-    response.assert_text_contains("satie.pdf");
+    response.assert_text_contains("value=\"satie.pdf\"");
+    response.assert_text_contains("value=\"Piano bench\"");
     response.assert_text_contains("Untitled import");
 
     // The entry page lists what was just started
@@ -63,10 +84,14 @@ async fn manual_import_flow() {
             ("title", ""),
             ("publisher", ""),
             ("year", "abc"),
-            ("kind", "digital"),
-            ("file", ""),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", ""),
             ("identifier_kind", "isbn"),
             ("identifier_value", "not-an-isbn"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", ""),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", ""),
         ])
@@ -77,6 +102,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("value=\"abc\"");
     response.assert_text_contains("Choose a file for a digital copy.");
     response.assert_text_contains("invalid ISBN");
+    response.assert_text_contains("Fill this in or remove it.");
     response.assert_text_contains("A role is required.");
 
     // Save a draft; the review page and the lists pick up its title
@@ -86,8 +112,10 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("kind", "digital"),
-            ("file", "satie.pdf"),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -113,8 +141,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "0486231348"),
-            ("kind", "physical"),
-            ("location", "Piano bench"),
+            ("holding_kind", "physical"),
+            ("holding_location", "Piano bench"),
+            ("holding_file", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -133,7 +162,12 @@ async fn manual_import_flow() {
     // Anything else seeds the title, which the lists show before any save
     let response = server
         .post(&entry)
-        .form(&[("query", "Gnossiennes"), ("kind", "physical")])
+        .form(&[
+            ("query", "Gnossiennes"),
+            ("holding_kind", "physical"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
     server
@@ -150,8 +184,10 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("kind", "digital"),
-            ("file", "satie.pdf"),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", ""),
+            ("holding_file", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -174,4 +210,20 @@ async fn manual_import_flow() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
     assert!(!server.get("/").await.text().contains("rounded-pill"));
+
+    // The person the submit created is offered on the next import's review page
+    let response = server
+        .post(&entry)
+        .form(&[
+            ("holding_kind", "physical"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+        ])
+        .await;
+    let next = response.header("location").to_str().unwrap().to_string();
+    // A fresh review page has no contributor rows, so the value can only be the datalist's
+    server
+        .get(&next)
+        .await
+        .assert_text_contains("value=\"Erik Satie\"");
 }

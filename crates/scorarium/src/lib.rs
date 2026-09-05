@@ -17,6 +17,7 @@ pub struct AppState {
     pub drafts: import::DraftStore,
     /// Whether the login cookie is marked Secure
     pub secure_cookies: bool,
+    pub demo: bool,
 }
 
 impl AppState {
@@ -26,6 +27,14 @@ impl AppState {
             sessions: session::SessionStore::default(),
             drafts: import::DraftStore::default(),
             secure_cookies,
+            demo: false,
+        }
+    }
+
+    pub fn demo(pool: SqlitePool) -> Self {
+        Self {
+            demo: true,
+            ..Self::new(pool, true)
         }
     }
 }

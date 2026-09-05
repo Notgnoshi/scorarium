@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT pending_import_id, kind, location FROM pending_import_holding\n         WHERE pending_import_id IN\n            (SELECT id FROM pending_import\n             WHERE (?1 IS NULL OR library_id = ?1) AND (?2 IS NULL OR id = ?2))\n         ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "pending_import_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pending_import_holding",
+            "name": "pending_import_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_import_holding",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pending_import_holding",
+            "name": "location"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "adc5fe5d0352b8d613fcbbf8d808fd1c5d50ff1679a6f647f8f2b2b365a89263"
+}

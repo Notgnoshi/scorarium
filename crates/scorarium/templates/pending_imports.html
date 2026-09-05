@@ -7,8 +7,7 @@
                 <tr>
                     <th>Title</th>
                     {% if show_library %}<th>Library</th>{% endif %}
-                    <th>Kind</th>
-                    <th>Location</th>
+                    <th>Copies</th>
                     <th>Started</th>
                 </tr>
             </thead>
@@ -17,8 +16,11 @@
                     <tr>
                         <td><a href="/library/{{ row.import.library_id }}/import/{{ row.import.id }}">{{ row.title }}</a></td>
                         {% if show_library %}<td>{{ row.import.library_name }}</td>{% endif %}
-                        <td><span class="badge text-bg-secondary">{{ row.kind.as_str() }}</span></td>
-                        <td>{{ row.location }}</td>
+                        <td>
+                            {% for h in row.holdings %}
+                                <span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {{ h.location }}
+                            {% endfor %}
+                        </td>
                         <td>{{ row.age }}</td>
                     </tr>
                 {% endfor %}

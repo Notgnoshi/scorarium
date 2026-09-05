@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
-use axum::Form;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -11,9 +10,9 @@ use axum_extra::extract::Form as MultiForm;
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, Session};
-use crate::db::pending_import::{self, NewPendingImport, PendingImport};
+use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::import::{ContributorRow, Draft, Errors, IdentifierRow};
+use crate::import::{ContributorRow, Draft, Errors, HoldingRow, IdentifierRow};
 use crate::{AppState, db, import};
 
 const UNTITLED: &str = "Untitled import";
@@ -24,8 +23,7 @@ const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor
 pub struct PendingRow {
     pub import: PendingImport,
     pub title: String,
-    pub kind: HoldingKind,
-    pub location: String,
+    pub holdings: Vec<HoldingRow>,
     pub age: String,
 }
 
@@ -41,8 +39,7 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
                 .unwrap_or_else(|| Draft::seed(&import));
             PendingRow {
                 title: label(&import, &draft),
-                kind: draft.kind,
-                location: draft.location,
+                holdings: draft.holdings,
                 age: age(import.created_at),
                 import,
             }
@@ -81,8 +78,10 @@ struct EntryPage {
     base: BaseContext,
     library: db::Library,
     /// What to show in the form: blank on a visit, the rejected submission on an error
-    form: StartForm,
-    error: Option<&'static str>,
+    query: String,
+    more: bool,
+    holding_rows: Vec<(HoldingRow, String)>,
+    errors: Errors,
     pending: Vec<PendingRow>,
     /// The shared list fragment shows a library column only on the cross-library queue.
     show_library: bool,
@@ -101,30 +100,51 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    let form = StartForm {
-        more: query.more,
-        ..StartForm::default()
-    };
-    render_entry(&state, id, base, form, None).await
+    let rows = vec![HoldingRow {
+        kind: HoldingKind::Physical,
+        location: String::new(),
+    }];
+    render_entry(
+        &state,
+        id,
+        base,
+        String::new(),
+        query.more.is_some(),
+        rows,
+        Errors::default(),
+    )
+    .await
 }
 
 async fn render_entry(
     state: &AppState,
     id: i64,
     base: BaseContext,
-    form: StartForm,
-    error: Option<&'static str>,
+    query: String,
+    more: bool,
+    rows: Vec<HoldingRow>,
+    errors: Errors,
 ) -> Result<Response, AppError> {
     let Some(library) = db::get_library(&state.pool, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let holding_rows = rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let error = row_error(&errors.holdings, i);
+            (row, error)
+        })
+        .collect();
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(state, Some(id)).await?,
         show_library: false,
         library,
-        form,
-        error,
+        query,
+        more,
+        holding_rows,
+        errors,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -133,26 +153,15 @@ async fn render_entry(
 pub struct StartForm {
     #[serde(default)]
     query: String,
-    kind: HoldingKind,
-    // Both inputs submit and the kind picks which one counts
+    // Copy rows as parallel repeated keys, decoded as on the review page
     #[serde(default)]
-    location: String,
+    holding_kind: Vec<HoldingKind>,
     #[serde(default)]
-    file: String,
+    holding_location: Vec<String>,
+    #[serde(default)]
+    holding_file: Vec<String>,
     /// Present when the "Import more" box is checked; browsers send "on".
     more: Option<String>,
-}
-
-impl Default for StartForm {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            kind: HoldingKind::Physical,
-            location: String::new(),
-            file: String::new(),
-            more: None,
-        }
-    }
 }
 
 /// POST /library/{id}/import
@@ -161,34 +170,28 @@ pub async fn start(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path(id): Path<i64>,
-    Form(form): Form<StartForm>,
+    MultiForm(form): MultiForm<StartForm>,
 ) -> Result<Response, AppError> {
-    let location = match form.kind {
-        HoldingKind::Physical => form.location.trim(),
-        HoldingKind::Digital => form.file.trim(),
-    }
-    .to_string();
-    if form.kind == HoldingKind::Digital && location.is_empty() {
-        return render_entry(
-            &state,
-            id,
-            base,
-            form,
-            Some("Choose a file for a digital copy."),
-        )
-        .await;
+    let rows = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
+    let mut errors = Errors::default();
+    let holdings = import::parse_holdings(&rows, &mut errors);
+    let more = form.more.is_some();
+    if !errors.is_empty() {
+        return render_entry(&state, id, base, form.query, more, rows, errors).await;
     }
     if db::get_library(&state.pool, id).await?.is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let more = form.more.is_some();
+    let holdings: Vec<PendingHolding> = holdings
+        .into_iter()
+        .map(|(kind, location)| PendingHolding { kind, location })
+        .collect();
     let pending_id = pending_import::create(
         &state.pool,
         &NewPendingImport {
             library_id: id,
             query: form.query.trim(),
-            kind: form.kind,
-            location: (!location.is_empty()).then_some(location.as_str()),
+            holdings: &holdings,
         },
     )
     .await?;
@@ -211,10 +214,12 @@ struct ReviewPage {
     errors: Errors,
     // Draft rows paired with their error, empty when there is none, so the row macro takes plain
     // strings for both the saved rows and the blank template row.
+    holding_rows: Vec<(HoldingRow, String)>,
     identifier_rows: Vec<(IdentifierRow, String)>,
     contributor_rows: Vec<(ContributorRow, String)>,
-    // Datalist suggestions for the role input
+    // Datalist suggestions for the role and name inputs
     roles: Vec<String>,
+    names: Vec<String>,
 }
 
 /// The message for row `i`. A draft that parsed clean has no error slots at all, so the rows
@@ -245,6 +250,13 @@ pub async fn review(
         None => (Draft::seed(&import), Errors::default()),
     };
     let title = label(&import, &draft);
+    let holding_rows = draft
+        .holdings
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, row)| (row, row_error(&errors.holdings, i)))
+        .collect();
     let identifier_rows = draft
         .identifiers
         .iter()
@@ -266,6 +278,7 @@ pub async fn review(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
+    let names = db::person::list_names(&state.pool, library_id).await?;
     let page = ReviewPage {
         base: base.page(
             title,
@@ -280,9 +293,11 @@ pub async fn review(
         import,
         draft,
         errors,
+        holding_rows,
         identifier_rows,
         contributor_rows,
         roles,
+        names,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -292,13 +307,14 @@ pub struct ReviewForm {
     title: String,
     publisher: String,
     year: String,
-    kind: HoldingKind,
-    // Like the entry page, both inputs submit and the kind picks which one counts
+    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows.
+    // Each copy row submits a location and a file, and the kind picks which one counts
     #[serde(default)]
-    location: String,
+    holding_kind: Vec<HoldingKind>,
     #[serde(default)]
-    file: String,
-    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows
+    holding_location: Vec<String>,
+    #[serde(default)]
+    holding_file: Vec<String>,
     #[serde(default)]
     identifier_kind: Vec<String>,
     #[serde(default)]
@@ -309,8 +325,46 @@ pub struct ReviewForm {
     contributor_role: Vec<String>,
 }
 
+/// A copy row's kind arrives as a constant "physical" followed by a "digital" when the row's
+/// toggle is checked: the toggle is a checkbox, which submits nothing while unchecked, so the
+/// constant is what keeps the rows countable.
+fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
+    let mut kinds = Vec::new();
+    for token in tokens {
+        match (token, kinds.last_mut()) {
+            (HoldingKind::Digital, Some(last)) => *last = HoldingKind::Digital,
+            (token, _) => kinds.push(token),
+        }
+    }
+    kinds
+}
+
+/// Copy rows from a form's parallel keys. Every row submits a location and a file, and the kind
+/// picks which one counts.
+fn holding_rows(
+    kind: Vec<HoldingKind>,
+    location: Vec<String>,
+    file: Vec<String>,
+) -> Vec<HoldingRow> {
+    holding_kinds(kind)
+        .into_iter()
+        .zip(location)
+        .zip(file)
+        .map(|((kind, location), file)| HoldingRow {
+            kind,
+            location: match kind {
+                HoldingKind::Physical => location,
+                HoldingKind::Digital => file,
+            }
+            .trim()
+            .to_string(),
+        })
+        .collect()
+}
+
 impl From<ReviewForm> for Draft {
     fn from(form: ReviewForm) -> Self {
+        let holdings = holding_rows(form.holding_kind, form.holding_location, form.holding_file);
         let identifiers = form
             .identifier_kind
             .into_iter()
@@ -319,8 +373,6 @@ impl From<ReviewForm> for Draft {
                 kind: kind.trim().to_string(),
                 value: value.trim().to_string(),
             })
-            // Clearing a row is how it is removed
-            .filter(|row| !row.value.is_empty())
             .collect();
         let contributors = form
             .contributor_name
@@ -330,19 +382,12 @@ impl From<ReviewForm> for Draft {
                 name: name.trim().to_string(),
                 role: role.trim().to_string(),
             })
-            .filter(|row| !row.name.is_empty() || !row.role.is_empty())
             .collect();
         Draft {
             title: form.title.trim().to_string(),
             publisher: form.publisher.trim().to_string(),
             year: form.year.trim().to_string(),
-            kind: form.kind,
-            location: match form.kind {
-                HoldingKind::Physical => form.location,
-                HoldingKind::Digital => form.file,
-            }
-            .trim()
-            .to_string(),
+            holdings,
             identifiers,
             contributors,
         }
