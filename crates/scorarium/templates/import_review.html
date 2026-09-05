@@ -16,10 +16,11 @@
           action="/library/{{ library.id }}/import/{{ import.id }}/save">
         <div class="mb-3">
             <label class="form-label" for="title">Title</label>
-            <input class="form-control"
+            <input class="form-control{% if errors.title.is_some() %} is-invalid{% endif %}"
                    id="title"
                    name="title"
                    value="{{ draft.title }}" />
+            {% if let Some(error) = errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
         </div>
         <div class="mb-3">
             <label class="form-label" for="publisher">Publisher</label>
@@ -30,11 +31,12 @@
         </div>
         <div class="mb-3">
             <label class="form-label" for="year">Year</label>
-            <input class="form-control"
+            <input class="form-control{% if errors.year.is_some() %} is-invalid{% endif %}"
                    id="year"
                    name="year"
                    inputmode="numeric"
                    value="{{ draft.year }}" />
+            {% if let Some(error) = errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
         </div>
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>

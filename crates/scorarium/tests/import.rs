@@ -47,6 +47,16 @@ async fn manual_import_flow() {
     home.assert_text_contains("href=\"/review\"");
     home.assert_text_contains("<span class=\"badge text-bg-primary rounded-pill\">1</span>");
 
+    // A bad draft still saves, and the review page flags every field
+    server
+        .post(&format!("{review}/save"))
+        .form(&[("title", ""), ("publisher", ""), ("year", "abc")])
+        .await;
+    let response = server.get(&review).await;
+    response.assert_text_contains("A title is required.");
+    response.assert_text_contains("The year must be a number.");
+    response.assert_text_contains("value=\"abc\"");
+
     // Save a draft; the review page and the lists pick up its title
     let response = server
         .post(&format!("{review}/save"))

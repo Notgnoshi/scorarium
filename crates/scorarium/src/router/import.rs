@@ -11,7 +11,7 @@ use serde::Deserialize;
 use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::import::Draft;
+use crate::import::{Draft, Errors};
 use crate::{AppState, db};
 
 const UNTITLED: &str = "Untitled import";
@@ -172,6 +172,7 @@ struct ReviewPage {
     import: PendingImport,
     age: String,
     draft: Draft,
+    errors: Errors,
 }
 
 /// GET /library/{library_id}/import/{id}
@@ -187,7 +188,14 @@ pub async fn review(
     let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let draft = state.drafts.get(id).unwrap_or_default();
+    let (draft, errors) = match state.drafts.get(id) {
+        // Errors show for saved drafts only; a fresh import should not open covered in warnings
+        Some(draft) => {
+            let errors = draft.parse().err().unwrap_or_default();
+            (draft, errors)
+        }
+        None => (Draft::default(), Errors::default()),
+    };
     let title = if draft.title.is_empty() {
         UNTITLED
     } else {
@@ -206,6 +214,7 @@ pub async fn review(
         library,
         import,
         draft,
+        errors,
     };
     Ok(Html(page.render()?).into_response())
 }
