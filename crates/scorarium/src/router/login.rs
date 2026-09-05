@@ -92,6 +92,7 @@ fn start_session(state: &AppState, jar: CookieJar) -> Response {
     let max_age = cookie::time::Duration::seconds(session::SESSION_LIFETIME.as_secs() as i64);
     let cookie = Cookie::build((SESSION_COOKIE, token))
         .http_only(true)
+        .secure(state.secure_cookies)
         .same_site(SameSite::Lax)
         .path("/")
         .max_age(max_age);

@@ -15,14 +15,17 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub sessions: session::SessionStore,
     pub drafts: import::DraftStore,
+    /// Whether the login cookie is marked Secure
+    pub secure_cookies: bool,
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: SqlitePool, secure_cookies: bool) -> Self {
         Self {
             pool,
             sessions: session::SessionStore::default(),
             drafts: import::DraftStore::default(),
+            secure_cookies,
         }
     }
 }

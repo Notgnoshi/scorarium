@@ -26,6 +26,10 @@ struct Args {
     /// Serve an in-memory demo library instead of the data directory.
     #[arg(long)]
     demo: bool,
+
+    /// Allow the login cookie over plain HTTP
+    #[arg(long, env = "SCORARIUM_INSECURE_COOKIES")]
+    insecure_cookies: bool,
 }
 
 #[tokio::main]
@@ -41,16 +45,21 @@ async fn main() -> color_eyre::Result<()> {
         )
         .init();
 
+    let secure_cookies = !args.insecure_cookies;
     let pool = if args.demo {
         let pool = db::connect_in_memory().await?;
         demo::populate(&pool).await?;
         tracing::info!(bind = %args.bind, "starting scorarium with in-memory demo data");
         pool
     } else {
-        tracing::info!(bind = %args.bind, data_dir = %args.data_dir.display(), "starting scorarium");
+        tracing::info!(
+            bind = %args.bind,
+            data_dir = %args.data_dir.display(),
+            "starting scorarium"
+        );
         db::connect(&args.data_dir).await?
     };
-    let app = router(Arc::new(AppState::new(pool)));
+    let app = router(Arc::new(AppState::new(pool, secure_cookies)));
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
