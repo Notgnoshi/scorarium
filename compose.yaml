@@ -1,0 +1,15 @@
+networks:
+    nginx_proxy:
+        # This is a Docker network created by whatever is running the nginx-proxy container.
+        external: true
+
+services:
+    demo:
+        image: ghcr.io/notgnoshi/scorarium:latest
+        restart: unless-stopped
+        networks:
+            - nginx_proxy
+        command: ["--demo"]
+        environment:
+            - VIRTUAL_HOST=library.agill.xyz,library.agill.net
+            - LETSENCRYPT_HOST=library.agill.xyz,library.agill.net

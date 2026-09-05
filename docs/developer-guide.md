@@ -71,6 +71,19 @@ docker build --tag scorarium:dev .
 docker run --user "$(id -u):$(id -g)" --volume ./data:/data --publish 3000:3000 scorarium:dev
 ```
 
+CI publishes the image to `ghcr.io/notgnoshi/scorarium`, tagged `latest` on every push to the
+default branch and `vX.Y.Z` with each release.
+
+The `compose.yaml` at the repository root runs the public demo instance behind nginx-proxy and
+acme-companion, which handle TLS.
+
+To update a deployment:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
 ## Maintenance notes
 
 This project values tests, but does not prioritize complete test coverage. Tests are code that needs
