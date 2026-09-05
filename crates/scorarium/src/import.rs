@@ -16,11 +16,16 @@ pub struct Draft {
     pub title: String,
     pub publisher: String,
     pub year: String,
+    pub holdings: Vec<HoldingRow>,
+    pub identifiers: Vec<IdentifierRow>,
+    pub contributors: Vec<ContributorRow>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoldingRow {
     pub kind: HoldingKind,
     /// Freeform for physical, a file path for digital; empty means none
     pub location: String,
-    pub identifiers: Vec<IdentifierRow>,
-    pub contributors: Vec<ContributorRow>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -42,13 +47,18 @@ impl Draft {
     /// on every view rather than stored, so it survives a restart the same way the row does.
     pub fn seed(pending: &PendingImport) -> Self {
         let query = pending.query.trim();
-        let holding = pending.holdings.first();
         let mut draft = Draft {
             title: String::new(),
             publisher: String::new(),
             year: String::new(),
-            kind: holding.map_or(HoldingKind::Physical, |h| h.kind),
-            location: holding.and_then(|h| h.location.clone()).unwrap_or_default(),
+            holdings: pending
+                .holdings
+                .iter()
+                .map(|h| HoldingRow {
+                    kind: h.kind,
+                    location: h.location.clone().unwrap_or_default(),
+                })
+                .collect(),
             identifiers: Vec::new(),
             contributors: Vec::new(),
         };
@@ -100,8 +110,7 @@ pub struct Validated {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
-    pub kind: HoldingKind,
-    pub location: Option<String>,
+    pub holdings: Vec<(HoldingKind, Option<String>)>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
 }
@@ -111,8 +120,9 @@ pub struct Validated {
 pub struct Errors {
     pub title: Option<String>,
     pub year: Option<String>,
-    pub location: Option<String>,
     /// One slot per row, aligned with the draft's rows
+    pub holdings: Vec<Option<String>>,
+    pub no_holdings: Option<String>,
     pub identifiers: Vec<Option<String>>,
     pub contributors: Vec<Option<String>>,
 }
@@ -121,7 +131,8 @@ impl Errors {
     fn is_empty(&self) -> bool {
         self.title.is_none()
             && self.year.is_none()
-            && self.location.is_none()
+            && self.holdings.iter().all(Option::is_none)
+            && self.no_holdings.is_none()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
     }
@@ -129,6 +140,7 @@ impl Errors {
 
 impl Draft {
     /// Check and convert the draft. Every problem is reported, not just the first.
+    #[expect(clippy::result_large_err)]
     pub fn parse(&self) -> Result<Validated, Errors> {
         let mut errors = Errors::default();
         if self.title.is_empty() {
@@ -145,9 +157,24 @@ impl Draft {
                 }
             }
         };
-        if self.kind == HoldingKind::Digital && self.location.is_empty() {
-            errors.location = Some("Choose a file for a digital copy.".into());
+        if self.holdings.is_empty() {
+            errors.no_holdings = Some("A publication needs at least one copy.".into());
         }
+        let mut holdings = Vec::new();
+        errors.holdings = self
+            .holdings
+            .iter()
+            .map(|row| {
+                if row.kind == HoldingKind::Digital && row.location.is_empty() {
+                    return Some("Choose a file for a digital copy.".to_string());
+                }
+                holdings.push((
+                    row.kind,
+                    Some(row.location.clone()).filter(|l| !l.is_empty()),
+                ));
+                None
+            })
+            .collect();
 
         let mut identifiers = Vec::new();
         let mut seen = BTreeSet::new();
@@ -205,8 +232,7 @@ impl Draft {
             title: self.title.clone(),
             publisher: Some(self.publisher.clone()).filter(|p| !p.is_empty()),
             year,
-            kind: self.kind,
-            location: Some(self.location.clone()).filter(|l| !l.is_empty()),
+            holdings,
             identifiers,
             contributors: self.contributors.clone(),
         })
@@ -248,13 +274,9 @@ pub async fn accept(
     for (kind, value) in &validated.identifiers {
         publication::create_identifier(&mut *tx, publication_id, *kind, value).await?;
     }
-    publication::create_holding(
-        &mut *tx,
-        publication_id,
-        validated.kind,
-        validated.location.as_deref(),
-    )
-    .await?;
+    for (kind, location) in &validated.holdings {
+        publication::create_holding(&mut *tx, publication_id, *kind, location.as_deref()).await?;
+    }
     for row in &validated.contributors {
         // A person created by an earlier row is found by a later one: same transaction
         let person_id = match person::find_by_name(&mut *tx, library_id, &row.name).await? {
@@ -309,9 +331,11 @@ mod tests {
             title: "Three gymnopedies".into(),
             publisher: Some("Schirmer".into()),
             year: Some(1888),
-            // The draft's holding, not the pending row's: the review page may have changed it
-            kind: HoldingKind::Digital,
-            location: Some("satie.pdf".into()),
+            // The draft's copies, not the pending row's: the review page may have changed them
+            holdings: vec![
+                (HoldingKind::Digital, Some("satie.pdf".into())),
+                (HoldingKind::Physical, None),
+            ],
             identifiers: vec![(identifier::Kind::Isbn, isbn)],
             contributors: vec![
                 // An existing person by exact name, and a new one
@@ -342,10 +366,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(debussy.sort_name, "Debussy, Claude");
-        assert_eq!(publication.holdings[0].kind, HoldingKind::Digital);
         assert_eq!(
-            publication.holdings[0].location.as_deref(),
-            Some("satie.pdf")
+            publication
+                .holdings
+                .iter()
+                .map(|h| (h.kind, h.location.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                (HoldingKind::Digital, Some("satie.pdf")),
+                (HoldingKind::Physical, None)
+            ]
         );
         assert_eq!(
             db::pending_import::get(&pool, library_id, pending_id)
@@ -371,8 +401,10 @@ mod tests {
             title: String::new(),
             publisher: String::new(),
             year: "abc".into(),
-            kind: HoldingKind::Digital,
-            location: String::new(),
+            holdings: vec![HoldingRow {
+                kind: HoldingKind::Digital,
+                location: String::new(),
+            }],
             identifiers: vec![
                 IdentifierRow {
                     kind: "isbn".into(),
@@ -415,7 +447,8 @@ mod tests {
             Errors {
                 title: Some("A title is required.".into()),
                 year: Some("The year must be a number.".into()),
-                location: Some("Choose a file for a digital copy.".into()),
+                holdings: vec![Some("Choose a file for a digital copy.".into())],
+                no_holdings: None,
                 identifiers: vec![
                     Some("invalid ISBN".into()),
                     None,
@@ -432,11 +465,29 @@ mod tests {
         );
 
         let draft = Draft {
+            title: "Untitled".into(),
+            publisher: String::new(),
+            year: String::new(),
+            holdings: Vec::new(),
+            identifiers: Vec::new(),
+            contributors: Vec::new(),
+        };
+        assert_eq!(
+            draft.parse().unwrap_err(),
+            Errors {
+                no_holdings: Some("A publication needs at least one copy.".into()),
+                ..Errors::default()
+            }
+        );
+
+        let draft = Draft {
             title: "Three gymnopedies".into(),
             publisher: String::new(),
             year: String::new(),
-            kind: HoldingKind::Physical,
-            location: String::new(),
+            holdings: vec![HoldingRow {
+                kind: HoldingKind::Physical,
+                location: String::new(),
+            }],
             identifiers: vec![IdentifierRow {
                 kind: "isbn".into(),
                 value: "0-486-23134-8".into(),
@@ -450,8 +501,7 @@ mod tests {
         assert_eq!(validated.title, "Three gymnopedies");
         assert_eq!(validated.publisher, None);
         assert_eq!(validated.year, None);
-        assert_eq!(validated.kind, HoldingKind::Physical);
-        assert_eq!(validated.location, None);
+        assert_eq!(validated.holdings, [(HoldingKind::Physical, None)]);
         assert_eq!(
             validated.identifiers,
             [(

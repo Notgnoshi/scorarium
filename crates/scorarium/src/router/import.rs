@@ -13,7 +13,7 @@ use serde::Deserialize;
 use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::import::{ContributorRow, Draft, Errors, IdentifierRow};
+use crate::import::{ContributorRow, Draft, Errors, HoldingRow, IdentifierRow};
 use crate::{AppState, db, import};
 
 const UNTITLED: &str = "Untitled import";
@@ -24,8 +24,7 @@ const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor
 pub struct PendingRow {
     pub import: PendingImport,
     pub title: String,
-    pub kind: HoldingKind,
-    pub location: String,
+    pub holdings: Vec<HoldingRow>,
     pub age: String,
 }
 
@@ -41,8 +40,7 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
                 .unwrap_or_else(|| Draft::seed(&import));
             PendingRow {
                 title: label(&import, &draft),
-                kind: draft.kind,
-                location: draft.location,
+                holdings: draft.holdings,
                 age: age(import.created_at),
                 import,
             }
@@ -214,6 +212,7 @@ struct ReviewPage {
     errors: Errors,
     // Draft rows paired with their error, empty when there is none, so the row macro takes plain
     // strings for both the saved rows and the blank template row.
+    holding_rows: Vec<(HoldingRow, String)>,
     identifier_rows: Vec<(IdentifierRow, String)>,
     contributor_rows: Vec<(ContributorRow, String)>,
     // Datalist suggestions for the role input
@@ -248,6 +247,13 @@ pub async fn review(
         None => (Draft::seed(&import), Errors::default()),
     };
     let title = label(&import, &draft);
+    let holding_rows = draft
+        .holdings
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, row)| (row, row_error(&errors.holdings, i)))
+        .collect();
     let identifier_rows = draft
         .identifiers
         .iter()
@@ -283,6 +289,7 @@ pub async fn review(
         import,
         draft,
         errors,
+        holding_rows,
         identifier_rows,
         contributor_rows,
         roles,
@@ -295,13 +302,14 @@ pub struct ReviewForm {
     title: String,
     publisher: String,
     year: String,
-    kind: HoldingKind,
-    // Like the entry page, both inputs submit and the kind picks which one counts
+    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows.
+    // Each copy row submits a location and a file, and the kind picks which one counts
     #[serde(default)]
-    location: String,
+    holding_kind: Vec<HoldingKind>,
     #[serde(default)]
-    file: String,
-    // Parallel repeated keys, one entry per row; `default` covers a submission with no rows
+    holding_location: Vec<String>,
+    #[serde(default)]
+    holding_file: Vec<String>,
     #[serde(default)]
     identifier_kind: Vec<String>,
     #[serde(default)]
@@ -312,8 +320,36 @@ pub struct ReviewForm {
     contributor_role: Vec<String>,
 }
 
+/// A copy row's kind arrives as a constant "physical" followed by a "digital" when the row's
+/// toggle is checked: the toggle is a checkbox, which submits nothing while unchecked, so the
+/// constant is what keeps the rows countable.
+fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
+    let mut kinds = Vec::new();
+    for token in tokens {
+        match (token, kinds.last_mut()) {
+            (HoldingKind::Digital, Some(last)) => *last = HoldingKind::Digital,
+            (token, _) => kinds.push(token),
+        }
+    }
+    kinds
+}
+
 impl From<ReviewForm> for Draft {
     fn from(form: ReviewForm) -> Self {
+        let holdings = holding_kinds(form.holding_kind)
+            .into_iter()
+            .zip(form.holding_location)
+            .zip(form.holding_file)
+            .map(|((kind, location), file)| HoldingRow {
+                kind,
+                location: match kind {
+                    HoldingKind::Physical => location,
+                    HoldingKind::Digital => file,
+                }
+                .trim()
+                .to_string(),
+            })
+            .collect();
         let identifiers = form
             .identifier_kind
             .into_iter()
@@ -336,13 +372,7 @@ impl From<ReviewForm> for Draft {
             title: form.title.trim().to_string(),
             publisher: form.publisher.trim().to_string(),
             year: form.year.trim().to_string(),
-            kind: form.kind,
-            location: match form.kind {
-                HoldingKind::Physical => form.location,
-                HoldingKind::Digital => form.file,
-            }
-            .trim()
-            .to_string(),
+            holdings,
             identifiers,
             contributors,
         }

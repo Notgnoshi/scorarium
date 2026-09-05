@@ -2,13 +2,8 @@
 {% import "rows.html" as rows %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    <style>
-        /* Show the location or file input that matches the selected kind */
-        form:has(#kind-physical:checked) .digital-only,
-        form:has(#kind-digital:checked) .physical-only {
-            display: none;
-        }
-    </style>
+    {% call rows::style() %}
+    {% endcall %}
     <dl class="row">
         <dt class="col-sm-3">Started</dt>
         <dd class="col-sm-9">
@@ -79,50 +74,27 @@
                 <i class="bi bi-plus-lg" aria-hidden="true"></i>
             </button>
         </fieldset>
-        <fieldset class="mb-3">
-            <legend class="fs-6">Copy</legend>
-            <div class="btn-group mb-3" role="group" aria-label="Kind of copy">
-                <input type="radio"
-                       class="btn-check"
-                       name="kind"
-                       id="kind-physical"
-                       value="physical"
-                       autocomplete="off"
-                       {% if draft.kind.as_str() == "physical" %}checked{% endif %} />
-                <label class="btn btn-outline-primary" for="kind-physical">Physical</label>
-                <input type="radio"
-                       class="btn-check"
-                       name="kind"
-                       id="kind-digital"
-                       value="digital"
-                       autocomplete="off"
-                       {% if draft.kind.as_str() == "digital" %}checked{% endif %} />
-                <label class="btn btn-outline-primary" for="kind-digital">Digital</label>
+        <fieldset class="border rounded p-3 mb-3" data-rows>
+            <legend class="float-none w-auto px-2 fs-6">Copies</legend>
+            <div data-rows-list>
+                {% for (row, error) in holding_rows %}
+                    {% call rows::holding_row(row.kind.as_str(), row.location, error) %}
+                    {% endcall %}
+                {% endfor %}
             </div>
-            <div class="mb-3 physical-only">
-                <label class="form-label" for="location">Location</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
-                    <input class="form-control"
-                           id="location"
-                           name="location"
-                           placeholder="Piano bench"
-                           value="{% if draft.kind.as_str() == "physical" %}{{ draft.location }}{% endif %}" />
-                </div>
-                <div class="form-text">Optional. Where this copy lives.</div>
-            </div>
-            <div class="mb-3 digital-only">
-                <label class="form-label" for="file">File</label>
-                <div class="input-group has-validation">
-                    <span class="input-group-text"><i class="bi bi-file-earmark" aria-hidden="true"></i></span>
-                    {# TODO: a file chooser that keeps the current file unless a new one is chosen (#25) #}
-                    <input class="form-control{% if errors.location.is_some() %} is-invalid{% endif %}"
-                           id="file"
-                           name="file"
-                           value="{% if draft.kind.as_str() == "digital" %}{{ draft.location }}{% endif %}" />
-                    {% if let Some(error) = errors.location %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-                </div>
-            </div>
+            {% if let Some(error) = errors.no_holdings %}
+                <div class="invalid-feedback d-block mb-2">{{ error }}</div>
+            {% endif %}
+            <template>
+                {% call rows::holding_row("physical", "", "") %}
+                {% endcall %}
+            </template>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-rows-add
+                    aria-label="Add copy">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </button>
         </fieldset>
         <datalist id="roles">
             {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
