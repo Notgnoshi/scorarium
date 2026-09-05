@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::publication::{HoldingKind, decode_error};
@@ -9,34 +11,49 @@ pub struct PendingImport {
     pub library_id: i64,
     pub library_name: String,
     pub query: String,
-    pub kind: HoldingKind,
-    pub location: Option<String>,
+    /// In the order entered, which is the order the review page shows them
+    pub holdings: Vec<PendingHolding>,
     /// Unix seconds
     pub created_at: i64,
+}
+
+/// A copy entered on the entry page; becomes a holding on accept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingHolding {
+    pub kind: HoldingKind,
+    /// Freeform for physical, a file path for digital
+    pub location: Option<String>,
 }
 
 pub struct NewPendingImport<'a> {
     pub library_id: i64,
     pub query: &'a str,
-    pub kind: HoldingKind,
-    pub location: Option<&'a str>,
+    pub holdings: &'a [PendingHolding],
 }
 
-pub async fn create(
-    executor: impl SqliteExecutor<'_>,
-    new: &NewPendingImport<'_>,
-) -> sqlx::Result<i64> {
-    let kind = new.kind.as_str();
+pub async fn create(pool: &SqlitePool, new: &NewPendingImport<'_>) -> sqlx::Result<i64> {
+    let mut tx = pool.begin().await?;
     let result = sqlx::query!(
-        "INSERT INTO pending_import (library_id, query, kind, location) VALUES (?, ?, ?, ?)",
+        "INSERT INTO pending_import (library_id, query) VALUES (?, ?)",
         new.library_id,
         new.query,
-        kind,
-        new.location,
     )
-    .execute(executor)
+    .execute(&mut *tx)
     .await?;
-    Ok(result.last_insert_rowid())
+    let id = result.last_insert_rowid();
+    for holding in new.holdings {
+        let kind = holding.kind.as_str();
+        sqlx::query!(
+            "INSERT INTO pending_import_holding (pending_import_id, kind, location) VALUES (?, ?, ?)",
+            id,
+            kind,
+            holding.location,
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(id)
 }
 
 /// One pending import, or None when it does not exist or belongs to another library.
@@ -58,29 +75,50 @@ async fn load(
     library_id: Option<i64>,
     id: Option<i64>,
 ) -> sqlx::Result<Vec<PendingImport>> {
-    sqlx::query!(
-        "SELECT p.id, p.library_id, l.name AS library_name, p.query, p.kind, p.location, p.created_at
+    let mut tx = pool.begin().await?;
+    let mut imports: Vec<PendingImport> = sqlx::query!(
+        "SELECT p.id, p.library_id, l.name AS library_name, p.query, p.created_at
          FROM pending_import p JOIN library l ON l.id = p.library_id
          WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 IS NULL OR p.id = ?2)
          ORDER BY p.created_at, p.id",
         library_id,
         id
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?
     .into_iter()
-    .map(|row| {
-        Ok(PendingImport {
-            id: row.id,
-            library_id: row.library_id,
-            library_name: row.library_name,
-            query: row.query,
-            kind: row.kind.parse().map_err(decode_error)?,
-            location: row.location,
-            created_at: row.created_at,
-        })
+    .map(|row| PendingImport {
+        id: row.id,
+        library_id: row.library_id,
+        library_name: row.library_name,
+        query: row.query,
+        holdings: Vec::new(),
+        created_at: row.created_at,
     })
-    .collect()
+    .collect();
+    let index: HashMap<i64, usize> = imports.iter().enumerate().map(|(i, p)| (p.id, i)).collect();
+
+    let holdings = sqlx::query!(
+        "SELECT pending_import_id, kind, location FROM pending_import_holding
+         WHERE pending_import_id IN
+            (SELECT id FROM pending_import
+             WHERE (?1 IS NULL OR library_id = ?1) AND (?2 IS NULL OR id = ?2))
+         ORDER BY id",
+        library_id,
+        id
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in holdings {
+        imports[index[&row.pending_import_id]]
+            .holdings
+            .push(PendingHolding {
+                kind: row.kind.parse().map_err(decode_error)?,
+                location: row.location,
+            });
+    }
+    tx.commit().await?;
+    Ok(imports)
 }
 
 /// How many imports await review, for the header.

@@ -11,7 +11,7 @@ use axum_extra::extract::Form as MultiForm;
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, Session};
-use crate::db::pending_import::{self, NewPendingImport, PendingImport};
+use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
 use crate::import::{ContributorRow, Draft, Errors, IdentifierRow};
 use crate::{AppState, db, import};
@@ -182,13 +182,16 @@ pub async fn start(
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
     let more = form.more.is_some();
+    let holdings = [PendingHolding {
+        kind: form.kind,
+        location: (!location.is_empty()).then_some(location),
+    }];
     let pending_id = pending_import::create(
         &state.pool,
         &NewPendingImport {
             library_id: id,
             query: form.query.trim(),
-            kind: form.kind,
-            location: (!location.is_empty()).then_some(location.as_str()),
+            holdings: &holdings,
         },
     )
     .await?;

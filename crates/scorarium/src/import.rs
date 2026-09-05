@@ -42,12 +42,13 @@ impl Draft {
     /// on every view rather than stored, so it survives a restart the same way the row does.
     pub fn seed(pending: &PendingImport) -> Self {
         let query = pending.query.trim();
+        let holding = pending.holdings.first();
         let mut draft = Draft {
             title: String::new(),
             publisher: String::new(),
             year: String::new(),
-            kind: pending.kind,
-            location: pending.location.clone().unwrap_or_default(),
+            kind: holding.map_or(HoldingKind::Physical, |h| h.kind),
+            location: holding.and_then(|h| h.location.clone()).unwrap_or_default(),
             identifiers: Vec::new(),
             contributors: Vec::new(),
         };
@@ -278,7 +279,7 @@ pub async fn accept(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::db::pending_import::NewPendingImport;
+    use crate::db::pending_import::{NewPendingImport, PendingHolding};
 
     #[sqlx::test]
     async fn accept_creates_publication_once(pool: SqlitePool) {
@@ -291,8 +292,10 @@ mod tests {
             &NewPendingImport {
                 library_id,
                 query: "",
-                kind: HoldingKind::Physical,
-                location: None,
+                holdings: &[PendingHolding {
+                    kind: HoldingKind::Physical,
+                    location: None,
+                }],
             },
         )
         .await
