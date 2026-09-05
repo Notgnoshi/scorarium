@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM person\n         WHERE library_id = ?\n           AND id NOT IN (SELECT person_id FROM publication_contributor)\n           AND id NOT IN (SELECT person_id FROM work_contributor)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "96f05c581515324578e090096d69e221fd28e10c5dcbb5838adddf40904d9b90"
+}

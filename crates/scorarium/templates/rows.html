@@ -49,8 +49,10 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro holding_row(kind, location, error) %}
+{% macro holding_row(id, kind, location, error) %}
     <div class="d-flex gap-2 mb-2" data-row>
+        {# Identifies the stored copy this row edits, so it keeps its identity; empty when adding one #}
+        <input type="hidden" name="holding_id" value="{{ id }}" />
         {# Using a radio group would require a unique ID per row, so build it with a checkbox #}
         <input type="hidden" name="holding_kind" value="physical" />
         <label class="kind-toggle d-inline-flex">
@@ -101,20 +103,24 @@
         </div>
     </div>
 {% endmacro %}
-{% macro holdings_box(rows, no_holdings) %}
-    <fieldset class="border rounded p-3 mb-3" data-rows>
+{% macro holdings_box(rows, no_holdings, no_copies_warning) %}
+    <fieldset class="border rounded p-3 mb-3" data-rows data-copies>
         <legend class="float-none w-auto px-2 fs-6">Copies</legend>
         <div data-rows-list>
             {% for (row, error) in rows %}
-                {% call holding_row(row.kind.as_str(), row.location, error) %}
+                {% call holding_row(row.id_value(), row.kind.as_str(), row.location, error) %}
                 {% endcall %}
             {% endfor %}
         </div>
         {% if let Some(error) = no_holdings %}
             <div class="invalid-feedback d-block mb-2">{{ error }}</div>
         {% endif %}
+        {# Shown by CSS once the last row is removed, so the warning arrives with the click #}
+        {% if !no_copies_warning.is_empty() %}
+            <div class="text-danger mb-2 no-copies">{{ no_copies_warning }}</div>
+        {% endif %}
         <template>
-            {% call holding_row("physical", "", "") %}
+            {% call holding_row("", "physical", "", "") %}
             {% endcall %}
         </template>
         <button type="button"
@@ -130,6 +136,14 @@
         [data-row]:has([name="holding_kind"]:checked) .physical-only,
         [data-row]:not(:has([name="holding_kind"]:checked)) .digital-only {
             display: none;
+        }
+
+        .no-copies {
+            display: none;
+        }
+
+        [data-copies]:not(:has([data-row])) .no-copies {
+            display: block;
         }
 
         .kind-toggle {

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM publication_contributor WHERE publication_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ab6ec256357554ed9085a00b174c92a2cd93b7b565a40f469daea0bc0556c1a4"
+}

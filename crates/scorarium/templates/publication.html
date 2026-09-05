@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ publication.title }}</h1>
+    {% if base.logged_in %}
+        <a class="btn btn-outline-secondary btn-sm mb-3"
+           href="/library/{{ publication.library_id }}/publication/{{ publication.id }}/edit">
+            <i class="bi bi-pencil" aria-hidden="true"></i> Edit
+        </a>
+    {% endif %}
     <dl class="row">
         {% if let Some(publisher) = publication.publisher %}
             <dt class="col-sm-3">Publisher</dt>
@@ -30,29 +36,7 @@
             </li>
         {% endfor %}
     </ul>
-    {% if !works.is_empty() %}
-        <h2>Works</h2>
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
-                        {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for w in works %}
-                        <tr>
-                            <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
-                            {% if show_catalog_numbers %}<td>{{ w.catalog_numbers | join(", ") }}</td>{% endif %}
-                            {% for role in roles %}<td>{% for c in w.with_role(role) %}{% if !loop.first %}, {% endif %}<a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>{% endfor %}
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% endif %}
+    {% include "publication_works.html" %}
     <h2>Copies</h2>
     <ul>
         {% for h in publication.holdings %}

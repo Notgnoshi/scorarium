@@ -1,0 +1,87 @@
+{% import "rows.html" as rows %}
+{% call rows::style() %}
+{% endcall %}
+<div data-publication-fields>
+    <div class="mb-3">
+        <label class="form-label" for="title">Title</label>
+        <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
+               id="title"
+               name="title"
+               value="{{ fields.form.title }}" />
+        {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="publisher">Publisher</label>
+        <input class="form-control"
+               id="publisher"
+               name="publisher"
+               value="{{ fields.form.publisher }}" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="year">Year</label>
+        <input class="form-control{% if fields.errors.year.is_some() %} is-invalid{% endif %}"
+               id="year"
+               name="year"
+               inputmode="numeric"
+               value="{{ fields.form.year }}" />
+        {% if let Some(error) = fields.errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+    <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
+        <div data-rows-list>
+            {% for (row, error) in fields.identifier_rows %}
+                {% call rows::identifier_row(row.kind, row.value, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call rows::identifier_row("isbn", "", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add identifier">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+    <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
+        <div data-rows-list>
+            {% for (row, error) in fields.contributor_rows %}
+                {% call rows::contributor_row(row.name, row.role, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call rows::contributor_row("", "", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add contributor">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+    {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings, fields.no_copies_warning) %}
+    {% endcall %}
+    <datalist id="roles">
+        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
+    </datalist>
+    <datalist id="names">
+        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
+    </datalist>
+</div>
+{% call rows::script() %}
+{% endcall %}
+<script>
+    // Browsers open a datalist only on the second click or on typing. Open it on the first instead
+    document.querySelector("[data-publication-fields]").addEventListener("click", (e) => {
+        if (e.target.matches("input[list]")) {
+            try {
+                e.target.showPicker();
+            } catch {}
+        }
+    });
+</script>

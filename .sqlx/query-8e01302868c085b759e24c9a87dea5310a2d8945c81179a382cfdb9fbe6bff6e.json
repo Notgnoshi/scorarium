@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE holding SET kind = ?, location = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "8e01302868c085b759e24c9a87dea5310a2d8945c81179a382cfdb9fbe6bff6e"
+}

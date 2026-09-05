@@ -19,7 +19,7 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, db};
+use crate::{AppState, db, publication_form};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -48,6 +48,16 @@ impl Crumb {
         Self {
             label: "Import".to_string(),
             href: format!("/library/{}/import", library.id),
+        }
+    }
+
+    pub fn publication(publication: &db::publication::Publication) -> Self {
+        Self {
+            label: publication.title.clone(),
+            href: format!(
+                "/library/{}/publication/{}",
+                publication.library_id, publication.id
+            ),
         }
     }
 }
@@ -107,6 +117,68 @@ impl BaseContext {
     }
 }
 
+/// Suggested alongside the library's existing roles, so a new library still gets a datalist.
+const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
+
+/// Everything the shared publication form fragment renders. The import review page and the
+/// publication edit page show the same fields, so they build the same context for them.
+pub struct FormFields {
+    pub form: publication_form::PublicationForm,
+    pub errors: publication_form::Errors,
+    // Rows paired with their error, empty when there is none, so the row macros take plain strings
+    // for both the filled rows and the blank template row.
+    pub holding_rows: Vec<(publication_form::HoldingRow, String)>,
+    pub identifier_rows: Vec<(publication_form::IdentifierRow, String)>,
+    pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
+    // Datalist suggestions for the role and name inputs
+    pub roles: Vec<String>,
+    pub names: Vec<String>,
+    pub no_copies_warning: String,
+}
+
+impl FormFields {
+    pub async fn build(
+        pool: &sqlx::SqlitePool,
+        library_id: i64,
+        form: publication_form::PublicationForm,
+        errors: publication_form::Errors,
+    ) -> sqlx::Result<Self> {
+        let roles = db::person::list_roles(pool, library_id)
+            .await?
+            .into_iter()
+            .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        Ok(Self {
+            holding_rows: pair_errors(&form.holdings, &errors.holdings),
+            identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
+            contributor_rows: pair_errors(&form.contributors, &errors.contributors),
+            names: db::person::list_names(pool, library_id).await?,
+            no_copies_warning: String::new(),
+            roles,
+            form,
+            errors,
+        })
+    }
+
+    /// What to warn when the last copy row is removed, on the page that can act on it.
+    pub fn warn_when_empty(mut self, warning: &str) -> Self {
+        self.no_copies_warning = warning.to_string();
+        self
+    }
+}
+
+/// Pair each row with its message. A form that parsed clean has no error slots at all, so the rows
+/// cannot simply be zipped with the errors.
+fn pair_errors<T: Clone>(rows: &[T], errors: &[Option<String>]) -> Vec<(T, String)> {
+    rows.iter()
+        .cloned()
+        .enumerate()
+        .map(|(i, row)| (row, errors.get(i).cloned().flatten().unwrap_or_default()))
+        .collect()
+}
+
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index::index))
@@ -139,6 +211,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/library/{library_id}/publication/{id}",
             get(publication::publication),
+        )
+        .route(
+            "/library/{library_id}/publication/{id}/edit",
+            get(publication::edit).post(publication::save),
+        )
+        .route(
+            "/library/{library_id}/publication/{id}/delete",
+            post(publication::delete),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
         .route("/library/{library_id}/person/{id}", get(person::person))

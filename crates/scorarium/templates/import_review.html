@@ -1,9 +1,6 @@
 {% extends "base.html" %}
-{% import "rows.html" as rows %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    {% call rows::style() %}
-    {% endcall %}
     <dl class="row">
         <dt class="col-sm-3">Started</dt>
         <dd class="col-sm-9">
@@ -12,76 +9,7 @@
     </dl>
     <form method="post"
           action="/library/{{ library.id }}/import/{{ import.id }}/save">
-        <div class="mb-3">
-            <label class="form-label" for="title">Title</label>
-            <input class="form-control{% if errors.title.is_some() %} is-invalid{% endif %}"
-                   id="title"
-                   name="title"
-                   value="{{ draft.title }}" />
-            {% if let Some(error) = errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-        </div>
-        <div class="mb-3">
-            <label class="form-label" for="publisher">Publisher</label>
-            <input class="form-control"
-                   id="publisher"
-                   name="publisher"
-                   value="{{ draft.publisher }}" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label" for="year">Year</label>
-            <input class="form-control{% if errors.year.is_some() %} is-invalid{% endif %}"
-                   id="year"
-                   name="year"
-                   inputmode="numeric"
-                   value="{{ draft.year }}" />
-            {% if let Some(error) = errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-        </div>
-        <fieldset class="border rounded p-3 mb-3" data-rows>
-            <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
-            <div data-rows-list>
-                {% for (row, error) in identifier_rows %}
-                    {% call rows::identifier_row(row.kind, row.value, error) %}
-                    {% endcall %}
-                {% endfor %}
-            </div>
-            <template>
-                {% call rows::identifier_row("isbn", "", "") %}
-                {% endcall %}
-            </template>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm"
-                    data-rows-add
-                    aria-label="Add identifier">
-                <i class="bi bi-plus-lg" aria-hidden="true"></i>
-            </button>
-        </fieldset>
-        <fieldset class="border rounded p-3 mb-3" data-rows>
-            <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
-            <div data-rows-list>
-                {% for (row, error) in contributor_rows %}
-                    {% call rows::contributor_row(row.name, row.role, error) %}
-                    {% endcall %}
-                {% endfor %}
-            </div>
-            <template>
-                {% call rows::contributor_row("", "", "") %}
-                {% endcall %}
-            </template>
-            <button type="button"
-                    class="btn btn-outline-secondary btn-sm"
-                    data-rows-add
-                    aria-label="Add contributor">
-                <i class="bi bi-plus-lg" aria-hidden="true"></i>
-            </button>
-        </fieldset>
-        {% call rows::holdings_box(holding_rows, errors.no_holdings) %}
-        {% endcall %}
-        <datalist id="roles">
-            {% for role in roles %}<option value="{{ role }}"></option>{% endfor %}
-        </datalist>
-        <datalist id="names">
-            {% for name in names %}<option value="{{ name }}"></option>{% endfor %}
-        </datalist>
+        {% include "publication_fields.html" %}
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>
             <a class="btn btn-outline-secondary"
@@ -118,16 +46,4 @@
             </form>
         </div>
     </div>
-    {% call rows::script() %}
-    {% endcall %}
-    <script>
-        // Browsers open a datalist only on the second click or on typing. Open it on the first instead
-        document.querySelector("form[action$='/save']").addEventListener("click", (e) => {
-            if (e.target.matches("input[list]")) {
-                try {
-                    e.target.showPicker();
-                } catch {}
-            }
-        });
-    </script>
 {% endblock %}

@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use scorarium::{db, router};
-use scorarium_tests::TestDb;
+use scorarium::db::publication::{HoldingKind, NewPublication};
+use scorarium::{db, identifier, router};
+use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
 async fn publication_page() {
@@ -111,6 +112,179 @@ async fn publication_page() {
         .get(&format!(
             "/library/{}/publication/{missing}",
             sheet_music.id
+        ))
+        .await;
+    response.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn publication_edit_flow() {
+    let state = TestDb::new()
+        .library("Books")
+        .password("hunter2")
+        .build()
+        .await;
+    let pool = state.pool.clone();
+    let library = db::list_libraries(&pool).await.unwrap()[0].id;
+    let publication = db::publication::create_publication(
+        &pool,
+        &NewPublication {
+            library_id: library,
+            title: "Practial Vim",
+            publisher: None,
+            year: None,
+        },
+    )
+    .await
+    .unwrap();
+    let shelf =
+        db::publication::create_holding(&pool, publication, HoldingKind::Physical, Some("Desk"))
+            .await
+            .unwrap();
+    let isbn = identifier::normalize(identifier::Kind::Isbn, "978-1-68050-127-8").unwrap();
+    db::publication::create_identifier(&pool, publication, identifier::Kind::Isbn, &isbn)
+        .await
+        .unwrap();
+    let solo = db::person::create_person(&pool, library, "Drew Neil", "Neil, Drew")
+        .await
+        .unwrap();
+    db::person::create_contributor(&pool, library, publication, solo, "author")
+        .await
+        .unwrap();
+    let server = browser(state);
+    let view = format!("/library/{library}/publication/{publication}");
+    let edit = format!("{view}/edit");
+
+    // Editing and deleting require login, and the button that leads there is hidden until then
+    let response = server.get(&edit).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/login");
+    let response = server.post(&format!("{view}/delete")).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/login");
+    let response = server.get(&view).await;
+    assert!(!response.text().contains(&format!("href=\"{edit}\"")));
+    server.post("/login").form(&[("password", "hunter2")]).await;
+    let response = server.get(&view).await;
+    response.assert_text_contains(format!("href=\"{edit}\""));
+
+    // The form opens on the stored values, with the empty ones shown rather than hidden
+    let response = server.get(&edit).await;
+    response.assert_status_ok();
+    response.assert_text_contains("value=\"Practial Vim\"");
+    response.assert_text_contains("978-1-68050-127-8");
+    response.assert_text_contains("Drew Neil");
+    response.assert_text_contains("id=\"publisher\"");
+
+    // A rejected submission comes back with its message, having changed nothing
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Practical Vim"),
+            ("publisher", ""),
+            ("year", "recently"),
+            ("holding_id", &shelf.to_string()),
+            ("holding_kind", "physical"),
+            ("holding_location", "Desk"),
+            ("holding_file", ""),
+        ])
+        .await;
+    response.assert_status_ok();
+    response.assert_text_contains("The year must be a number.");
+    let stored = db::publication::get(&pool, library, publication)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.title, "Practial Vim");
+
+    // A copy the form still names keeps its identity; the contributor dropped here is credited
+    // nowhere else, so the person goes with the edit
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Practical Vim"),
+            ("publisher", "Pragmatic Bookshelf"),
+            ("year", "2015"),
+            ("holding_id", &shelf.to_string()),
+            ("holding_id", ""),
+            ("holding_kind", "physical"),
+            ("holding_kind", "physical"),
+            ("holding_kind", "digital"),
+            ("holding_location", "Piano bench"),
+            ("holding_location", ""),
+            ("holding_file", ""),
+            ("holding_file", "practical-vim.pdf"),
+            ("identifier_kind", "isbn"),
+            ("identifier_value", "978-1-68050-127-8"),
+            ("contributor_name", "Tim Pope"),
+            ("contributor_role", "editor"),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &view);
+
+    let stored = db::publication::get(&pool, library, publication)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.title, "Practical Vim");
+    assert_eq!(stored.publisher.as_deref(), Some("Pragmatic Bookshelf"));
+    assert_eq!(stored.year, Some(2015));
+    assert_eq!(
+        stored
+            .holdings
+            .iter()
+            .map(|h| (h.id == shelf, h.location.as_deref()))
+            .collect::<Vec<_>>(),
+        [
+            (true, Some("Piano bench")),
+            (false, Some("practical-vim.pdf"))
+        ]
+    );
+    assert_eq!(
+        stored
+            .contributors
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Tim Pope"]
+    );
+    assert_eq!(db::person::get(&pool, library, solo).await.unwrap(), None);
+
+    let response = server.get(&view).await;
+    response.assert_text_contains("Practical Vim");
+    response.assert_text_contains("Pragmatic Bookshelf");
+    response.assert_text_contains("Piano bench");
+    response.assert_text_contains("practical-vim.pdf");
+
+    // Removing the last copy is what the delete dialog warns about, so the form says so up front
+    let response = server.get(&edit).await;
+    response.assert_text_contains("will delete this publication");
+    response.assert_text_contains("Delete this publication and its contents?");
+
+    // Deleting takes the publication and the person left credited nowhere
+    let response = server
+        .post(&format!(
+            "/library/{library}/publication/{publication}/delete"
+        ))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &format!("/library/{library}"));
+    assert_eq!(
+        db::publication::get(&pool, library, publication)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db::person::list_names(&pool, library).await.unwrap(),
+        [] as [String; 0]
+    );
+
+    // Deleting again is a miss, not a second delete
+    let response = server
+        .post(&format!(
+            "/library/{library}/publication/{publication}/delete"
         ))
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
