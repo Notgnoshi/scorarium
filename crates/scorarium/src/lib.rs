@@ -2,6 +2,7 @@ pub mod auth;
 pub mod db;
 pub mod demo;
 pub mod identifier;
+pub mod import;
 pub mod router;
 pub mod session;
 
@@ -13,6 +14,7 @@ pub use crate::router::router;
 pub struct AppState {
     pub pool: SqlitePool,
     pub sessions: session::SessionStore,
+    pub drafts: import::DraftStore,
 }
 
 impl AppState {
@@ -20,6 +22,7 @@ impl AppState {
         Self {
             pool,
             sessions: session::SessionStore::default(),
+            drafts: import::DraftStore::default(),
         }
     }
 }

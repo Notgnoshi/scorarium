@@ -9,6 +9,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use super::{AppError, BaseContext, Crumb, Session, index};
+use crate::db::pending_import;
 use crate::{AppState, db};
 
 #[derive(Template)]
@@ -101,8 +102,13 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    // The library's pending imports cascade away with it, but their drafts live in memory
+    let pending = pending_import::list(&state.pool, Some(id)).await?;
     if !db::delete_library(&state.pool, id).await? {
         return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    for import in pending {
+        state.drafts.remove(import.id);
     }
     Ok(Redirect::to("/").into_response())
 }

@@ -46,4 +46,23 @@ async fn manual_import_flow() {
     let home = server.get("/").await;
     home.assert_text_contains("href=\"/review\"");
     home.assert_text_contains("<span class=\"badge text-bg-primary rounded-pill\">1</span>");
+
+    // Save a draft; the review page and the lists pick up its title
+    let response = server
+        .post(&format!("{review}/save"))
+        .form(&[
+            ("title", "Three gymnopedies"),
+            ("publisher", "Schirmer"),
+            ("year", "1888"),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", review.as_str());
+    let response = server.get(&review).await;
+    response.assert_text_contains("value=\"Three gymnopedies\"");
+    response.assert_text_contains("value=\"1888\"");
+    server
+        .get(&entry)
+        .await
+        .assert_text_contains("Three gymnopedies");
 }

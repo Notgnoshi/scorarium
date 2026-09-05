@@ -7,24 +7,34 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
-use sqlx::SqlitePool;
 
 use super::{AppError, BaseContext, Crumb, Session};
 use crate::db::pending_import::{self, NewPendingImport, PendingImport};
 use crate::db::publication::HoldingKind;
+use crate::import::Draft;
 use crate::{AppState, db};
+
+const UNTITLED: &str = "Untitled import";
 
 pub struct PendingRow {
     pub import: PendingImport,
+    /// The draft's title when one has been saved, else a placeholder
+    pub title: String,
     pub age: String,
 }
 
 /// Rows for one library's list, or for the cross-library queue.
-async fn pending_rows(pool: &SqlitePool, library_id: Option<i64>) -> sqlx::Result<Vec<PendingRow>> {
-    Ok(pending_import::list(pool, library_id)
+async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result<Vec<PendingRow>> {
+    Ok(pending_import::list(&state.pool, library_id)
         .await?
         .into_iter()
         .map(|import| PendingRow {
+            title: state
+                .drafts
+                .get(import.id)
+                .filter(|d| !d.title.is_empty())
+                .map(|d| d.title)
+                .unwrap_or_else(|| UNTITLED.to_string()),
             age: age(import.created_at),
             import,
         })
@@ -72,22 +82,22 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    render_entry(&state.pool, id, base, query.more.is_some(), None).await
+    render_entry(&state, id, base, query.more.is_some(), None).await
 }
 
 async fn render_entry(
-    pool: &SqlitePool,
+    state: &AppState,
     id: i64,
     base: BaseContext,
     more: bool,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(pool, id).await? else {
+    let Some(library) = db::get_library(&state.pool, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
-        pending: pending_rows(pool, Some(id)).await?,
+        pending: pending_rows(state, Some(id)).await?,
         show_library: false,
         library,
         more,
@@ -125,7 +135,7 @@ pub async fn start(
     .filter(|s| !s.is_empty());
     if kind == HoldingKind::Digital && location.is_none() {
         return render_entry(
-            &state.pool,
+            &state,
             id,
             base,
             more,
@@ -161,6 +171,7 @@ struct ReviewPage {
     library: db::Library,
     import: PendingImport,
     age: String,
+    draft: Draft,
 }
 
 /// GET /library/{library_id}/import/{id}
@@ -176,9 +187,15 @@ pub async fn review(
     let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let draft = state.drafts.get(id).unwrap_or_default();
+    let title = if draft.title.is_empty() {
+        UNTITLED
+    } else {
+        &draft.title
+    };
     let page = ReviewPage {
         base: base.page(
-            "Untitled import",
+            title,
             vec![
                 Crumb::home(),
                 Crumb::library(&library),
@@ -188,8 +205,43 @@ pub async fn review(
         age: age(import.created_at),
         library,
         import,
+        draft,
     };
     Ok(Html(page.render()?).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct ReviewForm {
+    title: String,
+    publisher: String,
+    year: String,
+}
+
+impl From<ReviewForm> for Draft {
+    fn from(form: ReviewForm) -> Self {
+        Draft {
+            title: form.title.trim().to_string(),
+            publisher: form.publisher.trim().to_string(),
+            year: form.year.trim().to_string(),
+        }
+    }
+}
+
+/// POST /library/{library_id}/import/{id}/save
+pub async fn save(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    Path((library_id, id)): Path<(i64, i64)>,
+    Form(form): Form<ReviewForm>,
+) -> Result<Response, AppError> {
+    if pending_import::get(&state.pool, library_id, id)
+        .await?
+        .is_none()
+    {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    state.drafts.save(id, form.into());
+    Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
 }
 
 #[derive(Template)]
@@ -208,7 +260,7 @@ pub async fn queue(
 ) -> Result<Response, AppError> {
     let page = QueuePage {
         base: base.page("Review queue", vec![Crumb::home()]),
-        pending: pending_rows(&state.pool, None).await?,
+        pending: pending_rows(&state, None).await?,
         show_library: true,
     };
     Ok(Html(page.render()?).into_response())
@@ -223,5 +275,6 @@ pub async fn delete(
     if !pending_import::delete(&state.pool, library_id, id).await? {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
+    state.drafts.remove(id);
     Ok(Redirect::to(&format!("/library/{library_id}/import")).into_response())
 }
