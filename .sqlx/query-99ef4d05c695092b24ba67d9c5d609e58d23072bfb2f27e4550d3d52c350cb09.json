@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work_contributor WHERE work_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "99ef4d05c695092b24ba67d9c5d609e58d23072bfb2f27e4550d3d52c350cb09"
+}
