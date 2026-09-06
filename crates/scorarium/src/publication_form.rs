@@ -155,26 +155,7 @@ impl PublicationForm {
             })
             .collect();
 
-        let mut seen = BTreeSet::new();
-        errors.contributors = self
-            .contributors
-            .iter()
-            .map(|row| {
-                if row.name.is_empty() && row.role.is_empty() {
-                    return Some("Fill this in or remove it.".to_string());
-                }
-                if row.name.is_empty() {
-                    return Some("A name is required.".to_string());
-                }
-                if row.role.is_empty() {
-                    return Some("A role is required.".to_string());
-                }
-                if !seen.insert((row.name.as_str(), row.role.as_str())) {
-                    return Some("Already listed.".to_string());
-                }
-                None
-            })
-            .collect();
+        errors.contributors = parse_contributors(&self.contributors);
 
         errors.works = self
             .works
@@ -211,6 +192,40 @@ impl PublicationForm {
             works: self.works.clone(),
         })
     }
+}
+
+/// Check contributor rows, one message per row. A work form credits people the same way a
+/// publication form does, so both check their rows here.
+pub fn parse_contributors(rows: &[ContributorRow]) -> Vec<Option<String>> {
+    let mut seen = BTreeSet::new();
+    rows.iter()
+        .map(|row| {
+            if row.name.is_empty() && row.role.is_empty() {
+                return Some("Fill this in or remove it.".to_string());
+            }
+            if row.name.is_empty() {
+                return Some("A name is required.".to_string());
+            }
+            if row.role.is_empty() {
+                return Some("A role is required.".to_string());
+            }
+            if !seen.insert((row.name.as_str(), row.role.as_str())) {
+                return Some("Already listed.".to_string());
+            }
+            None
+        })
+        .collect()
+}
+
+/// Contributor rows from a submission's parallel keys.
+pub fn contributor_rows(name: Vec<String>, role: Vec<String>) -> Vec<ContributorRow> {
+    name.into_iter()
+        .zip(role)
+        .map(|(name, role)| ContributorRow {
+            name: name.trim().to_string(),
+            role: role.trim().to_string(),
+        })
+        .collect()
 }
 
 /// Check copy rows, filling the holding slots of `errors`
@@ -282,15 +297,8 @@ impl From<Submission> for PublicationForm {
                 value: value.trim().to_string(),
             })
             .collect();
-        let contributors = submission
-            .contributor_name
-            .into_iter()
-            .zip(submission.contributor_role)
-            .map(|(name, role)| ContributorRow {
-                name: name.trim().to_string(),
-                role: role.trim().to_string(),
-            })
-            .collect();
+        let contributors =
+            contributor_rows(submission.contributor_name, submission.contributor_role);
         // The ids are read by position rather than zipped, as the copy rows do, so a submission
         // with no ids at all still yields rows naming no stored work.
         let works = submission
