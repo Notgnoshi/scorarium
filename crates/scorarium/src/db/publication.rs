@@ -822,6 +822,7 @@ mod tests {
                     role: "editor".into(),
                 },
             ],
+            works: Vec::new(),
         };
 
         // Another library's id must not reach this publication

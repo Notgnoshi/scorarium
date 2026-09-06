@@ -94,7 +94,8 @@ pub async fn edit(
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let form = PublicationForm::from(&publication);
+    let works = db::work::list_in_publication(&state.pool, library_id, id).await?;
+    let form = PublicationForm::stored(&publication, &works);
     render_edit(&state, base, library, publication, form, Errors::default()).await
 }
 

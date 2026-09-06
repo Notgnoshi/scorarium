@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.work_id, c.person_id, p.name, c.role\n         FROM work_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.work_id IN\n            (SELECT id FROM work\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+  "query": "SELECT c.work_id, c.person_id, p.name, c.role\n         FROM work_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.work_id IN\n            (SELECT id FROM work\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))\n         ORDER BY c.id",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "1e575937bb5c349529b0e4b2f4b9a532bba10099d3a68cee121ca75da1661f07"
+  "hash": "fab33e4c2d6958b3b2ae89a5f69fc81b45fdb5f64b2dd4186a1376f81f09c7b9"
 }

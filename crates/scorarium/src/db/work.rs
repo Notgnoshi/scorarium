@@ -35,6 +35,14 @@ impl Work {
     }
 }
 
+pub fn lead_contributor(contributors: &[Contributor]) -> Option<&Contributor> {
+    contributors
+        .iter()
+        .find(|c| c.role == "composer")
+        .or_else(|| contributors.iter().find(|c| c.role == "author"))
+        .or_else(|| contributors.first())
+}
+
 pub struct NewWork<'a> {
     pub library_id: i64,
     pub title: &'a str,
@@ -48,7 +56,7 @@ pub async fn get(pool: &SqlitePool, library_id: i64, id: i64) -> sqlx::Result<Op
     Ok(load(pool, library_id, Some(id), None).await?.pop())
 }
 
-/// The works a publication contains, with their children, in arbitrary order.
+/// The works a publication contains, with their children, in the order they were added to it.
 pub async fn list_in_publication(
     pool: &SqlitePool,
     library_id: i64,
@@ -70,7 +78,8 @@ async fn load(
         "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
-           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))",
+           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+         ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
         library_id,
         id,
         publication_id
@@ -115,7 +124,8 @@ async fn load(
             (SELECT id FROM work
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+         ORDER BY c.id",
         library_id,
         id,
         publication_id
@@ -210,6 +220,25 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::db::publication::{NewPublication, create_publication, list_containing};
+
+    fn contributor(person_id: i64, role: &str) -> Contributor {
+        Contributor {
+            person_id,
+            name: format!("Person {person_id}"),
+            role: role.into(),
+        }
+    }
+
+    #[test]
+    fn lead_contributor_prefers_composer_then_author() {
+        let composer = [contributor(1, "arranger"), contributor(2, "composer")];
+        assert_eq!(lead_contributor(&composer), Some(&composer[1]));
+        let author = [contributor(1, "editor"), contributor(2, "author")];
+        assert_eq!(lead_contributor(&author), Some(&author[1]));
+        let neither = [contributor(1, "editor"), contributor(2, "arranger")];
+        assert_eq!(lead_contributor(&neither), Some(&neither[0]));
+        assert_eq!(lead_contributor(&[]), None);
+    }
 
     #[sqlx::test]
     async fn list_assembles_children(pool: SqlitePool) {
