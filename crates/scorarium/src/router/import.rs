@@ -245,7 +245,8 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        fields: FormFields::build(&state.pool, library_id, draft, errors).await?,
+        // Nothing is stored until the import is accepted, so no work row can name one
+        fields: FormFields::build(&state.pool, library_id, draft, errors, &[]).await?,
         library,
         import,
     };

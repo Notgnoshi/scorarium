@@ -5,6 +5,7 @@ use serde::Deserialize;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::{self, Contributor};
+use crate::db::work;
 use crate::identifier::{self, Normalized};
 use crate::publication_form::Validated;
 
@@ -341,7 +342,7 @@ pub async fn update(
     Ok(true)
 }
 
-/// Write a publication's identifiers, contributor links and copies from a reviewed form.
+/// Write a publication's identifiers, contributor links, works and copies from a reviewed form.
 ///
 /// An identifier or a contributor link holds nothing beyond what the form shows, so both are
 /// rebuilt outright. A copy is not: a row naming an existing copy updates it in place, so the copy
@@ -376,6 +377,8 @@ pub async fn write_children(
         person::create_contributor(&mut *conn, library_id, publication_id, person_id, &row.role)
             .await?;
     }
+
+    work::write_contents(&mut *conn, library_id, publication_id, &validated.works).await?;
 
     let stored = sqlx::query_scalar!(
         "SELECT id FROM holding WHERE publication_id = ?",

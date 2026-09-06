@@ -49,6 +49,47 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
+{% macro work_row(library_id, id, title, name, role, more, error) %}
+    {# The message names the field at fault, so every input shares the outline #}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        {# Identifies the stored work this row edits, so it keeps its identity; empty when adding one #}
+        <input type="hidden" name="work_id" value="{{ id }}" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="work_title"
+               value="{{ title }}"
+               placeholder="Title"
+               aria-label="Work title" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="work_contributor_name"
+               value="{{ name }}"
+               list="names"
+               placeholder="Name"
+               aria-label="Work contributor name" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="work_contributor_role"
+               value="{{ role }}"
+               list="roles"
+               placeholder="Role"
+               aria-label="Work contributor role" />
+        {# The row edits one contributor, so say when the work credits others it leaves alone #}
+        {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
+        {% if !id.is_empty() %}
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library_id }}/work/{{ id }}"
+               aria-label="Open work">
+                <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+            </a>
+        {% endif %}
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
 {% macro holding_row(id, kind, location, error) %}
     <div class="d-flex gap-2 mb-2" data-row>
         {# Identifies the stored copy this row edits, so it keeps its identity; empty when adding one #}
