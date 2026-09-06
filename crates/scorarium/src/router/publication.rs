@@ -28,9 +28,6 @@ struct EditPage {
     base: BaseContext,
     library: db::Library,
     publication: db::publication::Publication,
-    works: Vec<db::work::Work>,
-    show_catalog_numbers: bool,
-    roles: Vec<String>,
     fields: FormFields,
 }
 
@@ -94,8 +91,18 @@ pub async fn edit(
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let form = PublicationForm::from(&publication);
-    render_edit(&state, base, library, publication, form, Errors::default()).await
+    let works = db::work::list_in_publication(&state.pool, library_id, id).await?;
+    let form = PublicationForm::stored(&publication, &works);
+    render_edit(
+        &state,
+        base,
+        library,
+        publication,
+        form,
+        Errors::default(),
+        &works,
+    )
+    .await
 }
 
 /// POST /library/{library_id}/publication/{id}/edit
@@ -118,7 +125,11 @@ pub async fn save(
     let form = PublicationForm::from(submission);
     let validated = match form.parse() {
         Ok(validated) => validated,
-        Err(errors) => return render_edit(&state, base, library, publication, form, errors).await,
+        Err(errors) => {
+            // The stored works are what the rejected rows' "and N more" counts come from
+            let works = db::work::list_in_publication(&state.pool, library_id, id).await?;
+            return render_edit(&state, base, library, publication, form, errors, &works).await;
+        }
     };
     if !db::publication::update(&state.pool, library_id, id, &validated).await? {
         return Ok(StatusCode::NOT_FOUND.into_response());
@@ -145,9 +156,8 @@ async fn render_edit(
     publication: db::publication::Publication,
     form: PublicationForm,
     errors: Errors,
+    works: &[db::work::Work],
 ) -> Result<Response, AppError> {
-    let (works, show_catalog_numbers, roles) =
-        works_table(&state.pool, library.id, publication.id).await?;
     let page = EditPage {
         base: base.page(
             publication.title.clone(),
@@ -157,12 +167,9 @@ async fn render_edit(
                 Crumb::publication(&publication),
             ],
         ),
-        fields: FormFields::build(&state.pool, library.id, form, errors)
+        fields: FormFields::build(&state.pool, library.id, form, errors, works)
             .await?
             .warn_when_empty(NO_COPIES),
-        works,
-        show_catalog_numbers,
-        roles,
         library,
         publication,
     };

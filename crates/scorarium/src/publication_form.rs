@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 
 use crate::db::publication::{HoldingKind, Publication};
+use crate::db::work::{Work, lead_contributor};
 use crate::identifier;
 
 /// A publication's editable fields as typed, before validation.
@@ -14,6 +15,7 @@ pub struct PublicationForm {
     pub holdings: Vec<HoldingRow>,
     pub identifiers: Vec<IdentifierRow>,
     pub contributors: Vec<ContributorRow>,
+    pub works: Vec<WorkRow>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +46,22 @@ pub struct ContributorRow {
     pub role: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkRow {
+    /// The stored work this row edits; None for one being added
+    pub id: Option<i64>,
+    pub title: String,
+    /// The work's lead contributor; both fields empty means none
+    pub contributor: ContributorRow,
+}
+
+impl WorkRow {
+    /// The hidden id field's value, empty for a work being added.
+    pub fn id_value(&self) -> String {
+        self.id.map(|id| id.to_string()).unwrap_or_default()
+    }
+}
+
 /// A form's typed values, ready to become catalog rows.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Validated {
@@ -53,6 +71,7 @@ pub struct Validated {
     pub holdings: Vec<ValidatedHolding>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
+    pub works: Vec<WorkRow>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -72,6 +91,7 @@ pub struct Errors {
     pub no_holdings: Option<String>,
     pub identifiers: Vec<Option<String>>,
     pub contributors: Vec<Option<String>>,
+    pub works: Vec<Option<String>>,
 }
 
 impl Errors {
@@ -82,6 +102,7 @@ impl Errors {
             && self.no_holdings.is_none()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
+            && self.works.iter().all(Option::is_none)
     }
 }
 
@@ -155,6 +176,28 @@ impl PublicationForm {
             })
             .collect();
 
+        errors.works = self
+            .works
+            .iter()
+            .map(|row| {
+                let ContributorRow { name, role } = &row.contributor;
+                if row.title.is_empty() && name.is_empty() && role.is_empty() {
+                    return Some("Fill this in or remove it.".to_string());
+                }
+                if row.title.is_empty() {
+                    return Some("A title is required.".to_string());
+                }
+                // Both empty is allowed: an anonymous or folk piece has no contributor
+                if name.is_empty() && !role.is_empty() {
+                    return Some("A name is required.".to_string());
+                }
+                if role.is_empty() && !name.is_empty() {
+                    return Some("A role is required.".to_string());
+                }
+                None
+            })
+            .collect();
+
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -165,6 +208,7 @@ impl PublicationForm {
             holdings,
             identifiers,
             contributors: self.contributors.clone(),
+            works: self.works.clone(),
         })
     }
 }
@@ -217,6 +261,14 @@ pub struct Submission {
     contributor_name: Vec<String>,
     #[serde(default)]
     contributor_role: Vec<String>,
+    #[serde(default)]
+    work_id: Vec<String>,
+    #[serde(default)]
+    work_title: Vec<String>,
+    #[serde(default)]
+    work_contributor_name: Vec<String>,
+    #[serde(default)]
+    work_contributor_role: Vec<String>,
 }
 
 impl From<Submission> for PublicationForm {
@@ -239,6 +291,26 @@ impl From<Submission> for PublicationForm {
                 role: role.trim().to_string(),
             })
             .collect();
+        // The ids are read by position rather than zipped, as the copy rows do, so a submission
+        // with no ids at all still yields rows naming no stored work.
+        let works = submission
+            .work_title
+            .into_iter()
+            .zip(submission.work_contributor_name)
+            .zip(submission.work_contributor_role)
+            .enumerate()
+            .map(|(i, ((title, name), role))| WorkRow {
+                id: submission
+                    .work_id
+                    .get(i)
+                    .and_then(|id| id.trim().parse().ok()),
+                title: title.trim().to_string(),
+                contributor: ContributorRow {
+                    name: name.trim().to_string(),
+                    role: role.trim().to_string(),
+                },
+            })
+            .collect();
         PublicationForm {
             title: submission.title.trim().to_string(),
             publisher: submission.publisher.trim().to_string(),
@@ -251,6 +323,7 @@ impl From<Submission> for PublicationForm {
             ),
             identifiers,
             contributors,
+            works,
         }
     }
 }
@@ -298,9 +371,10 @@ pub fn holding_rows(
         .collect()
 }
 
-/// The form a stored publication opens in: its values as typed, every copy naming itself.
-impl From<&Publication> for PublicationForm {
-    fn from(publication: &Publication) -> Self {
+impl PublicationForm {
+    /// The form a stored publication opens in: its values as typed, every copy and work naming
+    /// itself.
+    pub fn stored(publication: &Publication, works: &[Work]) -> Self {
         PublicationForm {
             title: publication.title.clone(),
             publisher: publication.publisher.clone().unwrap_or_default(),
@@ -330,6 +404,19 @@ impl From<&Publication> for PublicationForm {
                     role: c.role.clone(),
                 })
                 .collect(),
+            works: works
+                .iter()
+                .map(|w| WorkRow {
+                    id: Some(w.id),
+                    title: w.title.clone(),
+                    contributor: lead_contributor(&w.contributors)
+                        .map(|i| ContributorRow {
+                            name: w.contributors[i].name.clone(),
+                            role: w.contributors[i].role.clone(),
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect(),
         }
     }
 }
@@ -348,6 +435,17 @@ pub fn sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn work_row(id: Option<i64>, title: &str, name: &str, role: &str) -> WorkRow {
+        WorkRow {
+            id,
+            title: title.into(),
+            contributor: ContributorRow {
+                name: name.into(),
+                role: role.into(),
+            },
+        }
+    }
 
     #[test]
     fn form_errors() {
@@ -396,6 +494,12 @@ mod tests {
                     role: String::new(),
                 },
             ],
+            works: vec![
+                work_row(None, "", "", ""),
+                work_row(None, "", "Erik Satie", "composer"),
+                work_row(None, "Gnossienne No. 1", "", "composer"),
+                work_row(Some(7), "Gnossienne No. 2", "Erik Satie", ""),
+            ],
         };
         assert_eq!(
             form.parse().unwrap_err(),
@@ -416,6 +520,12 @@ mod tests {
                     Some("Already listed.".into()),
                     Some("Fill this in or remove it.".into()),
                 ],
+                works: vec![
+                    Some("Fill this in or remove it.".into()),
+                    Some("A title is required.".into()),
+                    Some("A name is required.".into()),
+                    Some("A role is required.".into()),
+                ],
             }
         );
 
@@ -426,6 +536,7 @@ mod tests {
             holdings: Vec::new(),
             identifiers: Vec::new(),
             contributors: Vec::new(),
+            works: Vec::new(),
         };
         assert_eq!(
             form.parse().unwrap_err(),
@@ -452,6 +563,11 @@ mod tests {
                 name: "Erik Satie".into(),
                 role: "composer".into(),
             }],
+            works: vec![
+                work_row(Some(3), "Gymnopedie No. 1", "Erik Satie", "composer"),
+                // An anonymous piece needs no contributor
+                work_row(None, "Trois gnossiennes", "", ""),
+            ],
         };
         let validated = form.parse().unwrap();
         assert_eq!(validated.title, "Three gymnopedies");
@@ -478,6 +594,13 @@ mod tests {
                 name: "Erik Satie".into(),
                 role: "composer".into(),
             }]
+        );
+        assert_eq!(
+            validated.works,
+            [
+                work_row(Some(3), "Gymnopedie No. 1", "Erik Satie", "composer"),
+                work_row(None, "Trois gnossiennes", "", ""),
+            ]
         );
     }
 }

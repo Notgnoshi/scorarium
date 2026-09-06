@@ -64,6 +64,25 @@
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
     </fieldset>
+    <fieldset class="border rounded p-3 mb-3" data-rows data-works>
+        <legend class="float-none w-auto px-2 fs-6">Works</legend>
+        <div data-rows-list>
+            {% for (row, more, error) in fields.work_rows %}
+                {% call rows::work_row(library.id, row.id_value(), row.title, row.contributor.name, row.contributor.role, more, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call rows::work_row(library.id, "", "", "", "", "", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add work">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
     {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
     <datalist id="roles">
@@ -83,5 +102,16 @@
                 e.target.showPicker();
             } catch {}
         }
+    });
+
+    // Seed the new work's contributor role with "composer" or "author" based on what the owning
+    // publication has.
+    const works = document.querySelector("[data-works]");
+    works.querySelector("[data-rows-add]").addEventListener("click", () => {
+        const roles = [...document.querySelectorAll("[name=contributor_role]")]
+            .map((input) => input.value.trim().toLowerCase());
+        const role = ["composer", "author"].find((r) => roles.includes(r)) ?? "";
+        const row = works.querySelector("[data-rows-list] [data-row]:last-child");
+        row.querySelector("[name=work_contributor_role]").value = role;
     });
 </script>

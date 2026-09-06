@@ -151,6 +151,38 @@ async fn publication_edit_flow() {
     db::person::create_contributor(&pool, library, publication, solo, "author")
         .await
         .unwrap();
+    let mut chapters = Vec::new();
+    for title in ["Chapter One", "Chapter Two"] {
+        let work = db::work::create_work(
+            &pool,
+            &db::work::NewWork {
+                library_id: library,
+                title,
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        db::work::add_to_publication(&pool, library, publication, work)
+            .await
+            .unwrap();
+        db::work::create_contributor(&pool, library, work, solo, "author")
+            .await
+            .unwrap();
+        chapters.push(work);
+    }
+    let [one, two] = chapters[..] else {
+        unreachable!()
+    };
+    // A second credit the row cannot show, so it has to say the work has one
+    let translator = db::person::create_person(&pool, library, "Marion Wenz", "Wenz, Marion")
+        .await
+        .unwrap();
+    db::work::create_contributor(&pool, library, one, translator, "translator")
+        .await
+        .unwrap();
     let server = browser(state);
     let view = format!("/library/{library}/publication/{publication}");
     let edit = format!("{view}/edit");
@@ -175,6 +207,9 @@ async fn publication_edit_flow() {
     response.assert_text_contains("978-1-68050-127-8");
     response.assert_text_contains("Drew Neil");
     response.assert_text_contains("id=\"publisher\"");
+    response.assert_text_contains("value=\"Chapter One\"");
+    response.assert_text_contains(format!("name=\"work_id\" value=\"{one}\""));
+    response.assert_text_contains("and 1 more");
 
     // A rejected submission comes back with its message, having changed nothing
     let response = server
@@ -218,6 +253,15 @@ async fn publication_edit_flow() {
             ("identifier_value", "978-1-68050-127-8"),
             ("contributor_name", "Tim Pope"),
             ("contributor_role", "editor"),
+            // Retitle one chapter, drop the other, and add a work
+            ("work_id", &one.to_string()),
+            ("work_id", ""),
+            ("work_title", "Chapter 1"),
+            ("work_title", "Appendix"),
+            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_name", "Tim Pope"),
+            ("work_contributor_role", "author"),
+            ("work_contributor_role", "author"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -249,10 +293,38 @@ async fn publication_edit_flow() {
             .collect::<Vec<_>>(),
         ["Tim Pope"]
     );
-    assert_eq!(db::person::get(&pool, library, solo).await.unwrap(), None);
+    let works = db::work::list_in_publication(&pool, library, publication)
+        .await
+        .unwrap();
+    assert_eq!(
+        works
+            .iter()
+            .map(|w| (w.id == one, w.title.as_str()))
+            .collect::<Vec<_>>(),
+        [(true, "Chapter 1"), (false, "Appendix")]
+    );
+    assert_eq!(db::work::get(&pool, library, two).await.unwrap(), None);
+    assert_eq!(
+        works[0]
+            .contributors
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Drew Neil", "Marion Wenz"],
+        "the contributor the row does not show is left alone"
+    );
+    // Dropped from the publication's contributors but still the author of Chapter 1, so a work
+    // credit is enough to keep a person
+    assert!(
+        db::person::get(&pool, library, solo)
+            .await
+            .unwrap()
+            .is_some()
+    );
 
     let response = server.get(&view).await;
     response.assert_text_contains("Practical Vim");
+    response.assert_text_contains("Appendix");
     response.assert_text_contains("Pragmatic Bookshelf");
     response.assert_text_contains("Piano bench");
     response.assert_text_contains("practical-vim.pdf");

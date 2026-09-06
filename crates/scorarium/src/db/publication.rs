@@ -5,8 +5,9 @@ use serde::Deserialize;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::{self, Contributor};
+use crate::db::work;
 use crate::identifier::{self, Normalized};
-use crate::publication_form::{Validated, sort_name};
+use crate::publication_form::Validated;
 
 /// A publication with its children, as read back. Pages pick the fields they show.
 #[derive(Debug, PartialEq, Eq)]
@@ -341,7 +342,7 @@ pub async fn update(
     Ok(true)
 }
 
-/// Write a publication's identifiers, contributor links and copies from a reviewed form.
+/// Write a publication's identifiers, contributor links, works and copies from a reviewed form.
 ///
 /// An identifier or a contributor link holds nothing beyond what the form shows, so both are
 /// rebuilt outright. A copy is not: a row naming an existing copy updates it in place, so the copy
@@ -372,17 +373,12 @@ pub async fn write_children(
     .execute(&mut *conn)
     .await?;
     for row in &validated.contributors {
-        // A person created by an earlier row is found by a later one: same transaction
-        let person_id = match person::find_by_name(&mut *conn, library_id, &row.name).await? {
-            Some(id) => id,
-            None => {
-                person::create_person(&mut *conn, library_id, &row.name, &sort_name(&row.name))
-                    .await?
-            }
-        };
+        let person_id = person::find_or_create(&mut *conn, library_id, &row.name).await?;
         person::create_contributor(&mut *conn, library_id, publication_id, person_id, &row.role)
             .await?;
     }
+
+    work::write_contents(&mut *conn, library_id, publication_id, &validated.works).await?;
 
     let stored = sqlx::query_scalar!(
         "SELECT id FROM holding WHERE publication_id = ?",
@@ -822,6 +818,7 @@ mod tests {
                     role: "editor".into(),
                 },
             ],
+            works: Vec::new(),
         };
 
         // Another library's id must not reach this publication

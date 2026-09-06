@@ -130,6 +130,9 @@ pub struct FormFields {
     pub holding_rows: Vec<(publication_form::HoldingRow, String)>,
     pub identifier_rows: Vec<(publication_form::IdentifierRow, String)>,
     pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
+    // A work row shows one contributor, so it also carries how many more the work credits, empty
+    // when it credits no others
+    pub work_rows: Vec<(publication_form::WorkRow, String, String)>,
     // Datalist suggestions for the role and name inputs
     pub roles: Vec<String>,
     pub names: Vec<String>,
@@ -137,11 +140,14 @@ pub struct FormFields {
 }
 
 impl FormFields {
+    /// `works` are the publication's stored works, for the counts the rows show; the review page
+    /// has none yet and passes an empty slice.
     pub async fn build(
         pool: &sqlx::SqlitePool,
         library_id: i64,
         form: publication_form::PublicationForm,
         errors: publication_form::Errors,
+        works: &[db::work::Work],
     ) -> sqlx::Result<Self> {
         let roles = db::person::list_roles(pool, library_id)
             .await?
@@ -154,6 +160,7 @@ impl FormFields {
             holding_rows: pair_errors(&form.holdings, &errors.holdings),
             identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
             contributor_rows: pair_errors(&form.contributors, &errors.contributors),
+            work_rows: work_rows(&form.works, &errors.works, works),
             names: db::person::list_names(pool, library_id).await?,
             no_copies_warning: String::new(),
             roles,
@@ -167,6 +174,30 @@ impl FormFields {
         self.no_copies_warning = warning.to_string();
         self
     }
+}
+
+/// Pair each work row with the number of contributors the row does not show and its message. A row
+/// naming no stored work, or one whose work was just created by this submission, shows none.
+fn work_rows(
+    rows: &[publication_form::WorkRow],
+    errors: &[Option<String>],
+    works: &[db::work::Work],
+) -> Vec<(publication_form::WorkRow, String, String)> {
+    pair_errors(rows, errors)
+        .into_iter()
+        .map(|(row, error)| {
+            let more = works
+                .iter()
+                .find(|w| Some(w.id) == row.id)
+                // A stored work may credit nobody at all, so the row shows one contributor fewer
+                // than it has only when it has any
+                .map(|w| w.contributors.len().saturating_sub(1))
+                .filter(|more| *more > 0)
+                .map(|more| more.to_string())
+                .unwrap_or_default();
+            (row, more, error)
+        })
+        .collect()
 }
 
 /// Pair each row with its message. A form that parsed clean has no error slots at all, so the rows

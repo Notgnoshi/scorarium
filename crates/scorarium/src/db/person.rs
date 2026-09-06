@@ -1,5 +1,7 @@
 use sqlx::{SqliteExecutor, SqlitePool};
 
+use crate::publication_form::sort_name;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Person {
     pub id: i64,
@@ -29,6 +31,21 @@ pub async fn find_by_name(
     )
     .fetch_optional(executor)
     .await
+}
+
+/// The person with this exact name, created if the library has none.
+///
+/// A person created by an earlier row of the same form is found by a later one because both run in
+/// one transaction.
+pub async fn find_or_create(
+    conn: &mut sqlx::SqliteConnection,
+    library_id: i64,
+    name: &str,
+) -> sqlx::Result<i64> {
+    match find_by_name(&mut *conn, library_id, name).await? {
+        Some(id) => Ok(id),
+        None => create_person(&mut *conn, library_id, name, &sort_name(name)).await,
+    }
 }
 
 /// One person, or None when they do not exist or belong to another library.

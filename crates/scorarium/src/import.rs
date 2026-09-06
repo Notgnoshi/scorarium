@@ -29,6 +29,7 @@ impl PublicationForm {
                 .collect(),
             identifiers: Vec::new(),
             contributors: Vec::new(),
+            works: Vec::new(),
         };
         for kind in [identifier::Kind::Isbn, identifier::Kind::Ismn] {
             if let Ok(normalized) = identifier::normalize(kind, query) {
@@ -163,6 +164,7 @@ mod tests {
                     role: "editor".into(),
                 },
             ],
+            works: Vec::new(),
         };
 
         let publication_id = accept(&pool, &pending, &validated).await.unwrap().unwrap();

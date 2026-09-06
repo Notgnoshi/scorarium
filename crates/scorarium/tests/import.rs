@@ -192,6 +192,9 @@ async fn manual_import_flow() {
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", "composer"),
+            ("work_title", "Gymnopedie No. 1"),
+            ("work_contributor_name", "Erik Satie"),
+            ("work_contributor_role", "composer"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -205,6 +208,12 @@ async fn manual_import_flow() {
     response.assert_text_contains("978-0-486-23134-1");
     response.assert_text_contains("Erik Satie");
     response.assert_text_contains("satie.pdf");
+    response.assert_text_contains("Gymnopedie No. 1");
+    // The contributor row creates Satie and the work row finds them again in the same transaction
+    assert_eq!(
+        db::person::list_names(&pool, library).await.unwrap(),
+        ["Erik Satie"]
+    );
     server
         .get(&review)
         .await
