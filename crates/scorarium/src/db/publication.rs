@@ -336,13 +336,20 @@ pub async fn update(
         return Ok(false);
     }
     write_children(&mut tx, library_id, id, validated).await?;
+    // Only an edit reconciles the form's work rows against stored works; accepting an import
+    // writes its works in full instead
+    work::write_contents(&mut tx, library_id, id, &validated.works).await?;
     // Dropping a contributor row can leave the person behind it credited nowhere
     collect_orphans(&mut tx, library_id).await?;
     tx.commit().await?;
     Ok(true)
 }
 
-/// Write a publication's identifiers, contributor links, works and copies from a reviewed form.
+/// Write a publication's identifiers, contributor links and copies from a reviewed form.
+///
+/// What it leaves out is the works, since the two callers write those differently: an edit
+/// reconciles the form's thin work rows against what is stored, while accepting an import creates
+/// its works in full from the draft.
 ///
 /// An identifier or a contributor link holds nothing beyond what the form shows, so both are
 /// rebuilt outright. A copy is not: a row naming an existing copy updates it in place, so the copy
@@ -377,8 +384,6 @@ pub async fn write_children(
         person::create_contributor(&mut *conn, library_id, publication_id, person_id, &row.role)
             .await?;
     }
-
-    work::write_contents(&mut *conn, library_id, publication_id, &validated.works).await?;
 
     let stored = sqlx::query_scalar!(
         "SELECT id FROM holding WHERE publication_id = ?",

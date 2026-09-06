@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 
 use crate::db::publication::{HoldingKind, Publication};
-use crate::db::work::{Work, lead_contributor};
+use crate::db::work::{Work, lead_contributor, roles};
 use crate::identifier;
 
 /// A publication's editable fields as typed, before validation.
@@ -417,7 +417,7 @@ impl PublicationForm {
                 .map(|w| WorkRow {
                     id: Some(w.id),
                     title: w.title.clone(),
-                    contributor: lead_contributor(&w.contributors)
+                    contributor: lead_contributor(roles(&w.contributors))
                         .map(|i| ContributorRow {
                             name: w.contributors[i].name.clone(),
                             role: w.contributors[i].role.clone(),

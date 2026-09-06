@@ -32,10 +32,10 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
             let draft = state
                 .drafts
                 .get(import.id)
-                .unwrap_or_else(|| PublicationForm::seed(&import));
+                .unwrap_or_else(|| import::Draft::seed(&import));
             PendingRow {
-                title: label(&import, &draft),
-                holdings: draft.holdings,
+                title: label(&import, &draft.form),
+                holdings: draft.form.holdings,
                 age: age(import.created_at),
                 import,
             }
@@ -232,9 +232,9 @@ pub async fn review(
             let errors = draft.parse().err().unwrap_or_default();
             (draft, errors)
         }
-        None => (PublicationForm::seed(&import), Errors::default()),
+        None => (import::Draft::seed(&import), Errors::default()),
     };
-    let title = label(&import, &draft);
+    let title = label(&import, &draft.form);
     let page = ReviewPage {
         base: base.page(
             title,
@@ -246,7 +246,7 @@ pub async fn review(
         ),
         age: age(import.created_at),
         // Nothing is stored until the import is accepted, so no work row can name one
-        fields: FormFields::build(&state.pool, library_id, draft, errors, &[]).await?,
+        fields: FormFields::build(&state.pool, library_id, draft.form, errors, &[]).await?,
         library,
         import,
     };
@@ -260,14 +260,23 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
-    if pending_import::get(&state.pool, library_id, id)
-        .await?
-        .is_none()
-    {
+    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    state.drafts.save(id, submission.into());
+    };
+    state
+        .drafts
+        .save(id, load_draft(&state, &pending, submission));
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+}
+
+/// The stored draft with this submission merged into it, or a seeded one when nothing is stored
+fn load_draft(state: &AppState, pending: &PendingImport, submission: Submission) -> import::Draft {
+    let mut draft = state
+        .drafts
+        .get(pending.id)
+        .unwrap_or_else(|| import::Draft::seed(pending));
+    draft.merge(submission.into());
+    draft
 }
 
 /// POST /library/{library_id}/import/{id}/submit
@@ -280,16 +289,16 @@ pub async fn submit(
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let draft = PublicationForm::from(submission);
-    let validated = match draft.parse() {
-        Ok(validated) => validated,
+    let draft = load_draft(&state, &pending, submission);
+    let (publication, works) = match draft.parse() {
+        Ok(parsed) => parsed,
         // Keep the edits so the review page can show what is wrong with them
         Err(_) => {
             state.drafts.save(id, draft);
             return Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response());
         }
     };
-    let publication_id = import::accept(&state.pool, &pending, &validated).await?;
+    let publication_id = import::accept(&state.pool, &pending, &publication, &works).await?;
     // Accepted here or already gone from another tab: either way the draft is finished with
     state.drafts.remove(id);
     match publication_id {

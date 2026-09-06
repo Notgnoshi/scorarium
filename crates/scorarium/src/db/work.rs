@@ -38,14 +38,22 @@ impl Work {
     }
 }
 
-/// Which contributor a one-line summary of the work shows and edits: its composer, else its
-/// author, else the first credited. `contributors` must be in link order.
-pub fn lead_contributor(contributors: &[Contributor]) -> Option<usize> {
-    contributors
+/// Which contributor a one-line summary of the work shows and edits
+///
+/// Taking roles rather than contributors lets a draft's form rows and a stored work's links pick
+/// their lead the same way. They must be in link order.
+pub fn lead_contributor<'a>(roles: impl IntoIterator<Item = &'a str>) -> Option<usize> {
+    let roles: Vec<&str> = roles.into_iter().collect();
+    roles
         .iter()
-        .position(|c| c.role == "composer")
-        .or_else(|| contributors.iter().position(|c| c.role == "author"))
-        .or_else(|| (!contributors.is_empty()).then_some(0))
+        .position(|role| *role == "composer")
+        .or_else(|| roles.iter().position(|role| *role == "author"))
+        .or_else(|| (!roles.is_empty()).then_some(0))
+}
+
+/// The roles of a work's contributors, in link order, for [lead_contributor].
+pub fn roles(contributors: &[Contributor]) -> impl Iterator<Item = &str> {
+    contributors.iter().map(|c| c.role.as_str())
 }
 
 pub struct NewWork<'a> {
@@ -354,7 +362,7 @@ pub async fn write_contents(
                 role: link.role,
             });
         }
-        let lead = lead_contributor(&contributors);
+        let lead = lead_contributor(roles(&contributors));
         let unchanged = match lead {
             Some(i) => contributors[i].name == *name && contributors[i].role == *role,
             None => name.is_empty(),
@@ -435,12 +443,12 @@ mod tests {
     #[test]
     fn lead_contributor_prefers_composer_then_author() {
         let composer = [contributor(1, "arranger"), contributor(2, "composer")];
-        assert_eq!(lead_contributor(&composer), Some(1));
+        assert_eq!(lead_contributor(roles(&composer)), Some(1));
         let author = [contributor(1, "editor"), contributor(2, "author")];
-        assert_eq!(lead_contributor(&author), Some(1));
+        assert_eq!(lead_contributor(roles(&author)), Some(1));
         let neither = [contributor(1, "editor"), contributor(2, "arranger")];
-        assert_eq!(lead_contributor(&neither), Some(0));
-        assert_eq!(lead_contributor(&[]), None);
+        assert_eq!(lead_contributor(roles(&neither)), Some(0));
+        assert_eq!(lead_contributor(roles(&[])), None);
     }
 
     #[sqlx::test]
@@ -734,7 +742,7 @@ mod tests {
             )
         );
         assert_eq!(
-            lead_contributor(&contents[0].contributors),
+            lead_contributor(roles(&contents[0].contributors)),
             Some(0),
             "the edited row still shows Chopin, not the arranger it now shares a role with"
         );
