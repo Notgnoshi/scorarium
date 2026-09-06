@@ -68,12 +68,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for (row, more, error) in fields.work_rows %}
-                {% call rows::work_row(library.id, row.id_value(), row.title, row.contributor.name, row.contributor.role, more, error) %}
+                {% call rows::work_row(library.id, row.id_value(), row.title, row.contributor.name, row.contributor.role, more, error, fields.row_edit) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", "", "", "") %}
+            {% call rows::work_row(library.id, "", "", "", "", "", "", fields.row_edit) %}
             {% endcall %}
         </template>
         <button type="button"
@@ -95,15 +95,6 @@
 {% call rows::script() %}
 {% endcall %}
 <script>
-    // Browsers open a datalist only on the second click or on typing. Open it on the first instead
-    document.querySelector("[data-publication-fields]").addEventListener("click", (e) => {
-        if (e.target.matches("input[list]")) {
-            try {
-                e.target.showPicker();
-            } catch {}
-        }
-    });
-
     // Seed the new work's contributor role with "composer" or "author" based on what the owning
     // publication has.
     const works = document.querySelector("[data-works]");

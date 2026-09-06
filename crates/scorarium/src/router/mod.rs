@@ -19,7 +19,7 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, db, publication_form};
+use crate::{AppState, db, publication_form, work_form};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -58,6 +58,13 @@ impl Crumb {
                 "/library/{}/publication/{}",
                 publication.library_id, publication.id
             ),
+        }
+    }
+
+    pub fn work(work: &db::work::Work) -> Self {
+        Self {
+            label: work.title.clone(),
+            href: format!("/library/{}/work/{}", work.library_id, work.id),
         }
     }
 }
@@ -120,6 +127,32 @@ impl BaseContext {
 /// Suggested alongside the library's existing roles, so a new library still gets a datalist.
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
+/// What a work row's edit control does: link to the stored work's edit page, which returns to
+/// `back` afterwards, or (from commit 6) save the draft and open the draft work.
+#[derive(Default)]
+pub enum RowEdit {
+    Stored {
+        back: String,
+    },
+    /// A draft work has no page of its own yet, so the row renders no control
+    #[default]
+    Draft,
+}
+
+impl RowEdit {
+    pub fn is_draft(&self) -> bool {
+        matches!(self, RowEdit::Draft)
+    }
+
+    /// Where a stored row's edit link returns to. Empty for a draft row, which has no link.
+    pub fn back(&self) -> &str {
+        match self {
+            RowEdit::Stored { back } => back,
+            RowEdit::Draft => "",
+        }
+    }
+}
+
 /// Everything the shared publication form fragment renders. The import review page and the
 /// publication edit page show the same fields, so they build the same context for them.
 pub struct FormFields {
@@ -137,6 +170,7 @@ pub struct FormFields {
     pub roles: Vec<String>,
     pub names: Vec<String>,
     pub no_copies_warning: String,
+    pub row_edit: RowEdit,
 }
 
 impl FormFields {
@@ -149,21 +183,16 @@ impl FormFields {
         errors: publication_form::Errors,
         works: &[db::work::Work],
     ) -> sqlx::Result<Self> {
-        let roles = db::person::list_roles(pool, library_id)
-            .await?
-            .into_iter()
-            .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect();
+        let (roles, names) = suggestions(pool, library_id).await?;
         Ok(Self {
             holding_rows: pair_errors(&form.holdings, &errors.holdings),
             identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
             contributor_rows: pair_errors(&form.contributors, &errors.contributors),
             work_rows: work_rows(&form.works, &errors.works, works),
-            names: db::person::list_names(pool, library_id).await?,
             no_copies_warning: String::new(),
+            row_edit: RowEdit::default(),
             roles,
+            names,
             form,
             errors,
         })
@@ -174,6 +203,55 @@ impl FormFields {
         self.no_copies_warning = warning.to_string();
         self
     }
+
+    /// What a work row's edit control does on this page.
+    pub fn edit_works(mut self, row_edit: RowEdit) -> Self {
+        self.row_edit = row_edit;
+        self
+    }
+}
+
+/// Everything the shared work form fragment renders. The stored work edit page and the draft work
+/// page show the same fields, so they build the same context for them.
+pub struct WorkFields {
+    pub form: work_form::WorkForm,
+    pub errors: work_form::Errors,
+    pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
+    pub roles: Vec<String>,
+    pub names: Vec<String>,
+}
+
+impl WorkFields {
+    pub async fn build(
+        pool: &sqlx::SqlitePool,
+        library_id: i64,
+        form: work_form::WorkForm,
+        errors: work_form::Errors,
+    ) -> sqlx::Result<Self> {
+        let (roles, names) = suggestions(pool, library_id).await?;
+        Ok(Self {
+            contributor_rows: pair_errors(&form.contributors, &errors.contributors),
+            roles,
+            names,
+            form,
+            errors,
+        })
+    }
+}
+
+/// Datalist suggestions for the role and name inputs, as (roles, names).
+async fn suggestions(
+    pool: &sqlx::SqlitePool,
+    library_id: i64,
+) -> sqlx::Result<(Vec<String>, Vec<String>)> {
+    let roles = db::person::list_roles(pool, library_id)
+        .await?
+        .into_iter()
+        .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    Ok((roles, db::person::list_names(pool, library_id).await?))
 }
 
 /// Pair each work row with the number of contributors the row does not show and its message. A row
@@ -252,6 +330,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(publication::delete),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
+        .route(
+            "/library/{library_id}/work/{id}/edit",
+            get(work::edit).post(work::save),
+        )
         .route("/library/{library_id}/person/{id}", get(person::person))
         .route("/library/{id}/composers", get(person::composers))
         .route("/library/{id}/authors", get(person::authors))

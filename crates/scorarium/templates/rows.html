@@ -49,7 +49,7 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro work_row(library_id, id, title, name, role, more, error) %}
+{% macro work_row(library_id, id, title, name, role, more, error, edit) %}
     {# The message names the field at fault, so every input shares the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -74,11 +74,12 @@
                aria-label="Work contributor role" />
         {# The row edits one contributor, so say when the work credits others it leaves alone #}
         {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
-        {% if !id.is_empty() %}
+        {# A row being added names no work yet, so there is nothing to open #}
+        {% if !edit.is_draft() && !id.is_empty() %}
             <a class="btn btn-outline-secondary"
-               href="/library/{{ library_id }}/work/{{ id }}"
-               aria-label="Open work">
-                <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+               href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ edit.back() |urlencode }}"
+               aria-label="Edit work">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
             </a>
         {% endif %}
         <button type="button"
@@ -239,6 +240,14 @@
                 e.target.closest("[data-rows-remove]")?.closest("[data-row]").remove();
             });
         }
+        // Browsers open a datalist only on the second click or on typing. Open it on the first instead
+        document.addEventListener("click", (e) => {
+            if (e.target.matches("input[list]")) {
+                try {
+                    e.target.showPicker();
+                } catch {}
+            }
+        });
         // Until #25 uploads the file, the chooser only feeds its name to the row's path
         document.addEventListener("change", (e) => {
             if (e.target.matches("[data-upload]") && e.target.files.length) {
