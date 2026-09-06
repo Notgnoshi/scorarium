@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 use crate::db::pending_import::{self, PendingImport};
 use crate::db::publication::{self, NewPublication};
 use crate::identifier;
-use crate::publication_form::{HoldingRow, IdentifierRow, PublicationForm, Validated};
+use crate::publication_form::{HoldingRow, IdentifierRow, PublicationForm, PublicationUpdate};
 
 impl PublicationForm {
     /// The form a pending import starts from before anything is saved: the holding as entered,
@@ -80,7 +80,7 @@ impl DraftStore {
 pub async fn accept(
     pool: &SqlitePool,
     pending: &PendingImport,
-    validated: &Validated,
+    validated: &PublicationUpdate,
 ) -> sqlx::Result<Option<i64>> {
     let library_id = pending.library_id;
     let mut tx = pool.begin().await?;
@@ -109,7 +109,7 @@ mod tests {
     use crate::db;
     use crate::db::pending_import::{NewPendingImport, PendingHolding};
     use crate::db::publication::HoldingKind;
-    use crate::publication_form::{ContributorRow, ValidatedHolding};
+    use crate::publication_form::{ContributorRow, HoldingUpdate};
 
     #[sqlx::test]
     async fn accept_creates_publication_once(pool: SqlitePool) {
@@ -135,18 +135,18 @@ mod tests {
             .unwrap()
             .unwrap();
         let isbn = identifier::normalize(identifier::Kind::Isbn, "0-486-23134-8").unwrap();
-        let validated = Validated {
+        let validated = PublicationUpdate {
             title: "Three gymnopedies".into(),
             publisher: Some("Schirmer".into()),
             year: Some(1888),
             // The form's copies, not the pending row's: the review page may have changed them
             holdings: vec![
-                ValidatedHolding {
+                HoldingUpdate {
                     id: None,
                     kind: HoldingKind::Digital,
                     location: Some("satie.pdf".into()),
                 },
-                ValidatedHolding {
+                HoldingUpdate {
                     id: None,
                     kind: HoldingKind::Physical,
                     location: None,

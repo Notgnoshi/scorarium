@@ -7,7 +7,7 @@ use sqlx::{SqliteExecutor, SqlitePool};
 use crate::db::person::{self, Contributor};
 use crate::db::work;
 use crate::identifier::{self, Normalized};
-use crate::publication_form::Validated;
+use crate::publication_form::PublicationUpdate;
 
 /// A publication with its children, as read back. Pages pick the fields they show.
 #[derive(Debug, PartialEq, Eq)]
@@ -318,7 +318,7 @@ pub async fn update(
     pool: &SqlitePool,
     library_id: i64,
     id: i64,
-    validated: &Validated,
+    validated: &PublicationUpdate,
 ) -> sqlx::Result<bool> {
     let mut tx = pool.begin().await?;
     let result = sqlx::query!(
@@ -354,7 +354,7 @@ pub async fn write_children(
     conn: &mut sqlx::SqliteConnection,
     library_id: i64,
     publication_id: i64,
-    validated: &Validated,
+    validated: &PublicationUpdate,
 ) -> sqlx::Result<()> {
     sqlx::query!(
         "DELETE FROM publication_identifier WHERE publication_id = ?",
@@ -471,7 +471,7 @@ pub async fn collect_orphans(
 mod tests {
     use super::*;
     use crate::db;
-    use crate::publication_form::{ContributorRow, ValidatedHolding};
+    use crate::publication_form::{ContributorRow, HoldingUpdate};
 
     #[sqlx::test]
     async fn list_assembles_children(pool: SqlitePool) {
@@ -790,18 +790,18 @@ mod tests {
             .unwrap();
 
         let ismn = identifier::normalize(identifier::Kind::Ismn, "979-0-2600-0043-8").unwrap();
-        let validated = Validated {
+        let validated = PublicationUpdate {
             title: "Practical Vim".into(),
             publisher: Some("Pragmatic Bookshelf".into()),
             year: Some(2015),
             holdings: vec![
                 // The shelved copy stays and moves, the pdf goes, and a copy is added
-                ValidatedHolding {
+                HoldingUpdate {
                     id: Some(shelf),
                     kind: HoldingKind::Physical,
                     location: Some("Piano bench".into()),
                 },
-                ValidatedHolding {
+                HoldingUpdate {
                     id: None,
                     kind: HoldingKind::Digital,
                     location: Some("practical-vim.pdf".into()),

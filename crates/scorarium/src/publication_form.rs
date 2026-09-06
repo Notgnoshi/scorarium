@@ -64,18 +64,18 @@ impl WorkRow {
 
 /// A form's typed values, ready to become catalog rows.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Validated {
+pub struct PublicationUpdate {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
-    pub holdings: Vec<ValidatedHolding>,
+    pub holdings: Vec<HoldingUpdate>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
     pub works: Vec<WorkRow>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ValidatedHolding {
+pub struct HoldingUpdate {
     pub id: Option<i64>,
     pub kind: HoldingKind,
     pub location: Option<String>,
@@ -109,7 +109,7 @@ impl Errors {
 impl PublicationForm {
     /// Check and convert the form. Every problem is reported, not just the first.
     #[expect(clippy::result_large_err)]
-    pub fn parse(&self) -> Result<Validated, Errors> {
+    pub fn parse(&self) -> Result<PublicationUpdate, Errors> {
         let mut errors = Errors::default();
         if self.title.is_empty() {
             errors.title = Some("A title is required.".into());
@@ -201,7 +201,7 @@ impl PublicationForm {
         if !errors.is_empty() {
             return Err(errors);
         }
-        Ok(Validated {
+        Ok(PublicationUpdate {
             title: self.title.clone(),
             publisher: Some(self.publisher.clone()).filter(|p| !p.is_empty()),
             year,
@@ -214,7 +214,7 @@ impl PublicationForm {
 }
 
 /// Check copy rows, filling the holding slots of `errors`
-pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<ValidatedHolding> {
+pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<HoldingUpdate> {
     if rows.is_empty() {
         errors.no_holdings = Some("A publication needs at least one copy.".into());
     }
@@ -225,7 +225,7 @@ pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<Validated
             if row.kind == HoldingKind::Digital && row.location.is_empty() {
                 return Some("Choose a file for a digital copy.".to_string());
             }
-            holdings.push(ValidatedHolding {
+            holdings.push(HoldingUpdate {
                 id: row.id,
                 kind: row.kind,
                 location: Some(row.location.clone()).filter(|l| !l.is_empty()),
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(validated.year, None);
         assert_eq!(
             validated.holdings,
-            [ValidatedHolding {
+            [HoldingUpdate {
                 id: None,
                 kind: HoldingKind::Physical,
                 location: None,
