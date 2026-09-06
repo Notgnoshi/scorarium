@@ -6,7 +6,7 @@ use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::{self, Contributor};
 use crate::identifier::{self, Normalized};
-use crate::publication_form::{Validated, sort_name};
+use crate::publication_form::Validated;
 
 /// A publication with its children, as read back. Pages pick the fields they show.
 #[derive(Debug, PartialEq, Eq)]
@@ -372,14 +372,7 @@ pub async fn write_children(
     .execute(&mut *conn)
     .await?;
     for row in &validated.contributors {
-        // A person created by an earlier row is found by a later one: same transaction
-        let person_id = match person::find_by_name(&mut *conn, library_id, &row.name).await? {
-            Some(id) => id,
-            None => {
-                person::create_person(&mut *conn, library_id, &row.name, &sort_name(&row.name))
-                    .await?
-            }
-        };
+        let person_id = person::find_or_create(&mut *conn, library_id, &row.name).await?;
         person::create_contributor(&mut *conn, library_id, publication_id, person_id, &row.role)
             .await?;
     }

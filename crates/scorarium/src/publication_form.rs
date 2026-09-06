@@ -410,9 +410,9 @@ impl PublicationForm {
                     id: Some(w.id),
                     title: w.title.clone(),
                     contributor: lead_contributor(&w.contributors)
-                        .map(|c| ContributorRow {
-                            name: c.name.clone(),
-                            role: c.role.clone(),
+                        .map(|i| ContributorRow {
+                            name: w.contributors[i].name.clone(),
+                            role: w.contributors[i].role.clone(),
                         })
                         .unwrap_or_default(),
                 })
