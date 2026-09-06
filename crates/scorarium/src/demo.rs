@@ -170,6 +170,46 @@ pub async fn populate(pool: &SqlitePool) -> color_eyre::Result<()> {
         &["Op. 3 No. 4"],
     )
     .await?;
+    // A transcription published on its own, titled as its cover has it rather than as the tone
+    // poem is usually known: one work with two contributors, identified by a plate number
+    let isle_of_the_dead = publication::create_publication(
+        pool,
+        &NewPublication {
+            library_id: sheet_music,
+            title: "The Isle of the Dead",
+            publisher: Some("State Music Publishers"),
+            year: None,
+        },
+    )
+    .await?;
+    publication::create_holding(pool, isle_of_the_dead, HoldingKind::Physical, None).await?;
+    add_identifier(pool, isle_of_the_dead, Kind::PlateNumber, "M 26277").await?;
+    let kirkor =
+        person::create_person(pool, sheet_music, "Georgy Kirkor", "Kirkor, Georgy").await?;
+    person::create_contributor(
+        pool,
+        sheet_music,
+        isle_of_the_dead,
+        rachmaninoff,
+        "composer",
+    )
+    .await?;
+    person::create_contributor(pool, sheet_music, isle_of_the_dead, kirkor, "arranger").await?;
+    let tone_poem = add_work(
+        pool,
+        isle_of_the_dead,
+        (rachmaninoff, "composer"),
+        &NewWork {
+            library_id: sheet_music,
+            title: "The Isle of the Dead",
+            key: Some("A minor"),
+            time_signature: Some("5/8"),
+            instrumentation: Some("piano"),
+        },
+        &["Op. 29"],
+    )
+    .await?;
+    work::create_contributor(pool, sheet_music, tone_poem, kirkor, "arranger").await?;
 
     let gymnopedies = publication::create_publication(
         pool,
