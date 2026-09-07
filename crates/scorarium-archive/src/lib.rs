@@ -2,6 +2,7 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+mod demo;
 mod holding;
 pub mod identifier;
 mod input;
@@ -103,6 +104,11 @@ impl Archive {
     // TODO: Remove once all database interactions get migrated into the archive crate
     pub fn pool(&self) -> &SqlitePool {
         &self.shared.pool
+    }
+
+    /// Fill an empty archive with the demo libraries that `--demo` serves
+    pub async fn populate_demo(&self) -> Result<()> {
+        demo::populate(self).await
     }
 }
 

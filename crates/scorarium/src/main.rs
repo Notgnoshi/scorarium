@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use scorarium::{AppState, demo, router};
+use scorarium::{AppState, router};
 use scorarium_archive::Archive;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -48,7 +48,7 @@ async fn main() -> color_eyre::Result<()> {
 
     let state = if args.demo {
         let archive = Archive::in_memory().await?;
-        demo::populate(archive.pool()).await?;
+        archive.populate_demo().await?;
         tracing::info!(bind = %args.bind, "starting scorarium with in-memory demo data");
         AppState::demo(archive)
     } else {

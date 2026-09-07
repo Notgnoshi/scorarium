@@ -262,6 +262,40 @@ pub(crate) async fn create_work_in_publication(
     Ok(id)
 }
 
+/// Put an existing work into another publication.
+pub(crate) async fn link_work_to_publication(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    work_id: i64,
+) -> crate::Result<()> {
+    sqlx::query!(
+        "INSERT INTO publication_work (library_id, publication_id, work_id) VALUES (?, ?, ?)",
+        library_id,
+        publication_id,
+        work_id,
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Give a work a catalog number.
+pub(crate) async fn add_work_catalog_number(
+    conn: &mut SqliteConnection,
+    work_id: i64,
+    value: &str,
+) -> crate::Result<()> {
+    sqlx::query!(
+        "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+        work_id,
+        value,
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Rebuild a work's contributor links, so input order becomes link order.
 ///
 /// A link holds nothing beyond what the input shows, so rebuilding outright loses nothing. On a

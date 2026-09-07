@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum_test::TestServer;
-use scorarium::{AppState, demo};
+use scorarium::AppState;
 use scorarium_archive::Archive;
 
 /// Builds an [AppState] backed by a fresh in-memory database with the given contents.
@@ -39,7 +39,8 @@ impl TestDb {
             .await
             .expect("failed to open in-memory archive");
         if self.demo {
-            demo::populate(archive.pool())
+            archive
+                .populate_demo()
                 .await
                 .expect("failed to populate demo data");
         }
