@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
-use crate::{ArchiveInner, NotFound, Result};
+use crate::publication::{self, Publication, PublicationInput};
+use crate::{ArchiveInner, NotFound, Result, person};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -42,7 +43,55 @@ impl Library {
     }
 }
 
-pub(crate) async fn list(
+// publications
+impl Library {
+    /// Every publication in the library, in arbitrary order
+    pub async fn publications(&self) -> Result<Vec<Publication>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publications =
+            publication::load_publications(&self.archive, &mut tx, self.id, None, None, None)
+                .await?;
+        tx.commit().await?;
+        Ok(publications)
+    }
+
+    /// The given publication, if this library has it
+    pub async fn publication(&self, id: i64) -> Result<Option<Publication>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publication =
+            publication::load_publications(&self.archive, &mut tx, self.id, Some(id), None, None)
+                .await?
+                .pop();
+        tx.commit().await?;
+        Ok(publication)
+    }
+
+    /// Create a publication, with its identifiers, contributors, holdings and contents
+    pub async fn create_publication(&self, input: &PublicationInput) -> Result<Publication> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publication =
+            publication::create_publication(&self.archive, &mut tx, self.id, input).await?;
+        tx.commit().await?;
+        Ok(publication)
+    }
+}
+
+// people
+impl Library {
+    /// The distinct roles credited anywhere in the library, sorted, for input suggestions
+    pub async fn roles(&self) -> Result<Vec<String>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        person::list_contributor_roles(&mut conn, self.id).await
+    }
+
+    /// Every person's display name, by sort name, for input suggestions
+    pub async fn person_names(&self) -> Result<Vec<String>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        person::list_person_names(&mut conn, self.id).await
+    }
+}
+
+pub(crate) async fn list_libraries(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<Library>> {
@@ -59,7 +108,7 @@ pub(crate) async fn list(
         .collect())
 }
 
-pub(crate) async fn get(
+pub(crate) async fn get_library(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     id: i64,
@@ -74,7 +123,7 @@ pub(crate) async fn get(
     }))
 }
 
-pub(crate) async fn create(
+pub(crate) async fn create_library(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     name: &str,

@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
+use sqlx::SqliteConnection;
 
 use crate::input::ValidationError;
 
@@ -79,6 +80,44 @@ pub struct IdentifierRawInput {
     /// One of the [Kind] names
     pub kind: String,
     pub value: String,
+}
+
+/// One identifier of a publication
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Identifier {
+    pub id: i64,
+    pub kind: Kind,
+    pub value: String,
+}
+
+/// Replace a publication's identifiers with the ones its input names.
+///
+/// An identifier holds nothing beyond what the input shows, so rebuilding outright loses nothing.
+/// On a publication with none yet the delete finds nothing, so creating and updating share this.
+pub(crate) async fn write_identifiers(
+    conn: &mut SqliteConnection,
+    publication_id: i64,
+    identifiers: &[(Kind, Normalized)],
+) -> crate::Result<()> {
+    sqlx::query!(
+        "DELETE FROM publication_identifier WHERE publication_id = ?",
+        publication_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    for (kind, value) in identifiers {
+        let kind = kind.as_str();
+        let value = value.as_str();
+        sqlx::query!(
+            "INSERT INTO publication_identifier (publication_id, kind, value) VALUES (?, ?, ?)",
+            publication_id,
+            kind,
+            value,
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
 }
 
 /// Check the identifiers of one publication, one slot per input.

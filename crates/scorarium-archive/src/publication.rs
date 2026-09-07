@@ -1,8 +1,14 @@
-use crate::identifier::{self, IdentifierRawInput};
-use crate::input::{
-    self, ContributorInput, HoldingErrors, HoldingInput, HoldingRawInput, ValidationError,
-};
-use crate::work::{WorkErrors, WorkInput, WorkRawInput};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use sqlx::SqliteConnection;
+
+use crate::ArchiveInner;
+use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
+use crate::identifier::{self, Identifier, IdentifierRawInput};
+use crate::input::{self, ContributorInput, ValidationError};
+use crate::person::{self, Contributor};
+use crate::work::{self, WorkErrors, WorkInput, WorkRawInput};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -70,7 +76,7 @@ impl PublicationRawInput {
                 }
             },
         };
-        let holdings = match input::parse_holdings(&self.holdings) {
+        let holdings = match holding::parse_holdings(&self.holdings) {
             Ok(holdings) => holdings,
             Err(holding_errors) => {
                 errors.holdings = holding_errors;
@@ -108,7 +114,7 @@ impl PublicationRawInput {
         }
         Ok(PublicationInput {
             title: title.to_string(),
-            publisher: input::optional(&self.publisher),
+            publisher: input::trimmed_or_none(&self.publisher),
             year,
             holdings,
             identifiers,
@@ -118,10 +124,251 @@ impl PublicationRawInput {
     }
 }
 
+/// A publication with its children
+#[derive(Clone, Debug)]
+pub struct Publication {
+    pub id: i64,
+    pub library_id: i64,
+    pub title: String,
+    pub publisher: Option<String>,
+    pub year: Option<i64>,
+    pub identifiers: Vec<Identifier>,
+    /// In link order
+    pub contributors: Vec<Contributor>,
+    pub holdings: Vec<Holding>,
+    #[expect(dead_code)]
+    archive: Arc<ArchiveInner>,
+}
+
+/// Load a library's publications with their children: all of them, just the one with `id`, those
+/// containing `work_id`, or those crediting `person_id` directly or through a contained work.
+///
+/// The four reads run on the caller's transaction so they see one snapshot. Otherwise a child row
+/// of a publication created between the parent read and the child reads would have no parent here.
+pub(crate) async fn load_publications(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    id: Option<i64>,
+    work_id: Option<i64>,
+    person_id: Option<i64>,
+) -> crate::Result<Vec<Publication>> {
+    let mut publications: Vec<Publication> = sqlx::query!(
+        "SELECT id, library_id, title, publisher, year FROM publication
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+           AND (?4 IS NULL
+                OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                OR id IN (SELECT pw.publication_id FROM publication_work pw
+                          JOIN work_contributor wc ON wc.work_id = pw.work_id
+                          WHERE wc.person_id = ?4))",
+        library_id,
+        id,
+        work_id,
+        person_id
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Publication {
+        id: row.id,
+        library_id: row.library_id,
+        title: row.title,
+        publisher: row.publisher,
+        year: row.year,
+        identifiers: Vec::new(),
+        contributors: Vec::new(),
+        holdings: Vec::new(),
+        archive: shared.clone(),
+    })
+    .collect();
+    let index: HashMap<i64, usize> = publications
+        .iter()
+        .enumerate()
+        .map(|(i, publication)| (publication.id, i))
+        .collect();
+
+    let identifiers = sqlx::query!(
+        "SELECT id, publication_id, kind, value FROM publication_identifier
+         WHERE publication_id IN
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))
+         ORDER BY id",
+        library_id,
+        id,
+        work_id,
+        person_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in identifiers {
+        let kind = row.kind.parse().map_err(eyre::Report::msg)?;
+        publications[index[&row.publication_id]]
+            .identifiers
+            .push(Identifier {
+                id: row.id,
+                kind,
+                value: row.value,
+            });
+    }
+
+    let contributors = sqlx::query!(
+        "SELECT c.publication_id, c.person_id, p.name, c.role
+         FROM publication_contributor c JOIN person p ON p.id = c.person_id
+         WHERE c.publication_id IN
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))
+         ORDER BY c.id",
+        library_id,
+        id,
+        work_id,
+        person_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in contributors {
+        publications[index[&row.publication_id]]
+            .contributors
+            .push(Contributor {
+                person_id: row.person_id,
+                name: row.name,
+                role: row.role,
+            });
+    }
+
+    let holdings = sqlx::query!(
+        "SELECT id, publication_id, kind, location FROM holding
+         WHERE publication_id IN
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4)))
+         ORDER BY id",
+        library_id,
+        id,
+        work_id,
+        person_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in holdings {
+        let kind = row.kind.parse().map_err(eyre::Report::msg)?;
+        publications[index[&row.publication_id]]
+            .holdings
+            .push(Holding {
+                id: row.id,
+                kind,
+                location: row.location,
+            });
+    }
+
+    Ok(publications)
+}
+
+/// Create a publication and everything it names, on the caller's transaction.
+///
+/// Every work of the input is created, ids and all ignored: linking an existing work into another
+/// publication is not something the input can ask for yet.
+pub(crate) async fn create_publication(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    input: &PublicationInput,
+) -> crate::Result<Publication> {
+    let created = sqlx::query!(
+        "INSERT INTO publication (library_id, title, publisher, year) VALUES (?, ?, ?, ?)",
+        library_id,
+        input.title,
+        input.publisher,
+        input.year,
+    )
+    .execute(&mut *conn)
+    .await?;
+    let id = created.last_insert_rowid();
+    write_publication_children(&mut *conn, library_id, id, input).await?;
+    for content in &input.contents {
+        work::create_work_in_publication(&mut *conn, library_id, id, content).await?;
+    }
+    let publication = load_publications(shared, conn, library_id, Some(id), None, None)
+        .await?
+        .pop()
+        .expect("the publication was just created on this transaction");
+    Ok(publication)
+}
+
+/// Write a publication's identifiers, contributor links and holdings.
+///
+/// What it leaves out is the contents, since a publication being created writes its works in full
+/// while one being edited reconciles them against what is stored.
+pub(crate) async fn write_publication_children(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    input: &PublicationInput,
+) -> crate::Result<()> {
+    identifier::write_identifiers(&mut *conn, publication_id, &input.identifiers).await?;
+    write_publication_contributors(&mut *conn, library_id, publication_id, &input.contributors)
+        .await?;
+    holding::write_holdings(&mut *conn, publication_id, &input.holdings).await?;
+    Ok(())
+}
+
+/// Rebuild a publication's contributor links, so input order becomes link order.
+///
+/// A link holds nothing beyond what the input shows, so rebuilding outright loses nothing.
+async fn write_publication_contributors(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    contributors: &[ContributorInput],
+) -> crate::Result<()> {
+    sqlx::query!(
+        "DELETE FROM publication_contributor WHERE publication_id = ?",
+        publication_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    for contributor in contributors {
+        let person_id =
+            person::find_or_create_person(&mut *conn, library_id, &contributor.name).await?;
+        sqlx::query!(
+            "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)
+             VALUES (?, ?, ?, ?)",
+            library_id,
+            publication_id,
+            person_id,
+            contributor.role,
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::HoldingKind;
+    use crate::holding::HoldingKind;
 
     fn contributor(name: &str, role: &str) -> ContributorInput {
         ContributorInput {

@@ -2,10 +2,12 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+mod holding;
 pub mod identifier;
 mod input;
 mod library;
 mod password;
+mod person;
 mod publication;
 mod work;
 
@@ -16,14 +18,17 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
-pub use crate::identifier::IdentifierRawInput;
-pub use crate::input::{
-    ContributorInput, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, ValidationError,
-    parse_holdings,
+pub use crate::holding::{
+    Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
+pub use crate::identifier::{Identifier, IdentifierRawInput};
+pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
-pub use crate::publication::{PublicationErrors, PublicationInput, PublicationRawInput};
+pub use crate::person::Contributor;
+pub use crate::publication::{
+    Publication, PublicationErrors, PublicationInput, PublicationRawInput,
+};
 pub use crate::work::{WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
@@ -106,13 +111,13 @@ impl Archive {
     /// Get all libraries that exist
     pub async fn libraries(&self) -> Result<Vec<Library>> {
         let mut conn = self.shared.pool.acquire().await?;
-        library::list(&self.shared, &mut conn).await
+        library::list_libraries(&self.shared, &mut conn).await
     }
 
     /// Get the given library, if it exists
     pub async fn library(&self, id: i64) -> Result<Option<Library>> {
         let mut conn = self.shared.pool.acquire().await?;
-        library::get(&self.shared, &mut conn, id).await
+        library::get_library(&self.shared, &mut conn, id).await
     }
 
     /// Create a library with the given name
@@ -120,7 +125,7 @@ impl Archive {
     /// Names need not be unique.
     pub async fn create_library(&self, name: &str) -> Result<Library> {
         let mut conn = self.shared.pool.acquire().await?;
-        library::create(&self.shared, &mut conn, name).await
+        library::create_library(&self.shared, &mut conn, name).await
     }
 }
 
@@ -129,7 +134,7 @@ impl Archive {
     /// Whether the admin password has been claimed by the first login attempt
     pub async fn password_claimed(&self) -> Result<bool> {
         let mut conn = self.shared.pool.acquire().await?;
-        Ok(password::stored_hash(&mut conn).await?.is_some())
+        Ok(password::stored_password_hash(&mut conn).await?.is_some())
     }
 
     /// Claim the admin password
@@ -137,18 +142,18 @@ impl Archive {
     /// Returns false (and fails) when a password was already claimed, so that two racing first
     /// logins cannot both win.
     pub async fn claim_password(&self, password: &str) -> Result<bool> {
-        let hash = password::hash(password)?;
+        let hash = password::hash_password(password)?;
         let mut conn = self.shared.pool.acquire().await?;
-        password::insert_hash(&mut conn, &hash).await
+        password::insert_password_hash(&mut conn, &hash).await
     }
 
     /// Check the given password against the salted and hashed stored password
     pub async fn verify_password(&self, password: &str) -> Result<PasswordCheck> {
         let mut conn = self.shared.pool.acquire().await?;
-        let Some(stored) = password::stored_hash(&mut conn).await? else {
+        let Some(stored) = password::stored_password_hash(&mut conn).await? else {
             return Ok(PasswordCheck::Unclaimed);
         };
-        password::verify(&stored, password)
+        password::verify_password(&stored, password)
     }
 
     /// Change the admin password to the given password
@@ -157,8 +162,8 @@ impl Archive {
     /// The caller is expected to ensure that the user has verified their old password before
     /// allowing them to change it.
     pub async fn change_password(&self, password: &str) -> Result<()> {
-        let hash = password::hash(password)?;
+        let hash = password::hash_password(password)?;
         let mut conn = self.shared.pool.acquire().await?;
-        password::update_hash(&mut conn, &hash).await
+        password::update_password_hash(&mut conn, &hash).await
     }
 }

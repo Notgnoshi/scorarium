@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Display};
-use std::str::FromStr;
 
 use crate::identifier;
 
@@ -45,93 +44,9 @@ pub struct ContributorInput {
     pub role: String,
 }
 
-/// Whether a holding is a thing on a shelf or a file
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HoldingKind {
-    Physical,
-    Digital,
-}
-
-impl HoldingKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            HoldingKind::Physical => "physical",
-            HoldingKind::Digital => "digital",
-        }
-    }
-}
-
-impl FromStr for HoldingKind {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "physical" => Ok(HoldingKind::Physical),
-            "digital" => Ok(HoldingKind::Digital),
-            _ => Err(format!("unknown holding kind: {s}")),
-        }
-    }
-}
-
-/// One holding as entered in the web form
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HoldingRawInput {
-    /// The holding this edits; None for a holding being created
-    pub id: Option<i64>,
-    pub kind: HoldingKind,
-    /// Freeform for a physical copy, a filepath in the assets directory for a digital one
-    pub location: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct HoldingInput {
-    pub(crate) id: Option<i64>,
-    pub(crate) kind: HoldingKind,
-    pub(crate) location: Option<String>,
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct HoldingErrors {
-    /// A publication with no copies at all is a publication nobody holds
-    pub none: Option<ValidationError>,
-    /// One slot per raw copy
-    pub each: Vec<Option<ValidationError>>,
-}
-
-impl HoldingErrors {
-    pub fn is_empty(&self) -> bool {
-        self.none.is_none() && self.each.iter().all(Option::is_none)
-    }
-}
-
-/// Check copies on their own, for the import entry page, which has no publication yet.
-pub fn parse_holdings(raw: &[HoldingRawInput]) -> Result<Vec<HoldingInput>, HoldingErrors> {
-    let mut holdings = Vec::new();
-    let errors = HoldingErrors {
-        none: raw.is_empty().then_some(ValidationError::NoHoldings),
-        each: raw
-            .iter()
-            .map(|holding| {
-                let location = optional(&holding.location);
-                if holding.kind == HoldingKind::Digital && location.is_none() {
-                    return Some(ValidationError::FileRequired);
-                }
-                holdings.push(HoldingInput {
-                    id: holding.id,
-                    kind: holding.kind,
-                    location,
-                });
-                None
-            })
-            .collect(),
-    };
-    if errors.is_empty() {
-        Ok(holdings)
-    } else {
-        Err(errors)
-    }
-}
-
+/// Check credits, one slot per input
+///
+/// A work credits people the same way a publication does, so both parsers check theirs here.
 pub(crate) fn parse_contributors(
     raw: &[ContributorInput],
 ) -> Result<Vec<ContributorInput>, Vec<Option<ValidationError>>> {
@@ -169,7 +84,8 @@ pub(crate) fn parse_contributors(
     }
 }
 
-pub(crate) fn optional(value: &str) -> Option<String> {
+/// A field left blank holds no value, rather than an empty one
+pub(crate) fn trimmed_or_none(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
 }

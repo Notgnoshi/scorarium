@@ -13,12 +13,12 @@ pub enum PasswordCheck {
     Correct,
 }
 
-pub(crate) fn hash(password: &str) -> Result<String> {
+pub(crate) fn hash_password(password: &str) -> Result<String> {
     let hash = Argon2::default().hash_password(password.as_bytes())?;
     Ok(hash.to_string())
 }
 
-pub(crate) fn verify(stored: &str, password: &str) -> Result<PasswordCheck> {
+pub(crate) fn verify_password(stored: &str, password: &str) -> Result<PasswordCheck> {
     let parsed = PasswordHash::new(stored)?;
     match Argon2::default().verify_password(password.as_bytes(), &parsed) {
         Ok(()) => Ok(PasswordCheck::Correct),
@@ -27,7 +27,7 @@ pub(crate) fn verify(stored: &str, password: &str) -> Result<PasswordCheck> {
     }
 }
 
-pub(crate) async fn stored_hash(conn: &mut SqliteConnection) -> Result<Option<String>> {
+pub(crate) async fn stored_password_hash(conn: &mut SqliteConnection) -> Result<Option<String>> {
     let row = sqlx::query!("SELECT password_hash FROM password WHERE id = 1")
         .fetch_optional(conn)
         .await?;
@@ -35,7 +35,7 @@ pub(crate) async fn stored_hash(conn: &mut SqliteConnection) -> Result<Option<St
 }
 
 /// Store a hash where there is none. False when one was already stored.
-pub(crate) async fn insert_hash(conn: &mut SqliteConnection, hash: &str) -> Result<bool> {
+pub(crate) async fn insert_password_hash(conn: &mut SqliteConnection, hash: &str) -> Result<bool> {
     let result = sqlx::query!(
         "INSERT INTO password (id, password_hash) VALUES (1, ?) ON CONFLICT DO NOTHING",
         hash
@@ -46,7 +46,7 @@ pub(crate) async fn insert_hash(conn: &mut SqliteConnection, hash: &str) -> Resu
 }
 
 /// Replace a stored hash. Does not upsert.
-pub(crate) async fn update_hash(conn: &mut SqliteConnection, hash: &str) -> Result<()> {
+pub(crate) async fn update_password_hash(conn: &mut SqliteConnection, hash: &str) -> Result<()> {
     sqlx::query!("UPDATE password SET password_hash = ? WHERE id = 1", hash)
         .execute(conn)
         .await?;
