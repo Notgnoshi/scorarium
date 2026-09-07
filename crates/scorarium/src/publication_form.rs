@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
 
+use scorarium_archive::HoldingKind as ArchiveHoldingKind;
 use serde::Deserialize;
 
 use crate::db::publication::{HoldingKind, Publication};
 use crate::db::work::{Work, lead_contributor, roles};
-use crate::identifier;
+use crate::{identifier, publication_post};
 
 /// A publication's editable fields as typed, before validation.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -261,14 +262,6 @@ pub struct Submission {
     year: String,
     // `default` covers a submission with no rows at all
     #[serde(default)]
-    holding_id: Vec<String>,
-    #[serde(default)]
-    holding_kind: Vec<HoldingKind>,
-    #[serde(default)]
-    holding_location: Vec<String>,
-    #[serde(default)]
-    holding_file: Vec<String>,
-    #[serde(default)]
     identifier_kind: Vec<String>,
     #[serde(default)]
     identifier_value: Vec<String>,
@@ -292,6 +285,15 @@ pub struct Submission {
 impl Submission {
     pub fn edit_work(&self) -> Option<usize> {
         self.edit_work.as_ref()?.trim().parse().ok()
+    }
+
+    /// The form as posted. The copies are decoded separately, since each one's keys carry a suffix
+    /// of its own rather than repeating a shared key.
+    pub fn into_form(self, holdings: Vec<HoldingRow>) -> PublicationForm {
+        PublicationForm {
+            holdings,
+            ..PublicationForm::from(self)
+        }
     }
 }
 
@@ -332,12 +334,7 @@ impl From<Submission> for PublicationForm {
             title: submission.title.trim().to_string(),
             publisher: submission.publisher.trim().to_string(),
             year: submission.year.trim().to_string(),
-            holdings: holding_rows(
-                submission.holding_id,
-                submission.holding_kind,
-                submission.holding_location,
-                submission.holding_file,
-            ),
+            holdings: Vec::new(),
             identifiers,
             contributors,
             works,
@@ -345,30 +342,17 @@ impl From<Submission> for PublicationForm {
     }
 }
 
-/// Copy rows from a submission's parallel keys. Every row submits a kind, a location and a file,
-/// and the kind picks which of the two counts.
-///
-/// The ids are read by position rather than zipped: a missing or short id list leaves the rows it
-/// does not reach naming no stored copy, which is what a page with nothing stored yet submits.
-pub fn holding_rows(
-    id: Vec<String>,
-    kind: Vec<HoldingKind>,
-    location: Vec<String>,
-    file: Vec<String>,
-) -> Vec<HoldingRow> {
-    kind.into_iter()
-        .zip(location)
-        .zip(file)
-        .enumerate()
-        .map(|(i, ((kind, location), file))| HoldingRow {
-            id: id.get(i).and_then(|id| id.trim().parse().ok()),
-            kind,
-            location: match kind {
-                HoldingKind::Physical => location,
-                HoldingKind::Digital => file,
-            }
-            .trim()
-            .to_string(),
+/// Copy rows from the raw pairs, through the one decoder there is for them.
+pub fn holding_rows(pairs: &[(String, String)]) -> Vec<HoldingRow> {
+    publication_post::holdings(pairs)
+        .into_iter()
+        .map(|holding| HoldingRow {
+            id: holding.id,
+            kind: match holding.kind {
+                ArchiveHoldingKind::Physical => HoldingKind::Physical,
+                ArchiveHoldingKind::Digital => HoldingKind::Digital,
+            },
+            location: holding.location,
         })
         .collect()
 }

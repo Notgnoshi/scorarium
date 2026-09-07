@@ -26,9 +26,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "Gnossiennes"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     response.assert_status_ok();
@@ -44,12 +44,12 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
-            ("holding_kind", "physical"),
-            ("holding_location", "Piano bench"),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
+            ("holding_kind_1", "physical"),
+            ("holding_location_1", "Piano bench"),
+            ("holding_file_1", ""),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -82,9 +82,9 @@ async fn manual_import_flow() {
             ("title", ""),
             ("publisher", ""),
             ("year", "abc"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
             ("identifier_kind", "isbn"),
             ("identifier_value", "not-an-isbn"),
             ("identifier_kind", "isbn"),
@@ -109,9 +109,9 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -137,9 +137,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "0486231348"),
-            ("holding_kind", "physical"),
-            ("holding_location", "Piano bench"),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -160,9 +160,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "Gnossiennes"),
-            ("holding_kind", "physical"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -180,9 +180,9 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -219,9 +219,9 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("holding_kind", "physical"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     let next = response.header("location").to_str().unwrap().to_string();

@@ -4,20 +4,18 @@ use scorarium_archive::{
 };
 use serde::Deserialize;
 
-#[derive(Deserialize)]
 pub struct PublicationPost {
+    fields: Fields,
+    holdings: Vec<HoldingRawInput>,
+}
+
+/// Everything posted under a fixed key, which is everything but the copies.
+#[derive(Deserialize)]
+struct Fields {
     title: String,
     publisher: String,
     year: String,
     // `default` covers a submission with none at all
-    #[serde(default)]
-    holding_id: Vec<String>,
-    #[serde(default)]
-    holding_kind: Vec<HoldingKind>,
-    #[serde(default)]
-    holding_location: Vec<String>,
-    #[serde(default)]
-    holding_file: Vec<String>,
     #[serde(default)]
     identifier_kind: Vec<String>,
     #[serde(default)]
@@ -47,9 +45,23 @@ pub struct PartialWorkPost {
 }
 
 impl PublicationPost {
+    /// Decode a submitted form.
+    ///
+    /// Two passes over the same body: the fields posted under a fixed key come from the derive,
+    /// and the copies from the raw pairs, because their keys carry a per-copy suffix the derive
+    /// cannot name.
+    pub fn decode(body: &[u8]) -> Result<Self, serde_html_form::de::Error> {
+        let fields: Fields = serde_html_form::from_bytes(body)?;
+        let pairs: Vec<(String, String)> = serde_html_form::from_bytes(body)?;
+        Ok(PublicationPost {
+            fields,
+            holdings: holdings(&pairs),
+        })
+    }
+
     /// The index of the work whose edit button was clicked, on the review page.
     pub fn edit_work(&self) -> Option<usize> {
-        self.edit_work.as_ref()?.trim().parse().ok()
+        self.fields.edit_work.as_ref()?.trim().parse().ok()
     }
 
     /// The whole raw input, given the works the page was showing.
@@ -58,14 +70,11 @@ impl PublicationPost {
     /// contributor to its lead, leaving the fields and credits the page never showed alone. One
     /// naming nothing becomes a new work. Works no posted work names are dropped.
     pub fn merge(self, mut shown: Vec<WorkRawInput>) -> PublicationRawInput {
-        let PublicationPost {
+        let PublicationPost { fields, holdings } = self;
+        let Fields {
             title,
             publisher,
             year,
-            holding_id,
-            holding_kind,
-            holding_location,
-            holding_file,
             identifier_kind,
             identifier_value,
             contributor_name,
@@ -75,7 +84,7 @@ impl PublicationPost {
             work_contributor_name,
             work_contributor_role,
             edit_work: _,
-        } = self;
+        } = fields;
 
         let mut contents = Vec::new();
         for posted in works(
@@ -113,7 +122,7 @@ impl PublicationPost {
             title: title.trim().to_string(),
             publisher: publisher.trim().to_string(),
             year: year.trim().to_string(),
-            holdings: holdings(holding_id, holding_kind, holding_location, holding_file),
+            holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
             contributors: contributors(contributor_name, contributor_role),
             contents,
@@ -163,32 +172,64 @@ fn set_lead(contributors: &mut Vec<ContributorInput>, posted: &ContributorInput)
     }
 }
 
-/// Copies from the parallel keys. Every copy submits a kind, a location and a file, and the kind
-/// picks which of the two counts.
+/// The copies a form posts, in the order the page lists them.
 ///
-/// The ids are read by position rather than zipped: a missing or short id list leaves the copies it
-/// does not reach naming no stored copy, which is what a page with nothing stored yet submits.
-pub fn holdings(
-    id: Vec<String>,
-    kind: Vec<HoldingKind>,
-    location: Vec<String>,
-    file: Vec<String>,
-) -> Vec<HoldingRawInput> {
-    kind.into_iter()
-        .zip(location)
-        .zip(file)
-        .enumerate()
-        .map(|(i, ((kind, location), file))| HoldingRawInput {
-            id: id.get(i).and_then(|id| id.trim().parse().ok()),
-            kind,
-            location: match kind {
-                HoldingKind::Physical => location,
-                HoldingKind::Digital => file,
+/// A copy's kind is a radio group, and radio groups are scoped by name, so every field of a copy
+/// carries a suffix unique to that copy: `holding_kind_3`, `holding_location_3`. That suffix is
+/// only a grouping token; what it says is never read, and the copies come back in the order they
+/// first appear, which is the order the page lists them in.
+pub fn holdings(pairs: &[(String, String)]) -> Vec<HoldingRawInput> {
+    let mut copies: Vec<(&str, Posted<'_>)> = Vec::new();
+    for (key, value) in pairs {
+        let Some((field, index)) = key.rsplit_once('_') else {
+            continue;
+        };
+        if !matches!(
+            field,
+            "holding_id" | "holding_kind" | "holding_location" | "holding_file"
+        ) {
+            continue;
+        }
+        let copy = match copies.iter().position(|(seen, _)| *seen == index) {
+            Some(i) => &mut copies[i].1,
+            None => {
+                copies.push((index, Posted::default()));
+                &mut copies.last_mut().expect("just pushed").1
             }
-            .trim()
-            .to_string(),
+        };
+        match field {
+            "holding_id" => copy.id = value,
+            "holding_kind" => copy.kind = value,
+            "holding_location" => copy.location = value,
+            _ => copy.file = value,
+        }
+    }
+    copies
+        .into_iter()
+        .map(|(_, copy)| {
+            let kind = copy.kind.parse().unwrap_or(HoldingKind::Physical);
+            HoldingRawInput {
+                id: copy.id.trim().parse().ok(),
+                kind,
+                // Each kind has its own input, so the copy's kind picks which one counts
+                location: match kind {
+                    HoldingKind::Physical => copy.location,
+                    HoldingKind::Digital => copy.file,
+                }
+                .trim()
+                .to_string(),
+            }
         })
         .collect()
+}
+
+/// One copy's fields as posted, before its kind says which location counts.
+#[derive(Default)]
+struct Posted<'a> {
+    id: &'a str,
+    kind: &'a str,
+    location: &'a str,
+    file: &'a str,
 }
 
 /// Credits from the parallel keys; the work form decodes the same
@@ -249,31 +290,34 @@ mod tests {
     /// A submission carrying nothing but its works, as (id, title, contributor name, role)
     fn posted(works: &[(Option<i64>, &str, &str, &str)]) -> PublicationPost {
         PublicationPost {
-            title: "Album".into(),
-            publisher: String::new(),
-            year: String::new(),
-            holding_id: Vec::new(),
-            holding_kind: vec![HoldingKind::Physical],
-            holding_location: vec![String::new()],
-            holding_file: vec![String::new()],
-            identifier_kind: Vec::new(),
-            identifier_value: Vec::new(),
-            contributor_name: Vec::new(),
-            contributor_role: Vec::new(),
-            work_id: works
-                .iter()
-                .map(|(id, ..)| id.map(|id| id.to_string()).unwrap_or_default())
-                .collect(),
-            work_title: works
-                .iter()
-                .map(|(_, title, ..)| title.to_string())
-                .collect(),
-            work_contributor_name: works
-                .iter()
-                .map(|(_, _, name, _)| name.to_string())
-                .collect(),
-            work_contributor_role: works.iter().map(|(.., role)| role.to_string()).collect(),
-            edit_work: None,
+            holdings: vec![HoldingRawInput {
+                id: None,
+                kind: HoldingKind::Physical,
+                location: String::new(),
+            }],
+            fields: Fields {
+                title: "Album".into(),
+                publisher: String::new(),
+                year: String::new(),
+                identifier_kind: Vec::new(),
+                identifier_value: Vec::new(),
+                contributor_name: Vec::new(),
+                contributor_role: Vec::new(),
+                work_id: works
+                    .iter()
+                    .map(|(id, ..)| id.map(|id| id.to_string()).unwrap_or_default())
+                    .collect(),
+                work_title: works
+                    .iter()
+                    .map(|(_, title, ..)| title.to_string())
+                    .collect(),
+                work_contributor_name: works
+                    .iter()
+                    .map(|(_, _, name, _)| name.to_string())
+                    .collect(),
+                work_contributor_role: works.iter().map(|(.., role)| role.to_string()).collect(),
+                edit_work: None,
+            },
         }
     }
 
@@ -356,6 +400,59 @@ mod tests {
             view(&merged.contents),
             [(None, "Mazurka", "", vec![])],
             "a work the submission no longer lists is dropped, and an empty contributor adds none"
+        );
+    }
+
+    /// Each copy posts its fields under a suffix of its own, and the copies come back in the
+    /// order the page listed them, not in whatever order the suffixes happen to sort.
+    #[test]
+    fn copies_are_grouped_by_suffix_in_page_order() {
+        let pairs: Vec<(String, String)> = [
+            ("holding_id_new1", ""),
+            ("holding_kind_new1", "digital"),
+            ("holding_location_new1", ""),
+            ("holding_file_new1", "score.pdf"),
+            ("holding_id_0", "5"),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Shelf"),
+            ("holding_file_0", ""),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+
+        assert_eq!(
+            holdings(&pairs),
+            [
+                HoldingRawInput {
+                    id: None,
+                    kind: HoldingKind::Digital,
+                    location: "score.pdf".into(),
+                },
+                HoldingRawInput {
+                    id: Some(5),
+                    kind: HoldingKind::Physical,
+                    location: "Shelf".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn decode_reads_both_the_fields_and_the_copies() {
+        let body = b"title=Album&publisher=&year=&holding_id_0=&holding_kind_0=digital&holding_location_0=&holding_file_0=score.pdf&identifier_kind=isbn&identifier_value=x";
+
+        let post = PublicationPost::decode(body).unwrap();
+
+        assert_eq!(post.fields.title, "Album");
+        assert_eq!(post.fields.identifier_kind, ["isbn"]);
+        assert_eq!(
+            post.holdings,
+            [HoldingRawInput {
+                id: None,
+                kind: HoldingKind::Digital,
+                location: "score.pdf".into(),
+            }]
         );
     }
 

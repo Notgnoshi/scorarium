@@ -2,13 +2,14 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
 use scorarium_archive::{
-    ContributorInput, HoldingKind as ArchiveHoldingKind, HoldingRawInput, IdentifierRawInput,
-    Library, PublicationErrors, PublicationRawInput, WorkRawInput,
+    ContributorInput, HoldingErrors, HoldingKind as ArchiveHoldingKind, HoldingRawInput,
+    IdentifierRawInput, Library, PublicationErrors, PublicationRawInput, WorkRawInput,
+    parse_holdings,
 };
 use serde::Deserialize;
 
@@ -18,8 +19,8 @@ use super::{
 };
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
-use crate::publication_form::{Errors, HoldingRow, PublicationForm, Submission};
-use crate::{AppState, import, publication_form, work_form};
+use crate::publication_form::{HoldingRow, PublicationForm, Submission};
+use crate::{AppState, import, publication_form, publication_post, work_form};
 
 const UNTITLED: &str = "Untitled import";
 
@@ -104,9 +105,9 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    let rows = vec![HoldingRow {
+    let blank = vec![HoldingRawInput {
         id: None,
-        kind: HoldingKind::Physical,
+        kind: ArchiveHoldingKind::Physical,
         location: String::new(),
     }];
     render_entry(
@@ -115,8 +116,8 @@ pub async fn entry(
         base,
         String::new(),
         query.more.is_some(),
-        rows,
-        Errors::default(),
+        blank,
+        HoldingErrors::default(),
     )
     .await
 }
@@ -127,22 +128,22 @@ async fn render_entry(
     base: BaseContext,
     query: String,
     more: bool,
-    rows: Vec<HoldingRow>,
-    errors: Errors,
+    raw: Vec<HoldingRawInput>,
+    errors: HoldingErrors,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(id).await?.or_not_found()?;
-    let holdings = rows
+    let holdings = raw
         .iter()
         .enumerate()
-        .map(|(i, row)| ShownHolding {
-            id: row.id_value(),
-            kind: row.kind.as_str(),
-            location: row.location.clone(),
+        .map(|(i, holding)| ShownHolding {
+            id: holding.id.map(|id| id.to_string()).unwrap_or_default(),
+            kind: holding.kind.as_str(),
+            location: holding.location.clone(),
             message: errors
-                .holdings
+                .each
                 .get(i)
-                .cloned()
-                .flatten()
+                .and_then(Option::as_ref)
+                .map(ToString::to_string)
                 .unwrap_or_default(),
         })
         .collect();
@@ -150,7 +151,7 @@ async fn render_entry(
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(state, Some(id)).await?,
         show_library: false,
-        no_holdings: errors.no_holdings.unwrap_or_default(),
+        no_holdings: errors.none.map(|e| e.to_string()).unwrap_or_default(),
         holdings,
         library,
         query,
@@ -159,19 +160,12 @@ async fn render_entry(
     Ok(Html(page.render()?).into_response())
 }
 
+/// Everything the entry page posts under a fixed key; its copies are decoded from the raw pairs,
+/// as on the review page.
 #[derive(Deserialize)]
 pub struct StartForm {
     #[serde(default)]
     query: String,
-    // Copy rows as parallel repeated keys, decoded as on the review page
-    #[serde(default)]
-    holding_id: Vec<String>,
-    #[serde(default)]
-    holding_kind: Vec<HoldingKind>,
-    #[serde(default)]
-    holding_location: Vec<String>,
-    #[serde(default)]
-    holding_file: Vec<String>,
     /// Present when the "Import more" box is checked; browsers send "on".
     more: Option<String>,
 }
@@ -182,27 +176,25 @@ pub async fn start(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path(id): Path<i64>,
-    MultiForm(form): MultiForm<StartForm>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let rows = publication_form::holding_rows(
-        form.holding_id,
-        form.holding_kind,
-        form.holding_location,
-        form.holding_file,
-    );
-    let mut errors = Errors::default();
-    let holdings = publication_form::parse_holdings(&rows, &mut errors);
+    let form: StartForm = serde_html_form::from_bytes(&body)?;
+    let pairs: Vec<(String, String)> = serde_html_form::from_bytes(&body)?;
+    let raw = publication_post::holdings(&pairs);
     let more = form.more.is_some();
-    if !errors.is_empty() {
-        return render_entry(&state, id, base, form.query, more, rows, errors).await;
+    if let Err(errors) = parse_holdings(&raw) {
+        return render_entry(&state, id, base, form.query, more, raw, errors).await;
     }
     // The import needs the library to exist, but not the library itself
     state.archive.library(id).await?.or_not_found()?;
-    let holdings: Vec<PendingHolding> = holdings
-        .into_iter()
-        .map(|h| PendingHolding {
-            kind: h.kind,
-            location: h.location,
+    let holdings: Vec<PendingHolding> = raw
+        .iter()
+        .map(|holding| PendingHolding {
+            kind: match holding.kind {
+                ArchiveHoldingKind::Physical => HoldingKind::Physical,
+                ArchiveHoldingKind::Digital => HoldingKind::Digital,
+            },
+            location: Some(holding.location.trim().to_string()).filter(|l| !l.is_empty()),
         })
         .collect();
     let pending_id = pending_import::create(
@@ -279,14 +271,15 @@ pub async fn save(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(submission): MultiForm<Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
+    let submission = decode(&body)?;
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     // Read before the submission is consumed; the index names a row, since a row added just now
     // has no draft id to name
-    let edit_work = submission.edit_work();
+    let edit_work = submission.0.edit_work();
     let draft = load_draft(&state, &pending, submission);
     let next = match edit_work.and_then(|i| draft.works.get(i)) {
         Some(work) => format!("/library/{library_id}/import/{id}/work/{}", work.id),
@@ -296,13 +289,22 @@ pub async fn save(
     Ok(Redirect::to(&next).into_response())
 }
 
+/// A review page submission: its fields, and its copies, whose keys carry a per-copy suffix.
+struct Posted(Submission, Vec<HoldingRow>);
+
+fn decode(body: &[u8]) -> Result<Posted, serde_html_form::de::Error> {
+    let submission: Submission = serde_html_form::from_bytes(body)?;
+    let pairs: Vec<(String, String)> = serde_html_form::from_bytes(body)?;
+    Ok(Posted(submission, publication_form::holding_rows(&pairs)))
+}
+
 /// The stored draft with this submission merged into it, or a seeded one when nothing is stored
-fn load_draft(state: &AppState, pending: &PendingImport, submission: Submission) -> import::Draft {
+fn load_draft(state: &AppState, pending: &PendingImport, posted: Posted) -> import::Draft {
     let mut draft = state
         .drafts
         .get(pending.id)
         .unwrap_or_else(|| import::Draft::seed(pending));
-    draft.merge(submission.into());
+    draft.merge(posted.0.into_form(posted.1));
     draft
 }
 
@@ -311,8 +313,9 @@ pub async fn submit(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(submission): MultiForm<Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
+    let submission = decode(&body)?;
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };

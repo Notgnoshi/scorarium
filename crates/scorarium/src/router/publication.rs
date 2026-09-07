@@ -2,9 +2,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum_extra::extract::Form as MultiForm;
 use scorarium_archive::{Library, Publication, PublicationErrors, PublicationRawInput, Work};
 
 use super::{AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit};
@@ -97,8 +96,9 @@ pub async fn save(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(post): MultiForm<PublicationPost>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
+    let post = PublicationPost::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut publication = library.publication(id).await?.or_not_found()?;
     // The page showed one contributor per work; the stored works are what the rest comes from
