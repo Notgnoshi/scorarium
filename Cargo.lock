@@ -1824,7 +1824,6 @@ dependencies = [
  "color-eyre",
  "cookie",
  "getrandom",
- "isbn",
  "rust-embed",
  "scorarium-archive",
  "scorarium-tests",
@@ -1843,6 +1842,7 @@ version = "0.1.0-rc1"
 dependencies = [
  "argon2",
  "eyre",
+ "isbn",
  "sqlx",
  "tempfile",
  "tokio",

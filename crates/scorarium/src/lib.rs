@@ -1,6 +1,5 @@
 pub mod db;
 pub mod demo;
-pub mod identifier;
 pub mod import;
 pub mod publication_form;
 pub mod router;
@@ -8,6 +7,8 @@ pub mod session;
 pub mod work_form;
 
 use scorarium_archive::Archive;
+// TODO: Remove once identifier parsing is no longer needed by the web crate directly
+pub use scorarium_archive::identifier;
 use sqlx::SqlitePool;
 
 pub use crate::router::router;

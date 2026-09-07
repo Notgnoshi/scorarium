@@ -8,6 +8,7 @@ description = "The scorarium data model and data persistence"
 [dependencies]
 argon2.workspace = true
 eyre.workspace = true
+isbn.workspace = true
 sqlx.workspace = true
 
 [dev-dependencies]

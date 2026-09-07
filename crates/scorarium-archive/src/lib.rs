@@ -2,8 +2,12 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+pub mod identifier;
+mod input;
 mod library;
 mod password;
+mod publication;
+mod work;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -12,8 +16,15 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
+pub use crate::identifier::IdentifierRawInput;
+pub use crate::input::{
+    ContributorInput, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, ValidationError,
+    parse_holdings,
+};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
+pub use crate::publication::{PublicationErrors, PublicationInput, PublicationRawInput};
+pub use crate::work::{WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 
