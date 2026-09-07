@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pending_import_holding (pending_import_id, kind, location)\n             VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "c6042c3b15dc2a3303f7b86e435efe0fbfb0cbfde5e8d5aca8397e693c59f7e3"
+}

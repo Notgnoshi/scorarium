@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
+use crate::holding::HoldingInput;
+use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::work::{self, Work};
@@ -35,11 +37,20 @@ impl Library {
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
     pub async fn delete(self) -> Result<()> {
+        let mut tx = self.archive.pool.begin().await?;
+        // The pending imports cascade away with the library, but their drafts are in memory.
+        let drafted = import::pending_import_ids(&mut tx, self.id).await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
-            .execute(&self.archive.pool)
+            .execute(&mut *tx)
             .await?;
         if result.rows_affected() == 0 {
+            tx.rollback().await?;
             return Err(NotFound.into());
+        }
+        tx.commit().await?;
+        let mut drafts = self.archive.drafts.lock().expect("draft lock poisoned");
+        for id in drafted {
+            drafts.remove(&id);
         }
         Ok(())
     }
@@ -75,6 +86,40 @@ impl Library {
             publication::create_publication(&self.archive, &mut tx, self.id, input).await?;
         tx.commit().await?;
         Ok(publication)
+    }
+}
+
+// imports
+impl Library {
+    /// This library's pending imports, oldest first
+    pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let imports =
+            import::load_pending_imports(&self.archive, &mut tx, Some(self.id), None).await?;
+        tx.commit().await?;
+        Ok(imports)
+    }
+
+    /// The given pending import, if this library has it
+    pub async fn pending_import(&self, id: i64) -> Result<Option<PendingImport>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let import = import::load_pending_imports(&self.archive, &mut tx, Some(self.id), Some(id))
+            .await?
+            .pop();
+        tx.commit().await?;
+        Ok(import)
+    }
+
+    /// Start an import from what the entry page collected
+    pub async fn start_import(
+        &self,
+        query: &str,
+        holdings: &[HoldingInput],
+    ) -> Result<PendingImport> {
+        let mut tx = self.archive.pool.begin().await?;
+        let import = import::start_import(&self.archive, &mut tx, self.id, query, holdings).await?;
+        tx.commit().await?;
+        Ok(import)
     }
 }
 

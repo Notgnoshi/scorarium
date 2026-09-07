@@ -5,6 +5,7 @@
 mod demo;
 mod holding;
 pub mod identifier;
+mod import;
 mod input;
 mod library;
 mod password;
@@ -12,8 +13,9 @@ mod person;
 mod publication;
 mod work;
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sqlx::SqlitePool;
@@ -23,6 +25,7 @@ pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
 pub use crate::identifier::{Identifier, IdentifierRawInput};
+pub use crate::import::{Draft, PendingImport};
 pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
@@ -62,6 +65,7 @@ pub struct Archive {
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
     pub pool: SqlitePool,
+    pub drafts: Mutex<HashMap<i64, import::SavedDraft>>,
 }
 
 // construction
@@ -97,7 +101,10 @@ impl Archive {
 
     fn new(pool: SqlitePool) -> Archive {
         Archive {
-            shared: Arc::new(ArchiveInner { pool }),
+            shared: Arc::new(ArchiveInner {
+                pool,
+                drafts: Mutex::default(),
+            }),
         }
     }
 
@@ -132,6 +139,23 @@ impl Archive {
     pub async fn create_library(&self, name: &str) -> Result<Library> {
         let mut conn = self.shared.pool.acquire().await?;
         library::create_library(&self.shared, &mut conn, name).await
+    }
+
+    /// Every library's pending imports, oldest first
+    pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
+        let mut tx = self.shared.pool.begin().await?;
+        let queue = import::load_pending_imports(&self.shared, &mut tx, None, None).await?;
+        tx.commit().await?;
+        Ok(queue)
+    }
+
+    /// How many imports await review, for the header
+    pub async fn pending_import_count(&self) -> Result<i64> {
+        let mut conn = self.shared.pool.acquire().await?;
+        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM pending_import")
+            .fetch_one(&mut *conn)
+            .await?;
+        Ok(count)
     }
 }
 
