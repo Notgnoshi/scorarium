@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::{db, router};
@@ -9,8 +7,8 @@ use scorarium_tests::{TestDb, browser};
 async fn library_page() {
     let state = TestDb::new().library("Sheet music").build().await;
     // Ask the database for the id rather than assuming SQLite hands out 1 for the first row
-    let id = db::list_libraries(&state.pool).await.unwrap()[0].id;
-    let server = TestServer::new(router(Arc::new(state)));
+    let id = state.archive.libraries().await.unwrap()[0].id;
+    let server = TestServer::new(router(state));
 
     let response = server.get("/").await;
     response.assert_text_contains(format!("href=\"/library/{id}\""));
@@ -27,7 +25,7 @@ async fn library_page() {
 #[tokio::test]
 async fn library_page_lists_publications() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
     let publications = db::publication::list(&state.pool, library.id)
         .await
@@ -44,7 +42,7 @@ async fn library_page_lists_publications() {
         "href=\"/library/{}/person/{}\"",
         library.id, gymnopedies.contributors[0].person_id
     );
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server.get(&format!("/library/{}", library.id)).await;
     response.assert_status_ok();
@@ -59,14 +57,14 @@ async fn library_page_lists_publications() {
 #[tokio::test]
 async fn library_page_links_to_listings() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
     let sheet_music = libraries
         .iter()
         .find(|l| l.name == "Sheet music")
         .unwrap()
         .id;
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server.get(&format!("/library/{sheet_music}")).await;
     response.assert_text_contains(format!("href=\"/library/{sheet_music}/composers\""));
@@ -88,9 +86,8 @@ async fn library_page_links_to_listings() {
 #[tokio::test]
 async fn library_crud_flow() {
     let state = TestDb::new().password("hunter2").build().await;
-    // Keep a handle on the database to look up ids the UI only exposes as links
-    let pool = state.pool.clone();
-    let server = browser(state);
+    // Keep a handle on the archive to look up ids the UI only exposes as links
+    let server = browser(state.clone());
 
     // Managing libraries requires login
     let response = server.post("/library").form(&[("name", "Books")]).await;
@@ -109,7 +106,7 @@ async fn library_crud_flow() {
     response.assert_header("location", "/");
     server.get("/").await.assert_text_contains("Books");
 
-    let id = db::list_libraries(&pool).await.unwrap()[0].id;
+    let id = state.archive.libraries().await.unwrap()[0].id;
     let response = server
         .post(&format!("/library/{id}/rename"))
         .form(&[("name", "Novels")])

@@ -147,7 +147,7 @@ mod tests {
     use crate::db;
     use crate::db::publication::{NewPublication, create_publication};
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn get_is_scoped_to_library(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let other_library = db::create_library(&pool, "other").await.unwrap();
@@ -168,7 +168,7 @@ mod tests {
         assert_eq!(get(&pool, library_id, id + 1).await.unwrap(), None);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn list_with_role_spans_publications_and_works(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let second = db::create_library(&pool, "second").await.unwrap();
@@ -277,7 +277,7 @@ mod tests {
         assert_eq!(list_roles(&pool, second).await.unwrap(), ["composer"]);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn contributor_must_share_library(pool: SqlitePool) {
         let books = db::create_library(&pool, "books").await.unwrap();
         let scores = db::create_library(&pool, "scores").await.unwrap();

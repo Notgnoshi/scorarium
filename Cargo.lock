@@ -1816,7 +1816,6 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "scorarium"
 version = "0.1.0-rc1"
 dependencies = [
- "argon2",
  "askama",
  "axum",
  "axum-extra",
@@ -1827,6 +1826,7 @@ dependencies = [
  "getrandom",
  "isbn",
  "rust-embed",
+ "scorarium-archive",
  "scorarium-tests",
  "serde",
  "sqlx",
@@ -1838,11 +1838,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "scorarium-archive"
+version = "0.1.0-rc1"
+dependencies = [
+ "argon2",
+ "eyre",
+ "sqlx",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "scorarium-tests"
 version = "0.1.0-rc1"
 dependencies = [
  "axum-test",
  "scorarium",
+ "scorarium-archive",
 ]
 
 [[package]]

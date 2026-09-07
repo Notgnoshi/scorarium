@@ -7,13 +7,16 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
+use scorarium_archive::Library;
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, FormFields, RowEdit, Session, WorkFields, pair_errors};
+use super::{
+    AppError, BaseContext, Crumb, FormFields, OrNotFound, RowEdit, Session, WorkFields, pair_errors,
+};
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
 use crate::publication_form::{Errors, HoldingRow, PublicationForm, Submission};
-use crate::{AppState, db, import, publication_form, work_form};
+use crate::{AppState, import, publication_form, work_form};
 
 const UNTITLED: &str = "Untitled import";
 
@@ -73,7 +76,7 @@ fn age(created_at: i64) -> String {
 #[template(path = "import.html")]
 struct EntryPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     /// What to show in the form: blank on a visit, the rejected submission on an error
     query: String,
     more: bool,
@@ -123,9 +126,7 @@ async fn render_entry(
     rows: Vec<HoldingRow>,
     errors: Errors,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(id).await?.or_not_found()?;
     let holding_rows = pair_errors(&rows, &errors.holdings);
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
@@ -177,9 +178,8 @@ pub async fn start(
     if !errors.is_empty() {
         return render_entry(&state, id, base, form.query, more, rows, errors).await;
     }
-    if db::get_library(&state.pool, id).await?.is_none() {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
+    // The import needs the library to exist, but not the library itself
+    state.archive.library(id).await?.or_not_found()?;
     let holdings: Vec<PendingHolding> = holdings
         .into_iter()
         .map(|h| PendingHolding {
@@ -208,7 +208,7 @@ pub async fn start(
 #[template(path = "import_review.html")]
 struct ReviewPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     import: PendingImport,
     age: String,
     fields: FormFields,
@@ -221,9 +221,7 @@ pub async fn review(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -332,7 +330,7 @@ pub async fn submit(
 #[template(path = "import_work.html")]
 struct ImportWorkPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     import: PendingImport,
     work_id: i64,
     fields: WorkFields,
@@ -350,9 +348,7 @@ pub async fn work(
     base: BaseContext,
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };

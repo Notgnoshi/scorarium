@@ -1,4 +1,3 @@
-pub mod auth;
 pub mod db;
 pub mod demo;
 pub mod identifier;
@@ -8,12 +7,15 @@ pub mod router;
 pub mod session;
 pub mod work_form;
 
+use scorarium_archive::Archive;
 use sqlx::SqlitePool;
 
 pub use crate::router::router;
 
 /// Shared state for all request handlers.
 pub struct AppState {
+    pub archive: Archive,
+    // TODO: Remove the pool once all route migrate over to the new Archive.
     pub pool: SqlitePool,
     pub sessions: session::SessionStore,
     pub drafts: import::DraftStore,
@@ -23,9 +25,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, secure_cookies: bool) -> Self {
+    pub fn new(archive: Archive, secure_cookies: bool) -> Self {
         Self {
-            pool,
+            pool: archive.pool().clone(),
+            archive,
             sessions: session::SessionStore::default(),
             drafts: import::DraftStore::default(),
             secure_cookies,
@@ -33,10 +36,10 @@ impl AppState {
         }
     }
 
-    pub fn demo(pool: SqlitePool) -> Self {
+    pub fn demo(archive: Archive) -> Self {
         Self {
             demo: true,
-            ..Self::new(pool, true)
+            ..Self::new(archive, true)
         }
     }
 }

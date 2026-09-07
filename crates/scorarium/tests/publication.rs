@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::db::publication::{HoldingKind, NewPublication};
@@ -9,7 +7,7 @@ use scorarium_tests::{TestDb, browser};
 #[tokio::test]
 async fn publication_page() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap();
     let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
     let publications = db::publication::list(&state.pool, sheet_music.id)
@@ -35,7 +33,7 @@ async fn publication_page() {
         .iter()
         .find(|p| p.title.ends_with("Ambrose Bierce"))
         .unwrap();
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!(
@@ -125,7 +123,7 @@ async fn publication_edit_flow() {
         .build()
         .await;
     let pool = state.pool.clone();
-    let library = db::list_libraries(&pool).await.unwrap()[0].id;
+    let library = state.archive.libraries().await.unwrap()[0].id;
     let publication = db::publication::create_publication(
         &pool,
         &NewPublication {
@@ -183,7 +181,7 @@ async fn publication_edit_flow() {
     db::work::create_contributor(&pool, library, one, translator, "translator")
         .await
         .unwrap();
-    let server = browser(state);
+    let server = browser(state.clone());
     let view = format!("/library/{library}/publication/{publication}");
     let edit = format!("{view}/edit");
 

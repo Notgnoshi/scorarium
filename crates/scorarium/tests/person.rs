@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::{db, router};
@@ -8,7 +6,7 @@ use scorarium_tests::TestDb;
 #[tokio::test]
 async fn person_page() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap();
     let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
     let publications = db::publication::list(&state.pool, sheet_music.id)
@@ -47,7 +45,7 @@ async fn person_page() {
     };
     let rachmaninoff = person_id("Sergei Rachmaninoff");
     let kabalevsky = person_id("Dmitri Kabalevsky");
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!(
@@ -108,7 +106,7 @@ async fn person_page() {
 #[tokio::test]
 async fn composers_and_authors_pages() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
     let sheet_music = libraries
         .iter()
@@ -118,7 +116,7 @@ async fn composers_and_authors_pages() {
     let composers = db::person::list_with_role(&state.pool, sheet_music, "composer")
         .await
         .unwrap();
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!("/library/{sheet_music}/composers"))

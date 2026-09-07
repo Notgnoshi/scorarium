@@ -5,9 +5,10 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
+use scorarium_archive::Library;
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, Session, WorkFields};
+use super::{AppError, BaseContext, Crumb, OrNotFound, Session, WorkFields};
 use crate::work_form::{Errors, Submission, WorkForm};
 use crate::{AppState, db};
 
@@ -23,7 +24,7 @@ struct WorkPage {
 #[template(path = "work_edit.html")]
 struct EditPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     work: db::work::Work,
     /// Where Save and Cancel lead
     back: String,
@@ -48,9 +49,7 @@ pub async fn work(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -74,9 +73,7 @@ pub async fn edit(
     Path((library_id, id)): Path<(i64, i64)>,
     Query(query): Query<BackQuery>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -105,9 +102,7 @@ pub async fn save(
     Query(query): Query<BackQuery>,
     MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -127,7 +122,7 @@ pub async fn save(
 async fn render_edit(
     state: &AppState,
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     work: db::work::Work,
     back: Option<String>,
     form: WorkForm,

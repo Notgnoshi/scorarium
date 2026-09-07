@@ -6,7 +6,6 @@ license.workspace = true
 description = "A physical and digital sheet music library"
 
 [dependencies]
-argon2.workspace = true
 askama.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
@@ -16,6 +15,7 @@ cookie.workspace = true
 getrandom.workspace = true
 isbn.workspace = true
 rust-embed.workspace = true
+scorarium-archive.workspace = true
 serde.workspace = true
 sqlx.workspace = true
 tokio.workspace = true

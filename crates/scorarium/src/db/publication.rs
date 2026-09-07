@@ -478,7 +478,7 @@ mod tests {
     use crate::db;
     use crate::publication_form::{ContributorRow, HoldingUpdate};
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn list_assembles_children(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let pro_git = create_publication(
@@ -590,7 +590,7 @@ mod tests {
 
     /// A person's publications are those crediting them directly and those containing a work that
     /// credits them.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn list_by_person_unions_credits(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let person = db::person::create_person(&pool, library_id, "Erik Satie", "Satie, Erik")
@@ -653,7 +653,7 @@ mod tests {
     }
 
     /// Deleting a library must take its publications and their children with it.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn delete_library_cascades(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let new = NewPublication {
@@ -698,7 +698,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(db::delete_library(&pool, library_id).await.unwrap());
+        // Deleting a library is the archive's job; this is the same statement it runs
+        sqlx::query!("DELETE FROM library WHERE id = ?", library_id)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         let holdings = sqlx::query_scalar!("SELECT COUNT(*) FROM holding")
             .fetch_one(&pool)
@@ -743,7 +747,7 @@ mod tests {
     }
 
     /// An edit keeps a copy it still names, rebuilds the rest, and collects a person it uncredits.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn update_reconciles_children(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let other_library = db::create_library(&pool, "other").await.unwrap();
@@ -868,7 +872,7 @@ mod tests {
         assert_eq!(persons, ["Added", "Elsewhere", "Kept"]);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn delete_collects_orphans(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let other_library = db::create_library(&pool, "other").await.unwrap();

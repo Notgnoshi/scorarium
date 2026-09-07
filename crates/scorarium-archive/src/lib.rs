@@ -1,0 +1,153 @@
+//! The scorarium data model
+//!
+//! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
+//! is performed.
+mod library;
+mod password;
+
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+
+pub use crate::library::Library;
+pub use crate::password::PasswordCheck;
+
+pub type Result<T> = eyre::Result<T>;
+
+/// An error to indicate something as not found
+///
+/// Most often, methods in the [Archive] data model will return an eyre [Result], so if consumers
+/// care about distinguishing [NotFound] from other errors, they should use
+/// `e.downcast_ref::<NotFound>()`
+#[derive(Debug)]
+pub struct NotFound;
+
+impl std::fmt::Display for NotFound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("not found")
+    }
+}
+
+impl std::error::Error for NotFound {}
+
+// TODO: Make private once all database interactions have moved inside the archive crate
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+
+#[derive(Debug)]
+pub struct Archive {
+    shared: Arc<ArchiveInner>,
+}
+
+/// What the archive and every handle it hands out share.
+#[derive(Debug)]
+pub(crate) struct ArchiveInner {
+    pub pool: SqlitePool,
+}
+
+// construction
+impl Archive {
+    /// Open the archive in the given data directory, creating and migrating it as necessary.
+    pub async fn open(data_dir: &Path) -> Result<Archive> {
+        std::fs::create_dir_all(data_dir)?;
+        let options = SqliteConnectOptions::new()
+            .filename(data_dir.join("scorarium.db"))
+            .create_if_missing(true)
+            .foreign_keys(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
+        let pool = SqlitePool::connect_with(options).await?;
+        MIGRATOR.run(&pool).await?;
+        Ok(Archive::new(pool))
+    }
+
+    /// A fresh, migrated, empty archive that lives in-memory
+    pub async fn in_memory() -> Result<Archive> {
+        let options = SqliteConnectOptions::new()
+            .in_memory(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1) // sqlite creates a new in-memory database per-connection
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(options)
+            .await?;
+        MIGRATOR.run(&pool).await?;
+        Ok(Archive::new(pool))
+    }
+
+    fn new(pool: SqlitePool) -> Archive {
+        Archive {
+            shared: Arc::new(ArchiveInner { pool }),
+        }
+    }
+
+    // TODO: Remove once all database interactions get migrated into the archive crate
+    pub fn pool(&self) -> &SqlitePool {
+        &self.shared.pool
+    }
+}
+
+// libraries
+impl Archive {
+    /// Get all libraries that exist
+    pub async fn libraries(&self) -> Result<Vec<Library>> {
+        let mut conn = self.shared.pool.acquire().await?;
+        library::list(&self.shared, &mut conn).await
+    }
+
+    /// Get the given library, if it exists
+    pub async fn library(&self, id: i64) -> Result<Option<Library>> {
+        let mut conn = self.shared.pool.acquire().await?;
+        library::get(&self.shared, &mut conn, id).await
+    }
+
+    /// Create a library with the given name
+    ///
+    /// Names need not be unique.
+    pub async fn create_library(&self, name: &str) -> Result<Library> {
+        let mut conn = self.shared.pool.acquire().await?;
+        library::create(&self.shared, &mut conn, name).await
+    }
+}
+
+// auth
+impl Archive {
+    /// Whether the admin password has been claimed by the first login attempt
+    pub async fn password_claimed(&self) -> Result<bool> {
+        let mut conn = self.shared.pool.acquire().await?;
+        Ok(password::stored_hash(&mut conn).await?.is_some())
+    }
+
+    /// Claim the admin password
+    ///
+    /// Returns false (and fails) when a password was already claimed, so that two racing first
+    /// logins cannot both win.
+    pub async fn claim_password(&self, password: &str) -> Result<bool> {
+        let hash = password::hash(password)?;
+        let mut conn = self.shared.pool.acquire().await?;
+        password::insert_hash(&mut conn, &hash).await
+    }
+
+    /// Check the given password against the salted and hashed stored password
+    pub async fn verify_password(&self, password: &str) -> Result<PasswordCheck> {
+        let mut conn = self.shared.pool.acquire().await?;
+        let Some(stored) = password::stored_hash(&mut conn).await? else {
+            return Ok(PasswordCheck::Unclaimed);
+        };
+        password::verify(&stored, password)
+    }
+
+    /// Change the admin password to the given password
+    ///
+    /// A no-op while the password is unclaimed, so that a racing client cannot claim it this way.
+    /// The caller is expected to ensure that the user has verified their old password before
+    /// allowing them to change it.
+    pub async fn change_password(&self, password: &str) -> Result<()> {
+        let hash = password::hash(password)?;
+        let mut conn = self.shared.pool.acquire().await?;
+        password::update_hash(&mut conn, &hash).await
+    }
+}

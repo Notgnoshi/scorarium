@@ -480,7 +480,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn accept_creates_publication_once(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let satie = db::person::create_person(&pool, library_id, "Erik Satie", "Satie, Erik")

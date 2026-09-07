@@ -6,9 +6,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
+use scorarium_archive::Library;
 use sqlx::SqlitePool;
 
-use super::{AppError, BaseContext, Crumb, FormFields, RowEdit, Session};
+use super::{AppError, BaseContext, Crumb, FormFields, OrNotFound, RowEdit, Session};
 use crate::publication_form::{Errors, PublicationForm, Submission};
 use crate::{AppState, db};
 
@@ -26,7 +27,7 @@ struct PublicationPage {
 #[template(path = "publication_edit.html")]
 struct EditPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     publication: db::publication::Publication,
     fields: FormFields,
 }
@@ -58,9 +59,7 @@ pub async fn publication(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -85,9 +84,7 @@ pub async fn edit(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -116,9 +113,7 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let Some(publication) = db::publication::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -152,7 +147,7 @@ pub async fn delete(
 async fn render_edit(
     state: &AppState,
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     publication: db::publication::Publication,
     form: PublicationForm,
     errors: Errors,

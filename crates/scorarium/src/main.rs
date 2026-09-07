@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use scorarium::{AppState, db, demo, router};
+use scorarium::{AppState, demo, router};
+use scorarium_archive::Archive;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -46,18 +47,18 @@ async fn main() -> color_eyre::Result<()> {
         .init();
 
     let state = if args.demo {
-        let pool = db::connect_in_memory().await?;
-        demo::populate(&pool).await?;
+        let archive = Archive::in_memory().await?;
+        demo::populate(archive.pool()).await?;
         tracing::info!(bind = %args.bind, "starting scorarium with in-memory demo data");
-        AppState::demo(pool)
+        AppState::demo(archive)
     } else {
         tracing::info!(
             bind = %args.bind,
             data_dir = %args.data_dir.display(),
             "starting scorarium"
         );
-        let pool = db::connect(&args.data_dir).await?;
-        AppState::new(pool, !args.insecure_cookies)
+        let archive = Archive::open(&args.data_dir).await?;
+        AppState::new(archive, !args.insecure_cookies)
     };
     let app = router(Arc::new(state));
     let listener = tokio::net::TcpListener::bind(args.bind).await?;

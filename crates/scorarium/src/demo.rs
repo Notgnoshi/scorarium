@@ -288,7 +288,7 @@ async fn add_identifier(
 mod tests {
     use super::*;
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn demo_populates(pool: SqlitePool) {
         populate(&pool).await.unwrap();
 

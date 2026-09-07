@@ -11,8 +11,8 @@ async fn manual_import_flow() {
         .await;
     // Keep a handle on the database to look up ids the UI only exposes as links
     let pool = state.pool.clone();
-    let server = browser(state);
-    let library = db::list_libraries(&pool).await.unwrap()[0].id;
+    let server = browser(state.clone());
+    let library = state.archive.libraries().await.unwrap()[0].id;
     let entry = format!("/library/{library}/import");
 
     // Importing requires login

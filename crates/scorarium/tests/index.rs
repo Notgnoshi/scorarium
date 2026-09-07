@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum_test::TestServer;
 use scorarium::router;
 use scorarium_tests::TestDb;
@@ -11,7 +9,7 @@ async fn index_lists_libraries() {
         .library("lib1-QWERT")
         .build()
         .await;
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server.get("/").await;
     response.assert_status_ok();

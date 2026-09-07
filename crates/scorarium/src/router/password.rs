@@ -5,11 +5,11 @@ use axum::Form;
 use axum::extract::State;
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use scorarium_archive::PasswordCheck;
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, Session};
-use crate::auth::PasswordCheck;
-use crate::{AppState, auth};
+use crate::AppState;
 
 /// GET /password
 pub async fn password_form(_session: Session, base: BaseContext) -> Result<Response, AppError> {
@@ -42,7 +42,7 @@ pub async fn change_password(
             Some("The new password must not be empty."),
         )?));
     }
-    match auth::verify_password(&state.pool, &form.current).await? {
+    match state.archive.verify_password(&form.current).await? {
         PasswordCheck::Correct => {}
         PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
             return Ok(no_store(password_page(
@@ -51,7 +51,7 @@ pub async fn change_password(
             )?));
         }
     }
-    auth::change_password(&state.pool, &form.new).await?;
+    state.archive.change_password(&form.new).await?;
     // Changing the password is how a possibly-compromised session gets locked out, so end every
     // session other than the one that made the change.
     state.sessions.revoke_all_except(&token);

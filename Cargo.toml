@@ -10,6 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 # Internal crates
 scorarium = { path = "crates/scorarium" }
+scorarium-archive = { path = "crates/scorarium-archive" }
 scorarium-tests = { path = "crates/scorarium-tests" }
 
 # External crates
@@ -21,6 +22,7 @@ axum-test = "21.1.0"
 clap = { version = "4.6.6", features = ["derive", "env"] }
 color-eyre = "0.6.5"
 cookie = "0.18.2"
+eyre = "0.6.14"
 getrandom = "0.4.3"
 isbn = "0.8"
 rust-embed = { version = "8.12.0", features = ["mime-guess"] }

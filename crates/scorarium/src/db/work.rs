@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(lead_contributor(roles(&[])), None);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn list_assembles_children(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let album = create_publication(
@@ -593,7 +593,7 @@ mod tests {
 
     /// A row keeps the work it names, leaves its other contributors alone, and unlinks the works
     /// the form dropped without touching another publication's copy of them.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn write_contents_reconciles_works(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let mut publications = Vec::new();
@@ -788,7 +788,7 @@ mod tests {
 
     /// Editing a work rewrites its credits in row order, keeps a person it still names, and
     /// collects the one it drops.
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn update_rewrites_contributors(pool: SqlitePool) {
         let library_id = db::create_library(&pool, "lib").await.unwrap();
         let other_library = db::create_library(&pool, "other").await.unwrap();
@@ -884,7 +884,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrator = "scorarium_archive::MIGRATOR")]
     async fn publication_work_must_share_library(pool: SqlitePool) {
         let books = db::create_library(&pool, "books").await.unwrap();
         let scores = db::create_library(&pool, "scores").await.unwrap();

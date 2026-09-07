@@ -18,6 +18,7 @@ use axum::http::request::Parts;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
+use scorarium_archive::{Library, NotFound};
 use tower_http::trace::TraceLayer;
 
 use crate::{AppState, db, publication_form, work_form};
@@ -38,14 +39,14 @@ impl Crumb {
         }
     }
 
-    pub fn library(library: &db::Library) -> Self {
+    pub fn library(library: &Library) -> Self {
         Self {
             label: library.name.clone(),
             href: format!("/library/{}", library.id),
         }
     }
 
-    pub fn import(library: &db::Library) -> Self {
+    pub fn import(library: &Library) -> Self {
         Self {
             label: "Import".to_string(),
             href: format!("/library/{}/import", library.id),
@@ -380,6 +381,9 @@ pub struct AppError(color_eyre::Report);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        if self.0.downcast_ref::<NotFound>().is_some() {
+            return StatusCode::NOT_FOUND.into_response();
+        }
         tracing::error!(error = ?self.0, "handler error");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
@@ -388,5 +392,16 @@ impl IntoResponse for AppError {
 impl<E: Into<color_eyre::Report>> From<E> for AppError {
     fn from(err: E) -> Self {
         Self(err.into())
+    }
+}
+
+/// Return 404 for a lookup that found nothing
+pub trait OrNotFound<T> {
+    fn or_not_found(self) -> Result<T, AppError>;
+}
+
+impl<T> OrNotFound<T> for Option<T> {
+    fn or_not_found(self) -> Result<T, AppError> {
+        self.ok_or_else(|| AppError(NotFound.into()))
     }
 }
