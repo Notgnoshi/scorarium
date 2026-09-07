@@ -1,13 +1,103 @@
+use std::sync::Arc;
+
 use sqlx::SqliteConnection;
 
-use crate::Result;
+use crate::publication::{self, Publication};
+use crate::{ArchiveInner, Result};
 
 /// A person who contributed to a publication or work
+///
+/// A [Contributor] is tied to a particular publication or work, but it's really a [Person] that
+/// with an associated role.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Contributor {
     pub person_id: i64,
     pub name: String,
     pub role: String,
+}
+
+/// Someone credited somewhere in a library
+///
+/// A [Contributor] is a [Person] that contributed to a publication or work with a specific role.
+#[derive(Clone, Debug)]
+pub struct Person {
+    pub id: i64,
+    pub library_id: i64,
+    pub name: String,
+    /// How the name should get sorted: "Satie, Erik" for "Erik Satie"
+    pub sort_name: String,
+    archive: Arc<ArchiveInner>,
+}
+
+impl Person {
+    /// The publications crediting this person, whether directly on a publication or indirectly
+    /// through a work in a publication.
+    pub async fn publications(&self) -> Result<Vec<Publication>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publications = publication::load_publications(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            None,
+            None,
+            Some(self.id),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(publications)
+    }
+}
+
+pub(crate) async fn get_person(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    id: i64,
+) -> Result<Option<Person>> {
+    let row = sqlx::query!(
+        "SELECT id, library_id, name, sort_name FROM person WHERE library_id = ? AND id = ?",
+        library_id,
+        id
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(|row| Person {
+        id: row.id,
+        library_id: row.library_id,
+        name: row.name,
+        sort_name: row.sort_name,
+        archive: shared.clone(),
+    }))
+}
+
+/// Everyone credited with `role` on any publication or work in the library, by sort name
+pub(crate) async fn list_persons_with_role(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    role: &str,
+) -> Result<Vec<Person>> {
+    let rows = sqlx::query!(
+        "SELECT id, library_id, name, sort_name FROM person
+         WHERE library_id = ?1
+           AND (id IN (SELECT person_id FROM publication_contributor WHERE role = ?2)
+                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?2))
+         ORDER BY sort_name",
+        library_id,
+        role
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Person {
+            id: row.id,
+            library_id: row.library_id,
+            name: row.name,
+            sort_name: row.sort_name,
+            archive: shared.clone(),
+        })
+        .collect())
 }
 
 /// The person with this exact name, created if the library has none

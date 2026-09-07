@@ -26,7 +26,7 @@ pub use crate::identifier::{Identifier, IdentifierRawInput};
 pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
-pub use crate::person::Contributor;
+pub use crate::person::{Contributor, Person};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };

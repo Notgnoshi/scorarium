@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
+use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::work::{self, Work};
-use crate::{ArchiveInner, NotFound, Result, person};
+use crate::{ArchiveInner, NotFound, Result};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -92,6 +93,18 @@ impl Library {
 
 // people
 impl Library {
+    /// The given person, if this library has them
+    pub async fn person(&self, id: i64) -> Result<Option<Person>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        person::get_person(&self.archive, &mut conn, self.id, id).await
+    }
+
+    /// Everyone credited with `role` on any publication or work here, by sort name
+    pub async fn persons_with_role(&self, role: &str) -> Result<Vec<Person>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        person::list_persons_with_role(&self.archive, &mut conn, self.id, role).await
+    }
+
     /// The distinct roles credited anywhere in the library, sorted, for input suggestions
     pub async fn roles(&self) -> Result<Vec<String>> {
         let mut conn = self.archive.pool.acquire().await?;
