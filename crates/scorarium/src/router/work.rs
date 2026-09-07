@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum_extra::extract::Form as MultiForm;
 use scorarium_archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
@@ -125,8 +124,9 @@ pub async fn save(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
     Query(query): Query<BackQuery>,
-    MultiForm(post): MultiForm<WorkPost>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
+    let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut work = library.work(id).await?.or_not_found()?;
     let input = WorkRawInput::from(post);

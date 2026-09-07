@@ -166,8 +166,8 @@ pub async fn start(
     Path(id): Path<i64>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let form: StartForm = serde_html_form::from_bytes(&body)?;
-    let pairs: Vec<(String, String)> = serde_html_form::from_bytes(&body)?;
+    let form: StartForm = publication_post::decode_form(&body)?;
+    let pairs: Vec<(String, String)> = publication_post::decode_form(&body)?;
     let raw = publication_post::holdings(&pairs);
     let more = form.more.is_some();
     let library = state.archive.library(id).await?.or_not_found()?;
@@ -340,7 +340,7 @@ pub async fn save_work(
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let post: WorkPost = serde_html_form::from_bytes(&body)?;
+    let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
     let mut draft = import.draft();

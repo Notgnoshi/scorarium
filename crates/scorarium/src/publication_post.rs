@@ -3,10 +3,28 @@ use scorarium_archive::{
     WorkRawInput,
 };
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 pub struct PublicationPost {
     fields: Fields,
     holdings: Vec<HoldingRawInput>,
+}
+
+/// A submitted form that does not decode.
+#[derive(Debug)]
+pub struct BadForm(serde_html_form::de::Error);
+
+impl std::fmt::Display for BadForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "could not decode form: {}", self.0)
+    }
+}
+
+impl std::error::Error for BadForm {}
+
+/// Decode a submitted form body.
+pub fn decode_form<T: DeserializeOwned>(body: &[u8]) -> Result<T, BadForm> {
+    serde_html_form::from_bytes(body).map_err(BadForm)
 }
 
 /// Everything posted under a fixed key, which is everything but the copies.
@@ -50,9 +68,9 @@ impl PublicationPost {
     /// Two passes over the same body: the fields posted under a fixed key come from the derive,
     /// and the copies from the raw pairs, because their keys carry a per-copy suffix the derive
     /// cannot name.
-    pub fn decode(body: &[u8]) -> Result<Self, serde_html_form::de::Error> {
-        let fields: Fields = serde_html_form::from_bytes(body)?;
-        let pairs: Vec<(String, String)> = serde_html_form::from_bytes(body)?;
+    pub fn decode(body: &[u8]) -> Result<Self, BadForm> {
+        let fields: Fields = decode_form(body)?;
+        let pairs: Vec<(String, String)> = decode_form(body)?;
         Ok(PublicationPost {
             fields,
             holdings: holdings(&pairs),

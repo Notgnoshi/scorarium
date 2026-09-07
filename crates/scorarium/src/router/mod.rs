@@ -24,7 +24,8 @@ use scorarium_archive::{
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, publication_post};
+use crate::AppState;
+use crate::publication_post::{self, BadForm};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -449,6 +450,9 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         if self.0.downcast_ref::<NotFound>().is_some() {
             return StatusCode::NOT_FOUND.into_response();
+        }
+        if self.0.downcast_ref::<BadForm>().is_some() {
+            return StatusCode::UNPROCESSABLE_ENTITY.into_response();
         }
         tracing::error!(error = ?self.0, "handler error");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
