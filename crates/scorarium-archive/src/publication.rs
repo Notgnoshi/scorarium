@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
-use crate::ArchiveInner;
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
+use crate::{ArchiveInner, NotFound, library};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -194,6 +194,66 @@ impl Publication {
             .filter(|contributor| contributor.person_id == person_id)
             .map(|contributor| contributor.role.as_str())
             .collect()
+    }
+
+    /// Apply an edited input, then collect whatever the edit left credited nowhere.
+    ///
+    /// Returns a [NotFound] error if the publication has since been deleted.
+    pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<()> {
+        let mut tx = self.archive.pool.begin().await?;
+        let result = sqlx::query!(
+            "UPDATE publication SET title = ?, publisher = ?, year = ?
+             WHERE library_id = ? AND id = ?",
+            input.title,
+            input.publisher,
+            input.year,
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(NotFound.into());
+        }
+        write_publication_children(&mut tx, self.library_id, self.id, input).await?;
+        work::write_publication_works(&mut tx, self.library_id, self.id, &input.contents).await?;
+        library::collect_orphans(&mut tx, self.library_id).await?;
+        let reloaded = load_publications(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            Some(self.id),
+            None,
+            None,
+        )
+        .await?
+        .pop()
+        .expect("the publication was just updated on this transaction");
+        tx.commit().await?;
+        *self = reloaded;
+        Ok(())
+    }
+
+    /// Delete the publication, then cleanup any orphans the deletion resulted in.
+    ///
+    /// Returns a [NotFound] error if the publication has since been deleted.
+    pub async fn delete(self) -> crate::Result<()> {
+        let mut tx = self.archive.pool.begin().await?;
+        let result = sqlx::query!(
+            "DELETE FROM publication WHERE library_id = ? AND id = ?",
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(NotFound.into());
+        }
+        library::collect_orphans(&mut tx, self.library_id).await?;
+        tx.commit().await?;
+        Ok(())
     }
 }
 

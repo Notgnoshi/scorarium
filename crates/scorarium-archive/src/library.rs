@@ -105,6 +105,30 @@ impl Library {
     }
 }
 
+/// Delete what the library no longer has reachable links to.
+///
+/// The order matters: collecting a work takes its contributor links with it, and those links can
+/// be the last thing crediting a person.
+pub(crate) async fn collect_orphans(conn: &mut SqliteConnection, library_id: i64) -> Result<()> {
+    sqlx::query!(
+        "DELETE FROM work
+         WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)",
+        library_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM person
+         WHERE library_id = ?
+           AND id NOT IN (SELECT person_id FROM publication_contributor)
+           AND id NOT IN (SELECT person_id FROM work_contributor)",
+        library_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
 pub(crate) async fn list_libraries(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
