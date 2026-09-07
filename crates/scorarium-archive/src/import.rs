@@ -91,10 +91,11 @@ impl PendingImport {
         .await?;
         if result.rows_affected() == 0 {
             tx.rollback().await?;
+            self.forget_draft();
             return Err(NotFound.into());
         }
         tx.commit().await?;
-        self.saved_drafts().remove(&self.id);
+        self.forget_draft();
         Ok(publication)
     }
 
@@ -108,10 +109,15 @@ impl PendingImport {
         .execute(&self.archive.pool)
         .await?;
         if result.rows_affected() == 0 {
+            self.forget_draft();
             return Err(NotFound.into());
         }
-        self.saved_drafts().remove(&self.id);
+        self.forget_draft();
         Ok(())
+    }
+
+    fn forget_draft(&self) {
+        self.saved_drafts().remove(&self.id);
     }
 
     /// What the review page opens with before anything is saved: the copies as they were entered,
