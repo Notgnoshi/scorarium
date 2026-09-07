@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ work.title }}</h1>
+    {% if base.logged_in %}
+        <a class="btn btn-outline-secondary btn-sm mb-3"
+           href="/library/{{ work.library_id }}/work/{{ work.id }}/edit">
+            <i class="bi bi-pencil" aria-hidden="true"></i> Edit
+        </a>
+    {% endif %}
     <dl class="row">
         {% if !work.catalog_numbers.is_empty() %}
             <dt class="col-sm-3">Catalog numbers</dt>

@@ -6,6 +6,7 @@ pub mod import;
 pub mod publication_form;
 pub mod router;
 pub mod session;
+pub mod work_form;
 
 use sqlx::SqlitePool;
 

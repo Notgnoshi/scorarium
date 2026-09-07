@@ -8,7 +8,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
 use sqlx::SqlitePool;
 
-use super::{AppError, BaseContext, Crumb, FormFields, Session};
+use super::{AppError, BaseContext, Crumb, FormFields, RowEdit, Session};
 use crate::publication_form::{Errors, PublicationForm, Submission};
 use crate::{AppState, db};
 
@@ -158,6 +158,7 @@ async fn render_edit(
     errors: Errors,
     works: &[db::work::Work],
 ) -> Result<Response, AppError> {
+    let contributors = works.iter().map(|w| (w.id, w.contributors.len())).collect();
     let page = EditPage {
         base: base.page(
             publication.title.clone(),
@@ -167,9 +168,16 @@ async fn render_edit(
                 Crumb::publication(&publication),
             ],
         ),
-        fields: FormFields::build(&state.pool, library.id, form, errors, works)
+        fields: FormFields::build(&state.pool, library.id, form, errors, &contributors)
             .await?
-            .warn_when_empty(NO_COPIES),
+            .warn_when_empty(NO_COPIES)
+            // A work row's edit button opens the work, which comes back here when it is done
+            .edit_works(RowEdit::Stored {
+                back: format!(
+                    "/library/{}/publication/{}/edit",
+                    library.id, publication.id
+                ),
+            }),
         library,
         publication,
     };

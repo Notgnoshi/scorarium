@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,11 +9,11 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, FormFields, Session, pair_errors};
+use super::{AppError, BaseContext, Crumb, FormFields, RowEdit, Session, WorkFields, pair_errors};
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
 use crate::publication_form::{Errors, HoldingRow, PublicationForm, Submission};
-use crate::{AppState, db, import, publication_form};
+use crate::{AppState, db, import, publication_form, work_form};
 
 const UNTITLED: &str = "Untitled import";
 
@@ -32,10 +33,10 @@ async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result
             let draft = state
                 .drafts
                 .get(import.id)
-                .unwrap_or_else(|| PublicationForm::seed(&import));
+                .unwrap_or_else(|| import::Draft::seed(&import));
             PendingRow {
-                title: label(&import, &draft),
-                holdings: draft.holdings,
+                title: label(&import, &draft.form),
+                holdings: draft.form.holdings,
                 age: age(import.created_at),
                 import,
             }
@@ -232,9 +233,10 @@ pub async fn review(
             let errors = draft.parse().err().unwrap_or_default();
             (draft, errors)
         }
-        None => (PublicationForm::seed(&import), Errors::default()),
+        None => (import::Draft::seed(&import), Errors::default()),
     };
-    let title = label(&import, &draft);
+    let title = label(&import, &draft.form);
+    let contributors = contributor_counts(&draft);
     let page = ReviewPage {
         base: base.page(
             title,
@@ -245,8 +247,9 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        // Nothing is stored until the import is accepted, so no work row can name one
-        fields: FormFields::build(&state.pool, library_id, draft, errors, &[]).await?,
+        fields: FormFields::build(&state.pool, library_id, draft.form, errors, &contributors)
+            .await?
+            .edit_works(RowEdit::Draft),
         library,
         import,
     };
@@ -260,14 +263,38 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     MultiForm(submission): MultiForm<Submission>,
 ) -> Result<Response, AppError> {
-    if pending_import::get(&state.pool, library_id, id)
-        .await?
-        .is_none()
-    {
+    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    state.drafts.save(id, submission.into());
-    Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+    };
+    // Read before the submission is consumed; the index names a row, since a row added just now
+    // has no draft id to name
+    let edit_work = submission.edit_work();
+    let draft = load_draft(&state, &pending, submission);
+    let next = match edit_work.and_then(|i| draft.works.get(i)) {
+        Some(work) => format!("/library/{library_id}/import/{id}/work/{}", work.id),
+        None => format!("/library/{library_id}/import/{id}"),
+    };
+    state.drafts.save(id, draft);
+    Ok(Redirect::to(&next).into_response())
+}
+
+/// How many people each draft work credits, for the "and N more" its row shows.
+fn contributor_counts(draft: &import::Draft) -> HashMap<i64, usize> {
+    draft
+        .works
+        .iter()
+        .map(|work| (work.id, work.form.contributors.len()))
+        .collect()
+}
+
+/// The stored draft with this submission merged into it, or a seeded one when nothing is stored
+fn load_draft(state: &AppState, pending: &PendingImport, submission: Submission) -> import::Draft {
+    let mut draft = state
+        .drafts
+        .get(pending.id)
+        .unwrap_or_else(|| import::Draft::seed(pending));
+    draft.merge(submission.into());
+    draft
 }
 
 /// POST /library/{library_id}/import/{id}/submit
@@ -280,16 +307,16 @@ pub async fn submit(
     let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let draft = PublicationForm::from(submission);
-    let validated = match draft.parse() {
-        Ok(validated) => validated,
+    let draft = load_draft(&state, &pending, submission);
+    let (publication, works) = match draft.parse() {
+        Ok(parsed) => parsed,
         // Keep the edits so the review page can show what is wrong with them
         Err(_) => {
             state.drafts.save(id, draft);
             return Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response());
         }
     };
-    let publication_id = import::accept(&state.pool, &pending, &validated).await?;
+    let publication_id = import::accept(&state.pool, &pending, &publication, &works).await?;
     // Accepted here or already gone from another tab: either way the draft is finished with
     state.drafts.remove(id);
     match publication_id {
@@ -299,6 +326,89 @@ pub async fn submit(
         .into_response()),
         None => Ok(StatusCode::NOT_FOUND.into_response()),
     }
+}
+
+#[derive(Template)]
+#[template(path = "import_work.html")]
+struct ImportWorkPage {
+    base: BaseContext,
+    library: db::Library,
+    import: PendingImport,
+    work_id: i64,
+    fields: WorkFields,
+}
+
+const UNTITLED_WORK: &str = "Untitled work";
+
+/// GET /library/{library_id}/import/{id}/work/{work_id}
+///
+/// A draft work lives only inside a saved draft, so a draft the store does not have, or an id it
+/// does not know, is a 404 rather than a blank form.
+pub async fn work(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    base: BaseContext,
+    Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
+) -> Result<Response, AppError> {
+    let Some(library) = db::get_library(&state.pool, library_id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let Some(draft) = state.drafts.get(id) else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let Some(work) = draft.works.iter().find(|work| work.id == work_id) else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let form = work.form.clone();
+    // As on the review page, a saved draft shows what is wrong with it
+    let errors = form.parse().err().unwrap_or_default();
+    let title = if form.title.is_empty() {
+        UNTITLED_WORK.to_string()
+    } else {
+        form.title.clone()
+    };
+    let page = ImportWorkPage {
+        base: base.page(
+            title,
+            vec![
+                Crumb::home(),
+                Crumb::library(&library),
+                Crumb::import(&library),
+                Crumb::import_review(&import, &label(&import, &draft.form)),
+            ],
+        ),
+        fields: WorkFields::build(&state.pool, library_id, form, errors).await?,
+        work_id,
+        library,
+        import,
+    };
+    Ok(Html(page.render()?).into_response())
+}
+
+/// POST /library/{library_id}/import/{id}/work/{work_id}
+pub async fn save_work(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
+    MultiForm(submission): MultiForm<work_form::Submission>,
+) -> Result<Response, AppError> {
+    if pending_import::get(&state.pool, library_id, id)
+        .await?
+        .is_none()
+    {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    let Some(mut draft) = state.drafts.get(id) else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    if !draft.set_work(work_id, submission.into()) {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    state.drafts.save(id, draft);
+    Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
 }
 
 #[derive(Template)]

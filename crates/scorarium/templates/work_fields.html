@@ -1,0 +1,62 @@
+{% import "rows.html" as rows %}
+<div>
+    <div class="mb-3">
+        <label class="form-label" for="title">Title</label>
+        <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
+               id="title"
+               name="title"
+               value="{{ fields.form.title }}" />
+        {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="key">Key</label>
+        <input class="form-control"
+               id="key"
+               name="key"
+               placeholder="C-sharp minor"
+               value="{{ fields.form.key }}" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="time-signature">Time signature</label>
+        <input class="form-control"
+               id="time-signature"
+               name="time_signature"
+               placeholder="3/4"
+               value="{{ fields.form.time_signature }}" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="instrumentation">Instrumentation</label>
+        <input class="form-control"
+               id="instrumentation"
+               name="instrumentation"
+               placeholder="piano"
+               value="{{ fields.form.instrumentation }}" />
+    </div>
+    <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
+        <div data-rows-list>
+            {% for (row, error) in fields.contributor_rows %}
+                {% call rows::contributor_row(row.name, row.role, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call rows::contributor_row("", "", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add contributor">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+    <datalist id="roles">
+        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
+    </datalist>
+    <datalist id="names">
+        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
+    </datalist>
+</div>
+{% call rows::script() %}
+{% endcall %}

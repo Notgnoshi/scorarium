@@ -5,8 +5,12 @@ use sqlx::SqlitePool;
 
 use crate::db::pending_import::{self, PendingImport};
 use crate::db::publication::{self, NewPublication};
-use crate::identifier;
-use crate::publication_form::{HoldingRow, IdentifierRow, PublicationForm, Validated};
+use crate::db::work::{self, NewWork, lead_contributor};
+use crate::publication_form::{
+    ContributorRow, HoldingRow, IdentifierRow, PublicationForm, PublicationUpdate, WorkRow,
+};
+use crate::work_form::{WorkForm, WorkUpdate};
+use crate::{identifier, publication_form};
 
 impl PublicationForm {
     /// The form a pending import starts from before anything is saved: the holding as entered,
@@ -45,12 +49,186 @@ impl PublicationForm {
     }
 }
 
+/// What a review page row says about a work whose only problem is a field the row does not show.
+const HIDDEN_WORK_PROBLEM: &str = "A contributor is incomplete. Open the work to fix it.";
+
+/// Unsaved review-page edits for one pending import.
+///
+/// The works carry everything the review page's rows do not show, so they are the draft's source
+/// of truth: `form.works` is derived from them by [Draft::merge] and never edited directly.
+#[derive(Clone)]
+pub struct Draft {
+    pub form: PublicationForm,
+    pub works: Vec<DraftWork>,
+    /// Never reused, so a row left over from an earlier view cannot attach to a different work
+    next_id: i64,
+}
+
+/// A work on a draft, with an id that means nothing outside the draft it belongs to.
+#[derive(Clone)]
+pub struct DraftWork {
+    pub id: i64,
+    pub form: WorkForm,
+}
+
+impl Draft {
+    /// The draft a pending import starts from, before anything is saved: the seeded form and no
+    /// works, since nothing has named one yet.
+    pub fn seed(pending: &PendingImport) -> Self {
+        Draft {
+            form: PublicationForm::seed(pending),
+            works: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Fold a submitted form into the draft, so its works keep what the page's rows do not show.
+    ///
+    /// A row naming a draft work keeps it and sets its title, and edits its lead contributor only
+    /// (see [set_lead]). A row with no id, or an id the draft does not have, adds a work whose only
+    /// contributor is the row's. Works no row names are dropped. The works end up in row order.
+    ///
+    /// These are the rules [crate::db::work::write_contents] applies to a publication's stored
+    /// works; the two implementations are meant to stay parallel.
+    pub fn merge(&mut self, submitted: PublicationForm) {
+        let mut works = Vec::new();
+        for row in &submitted.works {
+            // An id the draft does not have names nothing this form may edit
+            let existing = row
+                .id
+                .and_then(|id| self.works.iter().position(|work| work.id == id))
+                .map(|i| self.works.remove(i));
+            match existing {
+                Some(mut work) => {
+                    work.form.title = row.title.clone();
+                    set_lead(&mut work.form.contributors, &row.contributor);
+                    works.push(work);
+                }
+                None => {
+                    let mut form = WorkForm {
+                        title: row.title.clone(),
+                        ..WorkForm::default()
+                    };
+                    set_lead(&mut form.contributors, &row.contributor);
+                    works.push(DraftWork {
+                        id: self.next_id,
+                        form,
+                    });
+                    self.next_id += 1;
+                }
+            }
+        }
+        self.works = works;
+        let rows = self.work_rows();
+        self.form = PublicationForm {
+            works: rows,
+            ..submitted
+        };
+    }
+
+    /// Replace one draft work's form, as its own page does. Returns false, having changed nothing,
+    /// when the draft has no work with this id.
+    pub fn set_work(&mut self, id: i64, form: WorkForm) -> bool {
+        match self.works.iter_mut().find(|work| work.id == id) {
+            Some(work) => work.form = form,
+            None => return false,
+        }
+        let rows = self.work_rows();
+        self.form.works = rows;
+        true
+    }
+
+    /// Check the publication form and every work.
+    ///
+    /// A work whose problem the review page's row does not show gets a message on that row, so a
+    /// refused submit is always explainable from the page it was refused on. A row with a problem
+    /// of its own keeps its own message, which names a field the user can see.
+    #[expect(clippy::result_large_err)]
+    pub fn parse(&self) -> Result<(PublicationUpdate, Vec<WorkUpdate>), publication_form::Errors> {
+        let mut updates = Vec::new();
+        let mut hidden = Vec::new();
+        for work in &self.works {
+            match work.form.parse() {
+                Ok(update) => {
+                    updates.push(update);
+                    hidden.push(None);
+                }
+                Err(_) => hidden.push(Some(HIDDEN_WORK_PROBLEM.to_string())),
+            }
+        }
+        let refused = hidden.iter().any(Option::is_some);
+        match self.form.parse() {
+            Ok(publication) if !refused => Ok((publication, updates)),
+            result => {
+                let mut errors = result.err().unwrap_or_default();
+                if errors.works.len() < hidden.len() {
+                    errors.works.resize(hidden.len(), None);
+                }
+                for (slot, message) in errors.works.iter_mut().zip(hidden) {
+                    if slot.is_none() {
+                        *slot = message;
+                    }
+                }
+                Err(errors)
+            }
+        }
+    }
+
+    /// The review page's work rows, as the draft's works see them: one row per work, showing the
+    /// contributor [crate::db::work::lead_contributor] picks.
+    fn work_rows(&self) -> Vec<WorkRow> {
+        self.works
+            .iter()
+            .map(|work| {
+                let contributors = &work.form.contributors;
+                WorkRow {
+                    id: Some(work.id),
+                    title: work.form.title.clone(),
+                    contributor: lead_contributor(contributors.iter().map(|c| c.role.as_str()))
+                        .map(|i| contributors[i].clone())
+                        .unwrap_or_default(),
+                }
+            })
+            .collect()
+    }
+}
+
+/// Apply a work row's one contributor to a draft work's, leaving the ones the row does not show
+/// alone: an unchanged lead stays put, a filled row replaces the lead in place and drops any other
+/// contributor it now duplicates, and an emptied row removes the lead.
+///
+/// Unlike [crate::db::work::write_contents], a half-filled row is kept rather than dropped. A
+/// draft holds whatever was typed, and validation is what tells the user about it.
+fn set_lead(contributors: &mut Vec<ContributorRow>, row: &ContributorRow) {
+    let empty = row.name.is_empty() && row.role.is_empty();
+    match lead_contributor(contributors.iter().map(|c| c.role.as_str())) {
+        Some(i) if contributors[i] == *row => {}
+        // The lead is edited rather than replaced, so it keeps its place in the list: that order is
+        // what picks the lead for a work with neither a composer nor an author.
+        Some(i) if !empty => {
+            contributors[i] = row.clone();
+            // Another contributor the row now duplicates would credit the same person twice
+            let mut index = 0;
+            contributors.retain(|c| {
+                let keep = index == i || c != row;
+                index += 1;
+                keep
+            });
+        }
+        Some(i) => {
+            contributors.remove(i);
+        }
+        None if !empty => contributors.push(row.clone()),
+        None => {}
+    }
+}
+
 /// Unsaved review-page edits, by pending import id
 #[derive(Default)]
-pub struct DraftStore(Mutex<HashMap<i64, PublicationForm>>);
+pub struct DraftStore(Mutex<HashMap<i64, Draft>>);
 
 impl DraftStore {
-    pub fn get(&self, pending_id: i64) -> Option<PublicationForm> {
+    pub fn get(&self, pending_id: i64) -> Option<Draft> {
         self.0
             .lock()
             .expect("draft lock poisoned")
@@ -58,7 +236,7 @@ impl DraftStore {
             .cloned()
     }
 
-    pub fn save(&self, pending_id: i64, draft: PublicationForm) {
+    pub fn save(&self, pending_id: i64, draft: Draft) {
         self.0
             .lock()
             .expect("draft lock poisoned")
@@ -80,7 +258,8 @@ impl DraftStore {
 pub async fn accept(
     pool: &SqlitePool,
     pending: &PendingImport,
-    validated: &Validated,
+    publication: &PublicationUpdate,
+    works: &[WorkUpdate],
 ) -> sqlx::Result<Option<i64>> {
     let library_id = pending.library_id;
     let mut tx = pool.begin().await?;
@@ -88,13 +267,30 @@ pub async fn accept(
         &mut *tx,
         &NewPublication {
             library_id,
-            title: &validated.title,
-            publisher: validated.publisher.as_deref(),
-            year: validated.year,
+            title: &publication.title,
+            publisher: publication.publisher.as_deref(),
+            year: publication.year,
         },
     )
     .await?;
-    publication::write_children(&mut tx, library_id, publication_id, validated).await?;
+    publication::write_children(&mut tx, library_id, publication_id, publication).await?;
+    // The works are written in full from the draft, not from the thin rows in `publication.works`
+    for work in works {
+        let work_id = work::create_work(
+            &mut *tx,
+            &NewWork {
+                library_id,
+                title: &work.title,
+                key: work.key.as_deref(),
+                time_signature: work.time_signature.as_deref(),
+                instrumentation: work.instrumentation.as_deref(),
+            },
+        )
+        .await?;
+        // Added in draft order, which is the order the publication contains them in
+        work::add_to_publication(&mut *tx, library_id, publication_id, work_id).await?;
+        work::write_contributors(&mut tx, library_id, work_id, &work.contributors).await?;
+    }
     if !pending_import::delete(&mut *tx, library_id, pending.id).await? {
         tx.rollback().await?;
         return Ok(None);
@@ -109,7 +305,180 @@ mod tests {
     use crate::db;
     use crate::db::pending_import::{NewPendingImport, PendingHolding};
     use crate::db::publication::HoldingKind;
-    use crate::publication_form::{ContributorRow, ValidatedHolding};
+    use crate::publication_form::HoldingUpdate;
+
+    fn contributor(name: &str, role: &str) -> ContributorRow {
+        ContributorRow {
+            name: name.into(),
+            role: role.into(),
+        }
+    }
+
+    fn work_row(id: Option<i64>, title: &str, name: &str, role: &str) -> WorkRow {
+        WorkRow {
+            id,
+            title: title.into(),
+            contributor: contributor(name, role),
+        }
+    }
+
+    /// A submission of the review page's form, carrying nothing but its work rows.
+    fn submitted(works: Vec<WorkRow>) -> PublicationForm {
+        PublicationForm {
+            title: "Album".into(),
+            publisher: String::new(),
+            year: String::new(),
+            holdings: vec![HoldingRow {
+                id: None,
+                kind: HoldingKind::Physical,
+                location: String::new(),
+            }],
+            identifiers: Vec::new(),
+            contributors: Vec::new(),
+            works,
+        }
+    }
+
+    /// A draft work as (id, title, key, [(contributor name, role)])
+    type WorkView<'a> = (i64, &'a str, &'a str, Vec<(&'a str, &'a str)>);
+
+    fn works(draft: &Draft) -> Vec<WorkView<'_>> {
+        draft
+            .works
+            .iter()
+            .map(|work| {
+                let contributors = work
+                    .form
+                    .contributors
+                    .iter()
+                    .map(|c| (c.name.as_str(), c.role.as_str()))
+                    .collect();
+                (
+                    work.id,
+                    work.form.title.as_str(),
+                    work.form.key.as_str(),
+                    contributors,
+                )
+            })
+            .collect()
+    }
+
+    /// A row edits the work it names without disturbing what the row does not show, and the rows
+    /// the review page renders next are derived from the works that result.
+    #[test]
+    fn merge_keeps_depth() {
+        let mut draft = Draft {
+            form: submitted(Vec::new()),
+            works: vec![DraftWork {
+                id: 1,
+                form: WorkForm {
+                    title: "Prelude".into(),
+                    key: "E minor".into(),
+                    time_signature: String::new(),
+                    instrumentation: String::new(),
+                    contributors: vec![
+                        contributor("Chopin", "composer"),
+                        contributor("Liszt", "arranger"),
+                    ],
+                },
+            }],
+            next_id: 2,
+        };
+
+        // Renaming the work, leaving its lead alone
+        draft.merge(submitted(vec![work_row(
+            Some(1),
+            "Prelude in E minor",
+            "Chopin",
+            "composer",
+        )]));
+        assert_eq!(
+            works(&draft),
+            [(
+                1,
+                "Prelude in E minor",
+                "E minor",
+                vec![("Chopin", "composer"), ("Liszt", "arranger")]
+            )],
+            "the key and the arranger the row does not show survive"
+        );
+
+        // Handing the row to the arranger it already credits
+        draft.merge(submitted(vec![work_row(
+            Some(1),
+            "Prelude in E minor",
+            "Liszt",
+            "arranger",
+        )]));
+        assert_eq!(
+            works(&draft),
+            [(
+                1,
+                "Prelude in E minor",
+                "E minor",
+                vec![("Liszt", "arranger")]
+            )],
+            "the lead is replaced in place, not duplicated"
+        );
+
+        // A row naming no work adds one
+        draft.merge(submitted(vec![
+            work_row(Some(1), "Prelude in E minor", "Liszt", "arranger"),
+            work_row(None, "Nocturne", "Field", "composer"),
+        ]));
+        assert_eq!(
+            works(&draft),
+            [
+                (
+                    1,
+                    "Prelude in E minor",
+                    "E minor",
+                    vec![("Liszt", "arranger")]
+                ),
+                (2, "Nocturne", "", vec![("Field", "composer")]),
+            ]
+        );
+        assert_eq!(
+            draft.form.works,
+            [
+                work_row(Some(1), "Prelude in E minor", "Liszt", "arranger"),
+                work_row(Some(2), "Nocturne", "Field", "composer"),
+            ],
+            "the rows the page renders next name the works they came from"
+        );
+
+        // A work no row names is dropped, and its id is not handed to the next work added
+        draft.merge(submitted(vec![
+            work_row(Some(2), "Nocturne", "Field", "composer"),
+            work_row(None, "Mazurka", "", ""),
+        ]));
+        assert_eq!(
+            works(&draft),
+            [
+                (2, "Nocturne", "", vec![("Field", "composer")]),
+                (3, "Mazurka", "", vec![]),
+            ]
+        );
+
+        // The work's own page replaces its form outright, and the row follows
+        assert!(draft.set_work(
+            3,
+            WorkForm {
+                title: "Mazurka in A minor".into(),
+                key: "A minor".into(),
+                contributors: vec![contributor("Chopin", "composer")],
+                ..WorkForm::default()
+            }
+        ));
+        assert_eq!(
+            draft.form.works[1],
+            work_row(Some(3), "Mazurka in A minor", "Chopin", "composer")
+        );
+        assert!(
+            !draft.set_work(1, WorkForm::default()),
+            "work 1 was dropped"
+        );
+    }
 
     #[sqlx::test]
     async fn accept_creates_publication_once(pool: SqlitePool) {
@@ -135,18 +504,18 @@ mod tests {
             .unwrap()
             .unwrap();
         let isbn = identifier::normalize(identifier::Kind::Isbn, "0-486-23134-8").unwrap();
-        let validated = Validated {
+        let validated = PublicationUpdate {
             title: "Three gymnopedies".into(),
             publisher: Some("Schirmer".into()),
             year: Some(1888),
             // The form's copies, not the pending row's: the review page may have changed them
             holdings: vec![
-                ValidatedHolding {
+                HoldingUpdate {
                     id: None,
                     kind: HoldingKind::Digital,
                     location: Some("satie.pdf".into()),
                 },
-                ValidatedHolding {
+                HoldingUpdate {
                     id: None,
                     kind: HoldingKind::Physical,
                     location: None,
@@ -167,7 +536,27 @@ mod tests {
             works: Vec::new(),
         };
 
-        let publication_id = accept(&pool, &pending, &validated).await.unwrap().unwrap();
+        let works = vec![WorkUpdate {
+            title: "Gymnopedie No. 1".into(),
+            key: Some("D major".into()),
+            time_signature: None,
+            instrumentation: None,
+            contributors: vec![
+                ContributorRow {
+                    name: "Erik Satie".into(),
+                    role: "composer".into(),
+                },
+                ContributorRow {
+                    name: "Claude Debussy".into(),
+                    role: "arranger".into(),
+                },
+            ],
+        }];
+
+        let publication_id = accept(&pool, &pending, &validated, &works)
+            .await
+            .unwrap()
+            .unwrap();
 
         let publication = db::publication::get(&pool, library_id, publication_id)
             .await
@@ -194,6 +583,24 @@ mod tests {
                 (HoldingKind::Physical, None)
             ]
         );
+        let contents = db::work::list_in_publication(&pool, library_id, publication_id)
+            .await
+            .unwrap();
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].title, "Gymnopedie No. 1");
+        assert_eq!(contents[0].key.as_deref(), Some("D major"));
+        assert_eq!(
+            contents[0]
+                .contributors
+                .iter()
+                .map(|c| (c.person_id == satie, c.name.as_str(), c.role.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (true, "Erik Satie", "composer"),
+                (false, "Claude Debussy", "arranger"),
+            ],
+            "both credits are written, in draft order, reusing the person already in the library"
+        );
         assert_eq!(
             db::pending_import::get(&pool, library_id, pending_id)
                 .await
@@ -202,7 +609,10 @@ mod tests {
         );
 
         // A second submit of the same import (another tab) must not create a second publication
-        assert_eq!(accept(&pool, &pending, &validated).await.unwrap(), None);
+        assert_eq!(
+            accept(&pool, &pending, &validated, &works).await.unwrap(),
+            None
+        );
         assert_eq!(
             db::publication::list(&pool, library_id)
                 .await

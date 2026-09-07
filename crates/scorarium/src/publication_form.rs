@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 
 use crate::db::publication::{HoldingKind, Publication};
-use crate::db::work::{Work, lead_contributor};
+use crate::db::work::{Work, lead_contributor, roles};
 use crate::identifier;
 
 /// A publication's editable fields as typed, before validation.
@@ -64,18 +64,18 @@ impl WorkRow {
 
 /// A form's typed values, ready to become catalog rows.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Validated {
+pub struct PublicationUpdate {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
-    pub holdings: Vec<ValidatedHolding>,
+    pub holdings: Vec<HoldingUpdate>,
     pub identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub contributors: Vec<ContributorRow>,
     pub works: Vec<WorkRow>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ValidatedHolding {
+pub struct HoldingUpdate {
     pub id: Option<i64>,
     pub kind: HoldingKind,
     pub location: Option<String>,
@@ -109,7 +109,7 @@ impl Errors {
 impl PublicationForm {
     /// Check and convert the form. Every problem is reported, not just the first.
     #[expect(clippy::result_large_err)]
-    pub fn parse(&self) -> Result<Validated, Errors> {
+    pub fn parse(&self) -> Result<PublicationUpdate, Errors> {
         let mut errors = Errors::default();
         if self.title.is_empty() {
             errors.title = Some("A title is required.".into());
@@ -155,26 +155,7 @@ impl PublicationForm {
             })
             .collect();
 
-        let mut seen = BTreeSet::new();
-        errors.contributors = self
-            .contributors
-            .iter()
-            .map(|row| {
-                if row.name.is_empty() && row.role.is_empty() {
-                    return Some("Fill this in or remove it.".to_string());
-                }
-                if row.name.is_empty() {
-                    return Some("A name is required.".to_string());
-                }
-                if row.role.is_empty() {
-                    return Some("A role is required.".to_string());
-                }
-                if !seen.insert((row.name.as_str(), row.role.as_str())) {
-                    return Some("Already listed.".to_string());
-                }
-                None
-            })
-            .collect();
+        errors.contributors = parse_contributors(&self.contributors);
 
         errors.works = self
             .works
@@ -201,7 +182,7 @@ impl PublicationForm {
         if !errors.is_empty() {
             return Err(errors);
         }
-        Ok(Validated {
+        Ok(PublicationUpdate {
             title: self.title.clone(),
             publisher: Some(self.publisher.clone()).filter(|p| !p.is_empty()),
             year,
@@ -213,8 +194,42 @@ impl PublicationForm {
     }
 }
 
+/// Check contributor rows, one message per row. A work form credits people the same way a
+/// publication form does, so both check their rows here.
+pub fn parse_contributors(rows: &[ContributorRow]) -> Vec<Option<String>> {
+    let mut seen = BTreeSet::new();
+    rows.iter()
+        .map(|row| {
+            if row.name.is_empty() && row.role.is_empty() {
+                return Some("Fill this in or remove it.".to_string());
+            }
+            if row.name.is_empty() {
+                return Some("A name is required.".to_string());
+            }
+            if row.role.is_empty() {
+                return Some("A role is required.".to_string());
+            }
+            if !seen.insert((row.name.as_str(), row.role.as_str())) {
+                return Some("Already listed.".to_string());
+            }
+            None
+        })
+        .collect()
+}
+
+/// Contributor rows from a submission's parallel keys.
+pub fn contributor_rows(name: Vec<String>, role: Vec<String>) -> Vec<ContributorRow> {
+    name.into_iter()
+        .zip(role)
+        .map(|(name, role)| ContributorRow {
+            name: name.trim().to_string(),
+            role: role.trim().to_string(),
+        })
+        .collect()
+}
+
 /// Check copy rows, filling the holding slots of `errors`
-pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<ValidatedHolding> {
+pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<HoldingUpdate> {
     if rows.is_empty() {
         errors.no_holdings = Some("A publication needs at least one copy.".into());
     }
@@ -225,7 +240,7 @@ pub fn parse_holdings(rows: &[HoldingRow], errors: &mut Errors) -> Vec<Validated
             if row.kind == HoldingKind::Digital && row.location.is_empty() {
                 return Some("Choose a file for a digital copy.".to_string());
             }
-            holdings.push(ValidatedHolding {
+            holdings.push(HoldingUpdate {
                 id: row.id,
                 kind: row.kind,
                 location: Some(row.location.clone()).filter(|l| !l.is_empty()),
@@ -269,6 +284,15 @@ pub struct Submission {
     work_contributor_name: Vec<String>,
     #[serde(default)]
     work_contributor_role: Vec<String>,
+    /// The index of the work row whose edit button was clicked; absent on a plain submit, and on
+    /// the publication edit page, whose rows link to their works instead.
+    edit_work: Option<String>,
+}
+
+impl Submission {
+    pub fn edit_work(&self) -> Option<usize> {
+        self.edit_work.as_ref()?.trim().parse().ok()
+    }
 }
 
 impl From<Submission> for PublicationForm {
@@ -282,15 +306,8 @@ impl From<Submission> for PublicationForm {
                 value: value.trim().to_string(),
             })
             .collect();
-        let contributors = submission
-            .contributor_name
-            .into_iter()
-            .zip(submission.contributor_role)
-            .map(|(name, role)| ContributorRow {
-                name: name.trim().to_string(),
-                role: role.trim().to_string(),
-            })
-            .collect();
+        let contributors =
+            contributor_rows(submission.contributor_name, submission.contributor_role);
         // The ids are read by position rather than zipped, as the copy rows do, so a submission
         // with no ids at all still yields rows naming no stored work.
         let works = submission
@@ -409,7 +426,7 @@ impl PublicationForm {
                 .map(|w| WorkRow {
                     id: Some(w.id),
                     title: w.title.clone(),
-                    contributor: lead_contributor(&w.contributors)
+                    contributor: lead_contributor(roles(&w.contributors))
                         .map(|i| ContributorRow {
                             name: w.contributors[i].name.clone(),
                             role: w.contributors[i].role.clone(),
@@ -575,7 +592,7 @@ mod tests {
         assert_eq!(validated.year, None);
         assert_eq!(
             validated.holdings,
-            [ValidatedHolding {
+            [HoldingUpdate {
                 id: None,
                 kind: HoldingKind::Physical,
                 location: None,

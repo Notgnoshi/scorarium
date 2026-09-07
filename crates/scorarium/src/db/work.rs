@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use crate::db::person::{self, Contributor};
-use crate::publication_form::WorkRow;
+use crate::db::publication;
+use crate::publication_form::{ContributorRow, WorkRow};
+use crate::work_form::WorkUpdate;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Work {
@@ -36,14 +38,22 @@ impl Work {
     }
 }
 
-/// Which contributor a one-line summary of the work shows and edits: its composer, else its
-/// author, else the first credited. `contributors` must be in link order.
-pub fn lead_contributor(contributors: &[Contributor]) -> Option<usize> {
-    contributors
+/// Which contributor a one-line summary of the work shows and edits
+///
+/// Taking roles rather than contributors lets a draft's form rows and a stored work's links pick
+/// their lead the same way. They must be in link order.
+pub fn lead_contributor<'a>(roles: impl IntoIterator<Item = &'a str>) -> Option<usize> {
+    let roles: Vec<&str> = roles.into_iter().collect();
+    roles
         .iter()
-        .position(|c| c.role == "composer")
-        .or_else(|| contributors.iter().position(|c| c.role == "author"))
-        .or_else(|| (!contributors.is_empty()).then_some(0))
+        .position(|role| *role == "composer")
+        .or_else(|| roles.iter().position(|role| *role == "author"))
+        .or_else(|| (!roles.is_empty()).then_some(0))
+}
+
+/// The roles of a work's contributors, in link order, for [lead_contributor].
+pub fn roles(contributors: &[Contributor]) -> impl Iterator<Item = &str> {
+    contributors.iter().map(|c| c.role.as_str())
 }
 
 pub struct NewWork<'a> {
@@ -218,6 +228,59 @@ pub async fn create_contributor(
     Ok(result.last_insert_rowid())
 }
 
+/// Apply an edited form to a work and collect what the edit leaves orphaned.
+///
+/// Returns false, having changed nothing, when no work matches.
+pub async fn update(
+    pool: &SqlitePool,
+    library_id: i64,
+    id: i64,
+    update: &WorkUpdate,
+) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    let result = sqlx::query!(
+        "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
+         WHERE library_id = ? AND id = ?",
+        update.title,
+        update.key,
+        update.time_signature,
+        update.instrumentation,
+        library_id,
+        id
+    )
+    .execute(&mut *tx)
+    .await?;
+    if result.rows_affected() == 0 {
+        tx.rollback().await?;
+        return Ok(false);
+    }
+    write_contributors(&mut tx, library_id, id, &update.contributors).await?;
+    // Dropping a contributor row can leave the person behind it credited nowhere
+    publication::collect_orphans(&mut tx, library_id).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// Rebuild a work's contributor links from a form's rows, so row order becomes link order.
+///
+/// A link holds nothing beyond what a row shows, so rebuilding outright loses nothing. On a work
+/// with no links yet the delete finds nothing, which is what accepting an import wants.
+pub async fn write_contributors(
+    conn: &mut sqlx::SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+    rows: &[ContributorRow],
+) -> sqlx::Result<()> {
+    sqlx::query!("DELETE FROM work_contributor WHERE work_id = ?", work_id)
+        .execute(&mut *conn)
+        .await?;
+    for row in rows {
+        let person_id = person::find_or_create(&mut *conn, library_id, &row.name).await?;
+        create_contributor(&mut *conn, library_id, work_id, person_id, &row.role).await?;
+    }
+    Ok(())
+}
+
 /// Apply a form's work rows to a publication.
 ///
 /// A row naming one of the publication's works edits it: its title, and the one contributor the row
@@ -299,7 +362,7 @@ pub async fn write_contents(
                 role: link.role,
             });
         }
-        let lead = lead_contributor(&contributors);
+        let lead = lead_contributor(roles(&contributors));
         let unchanged = match lead {
             Some(i) => contributors[i].name == *name && contributors[i].role == *role,
             None => name.is_empty(),
@@ -380,12 +443,12 @@ mod tests {
     #[test]
     fn lead_contributor_prefers_composer_then_author() {
         let composer = [contributor(1, "arranger"), contributor(2, "composer")];
-        assert_eq!(lead_contributor(&composer), Some(1));
+        assert_eq!(lead_contributor(roles(&composer)), Some(1));
         let author = [contributor(1, "editor"), contributor(2, "author")];
-        assert_eq!(lead_contributor(&author), Some(1));
+        assert_eq!(lead_contributor(roles(&author)), Some(1));
         let neither = [contributor(1, "editor"), contributor(2, "arranger")];
-        assert_eq!(lead_contributor(&neither), Some(0));
-        assert_eq!(lead_contributor(&[]), None);
+        assert_eq!(lead_contributor(roles(&neither)), Some(0));
+        assert_eq!(lead_contributor(roles(&[])), None);
     }
 
     #[sqlx::test]
@@ -679,7 +742,7 @@ mod tests {
             )
         );
         assert_eq!(
-            lead_contributor(&contents[0].contributors),
+            lead_contributor(roles(&contents[0].contributors)),
             Some(0),
             "the edited row still shows Chopin, not the arranger it now shares a role with"
         );
@@ -720,6 +783,104 @@ mod tests {
             persons,
             ["Chopin", "Liszt"],
             "Field is collected with Nocturne"
+        );
+    }
+
+    /// Editing a work rewrites its credits in row order, keeps a person it still names, and
+    /// collects the one it drops.
+    #[sqlx::test]
+    async fn update_rewrites_contributors(pool: SqlitePool) {
+        let library_id = db::create_library(&pool, "lib").await.unwrap();
+        let other_library = db::create_library(&pool, "other").await.unwrap();
+        let publication = create_publication(
+            &pool,
+            &NewPublication {
+                library_id,
+                title: "Album",
+                publisher: None,
+                year: None,
+            },
+        )
+        .await
+        .unwrap();
+        let prelude = create_work(
+            &pool,
+            &NewWork {
+                library_id,
+                title: "Prelude",
+                key: None,
+                time_signature: None,
+                instrumentation: None,
+            },
+        )
+        .await
+        .unwrap();
+        add_to_publication(&pool, library_id, publication, prelude)
+            .await
+            .unwrap();
+        let chopin = db::person::create_person(&pool, library_id, "Chopin", "Chopin")
+            .await
+            .unwrap();
+        let liszt = db::person::create_person(&pool, library_id, "Liszt", "Liszt")
+            .await
+            .unwrap();
+        create_contributor(&pool, library_id, prelude, chopin, "composer")
+            .await
+            .unwrap();
+        create_contributor(&pool, library_id, prelude, liszt, "arranger")
+            .await
+            .unwrap();
+
+        let edit = WorkUpdate {
+            title: "Prelude in E minor".into(),
+            key: Some("E minor".into()),
+            time_signature: None,
+            instrumentation: None,
+            contributors: vec![
+                ContributorRow {
+                    name: "Liszt".into(),
+                    role: "arranger".into(),
+                },
+                ContributorRow {
+                    name: "Field".into(),
+                    role: "composer".into(),
+                },
+            ],
+        };
+
+        // Another library's id must not reach this work
+        assert!(!update(&pool, other_library, prelude, &edit).await.unwrap());
+        assert_eq!(
+            get(&pool, library_id, prelude)
+                .await
+                .unwrap()
+                .unwrap()
+                .title,
+            "Prelude"
+        );
+
+        assert!(update(&pool, library_id, prelude, &edit).await.unwrap());
+
+        let stored = get(&pool, library_id, prelude).await.unwrap().unwrap();
+        assert_eq!(stored.title, "Prelude in E minor");
+        assert_eq!(stored.key.as_deref(), Some("E minor"));
+        assert_eq!(
+            stored
+                .contributors
+                .iter()
+                .map(|c| (c.person_id == liszt, c.name.as_str(), c.role.as_str()))
+                .collect::<Vec<_>>(),
+            [(true, "Liszt", "arranger"), (false, "Field", "composer")],
+            "the rows become links in order, and Liszt keeps the person already credited"
+        );
+        let persons = sqlx::query_scalar!("SELECT name FROM person ORDER BY name")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            persons,
+            ["Field", "Liszt"],
+            "Chopin is credited nowhere else"
         );
     }
 

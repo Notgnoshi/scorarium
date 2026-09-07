@@ -8,6 +8,7 @@ mod person;
 mod publication;
 mod work;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
@@ -19,7 +20,7 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, db, publication_form};
+use crate::{AppState, db, publication_form, work_form};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -58,6 +59,21 @@ impl Crumb {
                 "/library/{}/publication/{}",
                 publication.library_id, publication.id
             ),
+        }
+    }
+
+    /// The import under review, by the label its page shows.
+    pub fn import_review(import: &db::pending_import::PendingImport, label: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            href: format!("/library/{}/import/{}", import.library_id, import.id),
+        }
+    }
+
+    pub fn work(work: &db::work::Work) -> Self {
+        Self {
+            label: work.title.clone(),
+            href: format!("/library/{}/work/{}", work.library_id, work.id),
         }
     }
 }
@@ -120,6 +136,30 @@ impl BaseContext {
 /// Suggested alongside the library's existing roles, so a new library still gets a datalist.
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
+/// What a work row's edit control does, which is a property of the page rather than the row.
+#[derive(Default)]
+pub enum RowEdit {
+    /// Link to the stored work's edit page, which returns to `back` when it is done
+    Stored { back: String },
+    /// Save the draft and open the draft work, since a draft work has no stable link of its own
+    #[default]
+    Draft,
+}
+
+impl RowEdit {
+    pub fn is_draft(&self) -> bool {
+        matches!(self, RowEdit::Draft)
+    }
+
+    /// Where a stored row's edit link returns to. Empty for a draft row, which has no link.
+    pub fn back(&self) -> &str {
+        match self {
+            RowEdit::Stored { back } => back,
+            RowEdit::Draft => "",
+        }
+    }
+}
+
 /// Everything the shared publication form fragment renders. The import review page and the
 /// publication edit page show the same fields, so they build the same context for them.
 pub struct FormFields {
@@ -137,33 +177,29 @@ pub struct FormFields {
     pub roles: Vec<String>,
     pub names: Vec<String>,
     pub no_copies_warning: String,
+    pub row_edit: RowEdit,
 }
 
 impl FormFields {
-    /// `works` are the publication's stored works, for the counts the rows show; the review page
-    /// has none yet and passes an empty slice.
+    /// `contributors` is how many people each work credits, by the id its rows carry: the stored
+    /// works' ids on the publication edit page, the draft's own on the review page.
     pub async fn build(
         pool: &sqlx::SqlitePool,
         library_id: i64,
         form: publication_form::PublicationForm,
         errors: publication_form::Errors,
-        works: &[db::work::Work],
+        contributors: &HashMap<i64, usize>,
     ) -> sqlx::Result<Self> {
-        let roles = db::person::list_roles(pool, library_id)
-            .await?
-            .into_iter()
-            .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect();
+        let (roles, names) = suggestions(pool, library_id).await?;
         Ok(Self {
             holding_rows: pair_errors(&form.holdings, &errors.holdings),
             identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
             contributor_rows: pair_errors(&form.contributors, &errors.contributors),
-            work_rows: work_rows(&form.works, &errors.works, works),
-            names: db::person::list_names(pool, library_id).await?,
+            work_rows: work_rows(&form.works, &errors.works, contributors),
             no_copies_warning: String::new(),
+            row_edit: RowEdit::default(),
             roles,
+            names,
             form,
             errors,
         })
@@ -174,24 +210,73 @@ impl FormFields {
         self.no_copies_warning = warning.to_string();
         self
     }
+
+    /// What a work row's edit control does on this page.
+    pub fn edit_works(mut self, row_edit: RowEdit) -> Self {
+        self.row_edit = row_edit;
+        self
+    }
+}
+
+/// Everything the shared work form fragment renders. The stored work edit page and the draft work
+/// page show the same fields, so they build the same context for them.
+pub struct WorkFields {
+    pub form: work_form::WorkForm,
+    pub errors: work_form::Errors,
+    pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
+    pub roles: Vec<String>,
+    pub names: Vec<String>,
+}
+
+impl WorkFields {
+    pub async fn build(
+        pool: &sqlx::SqlitePool,
+        library_id: i64,
+        form: work_form::WorkForm,
+        errors: work_form::Errors,
+    ) -> sqlx::Result<Self> {
+        let (roles, names) = suggestions(pool, library_id).await?;
+        Ok(Self {
+            contributor_rows: pair_errors(&form.contributors, &errors.contributors),
+            roles,
+            names,
+            form,
+            errors,
+        })
+    }
+}
+
+/// Datalist suggestions for the role and name inputs, as (roles, names).
+async fn suggestions(
+    pool: &sqlx::SqlitePool,
+    library_id: i64,
+) -> sqlx::Result<(Vec<String>, Vec<String>)> {
+    let roles = db::person::list_roles(pool, library_id)
+        .await?
+        .into_iter()
+        .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    Ok((roles, db::person::list_names(pool, library_id).await?))
 }
 
 /// Pair each work row with the number of contributors the row does not show and its message. A row
-/// naming no stored work, or one whose work was just created by this submission, shows none.
+/// naming no work yet shows none.
 fn work_rows(
     rows: &[publication_form::WorkRow],
     errors: &[Option<String>],
-    works: &[db::work::Work],
+    contributors: &HashMap<i64, usize>,
 ) -> Vec<(publication_form::WorkRow, String, String)> {
     pair_errors(rows, errors)
         .into_iter()
         .map(|(row, error)| {
-            let more = works
-                .iter()
-                .find(|w| Some(w.id) == row.id)
-                // A stored work may credit nobody at all, so the row shows one contributor fewer
-                // than it has only when it has any
-                .map(|w| w.contributors.len().saturating_sub(1))
+            let more = row
+                .id
+                .and_then(|id| contributors.get(&id))
+                // A work may credit nobody at all, so the row shows one contributor fewer than the
+                // work has only when it has any
+                .map(|count| count.saturating_sub(1))
                 .filter(|more| *more > 0)
                 .map(|more| more.to_string())
                 .unwrap_or_default();
@@ -232,6 +317,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/library/{library_id}/import/{id}", get(import::review))
         .route("/library/{library_id}/import/{id}/save", post(import::save))
         .route(
+            "/library/{library_id}/import/{id}/work/{work_id}",
+            get(import::work).post(import::save_work),
+        )
+        .route(
             "/library/{library_id}/import/{id}/submit",
             post(import::submit),
         )
@@ -252,6 +341,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(publication::delete),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
+        .route(
+            "/library/{library_id}/work/{id}/edit",
+            get(work::edit).post(work::save),
+        )
         .route("/library/{library_id}/person/{id}", get(person::person))
         .route("/library/{id}/composers", get(person::composers))
         .route("/library/{id}/authors", get(person::authors))
