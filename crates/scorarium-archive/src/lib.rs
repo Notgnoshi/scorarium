@@ -29,7 +29,7 @@ pub use crate::person::Contributor;
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
-pub use crate::work::{WorkErrors, WorkInput, WorkRawInput};
+pub use crate::work::{Work, WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 

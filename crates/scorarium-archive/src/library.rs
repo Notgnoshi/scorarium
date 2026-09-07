@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::SqliteConnection;
 
 use crate::publication::{self, Publication, PublicationInput};
+use crate::work::{self, Work};
 use crate::{ArchiveInner, NotFound, Result, person};
 
 /// A named container of publications.
@@ -73,6 +74,19 @@ impl Library {
             publication::create_publication(&self.archive, &mut tx, self.id, input).await?;
         tx.commit().await?;
         Ok(publication)
+    }
+}
+
+// works
+impl Library {
+    /// The given work, if this library has it
+    pub async fn work(&self, id: i64) -> Result<Option<Work>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let work = work::load_works(&self.archive, &mut tx, self.id, Some(id), None)
+            .await?
+            .pop();
+        tx.commit().await?;
+        Ok(work)
     }
 }
 

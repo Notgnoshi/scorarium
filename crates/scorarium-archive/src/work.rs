@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use sqlx::SqliteConnection;
 
+use crate::ArchiveInner;
 use crate::input::{self, ContributorInput, ValidationError};
-use crate::person;
+use crate::person::{self, Contributor};
+use crate::publication::{self, Publication};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -68,6 +73,160 @@ impl WorkRawInput {
             contributors,
         })
     }
+}
+
+/// A work with its children, as read back
+#[derive(Clone, Debug)]
+pub struct Work {
+    pub id: i64,
+    pub library_id: i64,
+    pub title: String,
+    pub key: Option<String>,
+    pub time_signature: Option<String>,
+    pub instrumentation: Option<String>,
+    pub catalog_numbers: Vec<String>,
+    /// In link order
+    pub contributors: Vec<Contributor>,
+    archive: Arc<ArchiveInner>,
+}
+
+impl Work {
+    /// The publications containing this work, in arbitrary order
+    pub async fn publications(&self) -> crate::Result<Vec<Publication>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publications = publication::load_publications(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            None,
+            Some(self.id),
+            None,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(publications)
+    }
+
+    /// What the work's edit page opens with
+    pub fn raw_input(&self) -> WorkRawInput {
+        WorkRawInput {
+            id: Some(self.id),
+            title: self.title.clone(),
+            key: self.key.clone().unwrap_or_default(),
+            time_signature: self.time_signature.clone().unwrap_or_default(),
+            instrumentation: self.instrumentation.clone().unwrap_or_default(),
+            contributors: self
+                .contributors
+                .iter()
+                .map(|contributor| ContributorInput {
+                    name: contributor.name.clone(),
+                    role: contributor.role.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// The contributors credited with `role`, for listings with one column per role
+    pub fn with_role(&self, role: &str) -> Vec<&Contributor> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.role == role)
+            .collect()
+    }
+
+    /// The roles one person is credited with, for pages about that person
+    pub fn roles_of(&self, person_id: i64) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.person_id == person_id)
+            .map(|contributor| contributor.role.as_str())
+            .collect()
+    }
+}
+
+/// Load a library's works with their children: the one with `id`, or those a publication contains.
+///
+/// The three reads run on the caller's transaction so they see one snapshot. A publication's
+/// contents come back in the order the works were added to it.
+pub(crate) async fn load_works(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    id: Option<i64>,
+    publication_id: Option<i64>,
+) -> crate::Result<Vec<Work>> {
+    let mut works: Vec<Work> = sqlx::query!(
+        "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+         ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Work {
+        id: row.id,
+        library_id: row.library_id,
+        title: row.title,
+        key: row.key,
+        time_signature: row.time_signature,
+        instrumentation: row.instrumentation,
+        catalog_numbers: Vec::new(),
+        contributors: Vec::new(),
+        archive: shared.clone(),
+    })
+    .collect();
+    let index: HashMap<i64, usize> = works
+        .iter()
+        .enumerate()
+        .map(|(i, work)| (work.id, i))
+        .collect();
+
+    let catalog_numbers = sqlx::query!(
+        "SELECT work_id, value FROM work_catalog_number
+         WHERE work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in catalog_numbers {
+        works[index[&row.work_id]].catalog_numbers.push(row.value);
+    }
+
+    let contributors = sqlx::query!(
+        "SELECT c.work_id, c.person_id, p.name, c.role
+         FROM work_contributor c JOIN person p ON p.id = c.person_id
+         WHERE c.work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+         ORDER BY c.id",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in contributors {
+        works[index[&row.work_id]].contributors.push(Contributor {
+            person_id: row.person_id,
+            name: row.name,
+            role: row.role,
+        });
+    }
+
+    Ok(works)
 }
 
 /// Create a work and put it in a publication, on the caller's transaction.

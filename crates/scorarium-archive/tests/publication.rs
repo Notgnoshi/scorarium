@@ -119,6 +119,64 @@ async fn a_created_publication_reads_back_whole() {
 }
 
 #[tokio::test]
+async fn works_come_back_whole_and_scoped_to_their_library() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Sheet music").await.unwrap();
+    let publication = library
+        .create_publication(&gymnopedies().parse().unwrap())
+        .await
+        .unwrap();
+
+    let contents = publication.works().await.unwrap();
+
+    assert_eq!(contents.len(), 1);
+    let gymnopedie = &contents[0];
+    assert_eq!(gymnopedie.title, "Gymnopedie No. 1");
+    assert_eq!(gymnopedie.key.as_deref(), Some("D major"));
+    assert_eq!(gymnopedie.time_signature, None);
+    let credits: Vec<(&str, &str)> = gymnopedie
+        .contributors
+        .iter()
+        .map(|c| (c.name.as_str(), c.role.as_str()))
+        .collect();
+    assert_eq!(credits, [("Erik Satie", "composer"), ("Sue", "editor")]);
+
+    // The work is reachable on its own, and only through the library holding it
+    let found = library.work(gymnopedie.id).await.unwrap().unwrap();
+    assert_eq!(found.title, gymnopedie.title);
+    let books = archive.create_library("Books").await.unwrap();
+    assert!(books.work(gymnopedie.id).await.unwrap().is_none());
+
+    let containing = gymnopedie.publications().await.unwrap();
+    assert_eq!(containing.len(), 1);
+    assert_eq!(containing[0].id, publication.id);
+}
+
+/// The edit pages open on what is stored, so a stored publication must describe itself in exactly
+/// the raw input that would produce it again.
+#[tokio::test]
+async fn raw_input_shows_what_was_stored() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Sheet music").await.unwrap();
+    let publication = library
+        .create_publication(&gymnopedies().parse().unwrap())
+        .await
+        .unwrap();
+    let contents = publication.works().await.unwrap();
+
+    let mut expected = gymnopedies();
+    // What the archive assigned or rewrote along the way
+    expected.holdings[0].id = Some(publication.holdings[0].id);
+    expected.holdings[1].id = Some(publication.holdings[1].id);
+    expected.identifiers[0].value = "978-0-486-23134-1".into();
+    expected.identifiers[1].value = "UT 50061".into();
+    expected.contents[0].id = Some(contents[0].id);
+
+    assert_eq!(publication.raw_input(&contents), expected);
+    assert_eq!(contents[0].raw_input(), expected.contents[0]);
+}
+
+#[tokio::test]
 async fn suggestions_span_publications_and_their_contents() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Sheet music").await.unwrap();

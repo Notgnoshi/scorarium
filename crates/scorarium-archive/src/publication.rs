@@ -8,7 +8,7 @@ use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
-use crate::work::{self, WorkErrors, WorkInput, WorkRawInput};
+use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -136,8 +136,65 @@ pub struct Publication {
     /// In link order
     pub contributors: Vec<Contributor>,
     pub holdings: Vec<Holding>,
-    #[expect(dead_code)]
     archive: Arc<ArchiveInner>,
+}
+
+impl Publication {
+    /// The works this publication contains, in the order they were added to it
+    pub async fn works(&self) -> crate::Result<Vec<Work>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let contents =
+            work::load_works(&self.archive, &mut tx, self.library_id, None, Some(self.id)).await?;
+        tx.commit().await?;
+        Ok(contents)
+    }
+
+    /// What the publication's edit page opens with
+    ///
+    /// The contents are the ones [Publication::works] returned. A page showing only part of a
+    /// work still hands the whole work back, so it belongs in the raw input either way.
+    pub fn raw_input(&self, contents: &[Work]) -> PublicationRawInput {
+        PublicationRawInput {
+            title: self.title.clone(),
+            publisher: self.publisher.clone().unwrap_or_default(),
+            year: self.year.map(|year| year.to_string()).unwrap_or_default(),
+            holdings: self
+                .holdings
+                .iter()
+                .map(|holding| HoldingRawInput {
+                    id: Some(holding.id),
+                    kind: holding.kind,
+                    location: holding.location.clone().unwrap_or_default(),
+                })
+                .collect(),
+            identifiers: self
+                .identifiers
+                .iter()
+                .map(|identifier| IdentifierRawInput {
+                    kind: identifier.kind.as_str().to_string(),
+                    value: identifier.value.clone(),
+                })
+                .collect(),
+            contributors: self
+                .contributors
+                .iter()
+                .map(|contributor| ContributorInput {
+                    name: contributor.name.clone(),
+                    role: contributor.role.clone(),
+                })
+                .collect(),
+            contents: contents.iter().map(Work::raw_input).collect(),
+        }
+    }
+
+    /// The roles one person is credited with, for pages about that person
+    pub fn roles_of(&self, person_id: i64) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.person_id == person_id)
+            .map(|contributor| contributor.role.as_str())
+            .collect()
+    }
 }
 
 /// Load a library's publications with their children: all of them, just the one with `id`, those
