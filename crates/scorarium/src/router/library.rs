@@ -9,7 +9,6 @@ use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, OrNotFound, Session, index};
 use crate::AppState;
-use crate::db::pending_import;
 
 #[derive(Template)]
 #[template(path = "library.html")]
@@ -99,11 +98,6 @@ pub async fn delete(
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(id).await?.or_not_found()?;
-    // The library's pending imports cascade away with it, but their drafts live in memory
-    let pending = pending_import::list(&state.pool, Some(id)).await?;
     library.delete().await?;
-    for import in pending {
-        state.drafts.remove(import.id);
-    }
     Ok(Redirect::to("/").into_response())
 }

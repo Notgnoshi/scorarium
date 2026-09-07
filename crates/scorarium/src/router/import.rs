@@ -5,57 +5,47 @@ use askama::Template;
 use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum_extra::extract::Form as MultiForm;
 use scorarium_archive::{
-    ContributorInput, HoldingErrors, HoldingKind as ArchiveHoldingKind, HoldingRawInput,
-    IdentifierRawInput, Library, PublicationErrors, PublicationRawInput, WorkRawInput,
-    parse_holdings,
+    Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, PendingImport, PublicationErrors,
+    PublicationRawInput, ValidationError, WorkRawInput, parse_holdings,
 };
 use serde::Deserialize;
 
+use super::work::WorkPost;
 use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
     WorkFields,
 };
-use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
-use crate::db::publication::HoldingKind;
-use crate::publication_form::{HoldingRow, PublicationForm, Submission};
-use crate::{AppState, import, publication_form, publication_post, work_form};
+use crate::AppState;
+use crate::publication_post::{self, PublicationPost};
 
 const UNTITLED: &str = "Untitled import";
+const UNTITLED_WORK: &str = "Untitled work";
 
-pub struct PendingRow {
+/// One pending import as a list shows it.
+pub struct ShownImport {
     pub import: PendingImport,
     pub title: String,
-    pub holdings: Vec<HoldingRow>,
+    /// The copies its draft holds, which are the ones the entry page entered until someone edits
+    pub holdings: Vec<HoldingRawInput>,
     pub age: String,
 }
 
-/// Rows for one library's list, or for the cross-library queue.
-async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result<Vec<PendingRow>> {
-    Ok(pending_import::list(&state.pool, library_id)
-        .await?
-        .into_iter()
-        .map(|import| {
-            let draft = state
-                .drafts
-                .get(import.id)
-                .unwrap_or_else(|| import::Draft::seed(&import));
-            PendingRow {
-                title: label(&import, &draft.form),
-                holdings: draft.form.holdings,
-                age: age(import.created_at),
-                import,
-            }
-        })
-        .collect())
+fn shown(import: PendingImport) -> ShownImport {
+    let draft = import.draft();
+    ShownImport {
+        title: label(&import, &draft.input),
+        holdings: draft.input.holdings,
+        age: age(import.created_at),
+        import,
+    }
 }
 
 /// What to call a pending import: its draft's title, else what was typed, else a placeholder.
-fn label(import: &PendingImport, draft: &PublicationForm) -> String {
+fn label(import: &PendingImport, draft: &PublicationRawInput) -> String {
     [draft.title.as_str(), import.query.as_str(), UNTITLED]
         .into_iter()
-        .find(|s| !s.is_empty())
+        .find(|text| !text.is_empty())
         .unwrap_or(UNTITLED)
         .to_string()
 }
@@ -87,7 +77,7 @@ struct EntryPage {
     holdings: Vec<ShownHolding>,
     /// The message for having no copies at all, empty when there is one
     no_holdings: String,
-    pending: Vec<PendingRow>,
+    pending: Vec<ShownImport>,
     /// The shared list fragment shows a library column only on the cross-library queue.
     show_library: bool,
 }
@@ -105,14 +95,14 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
+    let library = state.archive.library(id).await?.or_not_found()?;
     let blank = vec![HoldingRawInput {
         id: None,
-        kind: ArchiveHoldingKind::Physical,
+        kind: HoldingKind::Physical,
         location: String::new(),
     }];
     render_entry(
-        &state,
-        id,
+        &library,
         base,
         String::new(),
         query.more.is_some(),
@@ -123,15 +113,13 @@ pub async fn entry(
 }
 
 async fn render_entry(
-    state: &AppState,
-    id: i64,
+    library: &Library,
     base: BaseContext,
     query: String,
     more: bool,
     raw: Vec<HoldingRawInput>,
     errors: HoldingErrors,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(id).await?.or_not_found()?;
     let holdings = raw
         .iter()
         .enumerate()
@@ -139,29 +127,29 @@ async fn render_entry(
             id: holding.id.map(|id| id.to_string()).unwrap_or_default(),
             kind: holding.kind.as_str(),
             location: holding.location.clone(),
-            message: errors
-                .each
-                .get(i)
-                .and_then(Option::as_ref)
-                .map(ToString::to_string)
-                .unwrap_or_default(),
+            message: message(errors.each.get(i).and_then(Option::as_ref)),
         })
         .collect();
     let page = EntryPage {
-        base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
-        pending: pending_rows(state, Some(id)).await?,
+        base: base.page("Import", vec![Crumb::home(), Crumb::library(library)]),
+        pending: library
+            .pending_imports()
+            .await?
+            .into_iter()
+            .map(shown)
+            .collect(),
         show_library: false,
-        no_holdings: errors.none.map(|e| e.to_string()).unwrap_or_default(),
+        no_holdings: message(errors.none.as_ref()),
+        library: library.clone(),
         holdings,
-        library,
         query,
         more,
     };
     Ok(Html(page.render()?).into_response())
 }
 
-/// Everything the entry page posts under a fixed key; its copies are decoded from the raw pairs,
-/// as on the review page.
+/// Everything the entry page posts under a fixed key; its copies come from the raw pairs, as on
+/// the review page.
 #[derive(Deserialize)]
 pub struct StartForm {
     #[serde(default)]
@@ -182,34 +170,16 @@ pub async fn start(
     let pairs: Vec<(String, String)> = serde_html_form::from_bytes(&body)?;
     let raw = publication_post::holdings(&pairs);
     let more = form.more.is_some();
-    if let Err(errors) = parse_holdings(&raw) {
-        return render_entry(&state, id, base, form.query, more, raw, errors).await;
-    }
-    // The import needs the library to exist, but not the library itself
-    state.archive.library(id).await?.or_not_found()?;
-    let holdings: Vec<PendingHolding> = raw
-        .iter()
-        .map(|holding| PendingHolding {
-            kind: match holding.kind {
-                ArchiveHoldingKind::Physical => HoldingKind::Physical,
-                ArchiveHoldingKind::Digital => HoldingKind::Digital,
-            },
-            location: Some(holding.location.trim().to_string()).filter(|l| !l.is_empty()),
-        })
-        .collect();
-    let pending_id = pending_import::create(
-        &state.pool,
-        &NewPendingImport {
-            library_id: id,
-            query: form.query.trim(),
-            holdings: &holdings,
-        },
-    )
-    .await?;
+    let library = state.archive.library(id).await?.or_not_found()?;
+    let holdings = match parse_holdings(&raw) {
+        Ok(holdings) => holdings,
+        Err(errors) => return render_entry(&library, base, form.query, more, raw, errors).await,
+    };
+    let import = library.start_import(&form.query, &holdings).await?;
     let next = if more {
         format!("/library/{id}/import?more=1")
     } else {
-        format!("/library/{id}/import/{pending_id}")
+        format!("/library/{id}/import/{}", import.id)
     };
     Ok(Redirect::to(&next).into_response())
 }
@@ -232,18 +202,12 @@ pub async fn review(
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let (draft, saved) = match state.drafts.get(id) {
-        Some(draft) => (draft, true),
-        None => (import::Draft::seed(&import), false),
-    };
-    let title = label(&import, &draft.form);
-    let input = PublicationRawInput::from(&draft);
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let draft = import.draft();
+    let title = label(&import, &draft.input);
     // Errors show for saved drafts only; a fresh import should not open covered in warnings
-    let errors = if saved {
-        input.parse().err().unwrap_or_default()
+    let errors = if draft.saved {
+        draft.input.parse().err().unwrap_or_default()
     } else {
         PublicationErrors::default()
     };
@@ -257,7 +221,7 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        fields: FormFields::build(&library, input, errors)
+        fields: FormFields::build(&library, draft.input, errors)
             .await?
             .edit_works(WorkEdit::Draft),
         library,
@@ -273,39 +237,21 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let submission = decode(&body)?;
-    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    // Read before the submission is consumed; the index names a row, since a row added just now
-    // has no draft id to name
-    let edit_work = submission.0.edit_work();
-    let draft = load_draft(&state, &pending, submission);
-    let next = match edit_work.and_then(|i| draft.works.get(i)) {
-        Some(work) => format!("/library/{library_id}/import/{id}/work/{}", work.id),
+    let post = PublicationPost::decode(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    // Read before the submission is consumed. It names a work by position, since a work added just
+    // now has no draft id to name it by.
+    let edit_work = post.edit_work();
+    let draft = import.save_draft(post.merge(import.draft().input.contents));
+    let next = match edit_work.and_then(|i| draft.input.contents.get(i)) {
+        Some(work) => {
+            let work_id = work.id.expect("saving a draft names every work it holds");
+            format!("/library/{library_id}/import/{id}/work/{work_id}")
+        }
         None => format!("/library/{library_id}/import/{id}"),
     };
-    state.drafts.save(id, draft);
     Ok(Redirect::to(&next).into_response())
-}
-
-/// A review page submission: its fields, and its copies, whose keys carry a per-copy suffix.
-struct Posted(Submission, Vec<HoldingRow>);
-
-fn decode(body: &[u8]) -> Result<Posted, serde_html_form::de::Error> {
-    let submission: Submission = serde_html_form::from_bytes(body)?;
-    let pairs: Vec<(String, String)> = serde_html_form::from_bytes(body)?;
-    Ok(Posted(submission, publication_form::holding_rows(&pairs)))
-}
-
-/// The stored draft with this submission merged into it, or a seeded one when nothing is stored
-fn load_draft(state: &AppState, pending: &PendingImport, posted: Posted) -> import::Draft {
-    let mut draft = state
-        .drafts
-        .get(pending.id)
-        .unwrap_or_else(|| import::Draft::seed(pending));
-    draft.merge(posted.0.into_form(posted.1));
-    draft
 }
 
 /// POST /library/{library_id}/import/{id}/submit
@@ -315,28 +261,24 @@ pub async fn submit(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let submission = decode(&body)?;
-    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let draft = load_draft(&state, &pending, submission);
-    let (publication, works) = match draft.parse() {
-        Ok(parsed) => parsed,
-        // Keep the edits so the review page can show what is wrong with them
-        Err(_) => {
-            state.drafts.save(id, draft);
-            return Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response());
+    let post = PublicationPost::decode(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let input = post.merge(import.draft().input.contents);
+    match input.parse() {
+        Ok(parsed) => {
+            let publication = import.accept_into_publication(&parsed).await?;
+            Ok(Redirect::to(&format!(
+                "/library/{library_id}/publication/{}",
+                publication.id
+            ))
+            .into_response())
         }
-    };
-    let publication_id = import::accept(&state.pool, &pending, &publication, &works).await?;
-    // Accepted here or already gone from another tab: either way the draft is finished with
-    state.drafts.remove(id);
-    match publication_id {
-        Some(publication_id) => Ok(Redirect::to(&format!(
-            "/library/{library_id}/publication/{publication_id}"
-        ))
-        .into_response()),
-        None => Ok(StatusCode::NOT_FOUND.into_response()),
+        // Keep the edits, so the review page can show what is wrong with them
+        Err(_) => {
+            import.save_draft(input);
+            Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+        }
     }
 }
 
@@ -350,12 +292,10 @@ struct ImportWorkPage {
     fields: WorkFields,
 }
 
-const UNTITLED_WORK: &str = "Untitled work";
-
 /// GET /library/{library_id}/import/{id}/work/{work_id}
 ///
-/// A draft work lives only inside a saved draft, so a draft the store does not have, or an id it
-/// does not know, is a 404 rather than a blank form.
+/// A draft work lives only inside a saved draft, so an unsaved draft, or an id it does not know,
+/// is a 404 rather than a blank form.
 pub async fn work(
     _session: Session,
     State(state): State<Arc<AppState>>,
@@ -363,16 +303,11 @@ pub async fn work(
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let draft = import.draft();
+    let Some(input) = draft_work(&draft, work_id).cloned() else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let Some(draft) = state.drafts.get(id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let Some(work) = draft.works.iter().find(|work| work.id == work_id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let input = WorkRawInput::from(&work.form);
     // As on the review page, a saved draft shows what is wrong with it
     let errors = input.parse().err().unwrap_or_default();
     let title = if input.title.is_empty() {
@@ -387,7 +322,7 @@ pub async fn work(
                 Crumb::home(),
                 Crumb::library(&library),
                 Crumb::import(&library),
-                Crumb::import_review(&import, &label(&import, &draft.form)),
+                Crumb::import_review(&import, &label(&import, &draft.input)),
             ],
         ),
         fields: WorkFields::build(&library, input, errors).await?,
@@ -403,29 +338,50 @@ pub async fn save_work(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
-    MultiForm(submission): MultiForm<work_form::Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    if pending_import::get(&state.pool, library_id, id)
-        .await?
-        .is_none()
-    {
+    let post: WorkPost = serde_html_form::from_bytes(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let mut draft = import.draft();
+    if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let Some(mut draft) = state.drafts.get(id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    let edited = WorkRawInput {
+        // The page names the work it edits, so what it posts need not
+        id: Some(work_id),
+        ..WorkRawInput::from(post)
     };
-    if !draft.set_work(work_id, submission.into()) {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    for work in &mut draft.input.contents {
+        if work.id == Some(work_id) {
+            *work = edited;
+            break;
+        }
     }
-    state.drafts.save(id, draft);
+    import.save_draft(draft.input);
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+}
+
+/// The work a saved draft holds under this id. An unsaved draft holds none: a draft work comes
+/// into being only when the review page is saved.
+fn draft_work(draft: &Draft, work_id: i64) -> Option<&WorkRawInput> {
+    draft
+        .saved
+        .then(|| {
+            draft
+                .input
+                .contents
+                .iter()
+                .find(|work| work.id == Some(work_id))
+        })
+        .flatten()
 }
 
 #[derive(Template)]
 #[template(path = "review.html")]
 struct QueuePage {
     base: BaseContext,
-    pending: Vec<PendingRow>,
+    pending: Vec<ShownImport>,
     show_library: bool,
 }
 
@@ -437,7 +393,13 @@ pub async fn queue(
 ) -> Result<Response, AppError> {
     let page = QueuePage {
         base: base.page("Review queue", vec![Crumb::home()]),
-        pending: pending_rows(&state, None).await?,
+        pending: state
+            .archive
+            .pending_imports()
+            .await?
+            .into_iter()
+            .map(shown)
+            .collect(),
         show_library: true,
     };
     Ok(Html(page.render()?).into_response())
@@ -449,76 +411,17 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    if !pending_import::delete(&state.pool, library_id, id).await? {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    state.drafts.remove(id);
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    library
+        .pending_import(id)
+        .await?
+        .or_not_found()?
+        .discard()
+        .await?;
     Ok(Redirect::to(&format!("/library/{library_id}/import")).into_response())
 }
 
-/// The old draft as the archive's raw input, so the review page and the draft work page render and
-/// validate through the new form types while the draft itself is still built from the old ones.
-///
-/// Goes when the import routes move onto the archive's own draft.
-impl From<&import::Draft> for PublicationRawInput {
-    fn from(draft: &import::Draft) -> Self {
-        PublicationRawInput {
-            title: draft.form.title.clone(),
-            publisher: draft.form.publisher.clone(),
-            year: draft.form.year.clone(),
-            holdings: draft
-                .form
-                .holdings
-                .iter()
-                .map(|holding| HoldingRawInput {
-                    id: holding.id,
-                    kind: match holding.kind {
-                        HoldingKind::Physical => ArchiveHoldingKind::Physical,
-                        HoldingKind::Digital => ArchiveHoldingKind::Digital,
-                    },
-                    location: holding.location.clone(),
-                })
-                .collect(),
-            identifiers: draft
-                .form
-                .identifiers
-                .iter()
-                .map(|identifier| IdentifierRawInput {
-                    kind: identifier.kind.clone(),
-                    value: identifier.value.clone(),
-                })
-                .collect(),
-            contributors: draft.form.contributors.iter().map(contributor).collect(),
-            // The draft's works are whole; the rows on its form are only what the page shows
-            contents: draft
-                .works
-                .iter()
-                .map(|work| WorkRawInput {
-                    id: Some(work.id),
-                    ..WorkRawInput::from(&work.form)
-                })
-                .collect(),
-        }
-    }
-}
-
-impl From<&work_form::WorkForm> for WorkRawInput {
-    fn from(form: &work_form::WorkForm) -> Self {
-        WorkRawInput {
-            // A draft work is named by the page it was opened from, not by its input
-            id: None,
-            title: form.title.clone(),
-            key: form.key.clone(),
-            time_signature: form.time_signature.clone(),
-            instrumentation: form.instrumentation.clone(),
-            contributors: form.contributors.iter().map(contributor).collect(),
-        }
-    }
-}
-
-fn contributor(row: &publication_form::ContributorRow) -> ContributorInput {
-    ContributorInput {
-        name: row.name.clone(),
-        role: row.role.clone(),
-    }
+/// A message for the page, empty when there is nothing wrong.
+fn message(error: Option<&ValidationError>) -> String {
+    error.map(ToString::to_string).unwrap_or_default()
 }

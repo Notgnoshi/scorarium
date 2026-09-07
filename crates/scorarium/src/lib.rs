@@ -1,5 +1,4 @@
 pub mod db;
-pub mod import;
 pub mod publication_form;
 pub mod publication_post;
 pub mod router;
@@ -19,7 +18,6 @@ pub struct AppState {
     // TODO: Remove the pool once all route migrate over to the new Archive.
     pub pool: SqlitePool,
     pub sessions: session::SessionStore,
-    pub drafts: import::DraftStore,
     /// Whether the login cookie is marked Secure
     pub secure_cookies: bool,
     pub demo: bool,
@@ -31,7 +29,6 @@ impl AppState {
             pool: archive.pool().clone(),
             archive,
             sessions: session::SessionStore::default(),
-            drafts: import::DraftStore::default(),
             secure_cookies,
             demo: false,
         }

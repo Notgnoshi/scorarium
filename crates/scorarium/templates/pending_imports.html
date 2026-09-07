@@ -12,16 +12,16 @@
                 </tr>
             </thead>
             <tbody>
-                {% for row in pending %}
+                {% for shown in pending %}
                     <tr>
-                        <td><a href="/library/{{ row.import.library_id }}/import/{{ row.import.id }}">{{ row.title }}</a></td>
-                        {% if show_library %}<td>{{ row.import.library_name }}</td>{% endif %}
+                        <td><a href="/library/{{ shown.import.library_id }}/import/{{ shown.import.id }}">{{ shown.title }}</a></td>
+                        {% if show_library %}<td>{{ shown.import.library_name }}</td>{% endif %}
                         <td>
-                            {% for h in row.holdings %}
+                            {% for h in shown.holdings %}
                                 <span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {{ h.location }}
                             {% endfor %}
                         </td>
-                        <td>{{ row.age }}</td>
+                        <td>{{ shown.age }}</td>
                     </tr>
                 {% endfor %}
             </tbody>

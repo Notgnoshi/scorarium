@@ -18,12 +18,13 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
-    ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound, Publication,
-    PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput,
+    ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound, PendingImport,
+    Publication, PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors,
+    WorkRawInput,
 };
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, db, publication_post};
+use crate::{AppState, publication_post};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -66,7 +67,7 @@ impl Crumb {
     }
 
     /// The import under review, by the label its page shows.
-    pub fn import_review(import: &db::pending_import::PendingImport, label: &str) -> Self {
+    pub fn import_review(import: &PendingImport, label: &str) -> Self {
         Self {
             label: label.to_string(),
             href: format!("/library/{}/import/{}", import.library_id, import.id),
@@ -109,7 +110,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
                 .get(SESSION_COOKIE)
                 .is_some_and(|cookie| state.sessions.validate(cookie.value()));
         let pending_import_count = if logged_in {
-            db::pending_import::count(&state.pool).await?
+            state.archive.pending_import_count().await?
         } else {
             0
         };
