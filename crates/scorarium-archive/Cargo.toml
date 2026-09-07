@@ -1,0 +1,17 @@
+[package]
+name = "scorarium-archive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The scorarium data model and data persistence"
+
+[dependencies]
+argon2.workspace = true
+eyre.workspace = true
+isbn.workspace = true
+serde.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true

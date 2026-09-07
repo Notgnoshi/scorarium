@@ -3,16 +3,16 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::State;
 use axum::response::Html;
-use sqlx::SqlitePool;
+use scorarium_archive::Library;
 
 use super::{AppError, BaseContext};
-use crate::{AppState, db};
+use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexPage {
     base: BaseContext,
-    libraries: Vec<db::Library>,
+    libraries: Vec<Library>,
     error: Option<&'static str>,
 }
 
@@ -20,17 +20,17 @@ pub async fn index(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
 ) -> Result<Html<String>, AppError> {
-    render(&state.pool, base, None).await
+    render(&state, base, None).await
 }
 
 pub(super) async fn render(
-    pool: &SqlitePool,
+    state: &AppState,
     base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Html<String>, AppError> {
     let page = IndexPage {
         base: base.page("Libraries", Vec::new()),
-        libraries: db::list_libraries(pool).await?,
+        libraries: state.archive.libraries().await?,
         error,
     };
     Ok(Html(page.render()?))

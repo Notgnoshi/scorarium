@@ -1,0 +1,473 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use sqlx::SqliteConnection;
+
+use crate::input::{self, ContributorInput, ValidationError};
+use crate::person::{self, Contributor};
+use crate::publication::{self, Publication};
+use crate::{ArchiveInner, NotFound, library};
+
+/// A work's editable fields as entered from the web forms
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkRawInput {
+    /// The work this edits, or a draft work's id; None for one being added
+    pub id: Option<i64>,
+    pub title: String,
+    pub key: String,
+    pub time_signature: String,
+    pub instrumentation: String,
+    pub contributors: Vec<ContributorInput>,
+}
+
+/// A work's parsed and validated fields
+#[derive(Debug, PartialEq, Eq)]
+pub struct WorkInput {
+    pub(crate) id: Option<i64>,
+    pub(crate) title: String,
+    pub(crate) key: Option<String>,
+    pub(crate) time_signature: Option<String>,
+    pub(crate) instrumentation: Option<String>,
+    pub(crate) contributors: Vec<ContributorInput>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct WorkErrors {
+    pub title: Option<ValidationError>,
+    /// One slot per contributor, empty when they all passed
+    pub contributors: Vec<Option<ValidationError>>,
+}
+
+impl WorkErrors {
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none() && self.contributors.iter().all(Option::is_none)
+    }
+}
+
+impl WorkRawInput {
+    /// Check and convert the input
+    ///
+    /// The key, the time signature and the instrumentation are free text
+    pub fn parse(&self) -> Result<WorkInput, WorkErrors> {
+        let title = self.title.trim();
+        let mut errors = WorkErrors {
+            title: title.is_empty().then_some(ValidationError::TitleRequired),
+            contributors: Vec::new(),
+        };
+        let contributors = match input::parse_contributors(&self.contributors) {
+            Ok(contributors) => contributors,
+            Err(slots) => {
+                errors.contributors = slots;
+                Vec::new()
+            }
+        };
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(WorkInput {
+            id: self.id,
+            title: title.to_string(),
+            key: input::trimmed_or_none(&self.key),
+            time_signature: input::trimmed_or_none(&self.time_signature),
+            instrumentation: input::trimmed_or_none(&self.instrumentation),
+            contributors,
+        })
+    }
+}
+
+/// A work with its children, as read back
+#[derive(Clone, Debug)]
+pub struct Work {
+    pub id: i64,
+    pub library_id: i64,
+    pub title: String,
+    pub key: Option<String>,
+    pub time_signature: Option<String>,
+    pub instrumentation: Option<String>,
+    pub catalog_numbers: Vec<String>,
+    /// In link order
+    pub contributors: Vec<Contributor>,
+    archive: Arc<ArchiveInner>,
+}
+
+impl Work {
+    /// The publications containing this work, in arbitrary order
+    pub async fn publications(&self) -> crate::Result<Vec<Publication>> {
+        let mut tx = self.archive.pool.begin().await?;
+        let publications = publication::load_publications(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            None,
+            Some(self.id),
+            None,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(publications)
+    }
+
+    /// What the work's edit page opens with
+    pub fn raw_input(&self) -> WorkRawInput {
+        WorkRawInput {
+            id: Some(self.id),
+            title: self.title.clone(),
+            key: self.key.clone().unwrap_or_default(),
+            time_signature: self.time_signature.clone().unwrap_or_default(),
+            instrumentation: self.instrumentation.clone().unwrap_or_default(),
+            contributors: self
+                .contributors
+                .iter()
+                .map(|contributor| ContributorInput {
+                    name: contributor.name.clone(),
+                    role: contributor.role.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// The contributors credited with `role`, for listings with one column per role
+    pub fn with_role(&self, role: &str) -> Vec<&Contributor> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.role == role)
+            .collect()
+    }
+
+    /// The roles one person is credited with, for pages about that person
+    pub fn roles_of(&self, person_id: i64) -> Vec<&str> {
+        self.contributors
+            .iter()
+            .filter(|contributor| contributor.person_id == person_id)
+            .map(|contributor| contributor.role.as_str())
+            .collect()
+    }
+
+    /// Apply an edited input, then collect whatever the edit left credited nowhere.
+    ///
+    /// One transaction: the work's fields, its contributors rebuilt in input order, orphan
+    /// collection, and a reload of self.
+    ///
+    /// Returns a [NotFound] error if the work has since been collected.
+    pub async fn update(&mut self, input: &WorkInput) -> crate::Result<()> {
+        let mut tx = self.archive.pool.begin().await?;
+        let result = sqlx::query!(
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
+             WHERE library_id = ? AND id = ?",
+            input.title,
+            input.key,
+            input.time_signature,
+            input.instrumentation,
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(NotFound.into());
+        }
+        write_work_contributors(&mut tx, self.library_id, self.id, &input.contributors).await?;
+        library::collect_orphans(&mut tx, self.library_id).await?;
+        let reloaded = load_works(&self.archive, &mut tx, self.library_id, Some(self.id), None)
+            .await?
+            .pop()
+            .expect("the work was just updated on this transaction");
+        tx.commit().await?;
+        *self = reloaded;
+        Ok(())
+    }
+}
+
+/// Load a library's works with their children: the one with `id`, or those a publication contains.
+///
+/// The three reads run on the caller's transaction so they see one snapshot. A publication's
+/// contents come back in the order the works were added to it.
+pub(crate) async fn load_works(
+    shared: &Arc<ArchiveInner>,
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    id: Option<i64>,
+    publication_id: Option<i64>,
+) -> crate::Result<Vec<Work>> {
+    let mut works: Vec<Work> = sqlx::query!(
+        "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+         ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Work {
+        id: row.id,
+        library_id: row.library_id,
+        title: row.title,
+        key: row.key,
+        time_signature: row.time_signature,
+        instrumentation: row.instrumentation,
+        catalog_numbers: Vec::new(),
+        contributors: Vec::new(),
+        archive: shared.clone(),
+    })
+    .collect();
+    let index: HashMap<i64, usize> = works
+        .iter()
+        .enumerate()
+        .map(|(i, work)| (work.id, i))
+        .collect();
+
+    let catalog_numbers = sqlx::query!(
+        "SELECT work_id, value FROM work_catalog_number
+         WHERE work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in catalog_numbers {
+        works[index[&row.work_id]].catalog_numbers.push(row.value);
+    }
+
+    let contributors = sqlx::query!(
+        "SELECT c.work_id, c.person_id, p.name, c.role
+         FROM work_contributor c JOIN person p ON p.id = c.person_id
+         WHERE c.work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+         ORDER BY c.id",
+        library_id,
+        id,
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in contributors {
+        works[index[&row.work_id]].contributors.push(Contributor {
+            person_id: row.person_id,
+            name: row.name,
+            role: row.role,
+        });
+    }
+
+    Ok(works)
+}
+
+/// Create a work and put it in a publication, on the caller's transaction.
+///
+/// The input's id is ignored: a publication creates every work it names, since linking an existing
+/// work into another publication is not something the input can ask for yet.
+pub(crate) async fn create_work_in_publication(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    input: &WorkInput,
+) -> crate::Result<i64> {
+    let created = sqlx::query!(
+        "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation) VALUES (?, ?, ?, ?, ?)",
+        library_id,
+        input.title,
+        input.key,
+        input.time_signature,
+        input.instrumentation,
+    )
+    .execute(&mut *conn)
+    .await?;
+    let id = created.last_insert_rowid();
+    sqlx::query!(
+        "INSERT INTO publication_work (library_id, publication_id, work_id) VALUES (?, ?, ?)",
+        library_id,
+        publication_id,
+        id,
+    )
+    .execute(&mut *conn)
+    .await?;
+    write_work_contributors(&mut *conn, library_id, id, &input.contributors).await?;
+    Ok(id)
+}
+
+/// Reconcile a publication's contents against the works its input names.
+///
+/// An input whose id the publication already contains edits that work in place, fields and credits
+/// alike; any other input creates a work. Works the input no longer names are unlinked rather than
+/// deleted; cleanup is handled by orphan cleanup on the library. Existing links keep their
+/// position, so reordering the input does not reorder the contents.
+pub(crate) async fn write_publication_works(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    contents: &[WorkInput],
+) -> crate::Result<()> {
+    let stored = sqlx::query_scalar!(
+        "SELECT work_id FROM publication_work WHERE publication_id = ?",
+        publication_id
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let named: Vec<i64> = contents.iter().filter_map(|work| work.id).collect();
+    for work_id in stored.iter().filter(|id| !named.contains(id)) {
+        sqlx::query!(
+            "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
+            publication_id,
+            work_id
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    for input in contents {
+        // An id the publication does not contain names nothing this input may edit
+        let Some(work_id) = input.id.filter(|id| stored.contains(id)) else {
+            create_work_in_publication(&mut *conn, library_id, publication_id, input).await?;
+            continue;
+        };
+        sqlx::query!(
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
+             WHERE library_id = ? AND id = ?",
+            input.title,
+            input.key,
+            input.time_signature,
+            input.instrumentation,
+            library_id,
+            work_id
+        )
+        .execute(&mut *conn)
+        .await?;
+        write_work_contributors(&mut *conn, library_id, work_id, &input.contributors).await?;
+    }
+    Ok(())
+}
+
+/// Put an existing work into another publication.
+pub(crate) async fn link_work_to_publication(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    publication_id: i64,
+    work_id: i64,
+) -> crate::Result<()> {
+    sqlx::query!(
+        "INSERT INTO publication_work (library_id, publication_id, work_id) VALUES (?, ?, ?)",
+        library_id,
+        publication_id,
+        work_id,
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Give a work a catalog number.
+pub(crate) async fn add_work_catalog_number(
+    conn: &mut SqliteConnection,
+    work_id: i64,
+    value: &str,
+) -> crate::Result<()> {
+    sqlx::query!(
+        "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+        work_id,
+        value,
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Rebuild a work's contributor links, so input order becomes link order.
+///
+/// A link holds nothing beyond what the input shows, so rebuilding outright loses nothing. On a
+/// work with no links yet the delete finds nothing, so creating and updating share this.
+pub(crate) async fn write_work_contributors(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+    contributors: &[ContributorInput],
+) -> crate::Result<()> {
+    sqlx::query!("DELETE FROM work_contributor WHERE work_id = ?", work_id)
+        .execute(&mut *conn)
+        .await?;
+    for contributor in contributors {
+        let person_id =
+            person::find_or_create_person(&mut *conn, library_id, &contributor.name).await?;
+        sqlx::query!(
+            "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
+            library_id,
+            work_id,
+            person_id,
+            contributor.role,
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contributor(name: &str, role: &str) -> ContributorInput {
+        ContributorInput {
+            name: name.into(),
+            role: role.into(),
+        }
+    }
+
+    #[test]
+    fn parse_reports_every_problem() {
+        let raw = WorkRawInput {
+            contributors: vec![
+                contributor("Erik Satie", ""),
+                contributor("Erik Satie", "composer"),
+                contributor("Erik Satie", "composer"),
+                contributor("", ""),
+            ],
+            ..WorkRawInput::default()
+        };
+        assert_eq!(
+            raw.parse().unwrap_err(),
+            WorkErrors {
+                title: Some(ValidationError::TitleRequired),
+                contributors: vec![
+                    Some(ValidationError::RoleRequired),
+                    None,
+                    Some(ValidationError::AlreadyListed),
+                    Some(ValidationError::FillOrRemove),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn parse_takes_what_was_typed() {
+        let raw = WorkRawInput {
+            id: Some(7),
+            title: "  Gnossienne No. 1  ".into(),
+            key: String::new(),
+            time_signature: "3/4".into(),
+            instrumentation: "piano".into(),
+            contributors: vec![contributor(" Erik Satie ", "composer")],
+        };
+        assert_eq!(
+            raw.parse().unwrap(),
+            WorkInput {
+                id: Some(7),
+                title: "Gnossienne No. 1".into(),
+                // A field left blank is no value at all, not an empty one
+                key: None,
+                time_signature: Some("3/4".into()),
+                instrumentation: Some("piano".into()),
+                contributors: vec![contributor("Erik Satie", "composer")],
+            }
+        );
+    }
+}

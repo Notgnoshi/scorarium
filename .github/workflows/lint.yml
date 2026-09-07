@@ -70,7 +70,7 @@ jobs:
               env:
                 DATABASE_URL: sqlite://target/dev.db
               run: |
-                  sqlx database setup --source crates/scorarium/migrations
+                  sqlx database setup --source crates/scorarium-archive/migrations
                   cargo sqlx prepare --check --workspace -- --all-targets --all-features
 
     test:

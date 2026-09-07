@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?\n             WHERE library_id = ? AND id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "08eccbb9c303c5a2486b979b210a797f21c6b6c5fe95ea3920454da267e958cf"
+}

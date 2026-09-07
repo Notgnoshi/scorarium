@@ -1,19 +1,15 @@
-use std::sync::Arc;
-
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use scorarium::{db, router};
+use scorarium::router;
 use scorarium_tests::TestDb;
 
 #[tokio::test]
 async fn work_page() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap();
     let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = db::publication::list(&state.pool, sheet_music.id)
-        .await
-        .unwrap();
+    let publications = sheet_music.publications().await.unwrap();
     let album = publications
         .iter()
         .find(|p| p.title == "Russian piano album")
@@ -22,14 +18,12 @@ async fn work_page() {
         .iter()
         .find(|p| p.title.starts_with("Rachmaninoff masterpieces"))
         .unwrap();
-    let works = db::work::list_in_publication(&state.pool, sheet_music.id, album.id)
-        .await
-        .unwrap();
+    let works = album.works().await.unwrap();
     let prelude = works
         .iter()
         .find(|w| w.title == "Prelude in C-sharp minor")
         .unwrap();
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!("/library/{}/work/{}", sheet_music.id, prelude.id))

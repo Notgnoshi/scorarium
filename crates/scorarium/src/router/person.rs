@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
+use scorarium_archive::{Person, Publication, Work};
 
-use super::{AppError, BaseContext, Crumb};
-use crate::{AppState, db};
+use super::{AppError, BaseContext, Crumb, OrNotFound};
+use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "person.html")]
 struct PersonPage {
     base: BaseContext,
-    person: db::person::Person,
+    person: Person,
     /// Each publication the person is credited on, with only this person's works from it.
-    publications: Vec<(db::publication::Publication, Vec<db::work::Work>)>,
+    publications: Vec<(Publication, Vec<Work>)>,
 }
 
 /// GET /library/{library_id}/person/{id}
@@ -23,20 +23,18 @@ pub async fn person(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let Some(person) = db::person::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let mut publications = db::publication::list_by_person(&state.pool, library_id, id).await?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let person = library.person(id).await?.or_not_found()?;
+    let mut publications = person.publications().await?;
     publications.sort_by(|a, b| a.title.cmp(&b.title));
     let mut nested = Vec::with_capacity(publications.len());
     for publication in publications {
-        let works = db::work::list_in_publication(&state.pool, library_id, publication.id)
+        // A publication may credit the person directly and contain works that do not
+        let works = publication
+            .works()
             .await?
             .into_iter()
-            .filter(|w| w.contributors.iter().any(|c| c.person_id == id))
+            .filter(|work| !work.roles_of(id).is_empty())
             .collect();
         nested.push((publication, works));
     }
@@ -55,7 +53,7 @@ pub async fn person(
 #[template(path = "persons.html")]
 struct PersonsPage {
     base: BaseContext,
-    persons: Vec<db::person::Person>,
+    persons: Vec<Person>,
 }
 
 /// GET /library/{id}/composers
@@ -83,12 +81,10 @@ async fn listing(
     role: &str,
     title: &str,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
+    let library = state.archive.library(library_id).await?.or_not_found()?;
     let page = PersonsPage {
         base: base.page(title, vec![Crumb::home(), Crumb::library(&library)]),
-        persons: db::person::list_with_role(&state.pool, library_id, role).await?,
+        persons: library.persons_with_role(role).await?,
     };
     Ok(Html(page.render()?).into_response())
 }

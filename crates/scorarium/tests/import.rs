@@ -1,5 +1,4 @@
 use axum::http::StatusCode;
-use scorarium::db;
 use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
@@ -9,11 +8,11 @@ async fn manual_import_flow() {
         .password("hunter2")
         .build()
         .await;
-    // Keep a handle on the database to look up ids the UI only exposes as links
-    let pool = state.pool.clone();
-    let server = browser(state);
-    let library = db::list_libraries(&pool).await.unwrap()[0].id;
-    let entry = format!("/library/{library}/import");
+    // Keep a handle on the archive to look up ids the UI only exposes as links
+    let server = browser(state.clone());
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let library_id = library.id;
+    let entry = format!("/library/{library_id}/import");
 
     // Importing requires login
     let response = server.get(&entry).await;
@@ -26,10 +25,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "Gnossiennes"),
-            ("holding_kind", "physical"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     response.assert_status_ok();
@@ -45,13 +43,12 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("holding_kind", "physical"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
-            ("holding_kind", "physical"),
-            ("holding_location", "Piano bench"),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
+            ("holding_kind_1", "physical"),
+            ("holding_location_1", "Piano bench"),
+            ("holding_file_1", ""),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -84,10 +81,9 @@ async fn manual_import_flow() {
             ("title", ""),
             ("publisher", ""),
             ("year", "abc"),
-            ("holding_kind", "physical"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
             ("identifier_kind", "isbn"),
             ("identifier_value", "not-an-isbn"),
             ("identifier_kind", "isbn"),
@@ -112,10 +108,9 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "physical"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -141,9 +136,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "0486231348"),
-            ("holding_kind", "physical"),
-            ("holding_location", "Piano bench"),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -164,9 +159,9 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "Gnossiennes"),
-            ("holding_kind", "physical"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
@@ -184,10 +179,9 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "physical"),
-            ("holding_kind", "digital"),
-            ("holding_location", ""),
-            ("holding_file", "satie.pdf"),
+            ("holding_kind_0", "digital"),
+            ("holding_location_0", ""),
+            ("holding_file_0", "satie.pdf"),
             ("identifier_kind", "isbn"),
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
@@ -200,7 +194,7 @@ async fn manual_import_flow() {
     response.assert_status(StatusCode::SEE_OTHER);
     let publication = response.header("location").to_str().unwrap().to_string();
     assert!(
-        publication.starts_with(&format!("/library/{library}/publication/")),
+        publication.starts_with(&format!("/library/{library_id}/publication/")),
         "{publication}"
     );
     let response = server.get(&publication).await;
@@ -210,10 +204,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
     // The contributor row creates Satie and the work row finds them again in the same transaction
-    assert_eq!(
-        db::person::list_names(&pool, library).await.unwrap(),
-        ["Erik Satie"]
-    );
+    assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
     server
         .get(&review)
         .await
@@ -224,9 +215,9 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("holding_kind", "physical"),
-            ("holding_location", ""),
-            ("holding_file", ""),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", ""),
+            ("holding_file_0", ""),
         ])
         .await;
     let next = response.header("location").to_str().unwrap().to_string();

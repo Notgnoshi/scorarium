@@ -1,5 +1,4 @@
 use axum::http::StatusCode;
-use scorarium::db;
 use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
@@ -34,8 +33,8 @@ async fn claim_flow() {
 #[tokio::test]
 async fn demo_needs_no_login() {
     let state = TestDb::new().demo().build().await;
-    let library = db::list_libraries(&state.pool).await.unwrap()[0].id;
-    let server = browser(state);
+    let library = state.archive.libraries().await.unwrap()[0].id;
+    let server = browser(state.clone());
 
     // A page that would otherwise redirect to /login
     let response = server.get(&format!("/library/{library}/import")).await;

@@ -1,54 +1,51 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum_extra::extract::Form as MultiForm;
+use scorarium_archive::{
+    Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, PendingImport, PublicationErrors,
+    PublicationRawInput, ValidationError, WorkRawInput, parse_holdings,
+};
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, FormFields, RowEdit, Session, WorkFields, pair_errors};
-use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
-use crate::db::publication::HoldingKind;
-use crate::publication_form::{Errors, HoldingRow, PublicationForm, Submission};
-use crate::{AppState, db, import, publication_form, work_form};
+use super::work::WorkPost;
+use super::{
+    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
+    WorkFields,
+};
+use crate::AppState;
+use crate::publication_post::{self, PublicationPost};
 
 const UNTITLED: &str = "Untitled import";
+const UNTITLED_WORK: &str = "Untitled work";
 
-pub struct PendingRow {
+/// One pending import as a list shows it.
+pub struct ShownImport {
     pub import: PendingImport,
     pub title: String,
-    pub holdings: Vec<HoldingRow>,
+    /// The copies its draft holds, which are the ones the entry page entered until someone edits
+    pub holdings: Vec<HoldingRawInput>,
     pub age: String,
 }
 
-/// Rows for one library's list, or for the cross-library queue.
-async fn pending_rows(state: &AppState, library_id: Option<i64>) -> sqlx::Result<Vec<PendingRow>> {
-    Ok(pending_import::list(&state.pool, library_id)
-        .await?
-        .into_iter()
-        .map(|import| {
-            let draft = state
-                .drafts
-                .get(import.id)
-                .unwrap_or_else(|| import::Draft::seed(&import));
-            PendingRow {
-                title: label(&import, &draft.form),
-                holdings: draft.form.holdings,
-                age: age(import.created_at),
-                import,
-            }
-        })
-        .collect())
+fn shown(import: PendingImport) -> ShownImport {
+    let draft = import.draft();
+    ShownImport {
+        title: label(&import, &draft.input),
+        holdings: draft.input.holdings,
+        age: age(import.created_at),
+        import,
+    }
 }
 
 /// What to call a pending import: its draft's title, else what was typed, else a placeholder.
-fn label(import: &PendingImport, draft: &PublicationForm) -> String {
+fn label(import: &PendingImport, draft: &PublicationRawInput) -> String {
     [draft.title.as_str(), import.query.as_str(), UNTITLED]
         .into_iter()
-        .find(|s| !s.is_empty())
+        .find(|text| !text.is_empty())
         .unwrap_or(UNTITLED)
         .to_string()
 }
@@ -73,13 +70,14 @@ fn age(created_at: i64) -> String {
 #[template(path = "import.html")]
 struct EntryPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     /// What to show in the form: blank on a visit, the rejected submission on an error
     query: String,
     more: bool,
-    holding_rows: Vec<(HoldingRow, String)>,
-    errors: Errors,
-    pending: Vec<PendingRow>,
+    holdings: Vec<ShownHolding>,
+    /// The message for having no copies at all, empty when there is one
+    no_holdings: String,
+    pending: Vec<ShownImport>,
     /// The shared list fragment shows a library column only on the cross-library queue.
     show_library: bool,
 }
@@ -97,62 +95,65 @@ pub async fn entry(
     Path(id): Path<i64>,
     Query(query): Query<EntryQuery>,
 ) -> Result<Response, AppError> {
-    let rows = vec![HoldingRow {
+    let library = state.archive.library(id).await?.or_not_found()?;
+    let blank = vec![HoldingRawInput {
         id: None,
         kind: HoldingKind::Physical,
         location: String::new(),
     }];
     render_entry(
-        &state,
-        id,
+        &library,
         base,
         String::new(),
         query.more.is_some(),
-        rows,
-        Errors::default(),
+        blank,
+        HoldingErrors::default(),
     )
     .await
 }
 
 async fn render_entry(
-    state: &AppState,
-    id: i64,
+    library: &Library,
     base: BaseContext,
     query: String,
     more: bool,
-    rows: Vec<HoldingRow>,
-    errors: Errors,
+    raw: Vec<HoldingRawInput>,
+    errors: HoldingErrors,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let holding_rows = pair_errors(&rows, &errors.holdings);
+    let holdings = raw
+        .iter()
+        .enumerate()
+        .map(|(i, holding)| ShownHolding {
+            id: holding.id.map(|id| id.to_string()).unwrap_or_default(),
+            kind: holding.kind.as_str(),
+            location: holding.location.clone(),
+            message: message(errors.each.get(i).and_then(Option::as_ref)),
+        })
+        .collect();
     let page = EntryPage {
-        base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
-        pending: pending_rows(state, Some(id)).await?,
+        base: base.page("Import", vec![Crumb::home(), Crumb::library(library)]),
+        pending: library
+            .pending_imports()
+            .await?
+            .into_iter()
+            .map(shown)
+            .collect(),
         show_library: false,
-        library,
+        no_holdings: message(errors.none.as_ref()),
+        library: library.clone(),
+        holdings,
         query,
         more,
-        holding_rows,
-        errors,
     };
     Ok(Html(page.render()?).into_response())
 }
 
+/// Everything the entry page posts under a fixed key; its copies come from the raw pairs, as on
+/// the review page.
 #[derive(Deserialize)]
 pub struct StartForm {
     #[serde(default)]
     query: String,
-    // Copy rows as parallel repeated keys, decoded as on the review page
-    #[serde(default)]
-    holding_id: Vec<String>,
-    #[serde(default)]
-    holding_kind: Vec<HoldingKind>,
-    #[serde(default)]
-    holding_location: Vec<String>,
-    #[serde(default)]
-    holding_file: Vec<String>,
     /// Present when the "Import more" box is checked; browsers send "on".
     more: Option<String>,
 }
@@ -163,43 +164,22 @@ pub async fn start(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path(id): Path<i64>,
-    MultiForm(form): MultiForm<StartForm>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let rows = publication_form::holding_rows(
-        form.holding_id,
-        form.holding_kind,
-        form.holding_location,
-        form.holding_file,
-    );
-    let mut errors = Errors::default();
-    let holdings = publication_form::parse_holdings(&rows, &mut errors);
+    let form: StartForm = publication_post::decode_form(&body)?;
+    let pairs: Vec<(String, String)> = publication_post::decode_form(&body)?;
+    let raw = publication_post::holdings(&pairs);
     let more = form.more.is_some();
-    if !errors.is_empty() {
-        return render_entry(&state, id, base, form.query, more, rows, errors).await;
-    }
-    if db::get_library(&state.pool, id).await?.is_none() {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    let holdings: Vec<PendingHolding> = holdings
-        .into_iter()
-        .map(|h| PendingHolding {
-            kind: h.kind,
-            location: h.location,
-        })
-        .collect();
-    let pending_id = pending_import::create(
-        &state.pool,
-        &NewPendingImport {
-            library_id: id,
-            query: form.query.trim(),
-            holdings: &holdings,
-        },
-    )
-    .await?;
+    let library = state.archive.library(id).await?.or_not_found()?;
+    let holdings = match parse_holdings(&raw) {
+        Ok(holdings) => holdings,
+        Err(errors) => return render_entry(&library, base, form.query, more, raw, errors).await,
+    };
+    let import = library.start_import(&form.query, &holdings).await?;
     let next = if more {
         format!("/library/{id}/import?more=1")
     } else {
-        format!("/library/{id}/import/{pending_id}")
+        format!("/library/{id}/import/{}", import.id)
     };
     Ok(Redirect::to(&next).into_response())
 }
@@ -208,7 +188,7 @@ pub async fn start(
 #[template(path = "import_review.html")]
 struct ReviewPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     import: PendingImport,
     age: String,
     fields: FormFields,
@@ -221,22 +201,16 @@ pub async fn review(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let draft = import.draft();
+    let title = label(&import, &draft.input);
+    // Errors show for saved drafts only; a fresh import should not open covered in warnings
+    let errors = if draft.saved {
+        draft.input.parse().err().unwrap_or_default()
+    } else {
+        PublicationErrors::default()
     };
-    let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let (draft, errors) = match state.drafts.get(id) {
-        // Errors show for saved drafts only; a fresh import should not open covered in warnings
-        Some(draft) => {
-            let errors = draft.parse().err().unwrap_or_default();
-            (draft, errors)
-        }
-        None => (import::Draft::seed(&import), Errors::default()),
-    };
-    let title = label(&import, &draft.form);
-    let contributors = contributor_counts(&draft);
     let page = ReviewPage {
         base: base.page(
             title,
@@ -247,9 +221,9 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        fields: FormFields::build(&state.pool, library_id, draft.form, errors, &contributors)
+        fields: FormFields::build(&library, draft.input, errors)
             .await?
-            .edit_works(RowEdit::Draft),
+            .edit_works(WorkEdit::Draft),
         library,
         import,
     };
@@ -261,40 +235,23 @@ pub async fn save(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(submission): MultiForm<Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    // Read before the submission is consumed; the index names a row, since a row added just now
-    // has no draft id to name
-    let edit_work = submission.edit_work();
-    let draft = load_draft(&state, &pending, submission);
-    let next = match edit_work.and_then(|i| draft.works.get(i)) {
-        Some(work) => format!("/library/{library_id}/import/{id}/work/{}", work.id),
+    let post = PublicationPost::decode(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    // Read before the submission is consumed. It names a work by position, since a work added just
+    // now has no draft id to name it by.
+    let edit_work = post.edit_work();
+    let draft = import.save_draft(post.merge(import.draft().input.contents));
+    let next = match edit_work.and_then(|i| draft.input.contents.get(i)) {
+        Some(work) => {
+            let work_id = work.id.expect("saving a draft names every work it holds");
+            format!("/library/{library_id}/import/{id}/work/{work_id}")
+        }
         None => format!("/library/{library_id}/import/{id}"),
     };
-    state.drafts.save(id, draft);
     Ok(Redirect::to(&next).into_response())
-}
-
-/// How many people each draft work credits, for the "and N more" its row shows.
-fn contributor_counts(draft: &import::Draft) -> HashMap<i64, usize> {
-    draft
-        .works
-        .iter()
-        .map(|work| (work.id, work.form.contributors.len()))
-        .collect()
-}
-
-/// The stored draft with this submission merged into it, or a seeded one when nothing is stored
-fn load_draft(state: &AppState, pending: &PendingImport, submission: Submission) -> import::Draft {
-    let mut draft = state
-        .drafts
-        .get(pending.id)
-        .unwrap_or_else(|| import::Draft::seed(pending));
-    draft.merge(submission.into());
-    draft
 }
 
 /// POST /library/{library_id}/import/{id}/submit
@@ -302,29 +259,26 @@ pub async fn submit(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
-    MultiForm(submission): MultiForm<Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let Some(pending) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let draft = load_draft(&state, &pending, submission);
-    let (publication, works) = match draft.parse() {
-        Ok(parsed) => parsed,
-        // Keep the edits so the review page can show what is wrong with them
-        Err(_) => {
-            state.drafts.save(id, draft);
-            return Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response());
+    let post = PublicationPost::decode(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let input = post.merge(import.draft().input.contents);
+    match input.parse() {
+        Ok(parsed) => {
+            let publication = import.accept_into_publication(&parsed).await?;
+            Ok(Redirect::to(&format!(
+                "/library/{library_id}/publication/{}",
+                publication.id
+            ))
+            .into_response())
         }
-    };
-    let publication_id = import::accept(&state.pool, &pending, &publication, &works).await?;
-    // Accepted here or already gone from another tab: either way the draft is finished with
-    state.drafts.remove(id);
-    match publication_id {
-        Some(publication_id) => Ok(Redirect::to(&format!(
-            "/library/{library_id}/publication/{publication_id}"
-        ))
-        .into_response()),
-        None => Ok(StatusCode::NOT_FOUND.into_response()),
+        // Keep the edits, so the review page can show what is wrong with them
+        Err(_) => {
+            import.save_draft(input);
+            Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+        }
     }
 }
 
@@ -332,43 +286,34 @@ pub async fn submit(
 #[template(path = "import_work.html")]
 struct ImportWorkPage {
     base: BaseContext,
-    library: db::Library,
+    library: Library,
     import: PendingImport,
     work_id: i64,
     fields: WorkFields,
 }
 
-const UNTITLED_WORK: &str = "Untitled work";
-
 /// GET /library/{library_id}/import/{id}/work/{work_id}
 ///
-/// A draft work lives only inside a saved draft, so a draft the store does not have, or an id it
-/// does not know, is a 404 rather than a blank form.
+/// A draft work lives only inside a saved draft, so an unsaved draft, or an id it does not know,
+/// is a 404 rather than a blank form.
 pub async fn work(
     _session: Session,
     State(state): State<Arc<AppState>>,
     base: BaseContext,
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(&state.pool, library_id).await? else {
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let draft = import.draft();
+    let Some(input) = draft_work(&draft, work_id).cloned() else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let Some(draft) = state.drafts.get(id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let Some(work) = draft.works.iter().find(|work| work.id == work_id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let form = work.form.clone();
     // As on the review page, a saved draft shows what is wrong with it
-    let errors = form.parse().err().unwrap_or_default();
-    let title = if form.title.is_empty() {
+    let errors = input.parse().err().unwrap_or_default();
+    let title = if input.title.is_empty() {
         UNTITLED_WORK.to_string()
     } else {
-        form.title.clone()
+        input.title.clone()
     };
     let page = ImportWorkPage {
         base: base.page(
@@ -377,10 +322,10 @@ pub async fn work(
                 Crumb::home(),
                 Crumb::library(&library),
                 Crumb::import(&library),
-                Crumb::import_review(&import, &label(&import, &draft.form)),
+                Crumb::import_review(&import, &label(&import, &draft.input)),
             ],
         ),
-        fields: WorkFields::build(&state.pool, library_id, form, errors).await?,
+        fields: WorkFields::build(&library, input, errors).await?,
         work_id,
         library,
         import,
@@ -393,29 +338,50 @@ pub async fn save_work(
     _session: Session,
     State(state): State<Arc<AppState>>,
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
-    MultiForm(submission): MultiForm<work_form::Submission>,
+    RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    if pending_import::get(&state.pool, library_id, id)
-        .await?
-        .is_none()
-    {
+    let post: WorkPost = publication_post::decode_form(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let import = library.pending_import(id).await?.or_not_found()?;
+    let mut draft = import.draft();
+    if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let Some(mut draft) = state.drafts.get(id) else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    let edited = WorkRawInput {
+        // The page names the work it edits, so what it posts need not
+        id: Some(work_id),
+        ..WorkRawInput::from(post)
     };
-    if !draft.set_work(work_id, submission.into()) {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    for work in &mut draft.input.contents {
+        if work.id == Some(work_id) {
+            *work = edited;
+            break;
+        }
     }
-    state.drafts.save(id, draft);
+    import.save_draft(draft.input);
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
+}
+
+/// The work a saved draft holds under this id. An unsaved draft holds none: a draft work comes
+/// into being only when the review page is saved.
+fn draft_work(draft: &Draft, work_id: i64) -> Option<&WorkRawInput> {
+    draft
+        .saved
+        .then(|| {
+            draft
+                .input
+                .contents
+                .iter()
+                .find(|work| work.id == Some(work_id))
+        })
+        .flatten()
 }
 
 #[derive(Template)]
 #[template(path = "review.html")]
 struct QueuePage {
     base: BaseContext,
-    pending: Vec<PendingRow>,
+    pending: Vec<ShownImport>,
     show_library: bool,
 }
 
@@ -427,7 +393,13 @@ pub async fn queue(
 ) -> Result<Response, AppError> {
     let page = QueuePage {
         base: base.page("Review queue", vec![Crumb::home()]),
-        pending: pending_rows(&state, None).await?,
+        pending: state
+            .archive
+            .pending_imports()
+            .await?
+            .into_iter()
+            .map(shown)
+            .collect(),
         show_library: true,
     };
     Ok(Html(page.render()?).into_response())
@@ -439,9 +411,17 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    if !pending_import::delete(&state.pool, library_id, id).await? {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    state.drafts.remove(id);
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    library
+        .pending_import(id)
+        .await?
+        .or_not_found()?
+        .discard()
+        .await?;
     Ok(Redirect::to(&format!("/library/{library_id}/import")).into_response())
+}
+
+/// A message for the page, empty when there is nothing wrong.
+fn message(error: Option<&ValidationError>) -> String {
+    error.map(ToString::to_string).unwrap_or_default()
 }

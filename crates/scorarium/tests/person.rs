@@ -1,19 +1,15 @@
-use std::sync::Arc;
-
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use scorarium::{db, router};
+use scorarium::router;
 use scorarium_tests::TestDb;
 
 #[tokio::test]
 async fn person_page() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap();
     let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = db::publication::list(&state.pool, sheet_music.id)
-        .await
-        .unwrap();
+    let publications = sheet_music.publications().await.unwrap();
     let album = publications
         .iter()
         .find(|p| p.title == "Russian piano album")
@@ -22,17 +18,12 @@ async fn person_page() {
         .iter()
         .find(|p| p.title.starts_with("Rachmaninoff masterpieces"))
         .unwrap();
-    let album_works = db::work::list_in_publication(&state.pool, sheet_music.id, album.id)
-        .await
-        .unwrap();
+    let album_works = album.works().await.unwrap();
     let prelude = album_works
         .iter()
         .find(|w| w.title == "Prelude in C-sharp minor")
         .unwrap();
-    let masterpieces_works =
-        db::work::list_in_publication(&state.pool, sheet_music.id, masterpieces.id)
-            .await
-            .unwrap();
+    let masterpieces_works = masterpieces.works().await.unwrap();
     let polichinelle = masterpieces_works
         .iter()
         .find(|w| w.title == "Polichinelle")
@@ -47,7 +38,7 @@ async fn person_page() {
     };
     let rachmaninoff = person_id("Sergei Rachmaninoff");
     let kabalevsky = person_id("Dmitri Kabalevsky");
-    let server = TestServer::new(router(Arc::new(state)));
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!(
@@ -108,17 +99,12 @@ async fn person_page() {
 #[tokio::test]
 async fn composers_and_authors_pages() {
     let state = TestDb::new().demo().build().await;
-    let libraries = db::list_libraries(&state.pool).await.unwrap();
+    let libraries = state.archive.libraries().await.unwrap();
     let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
-    let sheet_music = libraries
-        .iter()
-        .find(|l| l.name == "Sheet music")
-        .unwrap()
-        .id;
-    let composers = db::person::list_with_role(&state.pool, sheet_music, "composer")
-        .await
-        .unwrap();
-    let server = TestServer::new(router(Arc::new(state)));
+    let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let sheet_music = library.id;
+    let composers = library.persons_with_role("composer").await.unwrap();
+    let server = TestServer::new(router(state));
 
     let response = server
         .get(&format!("/library/{sheet_music}/composers"))

@@ -8,7 +8,6 @@ mod person;
 mod publication;
 mod work;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
@@ -18,9 +17,15 @@ use axum::http::request::Parts;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
+use scorarium_archive::{
+    ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound, PendingImport,
+    Publication, PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors,
+    WorkRawInput,
+};
 use tower_http::trace::TraceLayer;
 
-use crate::{AppState, db, publication_form, work_form};
+use crate::AppState;
+use crate::publication_post::{self, BadForm};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
@@ -38,21 +43,21 @@ impl Crumb {
         }
     }
 
-    pub fn library(library: &db::Library) -> Self {
+    pub fn library(library: &Library) -> Self {
         Self {
             label: library.name.clone(),
             href: format!("/library/{}", library.id),
         }
     }
 
-    pub fn import(library: &db::Library) -> Self {
+    pub fn import(library: &Library) -> Self {
         Self {
             label: "Import".to_string(),
             href: format!("/library/{}/import", library.id),
         }
     }
 
-    pub fn publication(publication: &db::publication::Publication) -> Self {
+    pub fn publication(publication: &Publication) -> Self {
         Self {
             label: publication.title.clone(),
             href: format!(
@@ -63,14 +68,14 @@ impl Crumb {
     }
 
     /// The import under review, by the label its page shows.
-    pub fn import_review(import: &db::pending_import::PendingImport, label: &str) -> Self {
+    pub fn import_review(import: &PendingImport, label: &str) -> Self {
         Self {
             label: label.to_string(),
             href: format!("/library/{}/import/{}", import.library_id, import.id),
         }
     }
 
-    pub fn work(work: &db::work::Work) -> Self {
+    pub fn work(work: &Work) -> Self {
         Self {
             label: work.title.clone(),
             href: format!("/library/{}/work/{}", work.library_id, work.id),
@@ -106,7 +111,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
                 .get(SESSION_COOKIE)
                 .is_some_and(|cookie| state.sessions.validate(cookie.value()));
         let pending_import_count = if logged_in {
-            db::pending_import::count(&state.pool).await?
+            state.archive.pending_import_count().await?
         } else {
             0
         };
@@ -136,9 +141,12 @@ impl BaseContext {
 /// Suggested alongside the library's existing roles, so a new library still gets a datalist.
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
-/// What a work row's edit control does, which is a property of the page rather than the row.
+/// What a work shows when its only problem is a field the publication form does not reach.
+const HIDDEN_WORK_PROBLEM: &str = "A contributor is incomplete. Open the work to fix it.";
+
+/// What a work's edit control does, which is a property of the page rather than the work.
 #[derive(Default)]
-pub enum RowEdit {
+pub enum WorkEdit {
     /// Link to the stored work's edit page, which returns to `back` when it is done
     Stored { back: String },
     /// Save the draft and open the draft work, since a draft work has no stable link of its own
@@ -146,74 +154,91 @@ pub enum RowEdit {
     Draft,
 }
 
-impl RowEdit {
+impl WorkEdit {
     pub fn is_draft(&self) -> bool {
-        matches!(self, RowEdit::Draft)
+        matches!(self, WorkEdit::Draft)
     }
 
-    /// Where a stored row's edit link returns to. Empty for a draft row, which has no link.
+    /// Where a stored work's edit link returns to. Empty for a draft work, which has no link.
     pub fn back(&self) -> &str {
         match self {
-            RowEdit::Stored { back } => back,
-            RowEdit::Draft => "",
+            WorkEdit::Stored { back } => back,
+            WorkEdit::Draft => "",
         }
     }
+}
+
+/// One copy as the form shows it. The macros take plain strings, so that a filled copy and the
+/// blank template copy render through the same code.
+pub struct ShownHolding {
+    /// The hidden field's value: the stored copy's id, empty for one being added
+    pub id: String,
+    pub kind: &'static str,
+    pub location: String,
+    pub message: String,
+}
+
+/// One work as the publication form shows it: its title and the one contributor the page picks.
+pub struct ShownWork {
+    /// The hidden field's value: the work's id, empty for one being added
+    pub id: String,
+    pub title: String,
+    pub name: String,
+    pub role: String,
+    /// How many contributors the form does not show, empty when it shows them all
+    pub more: String,
+    pub message: String,
 }
 
 /// Everything the shared publication form fragment renders. The import review page and the
 /// publication edit page show the same fields, so they build the same context for them.
 pub struct FormFields {
-    pub form: publication_form::PublicationForm,
-    pub errors: publication_form::Errors,
-    // Rows paired with their error, empty when there is none, so the row macros take plain strings
-    // for both the filled rows and the blank template row.
-    pub holding_rows: Vec<(publication_form::HoldingRow, String)>,
-    pub identifier_rows: Vec<(publication_form::IdentifierRow, String)>,
-    pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
-    // A work row shows one contributor, so it also carries how many more the work credits, empty
-    // when it credits no others
-    pub work_rows: Vec<(publication_form::WorkRow, String, String)>,
+    pub input: PublicationRawInput,
+    pub errors: PublicationErrors,
+    pub holdings: Vec<ShownHolding>,
+    /// The message for having no copies at all, empty when there is one
+    pub no_holdings: String,
+    pub identifiers: Vec<(IdentifierRawInput, String)>,
+    pub contributors: Vec<(ContributorInput, String)>,
+    pub works: Vec<ShownWork>,
     // Datalist suggestions for the role and name inputs
     pub roles: Vec<String>,
     pub names: Vec<String>,
     pub no_copies_warning: String,
-    pub row_edit: RowEdit,
+    pub work_edit: WorkEdit,
 }
 
 impl FormFields {
-    /// `contributors` is how many people each work credits, by the id its rows carry: the stored
-    /// works' ids on the publication edit page, the draft's own on the review page.
     pub async fn build(
-        pool: &sqlx::SqlitePool,
-        library_id: i64,
-        form: publication_form::PublicationForm,
-        errors: publication_form::Errors,
-        contributors: &HashMap<i64, usize>,
-    ) -> sqlx::Result<Self> {
-        let (roles, names) = suggestions(pool, library_id).await?;
+        library: &Library,
+        input: PublicationRawInput,
+        errors: PublicationErrors,
+    ) -> Result<Self, AppError> {
+        let (roles, names) = suggestions(library).await?;
         Ok(Self {
-            holding_rows: pair_errors(&form.holdings, &errors.holdings),
-            identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
-            contributor_rows: pair_errors(&form.contributors, &errors.contributors),
-            work_rows: work_rows(&form.works, &errors.works, contributors),
+            holdings: shown_holdings(&input.holdings, &errors.holdings.each),
+            no_holdings: message(&errors.holdings.none),
+            identifiers: pair_messages(&input.identifiers, &errors.identifiers),
+            contributors: pair_messages(&input.contributors, &errors.contributors),
+            works: shown_works(&input.contents, &errors.contents),
             no_copies_warning: String::new(),
-            row_edit: RowEdit::default(),
+            work_edit: WorkEdit::default(),
             roles,
             names,
-            form,
+            input,
             errors,
         })
     }
 
-    /// What to warn when the last copy row is removed, on the page that can act on it.
+    /// What to warn when the last copy is removed, on the page that can act on it.
     pub fn warn_when_empty(mut self, warning: &str) -> Self {
         self.no_copies_warning = warning.to_string();
         self
     }
 
-    /// What a work row's edit control does on this page.
-    pub fn edit_works(mut self, row_edit: RowEdit) -> Self {
-        self.row_edit = row_edit;
+    /// What a work's edit control does on this page.
+    pub fn edit_works(mut self, work_edit: WorkEdit) -> Self {
+        self.work_edit = work_edit;
         self
     }
 }
@@ -221,78 +246,121 @@ impl FormFields {
 /// Everything the shared work form fragment renders. The stored work edit page and the draft work
 /// page show the same fields, so they build the same context for them.
 pub struct WorkFields {
-    pub form: work_form::WorkForm,
-    pub errors: work_form::Errors,
-    pub contributor_rows: Vec<(publication_form::ContributorRow, String)>,
+    pub input: WorkRawInput,
+    pub errors: WorkErrors,
+    pub contributors: Vec<(ContributorInput, String)>,
     pub roles: Vec<String>,
     pub names: Vec<String>,
 }
 
 impl WorkFields {
     pub async fn build(
-        pool: &sqlx::SqlitePool,
-        library_id: i64,
-        form: work_form::WorkForm,
-        errors: work_form::Errors,
-    ) -> sqlx::Result<Self> {
-        let (roles, names) = suggestions(pool, library_id).await?;
+        library: &Library,
+        input: WorkRawInput,
+        errors: WorkErrors,
+    ) -> Result<Self, AppError> {
+        let (roles, names) = suggestions(library).await?;
         Ok(Self {
-            contributor_rows: pair_errors(&form.contributors, &errors.contributors),
+            contributors: pair_messages(&input.contributors, &errors.contributors),
             roles,
             names,
-            form,
+            input,
             errors,
         })
     }
 }
 
 /// Datalist suggestions for the role and name inputs, as (roles, names).
-async fn suggestions(
-    pool: &sqlx::SqlitePool,
-    library_id: i64,
-) -> sqlx::Result<(Vec<String>, Vec<String>)> {
-    let roles = db::person::list_roles(pool, library_id)
+async fn suggestions(library: &Library) -> Result<(Vec<String>, Vec<String>), AppError> {
+    let roles = library
+        .roles()
         .await?
         .into_iter()
-        .chain(CONVENTIONAL_ROLES.iter().map(|r| r.to_string()))
+        .chain(CONVENTIONAL_ROLES.iter().map(|role| role.to_string()))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    Ok((roles, db::person::list_names(pool, library_id).await?))
+    Ok((roles, library.person_names().await?))
 }
 
-/// Pair each work row with the number of contributors the row does not show and its message. A row
-/// naming no work yet shows none.
-fn work_rows(
-    rows: &[publication_form::WorkRow],
-    errors: &[Option<String>],
-    contributors: &HashMap<i64, usize>,
-) -> Vec<(publication_form::WorkRow, String, String)> {
-    pair_errors(rows, errors)
-        .into_iter()
-        .map(|(row, error)| {
-            let more = row
-                .id
-                .and_then(|id| contributors.get(&id))
-                // A work may credit nobody at all, so the row shows one contributor fewer than the
-                // work has only when it has any
-                .map(|count| count.saturating_sub(1))
-                .filter(|more| *more > 0)
-                .map(|more| more.to_string())
-                .unwrap_or_default();
-            (row, more, error)
+fn shown_holdings(
+    holdings: &[HoldingRawInput],
+    errors: &[Option<ValidationError>],
+) -> Vec<ShownHolding> {
+    holdings
+        .iter()
+        .enumerate()
+        .map(|(i, holding)| ShownHolding {
+            id: holding.id.map(|id| id.to_string()).unwrap_or_default(),
+            kind: holding.kind.as_str(),
+            location: holding.location.clone(),
+            message: message(errors.get(i).unwrap_or(&None)),
         })
         .collect()
 }
 
-/// Pair each row with its message. A form that parsed clean has no error slots at all, so the rows
-/// cannot simply be zipped with the errors.
-fn pair_errors<T: Clone>(rows: &[T], errors: &[Option<String>]) -> Vec<(T, String)> {
-    rows.iter()
+fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWork> {
+    let no_errors = WorkErrors::default();
+    contents
+        .iter()
+        .enumerate()
+        .map(|(i, work)| {
+            let errors = errors.get(i).unwrap_or(&no_errors);
+            let lead = publication_post::lead_contributor(&work.contributors);
+            let shown = lead
+                .map(|i| work.contributors[i].clone())
+                .unwrap_or_default();
+            ShownWork {
+                id: work.id.map(|id| id.to_string()).unwrap_or_default(),
+                title: work.title.clone(),
+                name: shown.name,
+                role: shown.role,
+                // A work may credit nobody at all, so say how many are hidden only when any are
+                more: match work.contributors.len() {
+                    0 | 1 => String::new(),
+                    credited => (credited - 1).to_string(),
+                },
+                message: work_message(errors, lead),
+            }
+        })
+        .collect()
+}
+
+/// What a work says on the publication form: the problem with a field it shows, else a note that
+/// the problem is one the form cannot reach, so a refused submit is always explainable.
+fn work_message(errors: &WorkErrors, lead: Option<usize>) -> String {
+    if let Some(error) = &errors.title {
+        return error.to_string();
+    }
+    if let Some(error) = lead
+        .and_then(|i| errors.contributors.get(i))
+        .and_then(Option::as_ref)
+    {
+        return error.to_string();
+    }
+    if errors.contributors.iter().any(Option::is_some) {
+        return HIDDEN_WORK_PROBLEM.to_string();
+    }
+    String::new()
+}
+
+/// Pair each value with its message. An input that parsed clean has no message slots at all, so
+/// the values cannot simply be zipped with the errors.
+fn pair_messages<T: Clone>(values: &[T], errors: &[Option<ValidationError>]) -> Vec<(T, String)> {
+    values
+        .iter()
         .cloned()
         .enumerate()
-        .map(|(i, row)| (row, errors.get(i).cloned().flatten().unwrap_or_default()))
+        .map(|(i, value)| (value, message(errors.get(i).unwrap_or(&None))))
         .collect()
+}
+
+/// A message for the page, empty when there is nothing wrong.
+fn message(error: &Option<ValidationError>) -> String {
+    error
+        .as_ref()
+        .map(ValidationError::to_string)
+        .unwrap_or_default()
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -380,6 +448,12 @@ pub struct AppError(color_eyre::Report);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        if self.0.downcast_ref::<NotFound>().is_some() {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        if self.0.downcast_ref::<BadForm>().is_some() {
+            return StatusCode::UNPROCESSABLE_ENTITY.into_response();
+        }
         tracing::error!(error = ?self.0, "handler error");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
@@ -388,5 +462,16 @@ impl IntoResponse for AppError {
 impl<E: Into<color_eyre::Report>> From<E> for AppError {
     fn from(err: E) -> Self {
         Self(err.into())
+    }
+}
+
+/// Return 404 for a lookup that found nothing
+pub trait OrNotFound<T> {
+    fn or_not_found(self) -> Result<T, AppError>;
+}
+
+impl<T> OrNotFound<T> for Option<T> {
+    fn or_not_found(self) -> Result<T, AppError> {
+        self.ok_or_else(|| AppError(NotFound.into()))
     }
 }

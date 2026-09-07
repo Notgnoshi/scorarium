@@ -3,21 +3,19 @@ use std::sync::Arc;
 use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use scorarium_archive::{Library, Publication};
 use serde::Deserialize;
-use sqlx::SqlitePool;
 
-use super::{AppError, BaseContext, Crumb, Session, index};
-use crate::db::pending_import;
-use crate::{AppState, db};
+use super::{AppError, BaseContext, Crumb, OrNotFound, Session, index};
+use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "library.html")]
 struct LibraryPage {
     base: BaseContext,
-    library: db::Library,
-    publications: Vec<db::publication::Publication>,
+    library: Library,
+    publications: Vec<Publication>,
     // Link only to listings with something in them
     has_composers: bool,
     has_authors: bool,
@@ -30,24 +28,22 @@ pub async fn library(
     base: BaseContext,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    render(&state.pool, id, base, None).await
+    render(&state, id, base, None).await
 }
 
 async fn render(
-    pool: &SqlitePool,
+    state: &AppState,
     id: i64,
     base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
-    let Some(library) = db::get_library(pool, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let roles = db::person::list_roles(pool, id).await?;
+    let library = state.archive.library(id).await?.or_not_found()?;
+    let roles = library.roles().await?;
     let page = LibraryPage {
         base: base.page(library.name.clone(), vec![Crumb::home()]),
-        publications: db::publication::list(pool, id).await?,
-        has_composers: roles.iter().any(|r| r == "composer"),
-        has_authors: roles.iter().any(|r| r == "author"),
+        publications: library.publications().await?,
+        has_composers: roles.iter().any(|role| role == "composer"),
+        has_authors: roles.iter().any(|role| role == "author"),
         library,
         error,
     };
@@ -70,11 +66,11 @@ pub async fn create(
 ) -> Result<Response, AppError> {
     let name = form.name.trim();
     if name.is_empty() {
-        return Ok(index::render(&state.pool, base, Some(EMPTY_NAME))
+        return Ok(index::render(&state, base, Some(EMPTY_NAME))
             .await?
             .into_response());
     }
-    db::create_library(&state.pool, name).await?;
+    state.archive.create_library(name).await?;
     Ok(Redirect::to("/").into_response())
 }
 
@@ -88,11 +84,10 @@ pub async fn rename(
 ) -> Result<Response, AppError> {
     let name = form.name.trim();
     if name.is_empty() {
-        return render(&state.pool, id, base, Some(EMPTY_NAME)).await;
+        return render(&state, id, base, Some(EMPTY_NAME)).await;
     }
-    if !db::rename_library(&state.pool, id, name).await? {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
+    let mut library = state.archive.library(id).await?.or_not_found()?;
+    library.rename(name).await?;
     Ok(Redirect::to(&format!("/library/{id}")).into_response())
 }
 
@@ -102,13 +97,7 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    // The library's pending imports cascade away with it, but their drafts live in memory
-    let pending = pending_import::list(&state.pool, Some(id)).await?;
-    if !db::delete_library(&state.pool, id).await? {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
-    for import in pending {
-        state.drafts.remove(import.id);
-    }
+    let library = state.archive.library(id).await?.or_not_found()?;
+    library.delete().await?;
     Ok(Redirect::to("/").into_response())
 }

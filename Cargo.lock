@@ -251,7 +251,6 @@ dependencies = [
  "axum-core",
  "bytes",
  "cookie",
- "form_urlencoded",
  "futures-core",
  "futures-util",
  "http",
@@ -259,9 +258,6 @@ dependencies = [
  "http-body-util",
  "mime",
  "pin-project-lite",
- "serde_core",
- "serde_html_form",
- "serde_path_to_error",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1816,7 +1812,6 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "scorarium"
 version = "0.1.0-rc1"
 dependencies = [
- "argon2",
  "askama",
  "axum",
  "axum-extra",
@@ -1825,16 +1820,28 @@ dependencies = [
  "color-eyre",
  "cookie",
  "getrandom",
- "isbn",
  "rust-embed",
+ "scorarium-archive",
  "scorarium-tests",
  "serde",
- "sqlx",
- "tempfile",
+ "serde_html_form",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "scorarium-archive"
+version = "0.1.0-rc1"
+dependencies = [
+ "argon2",
+ "eyre",
+ "isbn",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -1843,6 +1850,7 @@ version = "0.1.0-rc1"
 dependencies = [
  "axum-test",
  "scorarium",
+ "scorarium-archive",
 ]
 
 [[package]]
@@ -1877,15 +1885,15 @@ dependencies = [
 
 [[package]]
 name = "serde_html_form"
-version = "0.2.8"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2f2d7ff8a2140333718bb329f5c40fc5f0865b84c426183ce14c97d2ab8154f"
+checksum = "8f0346d7a342ab90f405cfc08f25d15075f944f42fcabbc5eac923829fa6d228"
 dependencies = [
  "form_urlencoded",
  "indexmap",
  "itoa",
- "ryu",
  "serde_core",
+ "zmij",
 ]
 
 [[package]]

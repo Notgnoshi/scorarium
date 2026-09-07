@@ -98,22 +98,30 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro holding_row(id, kind, location, error) %}
+{# `index` only has to be unique on the page: it scopes the kind's radio group, and nothing reads
+   it back apart from grouping a copy's fields together. #}
+{% macro holding_row(index, id, kind, location, error) %}
     <div class="d-flex gap-2 mb-2" data-row>
-        {# Identifies the stored copy this row edits, so it keeps its identity; empty when adding one #}
-        <input type="hidden" name="holding_id" value="{{ id }}" />
-        {# Using a radio group would require a unique ID per row, so build it with a checkbox #}
-        <input type="hidden" name="holding_kind" value="physical" />
-        <label class="kind-toggle d-inline-flex">
-            <input type="checkbox"
-                   class="visually-hidden"
-                   name="holding_kind"
-                   value="digital"
-                   aria-label="Digital"
-                   {% if kind == "digital" %}checked{% endif %} />
-            <span class="btn btn-outline-secondary">Physical</span>
-            <span class="btn btn-outline-secondary">Digital</span>
-        </label>
+        {# Identifies the stored copy this edits, so it keeps its identity; empty when adding one #}
+        <input type="hidden" name="holding_id_{{ index }}" value="{{ id }}" />
+        <div class="kind-toggle d-inline-flex" role="group" aria-label="Copy kind">
+            <label>
+                <input type="radio"
+                       class="visually-hidden"
+                       name="holding_kind_{{ index }}"
+                       value="physical"
+                       {% if kind == "physical" %}checked{% endif %} />
+                <span class="btn btn-outline-secondary">Physical</span>
+            </label>
+            <label>
+                <input type="radio"
+                       class="visually-hidden"
+                       name="holding_kind_{{ index }}"
+                       value="digital"
+                       {% if kind == "digital" %}checked{% endif %} />
+                <span class="btn btn-outline-secondary">Digital</span>
+            </label>
+        </div>
         {# Each input carries the value only for its own kind, so switching kinds starts the other empty #}
         <div class="input-group flex-fill w-auto{% if !error.is_empty() %} has-validation{% endif %}">
             <span class="input-group-text">
@@ -121,7 +129,7 @@
                 <i class="bi bi-file-earmark digital-only" aria-hidden="true"></i>
             </span>
             <input class="form-control physical-only{% if !error.is_empty() %} is-invalid{% endif %}"
-                   name="holding_location"
+                   name="holding_location_{{ index }}"
                    value="{% if kind == "physical" %}{{ location }}{% endif %}"
                    placeholder="Piano bench"
                    aria-label="Location" />
@@ -129,11 +137,11 @@
             {% if kind == "digital" && !location.is_empty() %}
                 <span class="input-group-text flex-fill text-truncate file-name digital-only"
                       data-file-name>{{ location }}</span>
-                <input type="hidden" name="holding_file" value="{{ location }}" />
+                <input type="hidden" name="holding_file_{{ index }}" value="{{ location }}" />
             {% else %}
                 <span class="input-group-text flex-fill text-truncate file-name digital-only{% if !error.is_empty() %} border-danger{% endif %}"
                       data-file-name><span class="opacity-50">No file chosen</span></span>
-                <input type="hidden" name="holding_file" value="" />
+                <input type="hidden" name="holding_file_{{ index }}" value="" />
             {% endif %}
             {# A label forwards clicks to the chooser inside it, so cloned rows need no unique id #}
             <label class="btn btn-outline-secondary digital-only"
@@ -152,24 +160,24 @@
         </div>
     </div>
 {% endmacro %}
-{% macro holdings_box(rows, no_holdings, no_copies_warning) %}
+{% macro holdings_box(holdings, no_holdings, no_copies_warning) %}
     <fieldset class="border rounded p-3 mb-3" data-rows data-copies>
         <legend class="float-none w-auto px-2 fs-6">Copies</legend>
         <div data-rows-list>
-            {% for (row, error) in rows %}
-                {% call holding_row(row.id_value(), row.kind.as_str(), row.location, error) %}
+            {% for h in holdings %}
+                {% call holding_row(loop.index0, h.id, h.kind, h.location, h.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
-        {% if let Some(error) = no_holdings %}
-            <div class="invalid-feedback d-block mb-2">{{ error }}</div>
+        {% if !no_holdings.is_empty() %}
+            <div class="invalid-feedback d-block mb-2">{{ no_holdings }}</div>
         {% endif %}
         {# Shown by CSS once the last row is removed, so the warning arrives with the click #}
         {% if !no_copies_warning.is_empty() %}
             <div class="text-danger mb-2 no-copies">{{ no_copies_warning }}</div>
         {% endif %}
         <template>
-            {% call holding_row("", "physical", "", "") %}
+            {% call holding_row("N", "", "physical", "", "") %}
             {% endcall %}
         </template>
         <button type="button"
@@ -182,8 +190,8 @@
 {% endmacro %}
 {% macro style() %}
     <style>
-        [data-row]:has([name="holding_kind"]:checked) .physical-only,
-        [data-row]:not(:has([name="holding_kind"]:checked)) .digital-only {
+        [data-row]:has([value="digital"]:checked) .physical-only,
+        [data-row]:not(:has([value="digital"]:checked)) .digital-only {
             display: none;
         }
 
@@ -195,27 +203,20 @@
             display: block;
         }
 
-        .kind-toggle {
-            pointer-events: none;
-        }
-
-        .kind-toggle .btn {
-            pointer-events: auto;
-        }
-
-        .kind-toggle .btn:first-of-type {
+        /* Each option is its own label, so the pair is joined by label position, not by the
+           buttons' position within a shared parent */
+        .kind-toggle label:first-child .btn {
             border-top-right-radius: 0;
             border-bottom-right-radius: 0;
         }
 
-        .kind-toggle .btn:last-of-type {
+        .kind-toggle label:last-child .btn {
             border-top-left-radius: 0;
             border-bottom-left-radius: 0;
             margin-left: calc(-1 * var(--bs-border-width));
         }
 
-        .kind-toggle:has(:checked) .btn:last-of-type,
-        .kind-toggle:not(:has(:checked)) .btn:first-of-type {
+        .kind-toggle :checked+.btn {
             color: var(--bs-btn-active-color);
             background-color: var(--bs-btn-active-bg);
             border-color: var(--bs-btn-active-border-color);
@@ -237,11 +238,20 @@
 {% endmacro %}
 {% macro script() %}
     <script>
+        let added = 0;
         for (const section of document.querySelectorAll("[data-rows]")) {
             const list = section.querySelector("[data-rows-list]");
             const template = section.querySelector("template");
             section.querySelector("[data-rows-add]").addEventListener("click", () => {
-                list.appendChild(template.content.cloneNode(true));
+                const row = template.content.cloneNode(true);
+                // The blank copy's field names carry an "N" placeholder, since a copy's kind is
+                // a radio group and needs a name no other copy on the page shares. The prefix
+                // keeps it clear of the indices the server rendered.
+                const index = `new${added++}`;
+                for (const field of row.querySelectorAll("[name$='_N']")) {
+                    field.name = field.name.slice(0, -1) + index;
+                }
+                list.appendChild(row);
             });
             list.addEventListener("click", (e) => {
                 e.target.closest("[data-rows-remove]")?.closest("[data-row]").remove();
@@ -260,7 +270,7 @@
             if (e.target.matches("[data-upload]") && e.target.files.length) {
                 const row = e.target.closest("[data-row]");
                 const name = e.target.files[0].name;
-                row.querySelector("[name=holding_file]").value = name;
+                row.querySelector("[name^=holding_file]").value = name;
                 row.querySelector("[data-file-name]").textContent = name;
             }
         });

@@ -3,6 +3,12 @@
 This project is not really intended to be used as a library, so the MSRV is the latest stable
 toolchain, and we aspire to keep all dependencies up-to-date.
 
+## Crate layout
+
+* `scorarium-archive` provides the project's data model and data persistence
+* `scorarium` is the web server
+* `scorarium-tests` provides test fixtures for integration tests
+
 It's a "usual" Rust project, so you can use `cargo` as normal:
 
 ```sh
@@ -31,7 +37,7 @@ regenerate that metadata against a migrated dev database and check in the result
 ```sh
 cargo install sqlx-cli --no-default-features --features sqlite
 export DATABASE_URL=sqlite://target/dev.db
-cargo sqlx database setup --source crates/scorarium/migrations
+cargo sqlx database setup --source crates/scorarium-archive/migrations
 cargo sqlx prepare --workspace -- --all-targets --all-features
 ```
 

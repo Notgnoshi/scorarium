@@ -8,3 +8,4 @@ description = "Test fixtures for scorarium"
 [dependencies]
 axum-test.workspace = true
 scorarium.workspace = true
+scorarium-archive.workspace = true

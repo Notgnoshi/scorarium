@@ -1,42 +1,34 @@
-pub mod auth;
-pub mod db;
-pub mod demo;
-pub mod identifier;
-pub mod import;
-pub mod publication_form;
+pub mod publication_post;
 pub mod router;
 pub mod session;
-pub mod work_form;
 
-use sqlx::SqlitePool;
+use scorarium_archive::Archive;
 
 pub use crate::router::router;
 
 /// Shared state for all request handlers.
 pub struct AppState {
-    pub pool: SqlitePool,
+    pub archive: Archive,
     pub sessions: session::SessionStore,
-    pub drafts: import::DraftStore,
     /// Whether the login cookie is marked Secure
     pub secure_cookies: bool,
     pub demo: bool,
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, secure_cookies: bool) -> Self {
+    pub fn new(archive: Archive, secure_cookies: bool) -> Self {
         Self {
-            pool,
+            archive,
             sessions: session::SessionStore::default(),
-            drafts: import::DraftStore::default(),
             secure_cookies,
             demo: false,
         }
     }
 
-    pub fn demo(pool: SqlitePool) -> Self {
+    pub fn demo(archive: Archive) -> Self {
         Self {
             demo: true,
-            ..Self::new(pool, true)
+            ..Self::new(archive, true)
         }
     }
 }

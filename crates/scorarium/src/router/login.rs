@@ -6,11 +6,11 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use scorarium_archive::PasswordCheck;
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, SESSION_COOKIE};
-use crate::auth::PasswordCheck;
-use crate::{AppState, auth, db, session};
+use crate::{AppState, session};
 
 /// GET /login
 pub async fn login_form(
@@ -21,7 +21,7 @@ pub async fn login_form(
         // already logged in; redirect to index
         return Ok(Redirect::to("/").into_response());
     }
-    let claimed = db::get_password_hash(&state.pool).await?.is_some();
+    let claimed = state.archive.password_claimed().await?;
     let page = if claimed {
         // the initial password has been set; show the login form
         login_page(base, None)?
@@ -51,14 +51,14 @@ pub async fn login(
         return Ok(Redirect::to("/").into_response());
     }
     // Re-check the claim state on every POST because the form the browser rendered may be stale
-    let claimed = db::get_password_hash(&state.pool).await?.is_some();
+    let claimed = state.archive.password_claimed().await?;
     let page = match (claimed, form.confirm) {
         (false, Some(confirm)) => {
             if form.password.is_empty() {
                 claim_page(base, Some("The password must not be empty."))?
             } else if confirm != form.password {
                 claim_page(base, Some("The passwords did not match."))?
-            } else if auth::claim_password(&state.pool, &form.password).await? {
+            } else if state.archive.claim_password(&form.password).await? {
                 return Ok(start_session(&state, jar));
             } else {
                 // Lost a race against a concurrent claim
@@ -67,7 +67,7 @@ pub async fn login(
         }
         (false, None) => claim_page(base, Some("No password is set yet. Set one first."))?,
         (true, Some(_)) => login_page(base, Some("A password is already set. Log in with it."))?,
-        (true, None) => match auth::verify_password(&state.pool, &form.password).await? {
+        (true, None) => match state.archive.verify_password(&form.password).await? {
             PasswordCheck::Correct => return Ok(start_session(&state, jar)),
             PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
                 login_page(base, Some("Login failed"))?
