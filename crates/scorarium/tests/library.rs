@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use scorarium::{db, router};
+use scorarium::router;
 use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
@@ -27,9 +27,7 @@ async fn library_page_lists_publications() {
     let state = TestDb::new().demo().build().await;
     let libraries = state.archive.libraries().await.unwrap();
     let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = db::publication::list(&state.pool, library.id)
-        .await
-        .unwrap();
+    let publications = library.publications().await.unwrap();
     let gymnopedies = publications
         .iter()
         .find(|p| p.title.starts_with("Three gymnopedies"))

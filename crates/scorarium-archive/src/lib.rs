@@ -53,8 +53,7 @@ impl std::fmt::Display for NotFound {
 
 impl std::error::Error for NotFound {}
 
-// TODO: Make private once all database interactions have moved inside the archive crate
-pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
 #[derive(Debug)]
 pub struct Archive {
@@ -106,11 +105,6 @@ impl Archive {
                 drafts: Mutex::default(),
             }),
         }
-    }
-
-    // TODO: Remove once all database interactions get migrated into the archive crate
-    pub fn pool(&self) -> &SqlitePool {
-        &self.shared.pool
     }
 
     /// Fill an empty archive with the demo libraries that `--demo` serves

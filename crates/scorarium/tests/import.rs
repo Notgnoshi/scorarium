@@ -1,5 +1,4 @@
 use axum::http::StatusCode;
-use scorarium::db;
 use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
@@ -9,11 +8,11 @@ async fn manual_import_flow() {
         .password("hunter2")
         .build()
         .await;
-    // Keep a handle on the database to look up ids the UI only exposes as links
-    let pool = state.pool.clone();
+    // Keep a handle on the archive to look up ids the UI only exposes as links
     let server = browser(state.clone());
-    let library = state.archive.libraries().await.unwrap()[0].id;
-    let entry = format!("/library/{library}/import");
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let library_id = library.id;
+    let entry = format!("/library/{library_id}/import");
 
     // Importing requires login
     let response = server.get(&entry).await;
@@ -195,7 +194,7 @@ async fn manual_import_flow() {
     response.assert_status(StatusCode::SEE_OTHER);
     let publication = response.header("location").to_str().unwrap().to_string();
     assert!(
-        publication.starts_with(&format!("/library/{library}/publication/")),
+        publication.starts_with(&format!("/library/{library_id}/publication/")),
         "{publication}"
     );
     let response = server.get(&publication).await;
@@ -205,10 +204,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
     // The contributor row creates Satie and the work row finds them again in the same transaction
-    assert_eq!(
-        db::person::list_names(&pool, library).await.unwrap(),
-        ["Erik Satie"]
-    );
+    assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
     server
         .get(&review)
         .await

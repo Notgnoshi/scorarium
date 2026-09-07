@@ -1829,8 +1829,6 @@ dependencies = [
  "scorarium-tests",
  "serde",
  "serde_html_form 0.4.1",
- "sqlx",
- "tempfile",
  "tokio",
  "tower-http",
  "tracing",
