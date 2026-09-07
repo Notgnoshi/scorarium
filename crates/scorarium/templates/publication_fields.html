@@ -82,6 +82,10 @@
                 aria-label="Add work">
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
+        {% if fields.row_edit.is_draft() %}
+            {# Which row's work to open once the draft is saved; empty means none #}
+            <input type="hidden" name="edit_work" value="" data-edit-work-row />
+        {% endif %}
     </fieldset>
     {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
@@ -106,3 +110,17 @@
         row.querySelector("[name=work_contributor_role]").value = role;
     });
 </script>
+{% if fields.row_edit.is_draft() %}
+    <script>
+        // A draft work is only reachable through the draft it belongs to, so opening one saves the
+        // form first and lets the server redirect
+        const editWork = document.querySelector("[data-edit-work-row]");
+        document.querySelector("[data-works] [data-rows-list]").addEventListener("click", (e) => {
+            const button = e.target.closest("[data-edit-work]");
+            if (!button) return;
+            const rows = [...document.querySelectorAll("[data-works] [data-rows-list] [data-row]")];
+            editWork.value = rows.indexOf(button.closest("[data-row]"));
+            button.form.requestSubmit();
+        });
+    </script>
+{% endif %}

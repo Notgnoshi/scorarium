@@ -74,8 +74,15 @@
                aria-label="Work contributor role" />
         {# The row edits one contributor, so say when the work credits others it leaves alone #}
         {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
-        {# A row being added names no work yet, so there is nothing to open #}
-        {% if !edit.is_draft() && !id.is_empty() %}
+        {% if edit.is_draft() %}
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-edit-work
+                    aria-label="Edit work">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+            </button>
+        {% else if !id.is_empty() %}
+            {# A row being added names no stored work yet, so there is nothing to link to #}
             <a class="btn btn-outline-secondary"
                href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ edit.back() |urlencode }}"
                aria-label="Edit work">

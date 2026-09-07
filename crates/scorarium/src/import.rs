@@ -49,6 +49,7 @@ impl PublicationForm {
     }
 }
 
+/// What a review page row says about a work whose only problem is a field the row does not show.
 const HIDDEN_WORK_PROBLEM: &str = "A contributor is incomplete. Open the work to fix it.";
 
 /// Unsaved review-page edits for one pending import.
@@ -123,6 +124,18 @@ impl Draft {
             works: rows,
             ..submitted
         };
+    }
+
+    /// Replace one draft work's form, as its own page does. Returns false, having changed nothing,
+    /// when the draft has no work with this id.
+    pub fn set_work(&mut self, id: i64, form: WorkForm) -> bool {
+        match self.works.iter_mut().find(|work| work.id == id) {
+            Some(work) => work.form = form,
+            None => return false,
+        }
+        let rows = self.work_rows();
+        self.form.works = rows;
+        true
     }
 
     /// Check the publication form and every work.
@@ -445,6 +458,25 @@ mod tests {
                 (2, "Nocturne", "", vec![("Field", "composer")]),
                 (3, "Mazurka", "", vec![]),
             ]
+        );
+
+        // The work's own page replaces its form outright, and the row follows
+        assert!(draft.set_work(
+            3,
+            WorkForm {
+                title: "Mazurka in A minor".into(),
+                key: "A minor".into(),
+                contributors: vec![contributor("Chopin", "composer")],
+                ..WorkForm::default()
+            }
+        ));
+        assert_eq!(
+            draft.form.works[1],
+            work_row(Some(3), "Mazurka in A minor", "Chopin", "composer")
+        );
+        assert!(
+            !draft.set_work(1, WorkForm::default()),
+            "work 1 was dropped"
         );
     }
 

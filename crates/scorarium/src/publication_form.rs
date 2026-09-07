@@ -284,6 +284,15 @@ pub struct Submission {
     work_contributor_name: Vec<String>,
     #[serde(default)]
     work_contributor_role: Vec<String>,
+    /// The index of the work row whose edit button was clicked; absent on a plain submit, and on
+    /// the publication edit page, whose rows link to their works instead.
+    edit_work: Option<String>,
+}
+
+impl Submission {
+    pub fn edit_work(&self) -> Option<usize> {
+        self.edit_work.as_ref()?.trim().parse().ok()
+    }
 }
 
 impl From<Submission> for PublicationForm {

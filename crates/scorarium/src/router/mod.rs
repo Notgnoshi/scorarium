@@ -8,6 +8,7 @@ mod person;
 mod publication;
 mod work;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
@@ -58,6 +59,14 @@ impl Crumb {
                 "/library/{}/publication/{}",
                 publication.library_id, publication.id
             ),
+        }
+    }
+
+    /// The import under review, by the label its page shows.
+    pub fn import_review(import: &db::pending_import::PendingImport, label: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            href: format!("/library/{}/import/{}", import.library_id, import.id),
         }
     }
 
@@ -127,14 +136,12 @@ impl BaseContext {
 /// Suggested alongside the library's existing roles, so a new library still gets a datalist.
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
-/// What a work row's edit control does: link to the stored work's edit page, which returns to
-/// `back` afterwards, or (from commit 6) save the draft and open the draft work.
+/// What a work row's edit control does, which is a property of the page rather than the row.
 #[derive(Default)]
 pub enum RowEdit {
-    Stored {
-        back: String,
-    },
-    /// A draft work has no page of its own yet, so the row renders no control
+    /// Link to the stored work's edit page, which returns to `back` when it is done
+    Stored { back: String },
+    /// Save the draft and open the draft work, since a draft work has no stable link of its own
     #[default]
     Draft,
 }
@@ -174,21 +181,21 @@ pub struct FormFields {
 }
 
 impl FormFields {
-    /// `works` are the publication's stored works, for the counts the rows show; the review page
-    /// has none yet and passes an empty slice.
+    /// `contributors` is how many people each work credits, by the id its rows carry: the stored
+    /// works' ids on the publication edit page, the draft's own on the review page.
     pub async fn build(
         pool: &sqlx::SqlitePool,
         library_id: i64,
         form: publication_form::PublicationForm,
         errors: publication_form::Errors,
-        works: &[db::work::Work],
+        contributors: &HashMap<i64, usize>,
     ) -> sqlx::Result<Self> {
         let (roles, names) = suggestions(pool, library_id).await?;
         Ok(Self {
             holding_rows: pair_errors(&form.holdings, &errors.holdings),
             identifier_rows: pair_errors(&form.identifiers, &errors.identifiers),
             contributor_rows: pair_errors(&form.contributors, &errors.contributors),
-            work_rows: work_rows(&form.works, &errors.works, works),
+            work_rows: work_rows(&form.works, &errors.works, contributors),
             no_copies_warning: String::new(),
             row_edit: RowEdit::default(),
             roles,
@@ -255,21 +262,21 @@ async fn suggestions(
 }
 
 /// Pair each work row with the number of contributors the row does not show and its message. A row
-/// naming no stored work, or one whose work was just created by this submission, shows none.
+/// naming no work yet shows none.
 fn work_rows(
     rows: &[publication_form::WorkRow],
     errors: &[Option<String>],
-    works: &[db::work::Work],
+    contributors: &HashMap<i64, usize>,
 ) -> Vec<(publication_form::WorkRow, String, String)> {
     pair_errors(rows, errors)
         .into_iter()
         .map(|(row, error)| {
-            let more = works
-                .iter()
-                .find(|w| Some(w.id) == row.id)
-                // A stored work may credit nobody at all, so the row shows one contributor fewer
-                // than it has only when it has any
-                .map(|w| w.contributors.len().saturating_sub(1))
+            let more = row
+                .id
+                .and_then(|id| contributors.get(&id))
+                // A work may credit nobody at all, so the row shows one contributor fewer than the
+                // work has only when it has any
+                .map(|count| count.saturating_sub(1))
                 .filter(|more| *more > 0)
                 .map(|more| more.to_string())
                 .unwrap_or_default();
@@ -309,6 +316,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/library/{library_id}/import/{id}", get(import::review))
         .route("/library/{library_id}/import/{id}/save", post(import::save))
+        .route(
+            "/library/{library_id}/import/{id}/work/{work_id}",
+            get(import::work).post(import::save_work),
+        )
         .route(
             "/library/{library_id}/import/{id}/submit",
             post(import::submit),

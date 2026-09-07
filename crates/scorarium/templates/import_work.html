@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    <form method="post"
+          action="/library/{{ library.id }}/import/{{ import.id }}/work/{{ work_id }}">
+        {% include "work_fields.html" %}
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary">Save</button>
+            {# Removing the row on the review page is how a draft work goes away, so there is no Delete #}
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library.id }}/import/{{ import.id }}">Cancel</a>
+        </div>
+    </form>
+{% endblock %}
