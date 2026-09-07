@@ -7,7 +7,7 @@
         <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
                id="title"
                name="title"
-               value="{{ fields.form.title }}" />
+               value="{{ fields.input.title }}" />
         {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
     <div class="mb-3">
@@ -15,7 +15,7 @@
         <input class="form-control"
                id="publisher"
                name="publisher"
-               value="{{ fields.form.publisher }}" />
+               value="{{ fields.input.publisher }}" />
     </div>
     <div class="mb-3">
         <label class="form-label" for="year">Year</label>
@@ -23,13 +23,13 @@
                id="year"
                name="year"
                inputmode="numeric"
-               value="{{ fields.form.year }}" />
+               value="{{ fields.input.year }}" />
         {% if let Some(error) = fields.errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
         <div data-rows-list>
-            {% for (row, error) in fields.identifier_rows %}
+            {% for (row, error) in fields.identifiers %}
                 {% call rows::identifier_row(row.kind, row.value, error) %}
                 {% endcall %}
             {% endfor %}
@@ -48,7 +48,7 @@
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
-            {% for (row, error) in fields.contributor_rows %}
+            {% for (row, error) in fields.contributors %}
                 {% call rows::contributor_row(row.name, row.role, error) %}
                 {% endcall %}
             {% endfor %}
@@ -67,13 +67,13 @@
     <fieldset class="border rounded p-3 mb-3" data-rows data-works>
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
-            {% for (row, more, error) in fields.work_rows %}
-                {% call rows::work_row(library.id, row.id_value(), row.title, row.contributor.name, row.contributor.role, more, error, fields.row_edit) %}
+            {% for w in fields.works %}
+                {% call rows::work_row(library.id, w.id, w.title, w.name, w.role, w.more, w.message, fields.work_edit) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", "", "", "", fields.row_edit) %}
+            {% call rows::work_row(library.id, "", "", "", "", "", "", fields.work_edit) %}
             {% endcall %}
         </template>
         <button type="button"
@@ -82,12 +82,12 @@
                 aria-label="Add work">
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
-        {% if fields.row_edit.is_draft() %}
+        {% if fields.work_edit.is_draft() %}
             {# Which row's work to open once the draft is saved; empty means none #}
             <input type="hidden" name="edit_work" value="" data-edit-work-row />
         {% endif %}
     </fieldset>
-    {% call rows::holdings_box(fields.holding_rows, fields.errors.no_holdings, fields.no_copies_warning) %}
+    {% call rows::holdings_box(fields.holdings, fields.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
     <datalist id="roles">
         {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
@@ -110,7 +110,7 @@
         row.querySelector("[name=work_contributor_role]").value = role;
     });
 </script>
-{% if fields.row_edit.is_draft() %}
+{% if fields.work_edit.is_draft() %}
     <script>
         // A draft work is only reachable through the draft it belongs to, so opening one saves the
         // form first and lets the server redirect

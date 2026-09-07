@@ -1,6 +1,7 @@
 pub mod db;
 pub mod import;
 pub mod publication_form;
+pub mod publication_post;
 pub mod router;
 pub mod session;
 pub mod work_form;

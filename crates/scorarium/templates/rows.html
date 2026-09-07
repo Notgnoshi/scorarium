@@ -102,13 +102,11 @@
     <div class="d-flex gap-2 mb-2" data-row>
         {# Identifies the stored copy this row edits, so it keeps its identity; empty when adding one #}
         <input type="hidden" name="holding_id" value="{{ id }}" />
-        {# Using a radio group would require a unique ID per row, so build it with a checkbox #}
-        <input type="hidden" name="holding_kind" value="physical" />
+        <input type="hidden" name="holding_kind" value="{{ kind }}" data-kind />
         <label class="kind-toggle d-inline-flex">
             <input type="checkbox"
                    class="visually-hidden"
-                   name="holding_kind"
-                   value="digital"
+                   data-kind-toggle
                    aria-label="Digital"
                    {% if kind == "digital" %}checked{% endif %} />
             <span class="btn btn-outline-secondary">Physical</span>
@@ -152,17 +150,17 @@
         </div>
     </div>
 {% endmacro %}
-{% macro holdings_box(rows, no_holdings, no_copies_warning) %}
+{% macro holdings_box(holdings, no_holdings, no_copies_warning) %}
     <fieldset class="border rounded p-3 mb-3" data-rows data-copies>
         <legend class="float-none w-auto px-2 fs-6">Copies</legend>
         <div data-rows-list>
-            {% for (row, error) in rows %}
-                {% call holding_row(row.id_value(), row.kind.as_str(), row.location, error) %}
+            {% for h in holdings %}
+                {% call holding_row(h.id, h.kind, h.location, h.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
-        {% if let Some(error) = no_holdings %}
-            <div class="invalid-feedback d-block mb-2">{{ error }}</div>
+        {% if !no_holdings.is_empty() %}
+            <div class="invalid-feedback d-block mb-2">{{ no_holdings }}</div>
         {% endif %}
         {# Shown by CSS once the last row is removed, so the warning arrives with the click #}
         {% if !no_copies_warning.is_empty() %}
@@ -182,8 +180,8 @@
 {% endmacro %}
 {% macro style() %}
     <style>
-        [data-row]:has([name="holding_kind"]:checked) .physical-only,
-        [data-row]:not(:has([name="holding_kind"]:checked)) .digital-only {
+        [data-row]:has([data-kind-toggle]:checked) .physical-only,
+        [data-row]:not(:has([data-kind-toggle]:checked)) .digital-only {
             display: none;
         }
 
@@ -253,6 +251,13 @@
                 try {
                     e.target.showPicker();
                 } catch {}
+            }
+        });
+        // The toggle is not a form field, so it writes the copy's kind into the input that is
+        document.addEventListener("change", (e) => {
+            if (e.target.matches("[data-kind-toggle]")) {
+                const row = e.target.closest("[data-row]");
+                row.querySelector("[data-kind]").value = e.target.checked ? "digital" : "physical";
             }
         });
         // Until #25 uploads the file, the chooser only feeds its name to the row's path

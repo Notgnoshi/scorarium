@@ -1,11 +1,15 @@
 use std::str::FromStr;
 
+use serde::Deserialize;
 use sqlx::SqliteConnection;
 
 use crate::input::{ValidationError, trimmed_or_none};
 
 /// Whether a holding is a thing on a shelf or a file
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The names are what the copy toggle posts, so the form decodes straight into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HoldingKind {
     Physical,
     Digital,

@@ -1843,6 +1843,7 @@ dependencies = [
  "argon2",
  "eyre",
  "isbn",
+ "serde",
  "sqlx",
  "tempfile",
  "tokio",

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -7,11 +6,15 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
-use scorarium_archive::Library;
+use scorarium_archive::{
+    ContributorInput, HoldingKind as ArchiveHoldingKind, HoldingRawInput, IdentifierRawInput,
+    Library, PublicationErrors, PublicationRawInput, WorkRawInput,
+};
 use serde::Deserialize;
 
 use super::{
-    AppError, BaseContext, Crumb, FormFields, OrNotFound, RowEdit, Session, WorkFields, pair_errors,
+    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
+    WorkFields,
 };
 use crate::db::pending_import::{self, NewPendingImport, PendingHolding, PendingImport};
 use crate::db::publication::HoldingKind;
@@ -80,8 +83,9 @@ struct EntryPage {
     /// What to show in the form: blank on a visit, the rejected submission on an error
     query: String,
     more: bool,
-    holding_rows: Vec<(HoldingRow, String)>,
-    errors: Errors,
+    holdings: Vec<ShownHolding>,
+    /// The message for having no copies at all, empty when there is one
+    no_holdings: String,
     pending: Vec<PendingRow>,
     /// The shared list fragment shows a library column only on the cross-library queue.
     show_library: bool,
@@ -127,16 +131,30 @@ async fn render_entry(
     errors: Errors,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(id).await?.or_not_found()?;
-    let holding_rows = pair_errors(&rows, &errors.holdings);
+    let holdings = rows
+        .iter()
+        .enumerate()
+        .map(|(i, row)| ShownHolding {
+            id: row.id_value(),
+            kind: row.kind.as_str(),
+            location: row.location.clone(),
+            message: errors
+                .holdings
+                .get(i)
+                .cloned()
+                .flatten()
+                .unwrap_or_default(),
+        })
+        .collect();
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(&library)]),
         pending: pending_rows(state, Some(id)).await?,
         show_library: false,
+        no_holdings: errors.no_holdings.unwrap_or_default(),
+        holdings,
         library,
         query,
         more,
-        holding_rows,
-        errors,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -225,16 +243,18 @@ pub async fn review(
     let Some(import) = pending_import::get(&state.pool, library_id, id).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let (draft, errors) = match state.drafts.get(id) {
-        // Errors show for saved drafts only; a fresh import should not open covered in warnings
-        Some(draft) => {
-            let errors = draft.parse().err().unwrap_or_default();
-            (draft, errors)
-        }
-        None => (import::Draft::seed(&import), Errors::default()),
+    let (draft, saved) = match state.drafts.get(id) {
+        Some(draft) => (draft, true),
+        None => (import::Draft::seed(&import), false),
     };
     let title = label(&import, &draft.form);
-    let contributors = contributor_counts(&draft);
+    let input = PublicationRawInput::from(&draft);
+    // Errors show for saved drafts only; a fresh import should not open covered in warnings
+    let errors = if saved {
+        input.parse().err().unwrap_or_default()
+    } else {
+        PublicationErrors::default()
+    };
     let page = ReviewPage {
         base: base.page(
             title,
@@ -245,9 +265,9 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        fields: FormFields::build(&state.pool, library_id, draft.form, errors, &contributors)
+        fields: FormFields::build(&library, input, errors)
             .await?
-            .edit_works(RowEdit::Draft),
+            .edit_works(WorkEdit::Draft),
         library,
         import,
     };
@@ -274,15 +294,6 @@ pub async fn save(
     };
     state.drafts.save(id, draft);
     Ok(Redirect::to(&next).into_response())
-}
-
-/// How many people each draft work credits, for the "and N more" its row shows.
-fn contributor_counts(draft: &import::Draft) -> HashMap<i64, usize> {
-    draft
-        .works
-        .iter()
-        .map(|work| (work.id, work.form.contributors.len()))
-        .collect()
 }
 
 /// The stored draft with this submission merged into it, or a seeded one when nothing is stored
@@ -358,13 +369,13 @@ pub async fn work(
     let Some(work) = draft.works.iter().find(|work| work.id == work_id) else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    let form = work.form.clone();
+    let input = WorkRawInput::from(&work.form);
     // As on the review page, a saved draft shows what is wrong with it
-    let errors = form.parse().err().unwrap_or_default();
-    let title = if form.title.is_empty() {
+    let errors = input.parse().err().unwrap_or_default();
+    let title = if input.title.is_empty() {
         UNTITLED_WORK.to_string()
     } else {
-        form.title.clone()
+        input.title.clone()
     };
     let page = ImportWorkPage {
         base: base.page(
@@ -376,7 +387,7 @@ pub async fn work(
                 Crumb::import_review(&import, &label(&import, &draft.form)),
             ],
         ),
-        fields: WorkFields::build(&state.pool, library_id, form, errors).await?,
+        fields: WorkFields::build(&library, input, errors).await?,
         work_id,
         library,
         import,
@@ -440,4 +451,71 @@ pub async fn delete(
     }
     state.drafts.remove(id);
     Ok(Redirect::to(&format!("/library/{library_id}/import")).into_response())
+}
+
+/// The old draft as the archive's raw input, so the review page and the draft work page render and
+/// validate through the new form types while the draft itself is still built from the old ones.
+///
+/// Goes when the import routes move onto the archive's own draft.
+impl From<&import::Draft> for PublicationRawInput {
+    fn from(draft: &import::Draft) -> Self {
+        PublicationRawInput {
+            title: draft.form.title.clone(),
+            publisher: draft.form.publisher.clone(),
+            year: draft.form.year.clone(),
+            holdings: draft
+                .form
+                .holdings
+                .iter()
+                .map(|holding| HoldingRawInput {
+                    id: holding.id,
+                    kind: match holding.kind {
+                        HoldingKind::Physical => ArchiveHoldingKind::Physical,
+                        HoldingKind::Digital => ArchiveHoldingKind::Digital,
+                    },
+                    location: holding.location.clone(),
+                })
+                .collect(),
+            identifiers: draft
+                .form
+                .identifiers
+                .iter()
+                .map(|identifier| IdentifierRawInput {
+                    kind: identifier.kind.clone(),
+                    value: identifier.value.clone(),
+                })
+                .collect(),
+            contributors: draft.form.contributors.iter().map(contributor).collect(),
+            // The draft's works are whole; the rows on its form are only what the page shows
+            contents: draft
+                .works
+                .iter()
+                .map(|work| WorkRawInput {
+                    id: Some(work.id),
+                    ..WorkRawInput::from(&work.form)
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<&work_form::WorkForm> for WorkRawInput {
+    fn from(form: &work_form::WorkForm) -> Self {
+        WorkRawInput {
+            // A draft work is named by the page it was opened from, not by its input
+            id: None,
+            title: form.title.clone(),
+            key: form.key.clone(),
+            time_signature: form.time_signature.clone(),
+            instrumentation: form.instrumentation.clone(),
+            contributors: form.contributors.iter().map(contributor).collect(),
+        }
+    }
+}
+
+fn contributor(row: &publication_form::ContributorRow) -> ContributorInput {
+    ContributorInput {
+        name: row.name.clone(),
+        role: row.role.clone(),
+    }
 }

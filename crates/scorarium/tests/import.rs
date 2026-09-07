@@ -26,7 +26,6 @@ async fn manual_import_flow() {
         .post(&entry)
         .form(&[
             ("query", "Gnossiennes"),
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", ""),
             ("holding_file", ""),
@@ -45,7 +44,6 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", ""),
             ("holding_file", "satie.pdf"),
@@ -84,7 +82,6 @@ async fn manual_import_flow() {
             ("title", ""),
             ("publisher", ""),
             ("year", "abc"),
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", ""),
             ("holding_file", ""),
@@ -112,7 +109,6 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", ""),
             ("holding_file", "satie.pdf"),
@@ -184,7 +180,6 @@ async fn manual_import_flow() {
             ("title", "Three gymnopedies"),
             ("publisher", "Schirmer"),
             ("year", "1888"),
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", ""),
             ("holding_file", "satie.pdf"),

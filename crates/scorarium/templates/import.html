@@ -18,7 +18,7 @@
                        autofocus />
                 <div class="form-text">A title, ISBN, or ISMN identifier</div>
             </div>
-            {% call rows::holdings_box(holding_rows, errors.no_holdings, "") %}
+            {% call rows::holdings_box(holdings, no_holdings, "") %}
             {% endcall %}
             <div class="form-check mb-3">
                 <input class="form-check-input"

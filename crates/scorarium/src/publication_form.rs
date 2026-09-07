@@ -345,22 +345,8 @@ impl From<Submission> for PublicationForm {
     }
 }
 
-/// A copy row's kind arrives as a constant "physical" followed by a "digital" when the row's
-/// toggle is checked: the toggle is a checkbox, which submits nothing while unchecked, so the
-/// constant is what keeps the rows countable.
-fn holding_kinds(tokens: Vec<HoldingKind>) -> Vec<HoldingKind> {
-    let mut kinds = Vec::new();
-    for token in tokens {
-        match (token, kinds.last_mut()) {
-            (HoldingKind::Digital, Some(last)) => *last = HoldingKind::Digital,
-            (token, _) => kinds.push(token),
-        }
-    }
-    kinds
-}
-
-/// Copy rows from a submission's parallel keys. Every row submits a location and a file, and the
-/// kind picks which one counts.
+/// Copy rows from a submission's parallel keys. Every row submits a kind, a location and a file,
+/// and the kind picks which of the two counts.
 ///
 /// The ids are read by position rather than zipped: a missing or short id list leaves the rows it
 /// does not reach naming no stored copy, which is what a page with nothing stored yet submits.
@@ -370,8 +356,7 @@ pub fn holding_rows(
     location: Vec<String>,
     file: Vec<String>,
 ) -> Vec<HoldingRow> {
-    holding_kinds(kind)
-        .into_iter()
+    kind.into_iter()
         .zip(location)
         .zip(file)
         .enumerate()

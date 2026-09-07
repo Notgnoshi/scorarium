@@ -2,22 +2,20 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::Form as MultiForm;
-use scorarium_archive::Library;
+use scorarium_archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, OrNotFound, Session, WorkFields};
-use crate::work_form::{Errors, Submission, WorkForm};
-use crate::{AppState, db};
+use crate::{AppState, publication_post};
 
 #[derive(Template)]
 #[template(path = "work.html")]
 struct WorkPage {
     base: BaseContext,
-    work: db::work::Work,
-    publications: Vec<db::publication::Publication>,
+    work: Work,
+    publications: Vec<Publication>,
 }
 
 #[derive(Template)]
@@ -25,10 +23,42 @@ struct WorkPage {
 struct EditPage {
     base: BaseContext,
     library: Library,
-    work: db::work::Work,
+    work: Work,
     /// Where Save and Cancel lead
     back: String,
     fields: WorkFields,
+}
+
+/// A submitted work form, as the browser sends it. The stored work edit page and the draft work
+/// page post the same shape.
+#[derive(Deserialize)]
+pub struct WorkPost {
+    title: String,
+    key: String,
+    time_signature: String,
+    instrumentation: String,
+    // `default` covers a submission with no contributors at all
+    #[serde(default)]
+    contributor_name: Vec<String>,
+    #[serde(default)]
+    contributor_role: Vec<String>,
+}
+
+impl From<WorkPost> for WorkRawInput {
+    fn from(post: WorkPost) -> Self {
+        WorkRawInput {
+            // The page that submitted this names the work it belongs to, so the input need not
+            id: None,
+            title: post.title.trim().to_string(),
+            key: post.key.trim().to_string(),
+            time_signature: post.time_signature.trim().to_string(),
+            instrumentation: post.instrumentation.trim().to_string(),
+            contributors: publication_post::contributors(
+                post.contributor_name,
+                post.contributor_role,
+            ),
+        }
+    }
 }
 
 /// Which page opened the edit page, so Save and Cancel can return to it.
@@ -50,10 +80,8 @@ pub async fn work(
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let publications = db::publication::list_containing(&state.pool, library_id, id).await?;
+    let work = library.work(id).await?.or_not_found()?;
+    let publications = work.publications().await?;
     let page = WorkPage {
         base: base.page(
             work.title.clone(),
@@ -74,18 +102,15 @@ pub async fn edit(
     Query(query): Query<BackQuery>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let form = WorkForm::stored(&work);
+    let work = library.work(id).await?.or_not_found()?;
+    let input = work.raw_input();
     render_edit(
-        &state,
         base,
         library,
         work,
         query.back,
-        form,
-        Errors::default(),
+        input,
+        WorkErrors::default(),
     )
     .await
 }
@@ -100,41 +125,36 @@ pub async fn save(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
     Query(query): Query<BackQuery>,
-    MultiForm(submission): MultiForm<Submission>,
+    MultiForm(post): MultiForm<WorkPost>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let Some(work) = db::work::get(&state.pool, library_id, id).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let form = WorkForm::from(submission);
-    let update = match form.parse() {
-        Ok(update) => update,
-        Err(errors) => {
-            return render_edit(&state, base, library, work, query.back, form, errors).await;
+    let mut work = library.work(id).await?.or_not_found()?;
+    let input = WorkRawInput::from(post);
+    match input.parse() {
+        Ok(parsed) => {
+            work.update(&parsed).await?;
+            Ok(Redirect::to(&back_to(library_id, id, query.back)).into_response())
         }
-    };
-    if !db::work::update(&state.pool, library_id, id, &update).await? {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+        Err(errors) => render_edit(base, library, work, query.back, input, errors).await,
     }
-    Ok(Redirect::to(&back_to(library_id, id, query.back)).into_response())
 }
 
 async fn render_edit(
-    state: &AppState,
     base: BaseContext,
     library: Library,
-    work: db::work::Work,
+    work: Work,
     back: Option<String>,
-    form: WorkForm,
-    errors: Errors,
+    input: WorkRawInput,
+    errors: WorkErrors,
 ) -> Result<Response, AppError> {
+    let fields = WorkFields::build(&library, input, errors).await?;
     let page = EditPage {
         base: base.page(
             work.title.clone(),
             vec![Crumb::home(), Crumb::library(&library), Crumb::work(&work)],
         ),
-        fields: WorkFields::build(&state.pool, library.id, form, errors).await?,
         back: back_to(library.id, work.id, back),
+        fields,
         library,
         work,
     };

@@ -4,19 +4,19 @@ use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_archive::Library;
+use scorarium_archive::{Library, Publication};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, OrNotFound, Session, index};
+use crate::AppState;
 use crate::db::pending_import;
-use crate::{AppState, db};
 
 #[derive(Template)]
 #[template(path = "library.html")]
 struct LibraryPage {
     base: BaseContext,
     library: Library,
-    publications: Vec<db::publication::Publication>,
+    publications: Vec<Publication>,
     // Link only to listings with something in them
     has_composers: bool,
     has_authors: bool,
@@ -39,12 +39,12 @@ async fn render(
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(id).await?.or_not_found()?;
-    let roles = db::person::list_roles(&state.pool, id).await?;
+    let roles = library.roles().await?;
     let page = LibraryPage {
         base: base.page(library.name.clone(), vec![Crumb::home()]),
-        publications: db::publication::list(&state.pool, id).await?,
-        has_composers: roles.iter().any(|r| r == "composer"),
-        has_authors: roles.iter().any(|r| r == "author"),
+        publications: library.publications().await?,
+        has_composers: roles.iter().any(|role| role == "composer"),
+        has_authors: roles.iter().any(|role| role == "author"),
         library,
         error,
     };

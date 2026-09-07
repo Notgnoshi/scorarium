@@ -241,7 +241,6 @@ async fn publication_edit_flow() {
             ("holding_id", &shelf.to_string()),
             ("holding_id", ""),
             ("holding_kind", "physical"),
-            ("holding_kind", "physical"),
             ("holding_kind", "digital"),
             ("holding_location", "Piano bench"),
             ("holding_location", ""),
