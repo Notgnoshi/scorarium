@@ -99,6 +99,10 @@
             //
             // https://getbootstrap.com/docs/5.3/components/modal/#how-it-works
             document.addEventListener("shown.bs.modal", (e) => e.target.querySelector("[autofocus]")?.focus());
+            // One delegated tooltip instance covers elements added after load
+            new bootstrap.Tooltip(document.body, {
+                selector: '[data-bs-toggle="tooltip"]'
+            });
         </script>
     </body>
 </html>

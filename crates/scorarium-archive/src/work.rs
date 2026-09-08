@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
+use crate::catalog::CatalogNumber;
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
@@ -18,6 +19,7 @@ pub struct WorkRawInput {
     pub time_signature: String,
     pub instrumentation: String,
     pub contributors: Vec<ContributorInput>,
+    pub catalog_numbers: Vec<String>,
 }
 
 /// A work's parsed and validated fields
@@ -29,6 +31,7 @@ pub struct WorkInput {
     pub(crate) time_signature: Option<String>,
     pub(crate) instrumentation: Option<String>,
     pub(crate) contributors: Vec<ContributorInput>,
+    pub(crate) catalog_numbers: Vec<CatalogNumber>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -36,11 +39,15 @@ pub struct WorkErrors {
     pub title: Option<ValidationError>,
     /// One slot per contributor, empty when they all passed
     pub contributors: Vec<Option<ValidationError>>,
+    /// One slot per catalog number, empty when they all passed
+    pub catalog_numbers: Vec<Option<ValidationError>>,
 }
 
 impl WorkErrors {
     pub fn is_empty(&self) -> bool {
-        self.title.is_none() && self.contributors.iter().all(Option::is_none)
+        self.title.is_none()
+            && self.contributors.iter().all(Option::is_none)
+            && self.catalog_numbers.iter().all(Option::is_none)
     }
 }
 
@@ -53,11 +60,19 @@ impl WorkRawInput {
         let mut errors = WorkErrors {
             title: title.is_empty().then_some(ValidationError::TitleRequired),
             contributors: Vec::new(),
+            catalog_numbers: Vec::new(),
         };
         let contributors = match input::parse_contributors(&self.contributors) {
             Ok(contributors) => contributors,
             Err(slots) => {
                 errors.contributors = slots;
+                Vec::new()
+            }
+        };
+        let catalog_numbers = match input::parse_catalog_numbers(&self.catalog_numbers) {
+            Ok(numbers) => numbers,
+            Err(slots) => {
+                errors.catalog_numbers = slots;
                 Vec::new()
             }
         };
@@ -71,6 +86,7 @@ impl WorkRawInput {
             time_signature: input::trimmed_or_none(&self.time_signature),
             instrumentation: input::trimmed_or_none(&self.instrumentation),
             contributors,
+            catalog_numbers,
         })
     }
 }
@@ -84,7 +100,8 @@ pub struct Work {
     pub key: Option<String>,
     pub time_signature: Option<String>,
     pub instrumentation: Option<String>,
-    pub catalog_numbers: Vec<String>,
+    /// In the order they were entered
+    pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
     pub contributors: Vec<Contributor>,
     archive: Arc<ArchiveInner>,
@@ -122,6 +139,11 @@ impl Work {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
                 })
+                .collect(),
+            catalog_numbers: self
+                .catalog_numbers
+                .iter()
+                .map(|number| number.as_str().to_string())
                 .collect(),
         }
     }
@@ -168,6 +190,7 @@ impl Work {
             return Err(NotFound.into());
         }
         write_work_contributors(&mut tx, self.library_id, self.id, &input.contributors).await?;
+        write_work_catalog_numbers(&mut tx, self.id, &input.catalog_numbers).await?;
         library::collect_orphans(&mut tx, self.library_id).await?;
         let reloaded = load_works(&self.archive, &mut tx, self.library_id, Some(self.id), None)
             .await?
@@ -227,7 +250,8 @@ pub(crate) async fn load_works(
             (SELECT id FROM work
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+         ORDER BY id",
         library_id,
         id,
         publication_id
@@ -235,7 +259,9 @@ pub(crate) async fn load_works(
     .fetch_all(&mut *conn)
     .await?;
     for row in catalog_numbers {
-        works[index[&row.work_id]].catalog_numbers.push(row.value);
+        works[index[&row.work_id]]
+            .catalog_numbers
+            .push(CatalogNumber::parse(&row.value));
     }
 
     let contributors = sqlx::query!(
@@ -294,6 +320,7 @@ pub(crate) async fn create_work_in_publication(
     .execute(&mut *conn)
     .await?;
     write_work_contributors(&mut *conn, library_id, id, &input.contributors).await?;
+    write_work_catalog_numbers(&mut *conn, id, &input.catalog_numbers).await?;
     Ok(id)
 }
 
@@ -344,6 +371,7 @@ pub(crate) async fn write_publication_works(
         .execute(&mut *conn)
         .await?;
         write_work_contributors(&mut *conn, library_id, work_id, &input.contributors).await?;
+        write_work_catalog_numbers(&mut *conn, work_id, &input.catalog_numbers).await?;
     }
     Ok(())
 }
@@ -366,19 +394,28 @@ pub(crate) async fn link_work_to_publication(
     Ok(())
 }
 
-/// Give a work a catalog number.
-pub(crate) async fn add_work_catalog_number(
+/// Rebuild a work's catalog numbers, so input order becomes stored order.
+///
+/// A number holds nothing beyond its text, so rebuilding outright loses nothing; creating and
+/// updating share this.
+pub(crate) async fn write_work_catalog_numbers(
     conn: &mut SqliteConnection,
     work_id: i64,
-    value: &str,
+    numbers: &[CatalogNumber],
 ) -> crate::Result<()> {
-    sqlx::query!(
-        "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
-        work_id,
-        value,
-    )
-    .execute(conn)
-    .await?;
+    sqlx::query!("DELETE FROM work_catalog_number WHERE work_id = ?", work_id)
+        .execute(&mut *conn)
+        .await?;
+    for number in numbers {
+        let value = number.as_str();
+        sqlx::query!(
+            "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+            work_id,
+            value
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
     Ok(())
 }
 
@@ -431,6 +468,7 @@ mod tests {
                 contributor("Erik Satie", "composer"),
                 contributor("", ""),
             ],
+            catalog_numbers: vec!["Op. 27 No. 2".into(), "".into(), "op.27/2".into()],
             ..WorkRawInput::default()
         };
         assert_eq!(
@@ -442,6 +480,11 @@ mod tests {
                     None,
                     Some(ValidationError::AlreadyListed),
                     Some(ValidationError::FillOrRemove),
+                ],
+                catalog_numbers: vec![
+                    None,
+                    Some(ValidationError::FillOrRemove),
+                    Some(ValidationError::AlreadyListed),
                 ],
             }
         );
@@ -456,9 +499,13 @@ mod tests {
             time_signature: "3/4".into(),
             instrumentation: "piano".into(),
             contributors: vec![contributor(" Erik Satie ", "composer")],
+            catalog_numbers: vec![" BWV 988 ".into()],
         };
+        let parsed = raw.parse().unwrap();
+        // A catalog number is kept as typed, apart from trimming
+        assert_eq!(parsed.catalog_numbers[0].as_str(), "BWV 988");
         assert_eq!(
-            raw.parse().unwrap(),
+            parsed,
             WorkInput {
                 id: Some(7),
                 title: "Gnossienne No. 1".into(),
@@ -467,6 +514,7 @@ mod tests {
                 time_signature: Some("3/4".into()),
                 instrumentation: Some("piano".into()),
                 contributors: vec![contributor("Erik Satie", "composer")],
+                catalog_numbers: vec![CatalogNumber::parse("BWV 988")],
             }
         );
     }

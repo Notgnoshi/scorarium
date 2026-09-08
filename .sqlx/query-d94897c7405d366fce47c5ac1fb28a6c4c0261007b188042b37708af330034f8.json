@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT work_id, value FROM work_catalog_number\n         WHERE work_id IN\n            (SELECT id FROM work\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))",
+  "query": "SELECT work_id, value FROM work_catalog_number\n         WHERE work_id IN\n            (SELECT id FROM work\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))\n         ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "011a74f35f59ddf923f53102b5208d5b86965383d9db9f66ddc40afc15ac7b99"
+  "hash": "d94897c7405d366fce47c5ac1fb28a6c4c0261007b188042b37708af330034f8"
 }

@@ -18,9 +18,9 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
-    ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound, PendingImport,
-    Publication, PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors,
-    WorkRawInput,
+    CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound,
+    PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError, Work,
+    WorkErrors, WorkRawInput,
 };
 use tower_http::trace::TraceLayer;
 
@@ -243,12 +243,20 @@ impl FormFields {
     }
 }
 
+/// One catalog number as the work form shows it, with what the parser made of it
+pub struct ShownCatalogNumber {
+    pub value: String,
+    pub recognized: bool,
+    pub message: String,
+}
+
 /// Everything the shared work form fragment renders. The stored work edit page and the draft work
 /// page show the same fields, so they build the same context for them.
 pub struct WorkFields {
     pub input: WorkRawInput,
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
+    pub catalog_numbers: Vec<ShownCatalogNumber>,
     pub roles: Vec<String>,
     pub names: Vec<String>,
 }
@@ -262,12 +270,28 @@ impl WorkFields {
         let (roles, names) = suggestions(library).await?;
         Ok(Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
+            catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             roles,
             names,
             input,
             errors,
         })
     }
+}
+
+fn shown_catalog_numbers(
+    values: &[String],
+    errors: &[Option<ValidationError>],
+) -> Vec<ShownCatalogNumber> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, value)| ShownCatalogNumber {
+            value: value.clone(),
+            recognized: CatalogNumber::parse(value).is_recognized(),
+            message: message(errors.get(i).unwrap_or(&None)),
+        })
+        .collect()
 }
 
 /// Datalist suggestions for the role and name inputs, as (roles, names).

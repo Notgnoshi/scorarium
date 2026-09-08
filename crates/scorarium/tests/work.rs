@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::router;
-use scorarium_tests::TestDb;
+use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
 async fn work_page() {
@@ -72,4 +72,54 @@ async fn work_page() {
         .get(&format!("/library/{}/work/{missing}", sheet_music.id))
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn work_edit_saves_catalog_numbers() {
+    let state = TestDb::new().demo().password("hunter2").build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publications = sheet_music.publications().await.unwrap();
+    let album = publications
+        .iter()
+        .find(|p| p.title == "Russian piano album")
+        .unwrap();
+    let prelude = album
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|w| w.title == "Prelude in C-sharp minor")
+        .unwrap();
+    let server = browser(state.clone());
+    server.post("/login").form(&[("password", "hunter2")]).await;
+    let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
+    let edit = format!("{view}/edit");
+
+    // The stored number opens in the form, marked recognized
+    let response = server.get(&edit).await;
+    response.assert_status_ok();
+    response.assert_text_contains("value=\"Op. 3 No. 2\"");
+    response.assert_text_contains("Recognized catalog number scheme");
+
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Prelude in C-sharp minor"),
+            ("key", "C-sharp minor"),
+            ("time_signature", ""),
+            ("instrumentation", "piano"),
+            ("catalog_number", "Op. 3 No. 2"),
+            ("catalog_number", "Morceaux de fantaisie II"),
+            ("contributor_name", "Sergei Rachmaninoff"),
+            ("contributor_role", "composer"),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &view);
+
+    let response = server.get(&view).await;
+    response.assert_text_contains("Op. 3 No. 2");
+    response.assert_text_contains("Morceaux de fantaisie II");
+    response.assert_text_contains("Unrecognized catalog number scheme");
 }

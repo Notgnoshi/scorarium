@@ -1,0 +1,13 @@
+{% macro indicator(recognized) %}
+    <span data-catalog-indicator
+          data-bs-toggle="tooltip"
+          title="{% if recognized %}Recognized catalog number scheme{% else %}Unrecognized catalog number scheme{% endif %}">
+        <i class="bi {% if recognized %}bi-check-circle{% else %}bi-question-circle text-body-secondary{% endif %}"
+           aria-hidden="true"></i>
+    </span>
+{% endmacro %}
+{% macro number(catalog_number) %}
+    {{ catalog_number.as_str() }}
+    {% call indicator(catalog_number.is_recognized()) %}
+    {% endcall %}
+{% endmacro %}

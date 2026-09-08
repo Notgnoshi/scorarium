@@ -41,6 +41,8 @@ pub struct WorkPost {
     contributor_name: Vec<String>,
     #[serde(default)]
     contributor_role: Vec<String>,
+    #[serde(default)]
+    catalog_number: Vec<String>,
 }
 
 impl From<WorkPost> for WorkRawInput {
@@ -56,6 +58,11 @@ impl From<WorkPost> for WorkRawInput {
                 post.contributor_name,
                 post.contributor_role,
             ),
+            catalog_numbers: post
+                .catalog_number
+                .iter()
+                .map(|number| number.trim().to_string())
+                .collect(),
         }
     }
 }

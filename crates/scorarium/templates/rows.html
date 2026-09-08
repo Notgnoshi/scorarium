@@ -1,3 +1,4 @@
+{% import "catalog.html" as catalog %}
 {% macro identifier_row(kind, value, error) %}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -40,6 +41,27 @@
                list="roles"
                placeholder="Role"
                aria-label="Role" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro catalog_number_row(value, recognized, error) %}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="catalog_number"
+               value="{{ value }}"
+               placeholder="Op. 27 No. 2"
+               aria-label="Catalog number" />
+        <span class="input-group-text">
+            {% call catalog::indicator(recognized) %}
+            {% endcall %}
+        </span>
         <button type="button"
                 class="btn btn-outline-secondary"
                 data-rows-remove

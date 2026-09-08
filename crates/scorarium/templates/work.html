@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "catalog.html" as catalog %}
 {% block content %}
     <h1>{{ work.title }}</h1>
     {% if base.logged_in %}
@@ -11,7 +12,7 @@
         {% if !work.catalog_numbers.is_empty() %}
             <dt class="col-sm-3">Catalog numbers</dt>
             <dd class="col-sm-9">
-                {{ work.catalog_numbers | join(", ") }}
+                {% for n in work.catalog_numbers %}{% if !loop.first %}, {% endif %}{% call catalog::number(n) %}{% endcall %}{% endfor %}
             </dd>
         {% endif %}
         {% if let Some(key) = work.key %}

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
+use crate::catalog::CatalogNumber;
 use crate::identifier;
 
 /// Why a field was refused. The [Display] is the message the page shows.
@@ -79,6 +80,32 @@ pub(crate) fn parse_contributors(
         .collect();
     if errors.iter().all(Option::is_none) {
         Ok(contributors)
+    } else {
+        Err(errors)
+    }
+}
+
+/// Check catalog numbers, one slot per input
+pub(crate) fn parse_catalog_numbers(
+    raw: &[String],
+) -> Result<Vec<CatalogNumber>, Vec<Option<ValidationError>>> {
+    let mut numbers: Vec<CatalogNumber> = Vec::new();
+    let errors: Vec<Option<ValidationError>> = raw
+        .iter()
+        .map(|raw| {
+            let number = CatalogNumber::parse(raw);
+            if number.as_str().is_empty() {
+                return Some(ValidationError::FillOrRemove);
+            }
+            if numbers.iter().any(|seen| seen.matches(&number)) {
+                return Some(ValidationError::AlreadyListed);
+            }
+            numbers.push(number);
+            None
+        })
+        .collect();
+    if errors.iter().all(Option::is_none) {
+        Ok(numbers)
     } else {
         Err(errors)
     }

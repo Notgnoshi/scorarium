@@ -1,3 +1,4 @@
+use crate::catalog::CatalogNumber;
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::identifier::{self, Kind, Normalized};
 use crate::input::ContributorInput;
@@ -82,8 +83,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             ],
             contributors: composers,
             contents: vec![
-                piano_piece("Prelude in C-sharp minor", "C-sharp minor", None),
-                piano_piece("Etude-Tableau", "A minor", None),
+                piano_piece(
+                    "Prelude in C-sharp minor",
+                    "C-sharp minor",
+                    None,
+                    &["Op. 3 No. 2"],
+                ),
+                piano_piece("Etude-Tableau", "A minor", None, &["Op. 39 No. 2"]),
             ],
         })
         .await?;
@@ -96,16 +102,21 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-486-43122-3")?],
             contributors: vec![contributor(RACHMANINOFF, "composer")],
-            contents: vec![piano_piece("Polichinelle", "F-sharp minor", None)],
+            contents: vec![piano_piece(
+                "Polichinelle",
+                "F-sharp minor",
+                None,
+                &["Op. 3 No. 4"],
+            )],
         })
         .await?;
 
     // A transcription published on its own, one work with two contributors, identified by a plate number
-    let mut tone_poem = piano_piece("The Isle of the Dead", "A minor", Some("5/8"));
+    let mut tone_poem = piano_piece("The Isle of the Dead", "A minor", Some("5/8"), &["Op. 29"]);
     tone_poem
         .contributors
         .push(contributor("Georgy Kirkor", "arranger"));
-    let isle_of_the_dead = sheet_music
+    sheet_music
         .create_publication(&PublicationInput {
             title: "The Isle of the Dead".into(),
             publisher: Some("State Music Publishers".into()),
@@ -139,21 +150,10 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
         })
         .await?;
 
-    let album_works = russian_album.works().await?;
-    let masterpiece_works = masterpieces.works().await?;
-    let isle_works = isle_of_the_dead.works().await?;
-    let prelude = &album_works[0];
+    let prelude_id = russian_album.works().await?[0].id;
     let mut conn = archive.shared.pool.acquire().await?;
-    for (work_id, value) in [
-        (prelude.id, "Op. 3 No. 2"),
-        (album_works[1].id, "Op. 39 No. 2"),
-        (masterpiece_works[0].id, "Op. 3 No. 4"),
-        (isle_works[0].id, "Op. 29"),
-    ] {
-        work::add_work_catalog_number(&mut conn, work_id, value).await?;
-    }
     // The same work in two publications, so work pages list more than one
-    work::link_work_to_publication(&mut conn, sheet_music.id, masterpieces.id, prelude.id).await?;
+    work::link_work_to_publication(&mut conn, sheet_music.id, masterpieces.id, prelude_id).await?;
 
     Ok(())
 }
@@ -186,7 +186,12 @@ fn normalized(kind: Kind, value: &str) -> Result<(Kind, Normalized)> {
 }
 
 /// A piece for solo piano credited to Rachmaninoff, which is most of the demo's sheet music
-fn piano_piece(title: &str, key: &str, time_signature: Option<&str>) -> WorkInput {
+fn piano_piece(
+    title: &str,
+    key: &str,
+    time_signature: Option<&str>,
+    catalog_numbers: &[&str],
+) -> WorkInput {
     WorkInput {
         id: None,
         title: title.into(),
@@ -194,6 +199,10 @@ fn piano_piece(title: &str, key: &str, time_signature: Option<&str>) -> WorkInpu
         time_signature: time_signature.map(str::to_string),
         instrumentation: Some("piano".into()),
         contributors: vec![contributor(RACHMANINOFF, "composer")],
+        catalog_numbers: catalog_numbers
+            .iter()
+            .map(|number| CatalogNumber::parse(number))
+            .collect(),
     }
 }
 
@@ -205,6 +214,7 @@ fn gymnopedie(number: usize, key: &str) -> WorkInput {
         time_signature: Some("3/4".into()),
         instrumentation: Some("piano".into()),
         contributors: vec![contributor(SATIE, "composer")],
+        catalog_numbers: Vec::new(),
     }
 }
 
@@ -217,5 +227,6 @@ fn writing(title: &str) -> WorkInput {
         time_signature: None,
         instrumentation: None,
         contributors: vec![contributor(BIERCE, "author")],
+        catalog_numbers: Vec::new(),
     }
 }
