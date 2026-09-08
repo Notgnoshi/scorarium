@@ -2,6 +2,7 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+mod catalog;
 mod demo;
 mod holding;
 pub mod identifier;
@@ -21,6 +22,7 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
+pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
