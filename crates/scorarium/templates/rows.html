@@ -57,7 +57,8 @@
                name="catalog_number"
                value="{{ value }}"
                placeholder="Op. 27 No. 2"
-               aria-label="Catalog number" />
+               aria-label="Catalog number"
+               data-catalog-suggest />
         <span class="input-group-text">
             {% call catalog::indicator(recognized) %}
             {% endcall %}
@@ -86,7 +87,8 @@
                name="work_catalog_number"
                value="{{ catalog_number }}"
                placeholder="Op. 27 No. 2"
-               aria-label="Work catalog number" />
+               aria-label="Work catalog number"
+               data-catalog-suggest />
         <span class="input-group-text">
             {% call catalog::indicator(recognized) %}
             {% endcall %}

@@ -3,6 +3,7 @@
     <h1>{{ base.title }}</h1>
     <form method="post"
           action="/library/{{ library.id }}/publication/{{ publication.id }}/edit"
+          data-library-id="{{ library.id }}"
           data-publication-edit>
         {% include "publication_fields.html" %}
         <div class="d-flex gap-2">

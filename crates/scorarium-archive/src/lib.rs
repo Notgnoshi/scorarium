@@ -22,7 +22,7 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
-pub use crate::catalog::CatalogNumber;
+pub use crate::catalog::{CatalogNumber, Similarity};
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
@@ -35,7 +35,7 @@ pub use crate::person::{Contributor, Person};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
-pub use crate::work::{Work, WorkErrors, WorkInput, WorkRawInput};
+pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 

@@ -6,6 +6,7 @@ mod login;
 mod password;
 mod person;
 mod publication;
+mod suggest;
 mod work;
 
 use std::sync::Arc;
@@ -458,6 +459,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/library/{library_id}/publication/{id}/delete",
             post(publication::delete),
+        )
+        .route(
+            "/library/{id}/suggest/catalog-numbers",
+            get(suggest::catalog_numbers),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
         .route(

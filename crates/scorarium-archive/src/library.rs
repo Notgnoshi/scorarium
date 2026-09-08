@@ -6,7 +6,7 @@ use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
-use crate::work::{self, Work};
+use crate::work::{self, CatalogNumberEntry, Work};
 use crate::{ArchiveInner, NotFound, Result};
 
 /// A named container of publications.
@@ -133,6 +133,16 @@ impl Library {
             .pop();
         tx.commit().await?;
         Ok(work)
+    }
+
+    /// The catalog numbers of works reachable through a publication that is not private,
+    /// optionally only those credited to one composer
+    pub async fn public_catalog_numbers(
+        &self,
+        composer: Option<&str>,
+    ) -> Result<Vec<CatalogNumberEntry>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        work::load_catalog_numbers(&mut conn, Some(self.id), composer, true).await
     }
 
     /// Fold one work into another and delete it; the survivor is returned reloaded.

@@ -8,7 +8,8 @@
         </dd>
     </dl>
     <form method="post"
-          action="/library/{{ library.id }}/import/{{ import.id }}/save">
+          action="/library/{{ library.id }}/import/{{ import.id }}/save"
+          data-library-id="{{ library.id }}">
         {% include "publication_fields.html" %}
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save draft</button>

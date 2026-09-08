@@ -298,6 +298,62 @@ pub(crate) async fn load_works(
     Ok(works)
 }
 
+/// One work's catalog number, with what a suggestion needs to say about the work carrying it
+#[derive(Clone, Debug)]
+pub struct CatalogNumberEntry {
+    pub library_id: i64,
+    pub library_name: String,
+    pub work_id: i64,
+    pub title: String,
+    /// The composer credited, if any; a work with several appears once per composer
+    pub composer: Option<String>,
+    pub number: CatalogNumber,
+}
+
+/// Every catalog number in a library or in the whole archive, by library, work title, and the
+/// order the numbers were entered.
+///
+/// `public_only` leaves out works no non-private publication reaches, for the unauthenticated
+/// suggestion route.
+pub(crate) async fn load_catalog_numbers(
+    conn: &mut SqliteConnection,
+    library_id: Option<i64>,
+    composer: Option<&str>,
+    public_only: bool,
+) -> crate::Result<Vec<CatalogNumberEntry>> {
+    let rows = sqlx::query!(
+        "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,
+                p.name AS composer, cn.value
+         FROM work_catalog_number cn
+         JOIN work w ON w.id = cn.work_id
+         JOIN library l ON l.id = w.library_id
+         LEFT JOIN work_contributor c ON c.work_id = w.id AND c.role = 'composer'
+         LEFT JOIN person p ON p.id = c.person_id
+         WHERE (?1 IS NULL OR w.library_id = ?1)
+           AND (?2 IS NULL OR p.name = ?2)
+           AND (?3 = 0 OR EXISTS (SELECT 1 FROM publication_work pw
+                                  JOIN publication pub ON pub.id = pw.publication_id
+                                  WHERE pw.work_id = w.id AND pub.private = 0))
+         ORDER BY l.name, w.title, cn.id",
+        library_id,
+        composer,
+        public_only
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| CatalogNumberEntry {
+            library_id: row.library_id,
+            library_name: row.library_name,
+            work_id: row.work_id,
+            title: row.title,
+            composer: row.composer,
+            number: CatalogNumber::parse(&row.value),
+        })
+        .collect())
+}
+
 /// Create a work and put it in a publication, on the caller's transaction.
 ///
 /// The input's id is ignored: a publication creates every work it names, since linking an existing

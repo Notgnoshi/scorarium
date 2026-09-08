@@ -1,4 +1,5 @@
 {% import "rows.html" as rows %}
+{% import "catalog.html" as catalog %}
 {% call rows::style() %}
 {% endcall %}
 <div data-publication-fields>
@@ -97,6 +98,8 @@
     </datalist>
 </div>
 {% call rows::script() %}
+{% endcall %}
+{% call catalog::script() %}
 {% endcall %}
 <script>
     // Seed the new work's contributor role with "composer" or "author" based on what the owning
