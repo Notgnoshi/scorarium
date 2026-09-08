@@ -3,9 +3,9 @@ mod import;
 mod index;
 mod library;
 mod login;
-mod password;
 mod person;
 mod publication;
+mod settings;
 mod suggest;
 mod work;
 
@@ -73,6 +73,13 @@ impl Crumb {
         Self {
             label: label.to_string(),
             href: format!("/library/{}/import/{}", import.library_id, import.id),
+        }
+    }
+
+    pub fn settings() -> Self {
+        Self {
+            label: "Settings".to_string(),
+            href: "/settings".to_string(),
         }
     }
 
@@ -421,9 +428,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
+        .route("/settings", get(settings::settings_page))
+        .route("/settings/password", post(settings::change_password))
         .route(
-            "/password",
-            get(password::password_form).post(password::change_password),
+            "/settings/catalog-numbers",
+            get(settings::catalog_numbers_page),
         )
         .route("/review", get(import::queue))
         .route("/library", post(library::create))

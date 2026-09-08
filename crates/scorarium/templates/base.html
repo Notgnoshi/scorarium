@@ -50,12 +50,12 @@
                                     </a>
                                 </li>
                             {% endif %}
+                            {% if !base.path.starts_with("/settings") %}
+                                <li class="nav-item">
+                                    <a class="nav-link" href="/settings">Settings</a>
+                                </li>
+                            {% endif %}
                             {% if !base.demo %}
-                                {% if base.path != "/password" %}
-                                    <li class="nav-item">
-                                        <a class="nav-link" href="/password">Change password</a>
-                                    </li>
-                                {% endif %}
                                 <li class="nav-item">
                                     <form method="post" action="/logout">
                                         <button class="nav-link">Log out</button>

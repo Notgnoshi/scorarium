@@ -137,6 +137,12 @@ impl Archive {
         library::create_library(&self.shared, &mut conn, name).await
     }
 
+    /// Every catalog number in every library, private works included, for the settings page
+    pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
+        let mut conn = self.shared.pool.acquire().await?;
+        work::load_catalog_numbers(&mut conn, None, None, false).await
+    }
+
     /// Every library's pending imports, oldest first
     pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
         let mut tx = self.shared.pool.begin().await?;

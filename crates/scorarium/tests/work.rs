@@ -186,3 +186,35 @@ async fn editing_a_work_onto_another_number_merges_them() {
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
 }
+
+/// Save and Cancel return to the page that opened the edit page, but only when it is a page here.
+#[tokio::test]
+async fn the_edit_page_returns_where_it_came_from() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publications = sheet_music.publications().await.unwrap();
+    let album = publications
+        .iter()
+        .find(|p| p.title == "Russian piano album")
+        .unwrap();
+    let prelude = album.works().await.unwrap().remove(0);
+    let server = browser(state.clone());
+    let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
+
+    let response = server
+        .get(&format!("{view}/edit"))
+        .add_query_param("back", "/settings/catalog-numbers")
+        .await;
+    response.assert_text_contains("href=\"/settings/catalog-numbers\"");
+
+    // A protocol-relative URL leads off this site, and browsers read a backslash as a slash
+    for back in ["//evil.example", "/\\evil.example"] {
+        let response = server
+            .get(&format!("{view}/edit"))
+            .add_query_param("back", back)
+            .await;
+        response.assert_text_contains(format!("href=\"{view}\""));
+        assert!(!response.text().contains("evil.example"));
+    }
+}
