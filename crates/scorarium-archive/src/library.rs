@@ -6,7 +6,7 @@ use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
-use crate::work::{self, Work};
+use crate::work::{self, CatalogNumberEntry, Work};
 use crate::{ArchiveInner, NotFound, Result};
 
 /// A named container of publications.
@@ -133,6 +133,43 @@ impl Library {
             .pop();
         tx.commit().await?;
         Ok(work)
+    }
+
+    /// The catalog numbers of works reachable through a publication that is not private,
+    /// optionally only those credited to one composer
+    pub async fn public_catalog_numbers(
+        &self,
+        composer: Option<&str>,
+    ) -> Result<Vec<CatalogNumberEntry>> {
+        let mut conn = self.archive.pool.acquire().await?;
+        work::load_catalog_numbers(&mut conn, Some(self.id), composer, true).await
+    }
+
+    /// Fold one work into another and delete it; the survivor is returned reloaded.
+    ///
+    /// Returns a [NotFound] error when either work is not in this library.
+    pub async fn merge_works(&self, from: i64, into: i64) -> Result<Work> {
+        let mut tx = self.archive.pool.begin().await?;
+        let both = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM work WHERE library_id = ?1 AND id IN (?2, ?3)",
+            self.id,
+            from,
+            into
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        if both != 2 {
+            tx.rollback().await?;
+            return Err(NotFound.into());
+        }
+        work::merge_works(&mut tx, self.id, from, into).await?;
+        collect_orphans(&mut tx, self.id).await?;
+        let survivor = work::load_works(&self.archive, &mut tx, self.id, Some(into), None)
+            .await?
+            .pop()
+            .expect("the survivor was just verified on this transaction");
+        tx.commit().await?;
+        Ok(survivor)
     }
 }
 

@@ -1,0 +1,183 @@
+{% macro indicator(recognized) %}
+    <span data-catalog-indicator
+          data-bs-toggle="tooltip"
+          title="{% if recognized %}Recognized catalog number scheme{% else %}Unrecognized catalog number scheme{% endif %}">
+        <i class="bi {% if recognized %}bi-check-circle{% else %}bi-question-circle text-body-secondary{% endif %}"
+           aria-hidden="true"></i>
+    </span>
+{% endmacro %}
+{% macro number(catalog_number) %}
+    {{ catalog_number.as_str() }}
+    {% call indicator(catalog_number.is_recognized()) %}
+    {% endcall %}
+{% endmacro %}
+{% macro script() %}
+    <script>
+        // Offer the numbers the library already has while one is typed, so a work entered twice is
+        // recognized as the same work rather than saved as two.
+        (() => {
+            const DEBOUNCE_MS = 150;
+            let timer = null;
+            let menu = null;
+            // A selection dispatches an input event to refresh the indicator; that must not reopen
+            // the menu the selection just closed
+            let skipMenu = false;
+
+            const closeMenu = () => {
+                menu?.remove();
+                menu = null;
+            };
+
+            // The composer the work is credited to: the same work's, on the publication form, else
+            // the one the work form credits
+            const composerOf = (input) => {
+                const row = input.closest("[data-row]");
+                const own = row?.querySelector("[name=work_contributor_name]");
+                if (own) return own.value.trim();
+                const role = [...input.form.querySelectorAll("[name=contributor_role]")]
+                    .find((role) => role.value.trim().toLowerCase() === "composer");
+                const name = role?.closest("[data-row]").querySelector("[name=contributor_name]");
+                return name ? name.value.trim() : "";
+            };
+
+            const showRecognized = (input, recognized) => {
+                const span = input.closest(".input-group")?.querySelector("[data-catalog-indicator]");
+                if (!span) return;
+                const title = recognized ? "Recognized catalog number scheme" : "Unrecognized catalog number scheme";
+                // A tooltip that has already been shown reads the title it stashed away
+                span.setAttribute("title", title);
+                span.setAttribute("data-bs-original-title", title);
+                bootstrap.Tooltip.getInstance(span)?.setContent({
+                    ".tooltip-inner": title
+                });
+                span.querySelector("i").className = recognized ?
+                    "bi bi-check-circle" :
+                    "bi bi-question-circle text-body-secondary";
+            };
+
+            // Credit the composer the suggestion came from, so the two fields agree
+            const creditComposer = (input, composer) => {
+                const row = input.closest("[data-row]");
+                const own = row?.querySelector("[name=work_contributor_name]");
+                if (own) {
+                    own.value = composer;
+                    const role = row.querySelector("[name=work_contributor_role]");
+                    if (role && !role.value.trim()) role.value = "composer";
+                    return;
+                }
+                const credits = input.form.querySelector("[data-contributors]");
+                if (!credits) return;
+                const role = [...credits.querySelectorAll("[name=contributor_role]")]
+                    .find((role) => role.value.trim().toLowerCase() === "composer");
+                if (role) {
+                    role.closest("[data-row]").querySelector("[name=contributor_name]").value = composer;
+                    return;
+                }
+                credits.querySelector("[data-rows-add]").click();
+                const added = credits.querySelector("[data-rows-list] [data-row]:last-child");
+                added.querySelector("[name=contributor_name]").value = composer;
+                added.querySelector("[name=contributor_role]").value = "composer";
+            };
+
+            // Take the title the suggestion came from, since saving this number folds the work
+            // into that one and the older title is the one that survives
+            const takeTitle = (input, title) => {
+                const row = input.closest("[data-row]");
+                // The publication form's row titles a work of its own; the work form has just one
+                const field = row?.querySelector("[name=work_title]") ??
+                    input.form.querySelector("[name=title]");
+                if (field) field.value = title;
+            };
+
+            const select = (input, match) => {
+                skipMenu = true;
+                input.value = match.value;
+                closeMenu();
+                input.dispatchEvent(new Event("input", {
+                    bubbles: true
+                }));
+                takeTitle(input, match.title);
+                if (match.composer) creditComposer(input, match.composer);
+            };
+
+            const openMenu = (input, matches) => {
+                closeMenu();
+                if (!matches.length) return;
+                menu = document.createElement("div");
+                menu.className = "dropdown-menu show";
+                // The input group is the positioned ancestor Bootstrap already gives us
+                menu.style.cssText = "position: absolute; top: 100%; left: 0; z-index: 1000";
+                for (const match of matches) {
+                    const item = document.createElement("button");
+                    item.type = "button";
+                    item.className = "dropdown-item d-flex gap-3";
+                    const value = document.createElement("span");
+                    value.textContent = match.value;
+                    if (match.exact) value.className = "fw-bold";
+                    const title = document.createElement("span");
+                    title.textContent = match.title;
+                    const composer = document.createElement("span");
+                    composer.className = "text-body-secondary ms-auto";
+                    composer.textContent = match.composer ?? "";
+                    item.append(value, title, composer);
+                    item.suggestion = match;
+                    // Ahead of the input losing focus, so the click is not lost to the menu closing
+                    item.addEventListener("mousedown", (e) => {
+                        e.preventDefault();
+                        select(input, match);
+                    });
+                    menu.appendChild(item);
+                }
+                input.closest(".input-group").appendChild(menu);
+            };
+
+            const suggest = async (input) => {
+                const library = input.form?.dataset.libraryId;
+                if (!library) return;
+                const typed = input.value.trim();
+                const query = new URLSearchParams({
+                    q: typed,
+                    composer: composerOf(input)
+                });
+                const response = await fetch(`/library/${library}/suggest/catalog-numbers?${query}`);
+                if (!response.ok) return;
+                const suggestions = await response.json();
+                // An empty input says nothing about the scheme, so leave the indicator alone
+                if (typed) showRecognized(input, suggestions.recognized);
+                if (skipMenu || document.activeElement !== input) {
+                    skipMenu = false;
+                    return;
+                }
+                openMenu(input, suggestions.matches);
+            };
+
+            // Delegated, so rows added after load need no wiring of their own
+            document.addEventListener("input", (e) => {
+                if (!e.target.matches("[data-catalog-suggest]")) return;
+                clearTimeout(timer);
+                timer = setTimeout(() => suggest(e.target), DEBOUNCE_MS);
+            });
+            document.addEventListener("focusout", (e) => {
+                if (e.target.matches("[data-catalog-suggest]")) closeMenu();
+            });
+            document.addEventListener("keydown", (e) => {
+                if (!e.target.matches("[data-catalog-suggest]") || !menu) return;
+                const items = [...menu.children];
+                const active = menu.querySelector(".active");
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const step = e.key === "ArrowDown" ? 1 : -1;
+                    const next = Math.min(Math.max(items.indexOf(active) + step, 0), items.length - 1);
+                    active?.classList.remove("active");
+                    items[next].classList.add("active");
+                } else if (e.key === "Enter" && active) {
+                    // The form would otherwise submit on the way past
+                    e.preventDefault();
+                    select(e.target, active.suggestion);
+                } else if (e.key === "Escape") {
+                    closeMenu();
+                }
+            });
+        })();
+    </script>
+{% endmacro %}

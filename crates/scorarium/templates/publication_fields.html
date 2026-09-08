@@ -1,4 +1,5 @@
 {% import "rows.html" as rows %}
+{% import "catalog.html" as catalog %}
 {% call rows::style() %}
 {% endcall %}
 <div data-publication-fields>
@@ -68,12 +69,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for w in fields.works %}
-                {% call rows::work_row(library.id, w.id, w.title, w.name, w.role, w.more, w.message, fields.work_edit) %}
+                {% call rows::work_row(library.id, w.id, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.more, w.message, fields.work_edit) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", "", "", "", fields.work_edit) %}
+            {% call rows::work_row(library.id, "", "", "", false, "", "", "", "", "", fields.work_edit) %}
             {% endcall %}
         </template>
         <button type="button"
@@ -82,6 +83,45 @@
                 aria-label="Add work">
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-bs-toggle="collapse"
+                data-bs-target="#add-range"
+                aria-expanded="false"
+                aria-controls="add-range">Add range</button>
+        <div class="collapse mt-2" id="add-range" data-range>
+            <div class="input-group">
+                <input class="form-control"
+                       placeholder="Prelude"
+                       aria-label="Title"
+                       data-range-title />
+                <input class="form-control"
+                       placeholder="Composer"
+                       aria-label="Composer"
+                       list="names"
+                       data-range-composer />
+                <input class="form-control"
+                       placeholder="Op. 28 No."
+                       aria-label="Catalog prefix"
+                       data-range-prefix />
+                <span class="input-group-text">from</span>
+                <input class="form-control"
+                       type="number"
+                       min="0"
+                       placeholder="1"
+                       aria-label="From"
+                       data-range-from />
+                <span class="input-group-text">to</span>
+                <input class="form-control"
+                       type="number"
+                       min="0"
+                       placeholder="24"
+                       aria-label="To"
+                       data-range-to />
+                <button type="button" class="btn btn-outline-secondary" data-range-add>Add</button>
+                <div class="invalid-feedback" data-range-error></div>
+            </div>
+        </div>
         {% if fields.work_edit.is_draft() %}
             {# Which row's work to open once the draft is saved; empty means none #}
             <input type="hidden" name="edit_work" value="" data-edit-work-row />
@@ -98,6 +138,8 @@
 </div>
 {% call rows::script() %}
 {% endcall %}
+{% call catalog::script() %}
+{% endcall %}
 <script>
     // Seed the new work's contributor role with "composer" or "author" based on what the owning
     // publication has.
@@ -108,6 +150,69 @@
         const role = ["composer", "author"].find((r) => roles.includes(r)) ?? "";
         const row = works.querySelector("[data-rows-list] [data-row]:last-child");
         row.querySelector("[name=work_contributor_role]").value = role;
+    });
+
+    // A catalog range is entered once and expands into ordinary work rows, so the rows are the
+    // preview and saving them needs nothing new on the server.
+    const MOST_AT_ONCE = 200;
+    const range = document.querySelector("[data-range]");
+    const field = (name) => range.querySelector(`[data-range-${name}]`);
+
+    // Only when the publication names one composer, and never over what was typed
+    const seedComposer = () => {
+        if (field("composer").value.trim()) return;
+        const composers = [...document.querySelectorAll("[name=contributor_role]")]
+            .filter((role) => role.value.trim().toLowerCase() === "composer");
+        if (composers.length !== 1) return;
+        const name = composers[0].closest("[data-row]").querySelector("[name=contributor_name]");
+        field("composer").value = name.value.trim();
+    };
+    seedComposer();
+    range.addEventListener("shown.bs.collapse", seedComposer);
+
+    const refuse = (input, reason) => {
+        input.classList.add("is-invalid");
+        field("error").textContent = reason;
+        field("error").classList.add("d-block");
+    };
+
+    // Blank is not zero, so the digits are checked rather than trusting the coercion
+    const bound = (name) => {
+        const typed = field(name).value.trim();
+        return /^\d+$/.test(typed) ? Number(typed) : NaN;
+    };
+
+    field("add").addEventListener("click", () => {
+        for (const invalid of range.querySelectorAll(".is-invalid")) {
+            invalid.classList.remove("is-invalid");
+        }
+        field("error").classList.remove("d-block");
+        const title = field("title").value.trim();
+        const composer = field("composer").value.trim();
+        const prefix = field("prefix").value.trim();
+        const from = bound("from");
+        const to = bound("to");
+        if (!prefix) return refuse(field("prefix"), "A catalog prefix is required.");
+        if (!Number.isInteger(from)) return refuse(field("from"), "Enter a whole number.");
+        if (!Number.isInteger(to)) return refuse(field("to"), "Enter a whole number.");
+        if (from > to) return refuse(field("to"), "The range ends before it starts.");
+        if (to - from >= MOST_AT_ONCE) {
+            return refuse(field("to"), `Add at most ${MOST_AT_ONCE} works at a time.`);
+        }
+        for (let n = from; n <= to; n++) {
+            // Going through the button reuses the row cloning and the role seeding
+            works.querySelector("[data-rows-add]").click();
+            const row = works.querySelector("[data-rows-list] [data-row]:last-child");
+            const number = `${prefix} ${n}`;
+            row.querySelector("[name=work_catalog_number]").value = number;
+            row.querySelector("[name=work_title]").value = `${title} ${number}`.trim();
+            if (composer) {
+                row.querySelector("[name=work_contributor_name]").value = composer;
+                row.querySelector("[name=work_contributor_role]").value = "composer";
+            }
+        }
+        for (const name of ["title", "composer", "prefix", "from", "to"]) field(name).value = "";
+        bootstrap.Collapse.getOrCreateInstance(range).hide();
     });
 </script>
 {% if fields.work_edit.is_draft() %}

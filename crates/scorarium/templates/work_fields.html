@@ -1,4 +1,5 @@
 {% import "rows.html" as rows %}
+{% import "catalog.html" as catalog %}
 <div>
     <div class="mb-3">
         <label class="form-label" for="title">Title</label>
@@ -33,6 +34,25 @@
                value="{{ fields.input.instrumentation }}" />
     </div>
     <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Catalog numbers</legend>
+        <div data-rows-list>
+            {% for number in fields.catalog_numbers %}
+                {% call rows::catalog_number_row(number.value, number.recognized, number.message) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call rows::catalog_number_row("", false, "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add catalog number">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+    <fieldset class="border rounded p-3 mb-3" data-rows data-contributors>
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
             {% for (row, error) in fields.contributors %}
@@ -59,4 +79,6 @@
     </datalist>
 </div>
 {% call rows::script() %}
+{% endcall %}
+{% call catalog::script() %}
 {% endcall %}

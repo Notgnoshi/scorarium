@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "catalog.html" as catalog %}
+{% block content %}
+    <h1>Unrecognized catalog numbers</h1>
+    {% if entries.is_empty() %}
+        <p>Every catalog number uses a recognized scheme.</p>
+    {% else %}
+        <p>The parser does not recognize the catalog number scheme on these works:</p>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Library</th>
+                        <th>Work</th>
+                        <th>Catalog number</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                        <tr>
+                            <td>
+                                <a href="/library/{{ entry.library_id }}">{{ entry.library_name }}</a>
+                            </td>
+                            <td>
+                                <a href="/library/{{ entry.library_id }}/work/{{ entry.work_id }}">{{ entry.title }}</a>
+                            </td>
+                            <td>
+                                {% call catalog::number(entry.number) %}
+                                {% endcall %}
+                            </td>
+                            <td>
+                                <a class="btn btn-outline-secondary btn-sm"
+                                   href="/library/{{ entry.library_id }}/work/{{ entry.work_id }}/edit?back={{ "/settings/catalog-numbers"|urlencode }}"
+                                   aria-label="Edit work">
+                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+{% endblock %}

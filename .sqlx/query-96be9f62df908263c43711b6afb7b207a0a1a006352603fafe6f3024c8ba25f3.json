@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE publication_work SET work_id = ?1\n         WHERE work_id = ?2\n           AND publication_id NOT IN (SELECT publication_id FROM publication_work WHERE work_id = ?1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "96be9f62df908263c43711b6afb7b207a0a1a006352603fafe6f3024c8ba25f3"
+}

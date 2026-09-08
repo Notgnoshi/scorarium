@@ -2,6 +2,7 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+mod catalog;
 mod demo;
 mod holding;
 pub mod identifier;
@@ -21,6 +22,7 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
+pub use crate::catalog::{CatalogNumber, Similarity};
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
@@ -33,7 +35,7 @@ pub use crate::person::{Contributor, Person};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
-pub use crate::work::{Work, WorkErrors, WorkInput, WorkRawInput};
+pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 
@@ -133,6 +135,12 @@ impl Archive {
     pub async fn create_library(&self, name: &str) -> Result<Library> {
         let mut conn = self.shared.pool.acquire().await?;
         library::create_library(&self.shared, &mut conn, name).await
+    }
+
+    /// Every catalog number in every library, private works included, for the settings page
+    pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
+        let mut conn = self.shared.pool.acquire().await?;
+        work::load_catalog_numbers(&mut conn, None, None, false).await
     }
 
     /// Every library's pending imports, oldest first

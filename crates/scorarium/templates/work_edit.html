@@ -3,7 +3,8 @@
     <h1>{{ base.title }}</h1>
     {# The action carries the query string so the submission returns to the same page the link did #}
     <form method="post"
-          action="/library/{{ library.id }}/work/{{ work.id }}/edit?back={{ back|urlencode }}">
+          action="/library/{{ library.id }}/work/{{ work.id }}/edit?back={{ back|urlencode }}"
+          data-library-id="{{ library.id }}">
         {% include "work_fields.html" %}
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save</button>

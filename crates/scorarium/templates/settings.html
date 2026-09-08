@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Settings</h1>
+    {# The demo logs everyone in without a password, so there is none to change #}
+    {% if !base.demo %}
+        <h2>Change password</h2>
+        <div class="row">
+            <form class="col-md-6 col-lg-4" method="post" action="/settings/password">
+                {% if let Some(error) = error %}
+                    <div class="alert alert-danger" role="alert">{{ error }}</div>
+                {% endif %}
+                <div class="mb-3">
+                    <label class="form-label" for="current">Current password</label>
+                    <input class="form-control"
+                           type="password"
+                           id="current"
+                           name="current"
+                           required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="new">New password</label>
+                    <input class="form-control" type="password" id="new" name="new" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="confirm">Confirm password</label>
+                    <input class="form-control"
+                           type="password"
+                           id="confirm"
+                           name="confirm"
+                           required />
+                </div>
+                <button class="btn btn-primary">Change password</button>
+            </form>
+        </div>
+    {% endif %}
+    <h2 class="mt-4">Catalog number schemes</h2>
+    <p>
+        {% if unrecognized == 0 %}
+            Every catalog number found uses a recognized scheme.
+        {% else %}
+            <a href="/settings/catalog-numbers">{{ unrecognized }} unrecognized catalog number{% if unrecognized != 1 %}s{% endif %}</a>
+        {% endif %}
+    </p>
+{% endblock %}

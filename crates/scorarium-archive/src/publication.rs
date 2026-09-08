@@ -572,6 +572,7 @@ mod tests {
                     WorkErrors {
                         title: None,
                         contributors: vec![Some(ValidationError::NameRequired)],
+                        catalog_numbers: Vec::new(),
                     },
                     WorkErrors::default(),
                 ],

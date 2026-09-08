@@ -1,6 +1,6 @@
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PublicationRawInput,
-    WorkRawInput,
+    CatalogNumber, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput,
+    PublicationRawInput, WorkRawInput,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -47,6 +47,8 @@ struct Fields {
     #[serde(default)]
     work_title: Vec<String>,
     #[serde(default)]
+    work_catalog_number: Vec<String>,
+    #[serde(default)]
     work_contributor_name: Vec<String>,
     #[serde(default)]
     work_contributor_role: Vec<String>,
@@ -54,11 +56,13 @@ struct Fields {
     edit_work: Option<String>,
 }
 
-/// A work as the publication form posts it: its title and the one contributor the page shows
+/// A work as the publication form posts it: its title, and the one catalog number and the one
+/// contributor the page shows
 #[derive(Debug, PartialEq, Eq)]
 pub struct PartialWorkPost {
     pub id: Option<i64>,
     pub title: String,
+    pub catalog_number: String,
     pub contributor: ContributorInput,
 }
 
@@ -99,6 +103,7 @@ impl PublicationPost {
             contributor_role,
             work_id,
             work_title,
+            work_catalog_number,
             work_contributor_name,
             work_contributor_role,
             edit_work: _,
@@ -108,6 +113,7 @@ impl PublicationPost {
         for posted in works(
             work_id,
             work_title,
+            work_catalog_number,
             work_contributor_name,
             work_contributor_role,
         ) {
@@ -120,6 +126,7 @@ impl PublicationPost {
                 Some(mut work) => {
                     work.title = posted.title;
                     set_lead(&mut work.contributors, &posted.contributor);
+                    set_lead_catalog_number(&mut work.catalog_numbers, &posted.catalog_number);
                     contents.push(work);
                 }
                 None => contents.push(WorkRawInput {
@@ -130,6 +137,10 @@ impl PublicationPost {
                             Vec::new()
                         }
                         contributor => vec![contributor],
+                    },
+                    catalog_numbers: match posted.catalog_number {
+                        number if number.is_empty() => Vec::new(),
+                        number => vec![number],
                     },
                     ..WorkRawInput::default()
                 }),
@@ -186,6 +197,43 @@ fn set_lead(contributors: &mut Vec<ContributorInput>, posted: &ContributorInput)
             contributors.remove(i);
         }
         None if !empty => contributors.push(posted.clone()),
+        None => {}
+    }
+}
+
+/// The catalog number a work shows on the publication pages: the highest-priority scheme, an
+/// unrecognized number only when there is nothing better, input order breaking ties
+pub fn lead_catalog_number(numbers: &[String]) -> Option<usize> {
+    numbers
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, number)| {
+            CatalogNumber::parse(number)
+                .scheme_priority()
+                .unwrap_or(usize::MAX)
+        })
+        .map(|(i, _)| i)
+}
+
+/// Apply the posted number to a work's lead, leaving the ones the page does not show alone.
+fn set_lead_catalog_number(numbers: &mut Vec<String>, posted: &str) {
+    let parsed = CatalogNumber::parse(posted);
+    match lead_catalog_number(numbers) {
+        Some(i) if numbers[i] == posted => {}
+        Some(i) if !posted.is_empty() => {
+            numbers[i] = posted.to_string();
+            // Another entry the lead now duplicates would list the same number twice
+            let mut index = 0;
+            numbers.retain(|number| {
+                let keep = index == i || !CatalogNumber::parse(number).matches(&parsed);
+                index += 1;
+                keep
+            });
+        }
+        Some(i) => {
+            numbers.remove(i);
+        }
+        None if !posted.is_empty() => numbers.push(posted.to_string()),
         None => {}
     }
 }
@@ -275,6 +323,7 @@ fn identifiers(kind: Vec<String>, value: Vec<String>) -> Vec<IdentifierRawInput>
 fn works(
     id: Vec<String>,
     title: Vec<String>,
+    catalog_number: Vec<String>,
     name: Vec<String>,
     role: Vec<String>,
 ) -> Vec<PartialWorkPost> {
@@ -286,6 +335,12 @@ fn works(
         .map(|(i, ((title, name), role))| PartialWorkPost {
             id: id.get(i).and_then(|id| id.trim().parse().ok()),
             title: title.trim().to_string(),
+            // Read by position, like the id: zipping it in would drop every work when a
+            // submission carries no catalog number key at all
+            catalog_number: catalog_number
+                .get(i)
+                .map(|number| number.trim().to_string())
+                .unwrap_or_default(),
             contributor: ContributorInput {
                 name: name.trim().to_string(),
                 role: role.trim().to_string(),
@@ -305,8 +360,9 @@ mod tests {
         }
     }
 
-    /// A submission carrying nothing but its works, as (id, title, contributor name, role)
-    fn posted(works: &[(Option<i64>, &str, &str, &str)]) -> PublicationPost {
+    /// A submission carrying nothing but its works, as
+    /// (id, title, catalog number, contributor name, role)
+    fn posted(works: &[(Option<i64>, &str, &str, &str, &str)]) -> PublicationPost {
         PublicationPost {
             holdings: vec![HoldingRawInput {
                 id: None,
@@ -329,9 +385,13 @@ mod tests {
                     .iter()
                     .map(|(_, title, ..)| title.to_string())
                     .collect(),
+                work_catalog_number: works
+                    .iter()
+                    .map(|(_, _, number, ..)| number.to_string())
+                    .collect(),
                 work_contributor_name: works
                     .iter()
-                    .map(|(_, _, name, _)| name.to_string())
+                    .map(|(_, _, _, name, _)| name.to_string())
                     .collect(),
                 work_contributor_role: works.iter().map(|(.., role)| role.to_string()).collect(),
                 edit_work: None,
@@ -375,8 +435,8 @@ mod tests {
             ..WorkRawInput::default()
         }];
 
-        let merged =
-            posted(&[(Some(1), "Prelude in E minor", "Chopin", "composer")]).merge(shown.clone());
+        let merged = posted(&[(Some(1), "Prelude in E minor", "", "Chopin", "composer")])
+            .merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
             [(
@@ -388,14 +448,14 @@ mod tests {
             "renaming leaves the key and the arranger the page never showed alone"
         );
 
-        let merged = posted(&[(Some(1), "Prelude", "Liszt", "arranger")]).merge(shown.clone());
+        let merged = posted(&[(Some(1), "Prelude", "", "Liszt", "arranger")]).merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
             [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])],
             "handing the work to a contributor it already credits replaces the lead in place"
         );
 
-        let merged = posted(&[(Some(1), "Prelude", "", "")]).merge(shown.clone());
+        let merged = posted(&[(Some(1), "Prelude", "", "", "")]).merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
             [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])],
@@ -403,8 +463,8 @@ mod tests {
         );
 
         let merged = posted(&[
-            (Some(1), "Prelude", "Chopin", "composer"),
-            (None, "Nocturne", "Field", "composer"),
+            (Some(1), "Prelude", "", "Chopin", "composer"),
+            (None, "Nocturne", "", "Field", "composer"),
         ])
         .merge(shown.clone());
         assert_eq!(
@@ -413,12 +473,72 @@ mod tests {
             "a posted work naming nothing is a new work"
         );
 
-        let merged = posted(&[(None, "Mazurka", "", "")]).merge(shown);
+        let merged = posted(&[(None, "Mazurka", "", "", "")]).merge(shown);
         assert_eq!(
             view(&merged.contents),
             [(None, "Mazurka", "", vec![])],
             "a work the submission no longer lists is dropped, and an empty contributor adds none"
         );
+    }
+
+    /// A publication shows one catalog number per work, the way it shows one contributor.
+    #[test]
+    fn merge_edits_the_lead_catalog_number_and_keeps_the_rest() {
+        let shown = vec![WorkRawInput {
+            id: Some(1),
+            title: "Raindrop".into(),
+            catalog_numbers: vec!["B. 107".into(), "Op. 28 No. 15".into()],
+            ..WorkRawInput::default()
+        }];
+        let numbers = |merged: &PublicationRawInput| merged.contents[0].catalog_numbers.clone();
+
+        // Op. has priority over B., so Op. 28 No. 15 is the lead even though B. 107 was entered first
+        let merged = posted(&[(Some(1), "Raindrop", "Op. 28 No. 15", "", "")]).merge(shown.clone());
+        assert_eq!(
+            numbers(&merged),
+            ["B. 107", "Op. 28 No. 15"],
+            "reposting the lead as is changes nothing"
+        );
+
+        let merged = posted(&[(Some(1), "Raindrop", "op. 28/15", "", "")]).merge(shown.clone());
+        assert_eq!(
+            numbers(&merged),
+            ["B. 107", "op. 28/15"],
+            "respelling replaces the lead in place"
+        );
+
+        let merged = posted(&[(Some(1), "Raindrop", "B 107", "", "")]).merge(shown.clone());
+        assert_eq!(
+            numbers(&merged),
+            ["B 107"],
+            "a number another entry already matches replaces the lead and drops the duplicate"
+        );
+
+        let merged = posted(&[(Some(1), "Raindrop", "", "", "")]).merge(shown.clone());
+        assert_eq!(
+            numbers(&merged),
+            ["B. 107"],
+            "clearing removes the lead and the next takes over"
+        );
+
+        let merged = posted(&[(None, "Mazurka", "Op. 7 No. 1", "", "")]).merge(shown);
+        assert_eq!(
+            numbers(&merged),
+            ["Op. 7 No. 1"],
+            "a new work gets the one number it was posted with"
+        );
+    }
+
+    #[test]
+    fn lead_catalog_number_prefers_the_highest_priority_scheme_then_input_order() {
+        let lead = |numbers: &[&str]| {
+            lead_catalog_number(&numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(lead(&["D 899 No. 3", "Op. 90 No. 3"]), Some(1));
+        assert_eq!(lead(&["Op. 28", "Op. 28 No. 15"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "KK IVa/16"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "BWV 988"]), Some(1));
+        assert_eq!(lead(&[]), None);
     }
 
     /// Each copy posts its fields under a suffix of its own, and the copies come back in the

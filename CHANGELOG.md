@@ -12,6 +12,12 @@ the focus on user impact** rather than the mechanics of the change.
 
 <!-- Please add new changelog entries here -->
 
+# Scorarium - 0.1.0-rc2 - (2026-09-07)
+
+* Scorarium isn't quite so ugly any more!
+* You can import publications and works now
+* You can edit and delete publications and works now
+
 # Scorarium - 0.1.0-rc1 - (2026-09-03)
 
 Scorarium can now render pages showing:

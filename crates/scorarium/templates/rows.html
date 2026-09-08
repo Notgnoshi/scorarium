@@ -1,3 +1,4 @@
+{% import "catalog.html" as catalog %}
 {% macro identifier_row(kind, value, error) %}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -49,7 +50,29 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro work_row(library_id, id, title, name, role, more, error, edit) %}
+{% macro catalog_number_row(value, recognized, error) %}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="catalog_number"
+               value="{{ value }}"
+               placeholder="Op. 27 No. 2"
+               aria-label="Catalog number"
+               data-catalog-suggest />
+        <span class="input-group-text">
+            {% call catalog::indicator(recognized) %}
+            {% endcall %}
+        </span>
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro work_row(library_id, id, title, catalog_number, recognized, more_numbers, name, role, more, error, edit) %}
     {# The message names the field at fault, so every input shares the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -60,6 +83,18 @@
                value="{{ title }}"
                placeholder="Title"
                aria-label="Work title" />
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               name="work_catalog_number"
+               value="{{ catalog_number }}"
+               placeholder="Op. 27 No. 2"
+               aria-label="Work catalog number"
+               data-catalog-suggest />
+        <span class="input-group-text">
+            {% call catalog::indicator(recognized) %}
+            {% endcall %}
+            {# The row edits one number, so say when the work carries others it leaves alone #}
+            {% if !more_numbers.is_empty() %}<span class="ms-1">+{{ more_numbers }}</span>{% endif %}
+        </span>
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_contributor_name"
                value="{{ name }}"

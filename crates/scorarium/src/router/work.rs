@@ -41,6 +41,8 @@ pub struct WorkPost {
     contributor_name: Vec<String>,
     #[serde(default)]
     contributor_role: Vec<String>,
+    #[serde(default)]
+    catalog_number: Vec<String>,
 }
 
 impl From<WorkPost> for WorkRawInput {
@@ -56,6 +58,11 @@ impl From<WorkPost> for WorkRawInput {
                 post.contributor_name,
                 post.contributor_role,
             ),
+            catalog_numbers: post
+                .catalog_number
+                .iter()
+                .map(|number| number.trim().to_string())
+                .collect(),
         }
     }
 }
@@ -67,8 +74,12 @@ pub struct BackQuery {
 }
 
 /// Where Save and Cancel lead: the page that opened this one, else the work page.
+///
+/// Only a path on this site is honored, so the parameter cannot send the user elsewhere. Browsers
+/// read a backslash as a slash when parsing a URL, so "/\evil.example" is "//evil.example" to them
+/// and is refused the same way.
 fn back_to(library_id: i64, id: i64, back: Option<String>) -> String {
-    back.filter(|back| back.starts_with(&format!("/library/{library_id}/")))
+    back.filter(|back| back.starts_with('/') && !back[1..].starts_with(['/', '\\']))
         .unwrap_or_else(|| format!("/library/{library_id}/work/{id}"))
 }
 
@@ -133,7 +144,14 @@ pub async fn save(
     match input.parse() {
         Ok(parsed) => {
             work.update(&parsed).await?;
-            Ok(Redirect::to(&back_to(library_id, id, query.back)).into_response())
+            // A merge folded this work into an older one; show the survivor rather than a page for
+            // a work that no longer exists
+            let next = if work.id == id {
+                back_to(library_id, id, query.back)
+            } else {
+                format!("/library/{library_id}/work/{}", work.id)
+            };
+            Ok(Redirect::to(&next).into_response())
         }
         Err(errors) => render_edit(base, library, work, query.back, input, errors).await,
     }

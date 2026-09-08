@@ -3,9 +3,10 @@ mod import;
 mod index;
 mod library;
 mod login;
-mod password;
 mod person;
 mod publication;
+mod settings;
+mod suggest;
 mod work;
 
 use std::sync::Arc;
@@ -18,9 +19,9 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
-    ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound, PendingImport,
-    Publication, PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors,
-    WorkRawInput,
+    CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound,
+    PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError, Work,
+    WorkErrors, WorkRawInput,
 };
 use tower_http::trace::TraceLayer;
 
@@ -72,6 +73,13 @@ impl Crumb {
         Self {
             label: label.to_string(),
             href: format!("/library/{}/import/{}", import.library_id, import.id),
+        }
+    }
+
+    pub fn settings() -> Self {
+        Self {
+            label: "Settings".to_string(),
+            href: "/settings".to_string(),
         }
     }
 
@@ -142,7 +150,7 @@ impl BaseContext {
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
 /// What a work shows when its only problem is a field the publication form does not reach.
-const HIDDEN_WORK_PROBLEM: &str = "A contributor is incomplete. Open the work to fix it.";
+const HIDDEN_WORK_PROBLEM: &str = "A hidden field is incomplete. Open the work to fix it.";
 
 /// What a work's edit control does, which is a property of the page rather than the work.
 #[derive(Default)]
@@ -178,11 +186,16 @@ pub struct ShownHolding {
     pub message: String,
 }
 
-/// One work as the publication form shows it: its title and the one contributor the page picks.
+/// One work as the publication form shows it: its title, and the one catalog number and the one
+/// contributor the page picks.
 pub struct ShownWork {
     /// The hidden field's value: the work's id, empty for one being added
     pub id: String,
     pub title: String,
+    pub catalog_number: String,
+    pub recognized: bool,
+    /// How many catalog numbers the form does not show, empty when it shows them all
+    pub more_numbers: String,
     pub name: String,
     pub role: String,
     /// How many contributors the form does not show, empty when it shows them all
@@ -243,12 +256,20 @@ impl FormFields {
     }
 }
 
+/// One catalog number as the work form shows it, with what the parser made of it
+pub struct ShownCatalogNumber {
+    pub value: String,
+    pub recognized: bool,
+    pub message: String,
+}
+
 /// Everything the shared work form fragment renders. The stored work edit page and the draft work
 /// page show the same fields, so they build the same context for them.
 pub struct WorkFields {
     pub input: WorkRawInput,
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
+    pub catalog_numbers: Vec<ShownCatalogNumber>,
     pub roles: Vec<String>,
     pub names: Vec<String>,
 }
@@ -262,12 +283,28 @@ impl WorkFields {
         let (roles, names) = suggestions(library).await?;
         Ok(Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
+            catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             roles,
             names,
             input,
             errors,
         })
     }
+}
+
+fn shown_catalog_numbers(
+    values: &[String],
+    errors: &[Option<ValidationError>],
+) -> Vec<ShownCatalogNumber> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, value)| ShownCatalogNumber {
+            value: value.clone(),
+            recognized: CatalogNumber::parse(value).is_recognized(),
+            message: message(errors.get(i).unwrap_or(&None)),
+        })
+        .collect()
 }
 
 /// Datalist suggestions for the role and name inputs, as (roles, names).
@@ -310,9 +347,20 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
             let shown = lead
                 .map(|i| work.contributors[i].clone())
                 .unwrap_or_default();
+            let lead_number = publication_post::lead_catalog_number(&work.catalog_numbers);
+            let number = lead_number
+                .map(|i| work.catalog_numbers[i].clone())
+                .unwrap_or_default();
             ShownWork {
                 id: work.id.map(|id| id.to_string()).unwrap_or_default(),
                 title: work.title.clone(),
+                recognized: CatalogNumber::parse(&number).is_recognized(),
+                catalog_number: number,
+                // A work may carry no number at all, so say how many are hidden only when any are
+                more_numbers: match work.catalog_numbers.len() {
+                    0 | 1 => String::new(),
+                    numbered => (numbered - 1).to_string(),
+                },
                 name: shown.name,
                 role: shown.role,
                 // A work may credit nobody at all, so say how many are hidden only when any are
@@ -320,7 +368,7 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
                     0 | 1 => String::new(),
                     credited => (credited - 1).to_string(),
                 },
-                message: work_message(errors, lead),
+                message: work_message(errors, lead, lead_number),
             }
         })
         .collect()
@@ -328,8 +376,14 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
 
 /// What a work says on the publication form: the problem with a field it shows, else a note that
 /// the problem is one the form cannot reach, so a refused submit is always explainable.
-fn work_message(errors: &WorkErrors, lead: Option<usize>) -> String {
+fn work_message(errors: &WorkErrors, lead: Option<usize>, lead_number: Option<usize>) -> String {
     if let Some(error) = &errors.title {
+        return error.to_string();
+    }
+    if let Some(error) = lead_number
+        .and_then(|i| errors.catalog_numbers.get(i))
+        .and_then(Option::as_ref)
+    {
         return error.to_string();
     }
     if let Some(error) = lead
@@ -338,7 +392,12 @@ fn work_message(errors: &WorkErrors, lead: Option<usize>) -> String {
     {
         return error.to_string();
     }
-    if errors.contributors.iter().any(Option::is_some) {
+    if errors
+        .contributors
+        .iter()
+        .chain(errors.catalog_numbers.iter())
+        .any(Option::is_some)
+    {
         return HIDDEN_WORK_PROBLEM.to_string();
     }
     String::new()
@@ -369,9 +428,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
+        .route("/settings", get(settings::settings_page))
+        .route("/settings/password", post(settings::change_password))
         .route(
-            "/password",
-            get(password::password_form).post(password::change_password),
+            "/settings/catalog-numbers",
+            get(settings::catalog_numbers_page),
         )
         .route("/review", get(import::queue))
         .route("/library", post(library::create))
@@ -407,6 +468,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/library/{library_id}/publication/{id}/delete",
             post(publication::delete),
+        )
+        .route(
+            "/library/{id}/suggest/catalog-numbers",
+            get(suggest::catalog_numbers),
         )
         .route("/library/{library_id}/work/{id}", get(work::work))
         .route(

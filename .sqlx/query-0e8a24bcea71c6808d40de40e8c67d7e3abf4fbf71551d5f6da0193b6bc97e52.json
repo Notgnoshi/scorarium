@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,\n                p.name AS composer, cn.value\n         FROM work_catalog_number cn\n         JOIN work w ON w.id = cn.work_id\n         JOIN library l ON l.id = w.library_id\n         LEFT JOIN work_contributor c ON c.work_id = w.id AND c.role = 'composer'\n         LEFT JOIN person p ON p.id = c.person_id\n         WHERE (?1 IS NULL OR w.library_id = ?1)\n           AND (?2 IS NULL OR p.name = ?2)\n           AND (?3 = 0 OR EXISTS (SELECT 1 FROM publication_work pw\n                                  JOIN publication pub ON pub.id = pw.publication_id\n                                  WHERE pw.work_id = w.id AND pub.private = 0))\n         ORDER BY l.name, w.title, cn.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "library_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "work_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "composer",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "value",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_catalog_number",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "0e8a24bcea71c6808d40de40e8c67d7e3abf4fbf71551d5f6da0193b6bc97e52"
+}
