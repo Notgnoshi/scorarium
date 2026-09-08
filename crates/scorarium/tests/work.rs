@@ -123,3 +123,66 @@ async fn work_edit_saves_catalog_numbers() {
     response.assert_text_contains("Morceaux de fantaisie II");
     response.assert_text_contains("Unrecognized catalog number scheme");
 }
+
+/// Two works of the same composer cannot hold the same catalog number, so editing one onto the
+/// other's number folds it in and the edit lands on the survivor.
+#[tokio::test]
+async fn editing_a_work_onto_another_number_merges_them() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publications = sheet_music.publications().await.unwrap();
+    let album = publications
+        .iter()
+        .find(|p| p.title == "Russian piano album")
+        .unwrap();
+    let masterpieces = publications
+        .iter()
+        .find(|p| p.title.starts_with("Rachmaninoff masterpieces"))
+        .unwrap();
+    let prelude = album
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|w| w.title == "Prelude in C-sharp minor")
+        .unwrap();
+    let polichinelle = masterpieces
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|w| w.title == "Polichinelle")
+        .unwrap();
+    let server = browser(state.clone());
+
+    let response = server
+        .post(&format!(
+            "/library/{}/work/{}/edit",
+            sheet_music.id, polichinelle.id
+        ))
+        .form(&[
+            ("title", "Polichinelle"),
+            ("key", "F-sharp minor"),
+            ("time_signature", ""),
+            ("instrumentation", "piano"),
+            // The prelude's number, under the same composer
+            ("catalog_number", "Op. 3 No. 2"),
+            ("contributor_name", "Sergei Rachmaninoff"),
+            ("contributor_role", "composer"),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header(
+        "location",
+        &format!("/library/{}/work/{}", sheet_music.id, prelude.id),
+    );
+
+    let response = server
+        .get(&format!(
+            "/library/{}/work/{}",
+            sheet_music.id, polichinelle.id
+        ))
+        .await;
+    response.assert_status(StatusCode::NOT_FOUND);
+}

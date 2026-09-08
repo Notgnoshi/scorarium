@@ -140,7 +140,14 @@ pub async fn save(
     match input.parse() {
         Ok(parsed) => {
             work.update(&parsed).await?;
-            Ok(Redirect::to(&back_to(library_id, id, query.back)).into_response())
+            // A merge folded this work into an older one; show the survivor rather than a page for
+            // a work that no longer exists
+            let next = if work.id == id {
+                back_to(library_id, id, query.back)
+            } else {
+                format!("/library/{library_id}/work/{}", work.id)
+            };
+            Ok(Redirect::to(&next).into_response())
         }
         Err(errors) => render_edit(base, library, work, query.back, input, errors).await,
     }

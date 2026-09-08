@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO work_contributor (library_id, work_id, person_id, role)\n         SELECT library_id, ?, person_id, role FROM work_contributor WHERE work_id = ? ORDER BY id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "522b086128f895ca7c30b0cb1b94877114515d08794b0bde2c1ef978d8b46d04"
+}

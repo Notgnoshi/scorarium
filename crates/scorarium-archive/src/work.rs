@@ -167,8 +167,9 @@ impl Work {
 
     /// Apply an edited input, then collect whatever the edit left credited nowhere.
     ///
-    /// One transaction: the work's fields, its contributors rebuilt in input order, orphan
-    /// collection, and a reload of self.
+    /// One transaction: the work's fields, its contributors rebuilt in input order, a merge into
+    /// an older work the edit collided with, orphan collection, and a reload of self. After a
+    /// merge, self is the survivor, so its id differs from the work that was edited.
     ///
     /// Returns a [NotFound] error if the work has since been collected.
     pub async fn update(&mut self, input: &WorkInput) -> crate::Result<()> {
@@ -191,11 +192,18 @@ impl Work {
         }
         write_work_contributors(&mut tx, self.library_id, self.id, &input.contributors).await?;
         write_work_catalog_numbers(&mut tx, self.id, &input.catalog_numbers).await?;
+        let survivor = absorb_into_duplicate(&mut tx, self.library_id, self.id).await?;
         library::collect_orphans(&mut tx, self.library_id).await?;
-        let reloaded = load_works(&self.archive, &mut tx, self.library_id, Some(self.id), None)
-            .await?
-            .pop()
-            .expect("the work was just updated on this transaction");
+        let reloaded = load_works(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            Some(survivor),
+            None,
+        )
+        .await?
+        .pop()
+        .expect("the work was just updated on this transaction");
         tx.commit().await?;
         *self = reloaded;
         Ok(())
@@ -321,7 +329,7 @@ pub(crate) async fn create_work_in_publication(
     .await?;
     write_work_contributors(&mut *conn, library_id, id, &input.contributors).await?;
     write_work_catalog_numbers(&mut *conn, id, &input.catalog_numbers).await?;
-    Ok(id)
+    absorb_into_duplicate(&mut *conn, library_id, id).await
 }
 
 /// Reconcile a publication's contents against the works its input names.
@@ -372,6 +380,7 @@ pub(crate) async fn write_publication_works(
         .await?;
         write_work_contributors(&mut *conn, library_id, work_id, &input.contributors).await?;
         write_work_catalog_numbers(&mut *conn, work_id, &input.catalog_numbers).await?;
+        absorb_into_duplicate(&mut *conn, library_id, work_id).await?;
     }
     Ok(())
 }
@@ -392,6 +401,143 @@ pub(crate) async fn link_work_to_publication(
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// Fold `from` into `into` and delete `from`, on the caller's transaction.
+///
+/// `into` keeps every field it has; `from` fills only blanks, because the older record is the more
+/// likely to be complete and correct. Credits, catalog numbers, and publication links move across
+/// unless `into` already has them; links keep their rowid, so `into` takes `from`'s place in each
+/// publication's contents.
+pub(crate) async fn merge_works(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    from: i64,
+    into: i64,
+) -> crate::Result<()> {
+    let source = sqlx::query!(
+        "SELECT \"key\", time_signature, instrumentation FROM work WHERE library_id = ? AND id = ?",
+        library_id,
+        from
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    sqlx::query!(
+        "UPDATE work SET \"key\" = COALESCE(\"key\", ?), time_signature = COALESCE(time_signature, ?),
+             instrumentation = COALESCE(instrumentation, ?)
+         WHERE library_id = ? AND id = ?",
+        source.key,
+        source.time_signature,
+        source.instrumentation,
+        library_id,
+        into
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query!(
+        "INSERT OR IGNORE INTO work_contributor (library_id, work_id, person_id, role)
+         SELECT library_id, ?, person_id, role FROM work_contributor WHERE work_id = ? ORDER BY id",
+        into,
+        from
+    )
+    .execute(&mut *conn)
+    .await?;
+    // The table is unique on text, but two spellings of one number are one number to the user
+    let existing: Vec<CatalogNumber> = catalog_numbers_of(&mut *conn, into).await?;
+    for number in catalog_numbers_of(&mut *conn, from).await? {
+        if !existing.iter().any(|kept| kept.matches(&number)) {
+            let value = number.as_str();
+            sqlx::query!(
+                "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+                into,
+                value
+            )
+            .execute(&mut *conn)
+            .await?;
+        }
+    }
+    sqlx::query!(
+        "UPDATE publication_work SET work_id = ?1
+         WHERE work_id = ?2
+           AND publication_id NOT IN (SELECT publication_id FROM publication_work WHERE work_id = ?1)",
+        into,
+        from
+    )
+    .execute(&mut *conn)
+    .await?;
+    // Cascades the remaining links, credits, and numbers
+    sqlx::query!(
+        "DELETE FROM work WHERE library_id = ? AND id = ?",
+        library_id,
+        from
+    )
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
+async fn catalog_numbers_of(
+    conn: &mut SqliteConnection,
+    work_id: i64,
+) -> crate::Result<Vec<CatalogNumber>> {
+    let values = sqlx::query_scalar!(
+        "SELECT value FROM work_catalog_number WHERE work_id = ? ORDER BY id",
+        work_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(values
+        .iter()
+        .map(|value| CatalogNumber::parse(value))
+        .collect())
+}
+
+/// The oldest other work sharing a composer and a catalog number with this one
+async fn find_duplicate(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+) -> crate::Result<Option<i64>> {
+    let own = catalog_numbers_of(&mut *conn, work_id).await?;
+    if own.is_empty() {
+        return Ok(None);
+    }
+    let candidates = sqlx::query!(
+        "SELECT w.id, cn.value FROM work w
+         JOIN work_catalog_number cn ON cn.work_id = w.id
+         WHERE w.library_id = ?1 AND w.id != ?2
+           AND w.id IN (SELECT work_id FROM work_contributor
+                        WHERE role = 'composer'
+                          AND person_id IN (SELECT person_id FROM work_contributor
+                                            WHERE work_id = ?2 AND role = 'composer'))
+         ORDER BY w.id",
+        library_id,
+        work_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(candidates
+        .iter()
+        .find(|row| {
+            let number = CatalogNumber::parse(&row.value);
+            own.iter().any(|mine| mine.matches(&number))
+        })
+        .map(|row| row.id))
+}
+
+/// Merge this work into a duplicate if it has one; returns the surviving id
+pub(crate) async fn absorb_into_duplicate(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+) -> crate::Result<i64> {
+    match find_duplicate(&mut *conn, library_id, work_id).await? {
+        Some(into) => {
+            merge_works(conn, library_id, work_id, into).await?;
+            Ok(into)
+        }
+        None => Ok(work_id),
+    }
 }
 
 /// Rebuild a work's catalog numbers, so input order becomes stored order.

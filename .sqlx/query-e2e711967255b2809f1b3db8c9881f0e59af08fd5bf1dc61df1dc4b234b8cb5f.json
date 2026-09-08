@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT w.id, cn.value FROM work w\n         JOIN work_catalog_number cn ON cn.work_id = w.id\n         WHERE w.library_id = ?1 AND w.id != ?2\n           AND w.id IN (SELECT work_id FROM work_contributor\n                        WHERE role = 'composer'\n                          AND person_id IN (SELECT person_id FROM work_contributor\n                                            WHERE work_id = ?2 AND role = 'composer'))\n         ORDER BY w.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "value",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_catalog_number",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e2e711967255b2809f1b3db8c9881f0e59af08fd5bf1dc61df1dc4b234b8cb5f"
+}
