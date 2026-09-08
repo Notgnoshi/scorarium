@@ -196,6 +196,7 @@ async fn publication_edit_flow() {
     response.assert_text_contains("value=\"Chapter One\"");
     response.assert_text_contains(format!("name=\"work_id\" value=\"{one}\""));
     response.assert_text_contains("and 1 more");
+    response.assert_text_contains("name=\"work_catalog_number\"");
 
     // A rejected submission comes back with its message, having changed nothing
     let response = server
@@ -240,6 +241,8 @@ async fn publication_edit_flow() {
             ("work_id", ""),
             ("work_title", "Chapter 1"),
             ("work_title", "Appendix"),
+            ("work_catalog_number", ""),
+            ("work_catalog_number", "Op. 1"),
             ("work_contributor_name", "Drew Neil"),
             ("work_contributor_name", "Tim Pope"),
             ("work_contributor_role", "author"),
@@ -300,6 +303,12 @@ async fn publication_edit_flow() {
     response.assert_text_contains("Pragmatic Bookshelf");
     response.assert_text_contains("Piano bench");
     response.assert_text_contains("practical-vim.pdf");
+    // The number the appendix was added with, and what the parser made of it
+    response.assert_text_contains("Op. 1");
+    response.assert_text_contains("Recognized catalog number scheme");
+
+    let response = server.get(&edit).await;
+    response.assert_text_contains("value=\"Op. 1\"");
 
     // Removing the last copy is what the delete dialog warns about, so the form says so up front
     let response = server.get(&edit).await;

@@ -68,12 +68,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for w in fields.works %}
-                {% call rows::work_row(library.id, w.id, w.title, w.name, w.role, w.more, w.message, fields.work_edit) %}
+                {% call rows::work_row(library.id, w.id, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.more, w.message, fields.work_edit) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", "", "", "", fields.work_edit) %}
+            {% call rows::work_row(library.id, "", "", "", false, "", "", "", "", "", fields.work_edit) %}
             {% endcall %}
         </template>
         <button type="button"
