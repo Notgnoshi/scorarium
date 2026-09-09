@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
 
+use comparable::Comparable;
+
 /// A catalog scheme the parser knows
 struct Scheme {
     /// The label as customarily written
@@ -124,7 +126,7 @@ static SCHEMES: &[Scheme] = &[
 ];
 
 /// A catalog number as stored: the text as typed, plus what the parser made of it
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Comparable)]
 pub struct CatalogNumber {
     text: String,
     /// Index into [SCHEMES]; None when unrecognized

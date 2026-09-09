@@ -251,6 +251,22 @@ impl<'a> Audited<'a> {
         Ok(())
     }
 
+    /// Fill in the headline's field list once the mutation has run and the diff is known
+    pub(crate) async fn set_fields(&mut self, fields: &[Field]) -> crate::Result<()> {
+        let names: Vec<&str> = fields.iter().map(|field| field.as_str()).collect();
+        let json = (!names.is_empty())
+            .then(|| serde_json::to_string(&names))
+            .transpose()?;
+        sqlx::query!(
+            "UPDATE audit_entry SET fields = ? WHERE id = ?",
+            json,
+            self.group
+        )
+        .execute(&mut *self.tx)
+        .await?;
+        Ok(())
+    }
+
     pub(crate) async fn commit(self) -> crate::Result<()> {
         self.tx.commit().await?;
         Ok(())

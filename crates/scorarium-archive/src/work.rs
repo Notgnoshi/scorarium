@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
 use crate::catalog::CatalogNumber;
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -92,9 +93,11 @@ impl WorkRawInput {
 }
 
 /// A work with its children, as read back
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Comparable)]
 pub struct Work {
+    #[comparable_ignore]
     pub id: i64,
+    #[comparable_ignore]
     pub library_id: i64,
     pub title: String,
     pub key: Option<String>,
@@ -104,7 +107,26 @@ pub struct Work {
     pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
     pub contributors: Vec<Contributor>,
+    #[comparable_ignore]
     archive: Arc<ArchiveInner>,
+}
+
+/// Which fields an edit changed, for the audit log.
+fn changed_fields(old: &Work, new: &Work) -> Vec<Field> {
+    let Changed::Changed(changes) = old.comparison(new) else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|change| match change {
+            WorkChange::Title(_) => Field::Title,
+            WorkChange::Key(_) => Field::Key,
+            WorkChange::TimeSignature(_) => Field::TimeSignature,
+            WorkChange::Instrumentation(_) => Field::Instrumentation,
+            WorkChange::CatalogNumbers(_) => Field::CatalogNumbers,
+            WorkChange::Contributors(_) => Field::Contributors,
+        })
+        .collect()
 }
 
 impl Work {
@@ -199,6 +221,18 @@ impl Work {
         write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
             .await?;
         write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
+        // Before the merge, or the comparison is against whichever work absorbed this one
+        let edited = load_works(
+            &self.archive,
+            &mut audited,
+            self.library_id,
+            Some(self.id),
+            None,
+        )
+        .await?
+        .pop()
+        .expect("the work was just updated on this transaction");
+        audited.set_fields(&changed_fields(self, &edited)).await?;
         let survivor = absorb_into_duplicate(&mut audited, self.library_id, self.id).await?;
         library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_works(

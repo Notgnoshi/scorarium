@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT work_id FROM publication_work WHERE publication_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "work_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_work",
+            "name": "work_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "aa27a01910b23a8fc7ad2bbbe26070f47069d8ef8c9805ff85f657e4c372acc0"
+}

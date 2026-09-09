@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
@@ -8,7 +9,7 @@ use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -125,9 +126,11 @@ impl PublicationRawInput {
 }
 
 /// A publication with its children
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Comparable)]
 pub struct Publication {
+    #[comparable_ignore]
     pub id: i64,
+    #[comparable_ignore]
     pub library_id: i64,
     pub title: String,
     pub publisher: Option<String>,
@@ -136,7 +139,26 @@ pub struct Publication {
     /// In link order
     pub contributors: Vec<Contributor>,
     pub holdings: Vec<Holding>,
+    #[comparable_ignore]
     archive: Arc<ArchiveInner>,
+}
+
+/// Which fields an edit changed, for the audit log.
+fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
+    let Changed::Changed(changes) = old.comparison(new) else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|change| match change {
+            PublicationChange::Title(_) => Field::Title,
+            PublicationChange::Publisher(_) => Field::Publisher,
+            PublicationChange::Year(_) => Field::Year,
+            PublicationChange::Identifiers(_) => Field::Identifiers,
+            PublicationChange::Contributors(_) => Field::Contributors,
+            PublicationChange::Holdings(_) => Field::Holdings,
+        })
+        .collect()
 }
 
 impl Publication {
@@ -222,9 +244,11 @@ impl Publication {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        let contents_before = contained_work_ids(&mut audited, self.id).await?;
         write_publication_children(&mut audited, self.library_id, self.id, input).await?;
         work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
             .await?;
+        let contents_after = contained_work_ids(&mut audited, self.id).await?;
         library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_publications(
             &self.archive,
@@ -237,6 +261,12 @@ impl Publication {
         .await?
         .pop()
         .expect("the publication was just updated on this transaction");
+        // The contents are not a field of self, so the derived comparison cannot see them
+        let mut fields = changed_fields(self, &reloaded);
+        if contents_before != contents_after {
+            fields.push(Field::Contents);
+        }
+        audited.set_fields(&fields).await?;
         audited.commit().await?;
         *self = reloaded;
         Ok(())
@@ -278,6 +308,22 @@ impl Publication {
             label: self.title.clone(),
         }
     }
+}
+
+/// The ids of the works a publication contains, in link order, on the caller's transaction.
+///
+/// [Publication::works] opens its own transaction and so would read a different snapshot.
+async fn contained_work_ids(
+    conn: &mut SqliteConnection,
+    publication_id: i64,
+) -> crate::Result<Vec<i64>> {
+    let ids = sqlx::query_scalar!(
+        "SELECT work_id FROM publication_work WHERE publication_id = ? ORDER BY id",
+        publication_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(ids)
 }
 
 /// Load a library's publications with their children: all of them, just the one with `id`, those

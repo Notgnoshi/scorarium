@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use comparable::Comparable;
 use serde::Deserialize;
 use sqlx::SqliteConnection;
 
@@ -8,7 +9,7 @@ use crate::input::{ValidationError, trimmed_or_none};
 /// Whether a holding is a thing on a shelf or a file
 ///
 /// The names are what the copy toggle posts, so the form decodes straight into it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Comparable)]
 #[serde(rename_all = "lowercase")]
 pub enum HoldingKind {
     Physical,
@@ -69,8 +70,9 @@ impl HoldingErrors {
 }
 
 /// One holding of a publication, as read back
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Comparable)]
 pub struct Holding {
+    #[comparable_ignore]
     pub id: i64,
     pub kind: HoldingKind,
     pub location: Option<String>,

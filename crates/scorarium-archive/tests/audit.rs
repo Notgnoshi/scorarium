@@ -1,9 +1,9 @@
 use scorarium_archive::{
-    Action, Archive, ContributorInput, EntityKind, HoldingKind, HoldingRawInput, PublicationInput,
-    PublicationRawInput, Source, WorkRawInput,
+    Action, Archive, ContributorInput, EntityKind, Field, HoldingKind, HoldingRawInput,
+    IdentifierRawInput, PublicationInput, PublicationRawInput, Source, WorkRawInput,
 };
 
-/// A publication containing one work, whose only composer is "Bach"
+/// A publication with a copy and an identifier, containing one work whose only composer is "Bach"
 fn goldberg() -> PublicationInput {
     PublicationRawInput {
         title: "Goldberg Variations".into(),
@@ -11,6 +11,10 @@ fn goldberg() -> PublicationInput {
             id: None,
             kind: HoldingKind::Physical,
             location: String::new(),
+        }],
+        identifiers: vec![IdentifierRawInput {
+            kind: "plate_number".into(),
+            value: "BA 5162".into(),
         }],
         contents: vec![WorkRawInput {
             title: "Goldberg Variations".into(),
@@ -96,4 +100,42 @@ async fn every_mutation_records_a_headline() {
             Action::Created,
         ]
     );
+}
+
+#[tokio::test]
+async fn an_update_names_only_the_fields_that_changed() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Test").await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap();
+    library.create_publication(&goldberg()).await.unwrap();
+
+    // Edited the way the edit page does it, so the contained work keeps its id
+    let works = publication.works().await.unwrap();
+    let mut retitled = publication.raw_input(&works);
+    retitled.title = "Aria mit verschiedenen Veraenderungen".into();
+    publication
+        .update(&retitled.parse().unwrap())
+        .await
+        .unwrap();
+
+    let latest = archive.audit_log().await.unwrap().remove(0);
+    assert_eq!(latest.event.action, Action::Updated);
+    assert_eq!(latest.event.fields, vec![Field::Title]);
+}
+
+/// Saving a publication without touching anything records an update with no fields
+#[tokio::test]
+async fn an_update_that_changes_nothing_names_no_fields() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Test").await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap();
+    library.create_publication(&goldberg()).await.unwrap();
+
+    let works = publication.works().await.unwrap();
+    let unchanged = publication.raw_input(&works).parse().unwrap();
+    publication.update(&unchanged).await.unwrap();
+
+    let latest = archive.audit_log().await.unwrap().remove(0);
+    assert_eq!(latest.event.action, Action::Updated);
+    assert_eq!(latest.event.fields, Vec::new());
 }
