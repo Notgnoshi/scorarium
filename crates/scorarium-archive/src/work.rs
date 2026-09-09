@@ -7,7 +7,7 @@ use crate::catalog::CatalogNumber;
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
-use crate::{ArchiveInner, NotFound, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, library};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -110,7 +110,7 @@ pub struct Work {
 impl Work {
     /// The publications containing this work, in arbitrary order
     pub async fn publications(&self) -> crate::Result<Vec<Publication>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let publications = publication::load_publications(
             &self.archive,
             &mut tx,
@@ -173,7 +173,13 @@ impl Work {
     ///
     /// Returns a [NotFound] error if the work has since been collected.
     pub async fn update(&mut self, input: &WorkInput) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Updated, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
              WHERE library_id = ? AND id = ?",
@@ -184,19 +190,20 @@ impl Work {
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        write_work_contributors(&mut tx, self.library_id, self.id, &input.contributors).await?;
-        write_work_catalog_numbers(&mut tx, self.id, &input.catalog_numbers).await?;
-        let survivor = absorb_into_duplicate(&mut tx, self.library_id, self.id).await?;
-        library::collect_orphans(&mut tx, self.library_id).await?;
+        write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
+            .await?;
+        write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
+        let survivor = absorb_into_duplicate(&mut audited, self.library_id, self.id).await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_works(
             &self.archive,
-            &mut tx,
+            &mut audited,
             self.library_id,
             Some(survivor),
             None,
@@ -204,9 +211,19 @@ impl Work {
         .await?
         .pop()
         .expect("the work was just updated on this transaction");
-        tx.commit().await?;
+        audited.commit().await?;
         *self = reloaded;
         Ok(())
+    }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Work,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
     }
 }
 

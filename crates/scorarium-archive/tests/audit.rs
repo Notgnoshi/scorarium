@@ -1,7 +1,32 @@
-use scorarium_archive::{Action, Archive, EntityKind, Source};
+use scorarium_archive::{
+    Action, Archive, ContributorInput, EntityKind, HoldingKind, HoldingRawInput, PublicationInput,
+    PublicationRawInput, Source, WorkRawInput,
+};
+
+/// A publication containing one work, whose only composer is "Bach"
+fn goldberg() -> PublicationInput {
+    PublicationRawInput {
+        title: "Goldberg Variations".into(),
+        holdings: vec![HoldingRawInput {
+            id: None,
+            kind: HoldingKind::Physical,
+            location: String::new(),
+        }],
+        contents: vec![WorkRawInput {
+            title: "Goldberg Variations".into(),
+            contributors: vec![ContributorInput {
+                name: "Bach".into(),
+                role: "composer".into(),
+            }],
+            ..WorkRawInput::default()
+        }],
+        ..PublicationRawInput::default()
+    }
+    .parse()
+    .unwrap()
+}
 
 #[tokio::test]
-#[ignore]
 async fn consequences_group_under_their_headline() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test").await.unwrap();
@@ -18,7 +43,6 @@ async fn consequences_group_under_their_headline() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn a_rolled_back_mutation_records_nothing() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test").await.unwrap();
@@ -38,4 +62,38 @@ async fn a_rolled_back_mutation_records_nothing() {
 
     // The delete added one entry; the failed rename added none
     assert_eq!(archive.audit_log().await.unwrap().len(), before + 1);
+}
+
+/// Each public mutation leaves exactly one headline
+#[tokio::test]
+async fn every_mutation_records_a_headline() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Test").await.unwrap();
+    let input = goldberg();
+    let mut publication = library.create_publication(&input).await.unwrap();
+    publication.update(&input).await.unwrap();
+    publication.delete().await.unwrap();
+    archive.claim_password("hunter2").await.unwrap();
+    archive.change_password("hunter3").await.unwrap();
+
+    let headlines: Vec<_> = archive
+        .audit_log()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|entry| entry.group_id.is_none())
+        .map(|entry| entry.event.action)
+        .collect();
+    // Newest first: password change and claim, delete, update, create publication, create library
+    assert_eq!(
+        headlines,
+        vec![
+            Action::PasswordChanged,
+            Action::PasswordClaimed,
+            Action::Deleted,
+            Action::Updated,
+            Action::Created,
+            Action::Created,
+        ]
+    );
 }

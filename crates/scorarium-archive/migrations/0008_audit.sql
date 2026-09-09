@@ -6,7 +6,8 @@ CREATE TABLE audit_entry (
     source TEXT NOT NULL CHECK (source IN ('user', 'orphan_cleanup', 'merge')),
     action TEXT NOT NULL CHECK (action IN (
         'created', 'updated', 'deleted', 'merged', 'renamed',
-        'import_started', 'import_accepted', 'import_discarded', 'password_changed'
+        'import_started', 'import_accepted', 'import_discarded',
+        'password_claimed', 'password_changed'
     )),
     entity_kind TEXT CHECK (entity_kind IN ('publication', 'work', 'person', 'library', 'import')),
     entity_id INTEGER,

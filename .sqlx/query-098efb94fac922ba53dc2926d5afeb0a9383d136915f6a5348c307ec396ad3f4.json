@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE audit_entry\n             SET entity_kind = ?, entity_id = ?, entity_library_id = ?, entity_label = ?\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "098efb94fac922ba53dc2926d5afeb0a9383d136915f6a5348c307ec396ad3f4"
+}

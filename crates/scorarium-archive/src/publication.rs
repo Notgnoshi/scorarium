@@ -8,7 +8,7 @@ use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
-use crate::{ArchiveInner, NotFound, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, library};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -142,7 +142,7 @@ pub struct Publication {
 impl Publication {
     /// The works this publication contains, in the order they were added to it
     pub async fn works(&self) -> crate::Result<Vec<Work>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let contents =
             work::load_works(&self.archive, &mut tx, self.library_id, None, Some(self.id)).await?;
         tx.commit().await?;
@@ -200,7 +200,13 @@ impl Publication {
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Updated, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "UPDATE publication SET title = ?, publisher = ?, year = ?
              WHERE library_id = ? AND id = ?",
@@ -210,18 +216,19 @@ impl Publication {
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        write_publication_children(&mut tx, self.library_id, self.id, input).await?;
-        work::write_publication_works(&mut tx, self.library_id, self.id, &input.contents).await?;
-        library::collect_orphans(&mut tx, self.library_id).await?;
+        write_publication_children(&mut audited, self.library_id, self.id, input).await?;
+        work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
+            .await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_publications(
             &self.archive,
-            &mut tx,
+            &mut audited,
             self.library_id,
             Some(self.id),
             None,
@@ -230,7 +237,7 @@ impl Publication {
         .await?
         .pop()
         .expect("the publication was just updated on this transaction");
-        tx.commit().await?;
+        audited.commit().await?;
         *self = reloaded;
         Ok(())
     }
@@ -239,21 +246,37 @@ impl Publication {
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn delete(self) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Deleted, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "DELETE FROM publication WHERE library_id = ? AND id = ?",
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        library::collect_orphans(&mut tx, self.library_id).await?;
-        tx.commit().await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
+        audited.commit().await?;
         Ok(())
+    }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Publication,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
     }
 }
 

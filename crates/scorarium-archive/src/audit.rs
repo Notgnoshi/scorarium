@@ -44,6 +44,7 @@ pub enum Action {
     ImportStarted,
     ImportAccepted,
     ImportDiscarded,
+    PasswordClaimed,
     PasswordChanged,
 }
 
@@ -58,6 +59,7 @@ impl Action {
             Action::ImportStarted => "import_started",
             Action::ImportAccepted => "import_accepted",
             Action::ImportDiscarded => "import_discarded",
+            Action::PasswordClaimed => "password_claimed",
             Action::PasswordChanged => "password_changed",
         }
     }
@@ -72,6 +74,7 @@ impl Action {
             "import_started" => Action::ImportStarted,
             "import_accepted" => Action::ImportAccepted,
             "import_discarded" => Action::ImportDiscarded,
+            "password_claimed" => Action::PasswordClaimed,
             "password_changed" => Action::PasswordChanged,
             other => eyre::bail!("unknown audit action {other:?}"),
         })
@@ -179,6 +182,25 @@ pub struct Event {
     pub fields: Vec<Field>,
 }
 
+impl Event {
+    /// An event that names no entity, or one whose entity is not known until the mutation has run
+    pub fn new(action: Action) -> Event {
+        Event {
+            action,
+            entity: None,
+            fields: Vec::new(),
+        }
+    }
+
+    pub fn about(action: Action, entity: EntityRef) -> Event {
+        Event {
+            action,
+            entity: Some(entity),
+            fields: Vec::new(),
+        }
+    }
+}
+
 /// One row of the audit log
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditEntry {
@@ -205,6 +227,27 @@ impl<'a> Audited<'a> {
     /// Record a consequence of the action this handle was opened for
     pub(crate) async fn record(&mut self, source: Source, event: Event) -> crate::Result<()> {
         insert(&mut self.tx, Some(self.group), source, &event).await?;
+        Ok(())
+    }
+
+    /// Fill in the headline's entity once the mutation has produced it.
+    ///
+    /// The headline is written before the mutation runs, so an action that creates its entity
+    /// cannot name the id up front.
+    pub(crate) async fn set_entity(&mut self, entity: &EntityRef) -> crate::Result<()> {
+        let kind = entity.kind.as_str();
+        sqlx::query!(
+            "UPDATE audit_entry
+             SET entity_kind = ?, entity_id = ?, entity_library_id = ?, entity_label = ?
+             WHERE id = ?",
+            kind,
+            entity.id,
+            entity.library_id,
+            entity.label,
+            self.group
+        )
+        .execute(&mut *self.tx)
+        .await?;
         Ok(())
     }
 

@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
 use crate::publication::{self, Publication, PublicationInput, PublicationRawInput};
-use crate::{ArchiveInner, NotFound};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -79,41 +79,65 @@ impl PendingImport {
         self,
         input: &PublicationInput,
     ) -> crate::Result<Publication> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(Source::User, Event::new(Action::ImportAccepted))
+            .await?;
         let publication =
-            publication::create_publication(&self.archive, &mut tx, self.library_id, input).await?;
+            publication::create_publication(&self.archive, &mut audited, self.library_id, input)
+                .await?;
         let result = sqlx::query!(
             "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             self.forget_draft();
             return Err(NotFound.into());
         }
-        tx.commit().await?;
+        audited.set_entity(&publication.entity_ref()).await?;
+        audited.commit().await?;
         self.forget_draft();
         Ok(publication)
     }
 
     /// Delete the import and its draft. Returns a [NotFound] error when it is already gone.
     pub async fn discard(self) -> crate::Result<()> {
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::ImportDiscarded, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
             self.library_id,
             self.id
         )
-        .execute(&self.archive.pool)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
+            audited.rollback().await?;
             self.forget_draft();
             return Err(NotFound.into());
         }
+        audited.commit().await?;
         self.forget_draft();
         Ok(())
+    }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Import,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.query.clone(),
+        }
     }
 
     fn forget_draft(&self) {

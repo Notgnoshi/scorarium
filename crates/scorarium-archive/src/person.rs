@@ -33,7 +33,7 @@ impl Person {
     /// The publications crediting this person, whether directly on a publication or indirectly
     /// through a work in a publication.
     pub async fn publications(&self) -> Result<Vec<Publication>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let publications = publication::load_publications(
             &self.archive,
             &mut tx,

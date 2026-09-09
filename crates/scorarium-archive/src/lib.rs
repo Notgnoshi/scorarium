@@ -20,8 +20,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sqlx::SqlitePool;
+use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
 pub use crate::catalog::{CatalogNumber, Similarity};
@@ -67,10 +68,11 @@ pub struct Archive {
 /// What the archive and every handle it hands out share.
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
-    pub pool: SqlitePool,
+    pool: SqlitePool,
     pub drafts: Mutex<HashMap<i64, import::SavedDraft>>,
 }
 
+// database access
 impl ArchiveInner {
     /// Open a write transaction, recording what it is for before anything else happens.
     ///
@@ -85,6 +87,16 @@ impl ArchiveInner {
         let group = audit::insert(&mut tx, None, source, &event).await?;
         audit::trim(&mut tx).await?;
         Ok(audit::Audited::new(tx, group))
+    }
+
+    /// An un-audited transaction for reads that need one snapshot across several queries
+    pub(crate) async fn begin_read(&self) -> Result<Transaction<'_, Sqlite>> {
+        Ok(self.pool.begin().await?)
+    }
+
+    /// An un-audited connection for a single read
+    pub(crate) async fn acquire_read(&self) -> Result<PoolConnection<Sqlite>> {
+        Ok(self.pool.acquire().await?)
     }
 }
 
@@ -141,7 +153,7 @@ impl Archive {
 impl Archive {
     /// Get the database's audit log, most recent entries first.
     pub async fn audit_log(&self) -> Result<Vec<AuditEntry>> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         audit::load_entries(&mut conn).await
     }
 }
@@ -150,13 +162,13 @@ impl Archive {
 impl Archive {
     /// Get all libraries that exist
     pub async fn libraries(&self) -> Result<Vec<Library>> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         library::list_libraries(&self.shared, &mut conn).await
     }
 
     /// Get the given library, if it exists
     pub async fn library(&self, id: i64) -> Result<Option<Library>> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         library::get_library(&self.shared, &mut conn, id).await
     }
 
@@ -164,19 +176,25 @@ impl Archive {
     ///
     /// Names need not be unique.
     pub async fn create_library(&self, name: &str) -> Result<Library> {
-        let mut conn = self.shared.pool.acquire().await?;
-        library::create_library(&self.shared, &mut conn, name).await
+        let mut audited = self
+            .shared
+            .begin_audit(Source::User, Event::new(Action::Created))
+            .await?;
+        let library = library::create_library(&self.shared, &mut audited, name).await?;
+        audited.set_entity(&library.entity_ref()).await?;
+        audited.commit().await?;
+        Ok(library)
     }
 
     /// Every catalog number in every library, private works included, for the settings page
     pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         work::load_catalog_numbers(&mut conn, None, None, false).await
     }
 
     /// Every library's pending imports, oldest first
     pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
-        let mut tx = self.shared.pool.begin().await?;
+        let mut tx = self.shared.begin_read().await?;
         let queue = import::load_pending_imports(&self.shared, &mut tx, None, None).await?;
         tx.commit().await?;
         Ok(queue)
@@ -184,7 +202,7 @@ impl Archive {
 
     /// How many imports await review, for the header
     pub async fn pending_import_count(&self) -> Result<i64> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         let count = sqlx::query_scalar!("SELECT COUNT(*) FROM pending_import")
             .fetch_one(&mut *conn)
             .await?;
@@ -196,7 +214,7 @@ impl Archive {
 impl Archive {
     /// Whether the admin password has been claimed by the first login attempt
     pub async fn password_claimed(&self) -> Result<bool> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         Ok(password::stored_password_hash(&mut conn).await?.is_some())
     }
 
@@ -206,13 +224,22 @@ impl Archive {
     /// logins cannot both win.
     pub async fn claim_password(&self, password: &str) -> Result<bool> {
         let hash = password::hash_password(password)?;
-        let mut conn = self.shared.pool.acquire().await?;
-        password::insert_password_hash(&mut conn, &hash).await
+        let mut audited = self
+            .shared
+            .begin_audit(Source::User, Event::new(Action::PasswordClaimed))
+            .await?;
+        let claimed = password::insert_password_hash(&mut audited, &hash).await?;
+        if claimed {
+            audited.commit().await?;
+        } else {
+            audited.rollback().await?;
+        }
+        Ok(claimed)
     }
 
     /// Check the given password against the salted and hashed stored password
     pub async fn verify_password(&self, password: &str) -> Result<PasswordCheck> {
-        let mut conn = self.shared.pool.acquire().await?;
+        let mut conn = self.shared.acquire_read().await?;
         let Some(stored) = password::stored_password_hash(&mut conn).await? else {
             return Ok(PasswordCheck::Unclaimed);
         };
@@ -226,7 +253,11 @@ impl Archive {
     /// allowing them to change it.
     pub async fn change_password(&self, password: &str) -> Result<()> {
         let hash = password::hash_password(password)?;
-        let mut conn = self.shared.pool.acquire().await?;
-        password::update_password_hash(&mut conn, &hash).await
+        let mut audited = self
+            .shared
+            .begin_audit(Source::User, Event::new(Action::PasswordChanged))
+            .await?;
+        password::update_password_hash(&mut audited, &hash).await?;
+        audited.commit().await
     }
 }
