@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Audit log</h1>
+    {% if entries.is_empty() %}
+        <p class="text-body-secondary">Nothing recorded yet.</p>
+    {% else %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Source</th>
+                        <th>Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                        <tr>
+                            {# Blank on a consequence, so it reads as belonging to the entry above #}
+                            <td>{% if entry.heads_a_group %}{{ entry.age }}{% endif %}</td>
+                            <td>
+                                <span class="badge text-bg-secondary">{{ entry.source }}</span>
+                            </td>
+                            <td {% if !entry.heads_a_group %}class="ps-4 text-body-secondary"{% endif %}>
+                                {{ entry.summary }}
+                                {% if let Some(href) = entry.href %}
+                                    <a href="{{ href }}">{{ entry.label }}</a>
+                                {% else if !entry.label.is_empty() %}
+                                    {{ entry.label }}
+                                {% endif %}
+                                {% if !entry.fields.is_empty() %}
+                                    <span class="text-body-secondary">({{ entry.fields }})</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if let Some(cursor) = next %}
+            <nav aria-label="Audit log pages">
+                <ul class="pagination">
+                    <li class="page-item">
+                        <a class="page-link" href="/settings/audit?before={{ cursor }}">Older</a>
+                    </li>
+                </ul>
+            </nav>
+        {% endif %}
+    {% endif %}
+{% endblock %}

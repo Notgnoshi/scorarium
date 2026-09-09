@@ -10,6 +10,7 @@ mod suggest;
 mod work;
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::extract::FromRequestParts;
@@ -422,6 +423,23 @@ fn message(error: &Option<ValidationError>) -> String {
         .unwrap_or_default()
 }
 
+/// "just now", "5 minutes ago", "3 days ago"
+pub(crate) fn age(created_at: i64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(created_at);
+    let seconds = (now - created_at).max(0);
+    let (count, unit) = match seconds {
+        s if s < 60 => return "just now".to_string(),
+        s if s < 3600 => (s / 60, "minute"),
+        s if s < 86400 => (s / 3600, "hour"),
+        s => (s / 86400, "day"),
+    };
+    let plural = if count == 1 { "" } else { "s" };
+    format!("{count} {unit}{plural} ago")
+}
+
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index::index))
@@ -434,6 +452,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/settings/catalog-numbers",
             get(settings::catalog_numbers_page),
         )
+        .route("/settings/audit", get(settings::audit_page))
         .route("/review", get(import::queue))
         .route("/library", post(library::create))
         .route("/library/{id}", get(library::library))

@@ -157,6 +157,15 @@ impl Archive {
         let mut conn = self.shared.acquire_read().await?;
         audit::load_entries(&mut conn).await
     }
+
+    /// One page of the audit log, newest group first, plus the cursor for the next page.
+    ///
+    /// `before` is the cursor the previous page handed back; None starts at the newest. The cursor
+    /// is None on the last page.
+    pub async fn audit_page(&self, before: Option<i64>) -> Result<(Vec<AuditEntry>, Option<i64>)> {
+        let mut conn = self.shared.acquire_read().await?;
+        audit::load_page(&mut conn, before).await
+    }
 }
 
 // libraries

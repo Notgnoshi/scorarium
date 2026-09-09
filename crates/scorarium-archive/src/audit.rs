@@ -81,7 +81,7 @@ impl Action {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EntityKind {
     Publication,
     Work,
@@ -344,9 +344,27 @@ pub(crate) async fn trim(conn: &mut SqliteConnection) -> crate::Result<()> {
     Ok(())
 }
 
+/// How many groups the settings page shows at once
+pub(crate) const GROUPS_PER_PAGE: usize = 50;
+
+/// One row of the table, as both readers select it
+struct Row {
+    id: i64,
+    group_id: Option<i64>,
+    created_at: i64,
+    source: String,
+    action: String,
+    entity_kind: Option<String>,
+    entity_id: Option<i64>,
+    entity_library_id: Option<i64>,
+    entity_label: Option<String>,
+    fields: Option<String>,
+}
+
 /// Every entry, newest group first, each group's headline ahead of its consequences
 pub(crate) async fn load_entries(conn: &mut SqliteConnection) -> crate::Result<Vec<AuditEntry>> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query_as!(
+        Row,
         r#"SELECT id, group_id, created_at, source, action,
                   entity_kind, entity_id, entity_library_id, entity_label, fields
            FROM audit_entry
@@ -354,39 +372,86 @@ pub(crate) async fn load_entries(conn: &mut SqliteConnection) -> crate::Result<V
     )
     .fetch_all(&mut *conn)
     .await?;
-    rows.into_iter()
-        .map(|row| {
-            let entity = match row.entity_kind {
-                None => None,
-                Some(kind) => Some(EntityRef {
-                    kind: EntityKind::parse(&kind)?,
-                    id: row
-                        .entity_id
-                        .ok_or_else(|| eyre::eyre!("audit entry {} names no entity id", row.id))?,
-                    library_id: row.entity_library_id,
-                    label: row.entity_label.unwrap_or_default(),
-                }),
-            };
-            let fields = match row.fields {
-                None => Vec::new(),
-                Some(json) => serde_json::from_str::<Vec<String>>(&json)?
-                    .iter()
-                    .map(|name| Field::parse(name))
-                    .collect::<crate::Result<_>>()?,
-            };
-            Ok(AuditEntry {
-                id: row.id,
-                group_id: row.group_id,
-                created_at: row.created_at,
-                source: Source::parse(&row.source)?,
-                event: Event {
-                    action: Action::parse(&row.action)?,
-                    entity,
-                    fields,
-                },
-            })
-        })
-        .collect()
+    rows.into_iter().map(parse_row).collect()
+}
+
+/// One page of groups, newest first, and the cursor for the page after it.
+///
+/// `before` excludes every group at or above that headline id; None starts at the newest. Pages
+/// are cut between groups rather than between entries, so a headline never lands at the bottom of
+/// one page with its consequences at the top of the next. The cursor is a keyset rather than an
+/// offset because the demo takes writes continuously, and an offset shifts under a reader paging
+/// through.
+pub(crate) async fn load_page(
+    conn: &mut SqliteConnection,
+    before: Option<i64>,
+) -> crate::Result<(Vec<AuditEntry>, Option<i64>)> {
+    let limit = GROUPS_PER_PAGE as i64;
+    let groups: Vec<i64> = sqlx::query_scalar!(
+        r#"SELECT id FROM audit_entry
+           WHERE group_id IS NULL AND (?1 IS NULL OR id < ?1)
+           ORDER BY id DESC LIMIT ?2"#,
+        before,
+        limit
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let (Some(newest), Some(oldest)) = (groups.first(), groups.last()) else {
+        return Ok((Vec::new(), None));
+    };
+    // The page's headlines are a contiguous run of ids, since nothing between the oldest and the
+    // newest is a headline outside the page. So the entries are a range query rather than an IN
+    // list, which the sqlx macros cannot bind anyway.
+    let rows = sqlx::query_as!(
+        Row,
+        r#"SELECT id, group_id, created_at, source, action,
+                  entity_kind, entity_id, entity_library_id, entity_label, fields
+           FROM audit_entry
+           WHERE COALESCE(group_id, id) BETWEEN ?1 AND ?2
+           ORDER BY COALESCE(group_id, id) DESC, id ASC"#,
+        oldest,
+        newest
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let entries = rows
+        .into_iter()
+        .map(parse_row)
+        .collect::<crate::Result<_>>()?;
+    let next = (groups.len() == GROUPS_PER_PAGE).then_some(*oldest);
+    Ok((entries, next))
+}
+
+fn parse_row(row: Row) -> crate::Result<AuditEntry> {
+    let entity = match row.entity_kind {
+        None => None,
+        Some(kind) => Some(EntityRef {
+            kind: EntityKind::parse(&kind)?,
+            id: row
+                .entity_id
+                .ok_or_else(|| eyre::eyre!("audit entry {} names no entity id", row.id))?,
+            library_id: row.entity_library_id,
+            label: row.entity_label.unwrap_or_default(),
+        }),
+    };
+    let fields = match row.fields {
+        None => Vec::new(),
+        Some(json) => serde_json::from_str::<Vec<String>>(&json)?
+            .iter()
+            .map(|name| Field::parse(name))
+            .collect::<crate::Result<_>>()?,
+    };
+    Ok(AuditEntry {
+        id: row.id,
+        group_id: row.group_id,
+        created_at: row.created_at,
+        source: Source::parse(&row.source)?,
+        event: Event {
+            action: Action::parse(&row.action)?,
+            entity,
+            fields,
+        },
+    })
 }
 
 #[cfg(test)]
@@ -450,5 +515,42 @@ mod tests {
             None => true,
             Some(group) => entries.iter().any(|other| other.id == group),
         }));
+    }
+
+    /// A page is cut between groups, so a consequence never lands on the page after its headline,
+    /// and the cursor hands back the rest without a gap or an overlap.
+    #[tokio::test]
+    async fn pages_are_cut_between_groups() {
+        let archive = Archive::in_memory().await.unwrap();
+        for n in 0..(GROUPS_PER_PAGE + 2) {
+            let mut audited = archive
+                .shared()
+                .begin_audit(Source::User, user_event(Action::Updated, &format!("p{n}")))
+                .await
+                .unwrap();
+            audited
+                .record(Source::Merge, user_event(Action::Merged, "dupe"))
+                .await
+                .unwrap();
+            audited.commit().await.unwrap();
+        }
+
+        let (first, cursor) = archive.audit_page(None).await.unwrap();
+        assert_eq!(first.len(), GROUPS_PER_PAGE * 2);
+        assert_eq!(first[0].event.entity.as_ref().unwrap().label, "p51");
+        assert_eq!(first[0].group_id, None);
+        assert_eq!(first[1].group_id, Some(first[0].id));
+        let oldest_shown = first.last().unwrap().group_id.unwrap();
+        assert_eq!(cursor, Some(oldest_shown));
+
+        let (second, cursor) = archive.audit_page(cursor).await.unwrap();
+        let labels: Vec<&str> = second
+            .iter()
+            .filter(|entry| entry.group_id.is_none())
+            .map(|entry| entry.event.entity.as_ref().unwrap().label.as_str())
+            .collect();
+        assert_eq!(labels, ["p1", "p0"]);
+        assert_eq!(second.len(), 4);
+        assert_eq!(cursor, None);
     }
 }

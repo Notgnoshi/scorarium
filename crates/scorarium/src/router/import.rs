@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use askama::Template;
 use axum::extract::{Path, Query, RawForm, State};
@@ -14,7 +13,7 @@ use serde::Deserialize;
 use super::work::WorkPost;
 use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
-    WorkFields,
+    WorkFields, age,
 };
 use crate::AppState;
 use crate::publication_post::{self, PublicationPost};
@@ -48,22 +47,6 @@ fn label(import: &PendingImport, draft: &PublicationRawInput) -> String {
         .find(|text| !text.is_empty())
         .unwrap_or(UNTITLED)
         .to_string()
-}
-
-fn age(created_at: i64) -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(created_at);
-    let seconds = (now - created_at).max(0);
-    let (count, unit) = match seconds {
-        s if s < 60 => return "just now".to_string(),
-        s if s < 3600 => (s / 60, "minute"),
-        s if s < 86400 => (s / 3600, "hour"),
-        s => (s / 86400, "day"),
-    };
-    let plural = if count == 1 { "" } else { "s" };
-    format!("{count} {unit}{plural} ago")
 }
 
 #[derive(Template)]
