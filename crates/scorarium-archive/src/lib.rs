@@ -2,6 +2,7 @@
 //!
 //! [Archive] is the top-level entity. It contains [Library]s, against which most other data access
 //! is performed.
+mod audit;
 mod catalog;
 mod demo;
 mod holding;
@@ -22,6 +23,7 @@ use std::time::Duration;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
+pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
 pub use crate::catalog::{CatalogNumber, Similarity};
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
@@ -69,6 +71,23 @@ pub(crate) struct ArchiveInner {
     pub drafts: Mutex<HashMap<i64, import::SavedDraft>>,
 }
 
+impl ArchiveInner {
+    /// Open a write transaction, recording what it is for before anything else happens.
+    ///
+    /// This is intended to be the only mechanism the [Archive]'s [SqlitePool] is available,
+    /// strongly encouraging all database interactions in this crate to land in the audit log.
+    pub(crate) async fn begin_audit(
+        &self,
+        source: Source,
+        event: Event,
+    ) -> Result<audit::Audited<'_>> {
+        let mut tx = self.pool.begin().await?;
+        let group = audit::insert(&mut tx, None, source, &event).await?;
+        audit::trim(&mut tx).await?;
+        Ok(audit::Audited::new(tx, group))
+    }
+}
+
 // construction
 impl Archive {
     /// Open the archive in the given data directory, creating and migrating it as necessary.
@@ -112,6 +131,18 @@ impl Archive {
     /// Fill an empty archive with the demo libraries that `--demo` serves
     pub async fn populate_demo(&self) -> Result<()> {
         demo::populate(self).await
+    }
+
+    pub(crate) fn shared(&self) -> &Arc<ArchiveInner> {
+        &self.shared
+    }
+}
+
+impl Archive {
+    /// Get the database's audit log, most recent entries first.
+    pub async fn audit_log(&self) -> Result<Vec<AuditEntry>> {
+        let mut conn = self.shared.pool.acquire().await?;
+        audit::load_entries(&mut conn).await
     }
 }
 

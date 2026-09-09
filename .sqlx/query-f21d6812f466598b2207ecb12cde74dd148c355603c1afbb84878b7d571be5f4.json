@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO audit_entry\n             (group_id, source, action, entity_kind, entity_id, entity_library_id, entity_label, fields)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "f21d6812f466598b2207ecb12cde74dd148c355603c1afbb84878b7d571be5f4"
+}
