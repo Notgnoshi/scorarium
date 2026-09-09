@@ -4,6 +4,7 @@ use std::sync::Arc;
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::audit::Audited;
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
@@ -477,7 +478,7 @@ pub(crate) async fn load_publications(
 /// publication is not something the input can ask for yet.
 pub(crate) async fn create_publication(
     shared: &Arc<ArchiveInner>,
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
@@ -488,14 +489,14 @@ pub(crate) async fn create_publication(
         input.publisher,
         input.year,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
-    write_publication_children(&mut *conn, library_id, id, input).await?;
+    write_publication_children(audited, library_id, id, input).await?;
     for content in &input.contents {
-        work::create_work_in_publication(&mut *conn, library_id, id, content).await?;
+        work::create_work_in_publication(audited, library_id, id, content).await?;
     }
-    let publication = load_publications(shared, conn, library_id, Some(id), None, None)
+    let publication = load_publications(shared, audited, library_id, Some(id), None, None)
         .await?
         .pop()
         .expect("the publication was just created on this transaction");

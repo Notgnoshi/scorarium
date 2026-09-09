@@ -4,6 +4,7 @@ use std::sync::Arc;
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
@@ -410,7 +411,7 @@ pub(crate) async fn load_catalog_numbers(
 /// The input's id is ignored: a publication creates every work it names, since linking an existing
 /// work into another publication is not something the input can ask for yet.
 pub(crate) async fn create_work_in_publication(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     publication_id: i64,
     input: &WorkInput,
@@ -423,7 +424,7 @@ pub(crate) async fn create_work_in_publication(
         input.time_signature,
         input.instrumentation,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
     sqlx::query!(
@@ -432,11 +433,11 @@ pub(crate) async fn create_work_in_publication(
         publication_id,
         id,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
-    write_work_contributors(&mut *conn, library_id, id, &input.contributors).await?;
-    write_work_catalog_numbers(&mut *conn, id, &input.catalog_numbers).await?;
-    absorb_into_duplicate(&mut *conn, library_id, id).await
+    write_work_contributors(audited, library_id, id, &input.contributors).await?;
+    write_work_catalog_numbers(audited, id, &input.catalog_numbers).await?;
+    absorb_into_duplicate(audited, library_id, id).await
 }
 
 /// Reconcile a publication's contents against the works its input names.
@@ -446,7 +447,7 @@ pub(crate) async fn create_work_in_publication(
 /// deleted; cleanup is handled by orphan cleanup on the library. Existing links keep their
 /// position, so reordering the input does not reorder the contents.
 pub(crate) async fn write_publication_works(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     publication_id: i64,
     contents: &[WorkInput],
@@ -455,7 +456,7 @@ pub(crate) async fn write_publication_works(
         "SELECT work_id FROM publication_work WHERE publication_id = ?",
         publication_id
     )
-    .fetch_all(&mut *conn)
+    .fetch_all(&mut **audited)
     .await?;
     let named: Vec<i64> = contents.iter().filter_map(|work| work.id).collect();
     for work_id in stored.iter().filter(|id| !named.contains(id)) {
@@ -464,13 +465,13 @@ pub(crate) async fn write_publication_works(
             publication_id,
             work_id
         )
-        .execute(&mut *conn)
+        .execute(&mut **audited)
         .await?;
     }
     for input in contents {
         // An id the publication does not contain names nothing this input may edit
         let Some(work_id) = input.id.filter(|id| stored.contains(id)) else {
-            create_work_in_publication(&mut *conn, library_id, publication_id, input).await?;
+            create_work_in_publication(audited, library_id, publication_id, input).await?;
             continue;
         };
         sqlx::query!(
@@ -483,11 +484,11 @@ pub(crate) async fn write_publication_works(
             library_id,
             work_id
         )
-        .execute(&mut *conn)
+        .execute(&mut **audited)
         .await?;
-        write_work_contributors(&mut *conn, library_id, work_id, &input.contributors).await?;
-        write_work_catalog_numbers(&mut *conn, work_id, &input.catalog_numbers).await?;
-        absorb_into_duplicate(&mut *conn, library_id, work_id).await?;
+        write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
+        write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
+        absorb_into_duplicate(audited, library_id, work_id).await?;
     }
     Ok(())
 }
@@ -632,19 +633,29 @@ async fn find_duplicate(
         .map(|row| row.id))
 }
 
-/// Merge this work into a duplicate if it has one; returns the surviving id
+/// Merge this work into a duplicate if it has one, returning the surviving id.
 pub(crate) async fn absorb_into_duplicate(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     work_id: i64,
 ) -> crate::Result<i64> {
-    match find_duplicate(&mut *conn, library_id, work_id).await? {
-        Some(into) => {
-            merge_works(conn, library_id, work_id, into).await?;
-            Ok(into)
-        }
-        None => Ok(work_id),
-    }
+    let Some(into) = find_duplicate(audited, library_id, work_id).await? else {
+        return Ok(work_id);
+    };
+    let survivor = sqlx::query_scalar!(r#"SELECT title AS "title!" FROM work WHERE id = ?"#, into)
+        .fetch_one(&mut **audited)
+        .await?;
+    merge_works(audited, library_id, work_id, into).await?;
+    let entity = EntityRef {
+        kind: EntityKind::Work,
+        id: into,
+        library_id: Some(library_id),
+        label: survivor,
+    };
+    audited
+        .record(Source::Merge, Event::about(Action::Merged, entity))
+        .await?;
+    Ok(into)
 }
 
 /// Rebuild a work's catalog numbers, so input order becomes stored order.

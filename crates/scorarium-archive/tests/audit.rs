@@ -139,3 +139,44 @@ async fn an_update_that_changes_nothing_names_no_fields() {
     assert_eq!(latest.event.action, Action::Updated);
     assert_eq!(latest.event.fields, Vec::new());
 }
+
+/// Removing a work from a publication orphans the work, and orphaning the work orphans the person
+/// credited only on it. All three facts belong to the one edit that caused them, and the entries
+/// are the only place the deleted names still exist.
+#[tokio::test]
+async fn an_edit_records_the_deletions_it_caused() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Test").await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap();
+
+    let works = publication.works().await.unwrap();
+    let mut emptied = publication.raw_input(&works);
+    emptied.contents.clear();
+    publication.update(&emptied.parse().unwrap()).await.unwrap();
+
+    let entries = archive.audit_log().await.unwrap();
+    let headline = &entries[0];
+    assert_eq!(headline.group_id, None);
+    assert_eq!(headline.event.action, Action::Updated);
+    assert_eq!(headline.event.fields, vec![Field::Contents]);
+
+    let consequences: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.group_id == Some(headline.id))
+        .map(|entry| {
+            let entity = entry.event.entity.as_ref().unwrap();
+            (entry.source, entity.kind, entity.label.as_str())
+        })
+        .collect();
+    assert_eq!(
+        consequences,
+        vec![
+            (
+                Source::OrphanCleanup,
+                EntityKind::Work,
+                "Goldberg Variations"
+            ),
+            (Source::OrphanCleanup, EntityKind::Person, "Bach"),
+        ]
+    );
+}

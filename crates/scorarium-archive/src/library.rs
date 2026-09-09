@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
+use crate::audit::Audited;
 use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
@@ -247,23 +248,47 @@ impl Library {
 ///
 /// The order matters: collecting a work takes its contributor links with it, and those links can
 /// be the last thing crediting a person.
-pub(crate) async fn collect_orphans(conn: &mut SqliteConnection, library_id: i64) -> Result<()> {
-    sqlx::query!(
-        "DELETE FROM work
-         WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)",
+pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) -> Result<()> {
+    let works = sqlx::query!(
+        r#"DELETE FROM work
+           WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)
+           RETURNING id AS "id!", title AS "title!""#,
         library_id
     )
-    .execute(&mut *conn)
+    .fetch_all(&mut **audited)
     .await?;
-    sqlx::query!(
-        "DELETE FROM person
-         WHERE library_id = ?
-           AND id NOT IN (SELECT person_id FROM publication_contributor)
-           AND id NOT IN (SELECT person_id FROM work_contributor)",
+    for work in works {
+        let entity = EntityRef {
+            kind: EntityKind::Work,
+            id: work.id,
+            library_id: Some(library_id),
+            label: work.title,
+        };
+        audited
+            .record(Source::OrphanCleanup, Event::about(Action::Deleted, entity))
+            .await?;
+    }
+    let persons = sqlx::query!(
+        r#"DELETE FROM person
+           WHERE library_id = ?
+             AND id NOT IN (SELECT person_id FROM publication_contributor)
+             AND id NOT IN (SELECT person_id FROM work_contributor)
+           RETURNING id AS "id!", name AS "name!""#,
         library_id
     )
-    .execute(&mut *conn)
+    .fetch_all(&mut **audited)
     .await?;
+    for person in persons {
+        let entity = EntityRef {
+            kind: EntityKind::Person,
+            id: person.id,
+            library_id: Some(library_id),
+            label: person.name,
+        };
+        audited
+            .record(Source::OrphanCleanup, Event::about(Action::Deleted, entity))
+            .await?;
+    }
     Ok(())
 }
 

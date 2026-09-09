@@ -145,6 +145,7 @@ impl Archive {
         demo::populate(self).await
     }
 
+    #[cfg(test)]
     pub(crate) fn shared(&self) -> &Arc<ArchiveInner> {
         &self.shared
     }
