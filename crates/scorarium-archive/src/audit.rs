@@ -386,8 +386,9 @@ pub(crate) async fn load_page(
     conn: &mut SqliteConnection,
     before: Option<i64>,
 ) -> crate::Result<(Vec<AuditEntry>, Option<i64>)> {
-    let limit = GROUPS_PER_PAGE as i64;
-    let groups: Vec<i64> = sqlx::query_scalar!(
+    // One group past the page tells whether there is a page after this one
+    let limit = GROUPS_PER_PAGE as i64 + 1;
+    let mut groups: Vec<i64> = sqlx::query_scalar!(
         r#"SELECT id FROM audit_entry
            WHERE group_id IS NULL AND (?1 IS NULL OR id < ?1)
            ORDER BY id DESC LIMIT ?2"#,
@@ -396,6 +397,8 @@ pub(crate) async fn load_page(
     )
     .fetch_all(&mut *conn)
     .await?;
+    let has_older = groups.len() > GROUPS_PER_PAGE;
+    groups.truncate(GROUPS_PER_PAGE);
     let (Some(newest), Some(oldest)) = (groups.first(), groups.last()) else {
         return Ok((Vec::new(), None));
     };
@@ -418,7 +421,7 @@ pub(crate) async fn load_page(
         .into_iter()
         .map(parse_row)
         .collect::<crate::Result<_>>()?;
-    let next = (groups.len() == GROUPS_PER_PAGE).then_some(*oldest);
+    let next = has_older.then_some(*oldest);
     Ok((entries, next))
 }
 
@@ -522,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn pages_are_cut_between_groups() {
         let archive = Archive::in_memory().await.unwrap();
-        for n in 0..(GROUPS_PER_PAGE + 2) {
+        for n in 0..(GROUPS_PER_PAGE * 2) {
             let mut audited = archive
                 .shared()
                 .begin_audit(Source::User, user_event(Action::Updated, &format!("p{n}")))
@@ -537,7 +540,7 @@ mod tests {
 
         let (first, cursor) = archive.audit_page(None).await.unwrap();
         assert_eq!(first.len(), GROUPS_PER_PAGE * 2);
-        assert_eq!(first[0].event.entity.as_ref().unwrap().label, "p51");
+        assert_eq!(first[0].event.entity.as_ref().unwrap().label, "p99");
         assert_eq!(first[0].group_id, None);
         assert_eq!(first[1].group_id, Some(first[0].id));
         let oldest_shown = first.last().unwrap().group_id.unwrap();
@@ -549,8 +552,10 @@ mod tests {
             .filter(|entry| entry.group_id.is_none())
             .map(|entry| entry.event.entity.as_ref().unwrap().label.as_str())
             .collect();
-        assert_eq!(labels, ["p1", "p0"]);
-        assert_eq!(second.len(), 4);
+        assert_eq!(labels.len(), GROUPS_PER_PAGE);
+        assert_eq!(labels[0], "p49");
+        assert_eq!(labels[GROUPS_PER_PAGE - 1], "p0");
+        assert_eq!(second.len(), GROUPS_PER_PAGE * 2);
         assert_eq!(cursor, None);
     }
 }
