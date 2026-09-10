@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM audit_entry\n           WHERE group_id IS NULL AND (?1 IS NULL OR id < ?1)\n           ORDER BY id DESC LIMIT ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_entry",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d44b15c9c7c279d73bd49d41d7bfd39405a285e4f598f984a82c4b166e0b1905"
+}

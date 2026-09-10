@@ -21,6 +21,10 @@ pub async fn login_form(
         // already logged in; redirect to index
         return Ok(Redirect::to("/").into_response());
     }
+    // The demo has no password to claim or check; its login form is just a button
+    if state.demo {
+        return Ok(Html(login_page(base, None)?).into_response());
+    }
     let claimed = state.archive.password_claimed().await?;
     let page = if claimed {
         // the initial password has been set; show the login form
@@ -34,6 +38,7 @@ pub async fn login_form(
 
 #[derive(Deserialize)]
 pub struct LoginForm {
+    #[serde(default)]
     password: String,
     /// Present only on submissions of the claim form.
     confirm: Option<String>,
@@ -49,6 +54,9 @@ pub async fn login(
     // A stale form from a tab opened before logging in elsewhere
     if base.logged_in {
         return Ok(Redirect::to("/").into_response());
+    }
+    if state.demo {
+        return Ok(start_session(&state, jar));
     }
     // Re-check the claim state on every POST because the form the browser rendered may be stale
     let claimed = state.archive.password_claimed().await?;

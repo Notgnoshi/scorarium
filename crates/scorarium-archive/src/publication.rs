@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::audit::Audited;
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
-use crate::{ArchiveInner, NotFound, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -125,9 +127,11 @@ impl PublicationRawInput {
 }
 
 /// A publication with its children
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Comparable)]
 pub struct Publication {
+    #[comparable_ignore]
     pub id: i64,
+    #[comparable_ignore]
     pub library_id: i64,
     pub title: String,
     pub publisher: Option<String>,
@@ -136,13 +140,32 @@ pub struct Publication {
     /// In link order
     pub contributors: Vec<Contributor>,
     pub holdings: Vec<Holding>,
+    #[comparable_ignore]
     archive: Arc<ArchiveInner>,
+}
+
+/// Which fields an edit changed, for the audit log.
+fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
+    let Changed::Changed(changes) = old.comparison(new) else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|change| match change {
+            PublicationChange::Title(_) => Field::Title,
+            PublicationChange::Publisher(_) => Field::Publisher,
+            PublicationChange::Year(_) => Field::Year,
+            PublicationChange::Identifiers(_) => Field::Identifiers,
+            PublicationChange::Contributors(_) => Field::Contributors,
+            PublicationChange::Holdings(_) => Field::Holdings,
+        })
+        .collect()
 }
 
 impl Publication {
     /// The works this publication contains, in the order they were added to it
     pub async fn works(&self) -> crate::Result<Vec<Work>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let contents =
             work::load_works(&self.archive, &mut tx, self.library_id, None, Some(self.id)).await?;
         tx.commit().await?;
@@ -200,7 +223,13 @@ impl Publication {
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Updated, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "UPDATE publication SET title = ?, publisher = ?, year = ?
              WHERE library_id = ? AND id = ?",
@@ -210,18 +239,21 @@ impl Publication {
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        write_publication_children(&mut tx, self.library_id, self.id, input).await?;
-        work::write_publication_works(&mut tx, self.library_id, self.id, &input.contents).await?;
-        library::collect_orphans(&mut tx, self.library_id).await?;
+        let contents_before = contained_work_ids(&mut audited, self.id).await?;
+        write_publication_children(&mut audited, self.library_id, self.id, input).await?;
+        work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
+            .await?;
+        let contents_after = contained_work_ids(&mut audited, self.id).await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_publications(
             &self.archive,
-            &mut tx,
+            &mut audited,
             self.library_id,
             Some(self.id),
             None,
@@ -230,7 +262,13 @@ impl Publication {
         .await?
         .pop()
         .expect("the publication was just updated on this transaction");
-        tx.commit().await?;
+        // The contents are not a field of self, so the derived comparison cannot see them
+        let mut fields = changed_fields(self, &reloaded);
+        if contents_before != contents_after {
+            fields.push(Field::Contents);
+        }
+        audited.set_fields(&fields).await?;
+        audited.commit().await?;
         *self = reloaded;
         Ok(())
     }
@@ -239,22 +277,54 @@ impl Publication {
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn delete(self) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Deleted, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "DELETE FROM publication WHERE library_id = ? AND id = ?",
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        library::collect_orphans(&mut tx, self.library_id).await?;
-        tx.commit().await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
+        audited.commit().await?;
         Ok(())
     }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Publication,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
+    }
+}
+
+/// The ids of the works a publication contains, in link order, on the caller's transaction.
+///
+/// [Publication::works] opens its own transaction and so would read a different snapshot.
+async fn contained_work_ids(
+    conn: &mut SqliteConnection,
+    publication_id: i64,
+) -> crate::Result<Vec<i64>> {
+    let ids = sqlx::query_scalar!(
+        "SELECT work_id FROM publication_work WHERE publication_id = ? ORDER BY id",
+        publication_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(ids)
 }
 
 /// Load a library's publications with their children: all of them, just the one with `id`, those
@@ -408,7 +478,7 @@ pub(crate) async fn load_publications(
 /// publication is not something the input can ask for yet.
 pub(crate) async fn create_publication(
     shared: &Arc<ArchiveInner>,
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
@@ -419,14 +489,14 @@ pub(crate) async fn create_publication(
         input.publisher,
         input.year,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
-    write_publication_children(&mut *conn, library_id, id, input).await?;
+    write_publication_children(audited, library_id, id, input).await?;
     for content in &input.contents {
-        work::create_work_in_publication(&mut *conn, library_id, id, content).await?;
+        work::create_work_in_publication(audited, library_id, id, content).await?;
     }
-    let publication = load_publications(shared, conn, library_id, Some(id), None, None)
+    let publication = load_publications(shared, audited, library_id, Some(id), None, None)
         .await?
         .pop()
         .expect("the publication was just created on this transaction");

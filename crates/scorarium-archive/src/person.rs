@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use comparable::Comparable;
 use sqlx::SqliteConnection;
 
 use crate::publication::{self, Publication};
@@ -9,7 +10,7 @@ use crate::{ArchiveInner, Result};
 ///
 /// A [Contributor] is tied to a particular publication or work, but it's really a [Person] that
 /// with an associated role.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Comparable)]
 pub struct Contributor {
     pub person_id: i64,
     pub name: String,
@@ -33,7 +34,7 @@ impl Person {
     /// The publications crediting this person, whether directly on a publication or indirectly
     /// through a work in a publication.
     pub async fn publications(&self) -> Result<Vec<Publication>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let publications = publication::load_publications(
             &self.archive,
             &mut tx,

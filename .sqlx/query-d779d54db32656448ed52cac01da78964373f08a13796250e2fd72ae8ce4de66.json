@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM person\n           WHERE library_id = ?\n             AND id NOT IN (SELECT person_id FROM publication_contributor)\n             AND id NOT IN (SELECT person_id FROM work_contributor)\n           RETURNING id AS \"id!\", name AS \"name!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d779d54db32656448ed52cac01da78964373f08a13796250e2fd72ae8ce4de66"
+}

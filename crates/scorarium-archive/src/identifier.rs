@@ -2,13 +2,14 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
+use comparable::Comparable;
 use isbn::{Isbn, Isbn13, IsbnError};
 use sqlx::SqliteConnection;
 
 use crate::input::ValidationError;
 
 /// The kinds of identifier printed on a publication
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Comparable)]
 pub enum Kind {
     Isbn,
     Ismn,
@@ -83,8 +84,9 @@ pub struct IdentifierRawInput {
 }
 
 /// One identifier of a publication
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Comparable)]
 pub struct Identifier {
+    #[comparable_ignore]
     pub id: i64,
     pub kind: Kind,
     pub value: String,

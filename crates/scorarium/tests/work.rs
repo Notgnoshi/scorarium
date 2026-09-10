@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::router;
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn work_page() {
@@ -155,6 +155,7 @@ async fn editing_a_work_onto_another_number_merges_them() {
         .find(|w| w.title == "Polichinelle")
         .unwrap();
     let server = browser(state.clone());
+    demo_login(&server).await;
 
     let response = server
         .post(&format!(
@@ -200,6 +201,7 @@ async fn the_edit_page_returns_where_it_came_from() {
         .unwrap();
     let prelude = album.works().await.unwrap().remove(0);
     let server = browser(state.clone());
+    demo_login(&server).await;
     let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
 
     let response = server

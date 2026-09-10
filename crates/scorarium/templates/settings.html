@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>Settings</h1>
-    {# The demo logs everyone in without a password, so there is none to change #}
+    {# The demo accepts logins without a password #}
     {% if !base.demo %}
         <h2>Change password</h2>
         <div class="row">
@@ -40,5 +40,9 @@
         {% else %}
             <a href="/settings/catalog-numbers">{{ unrecognized }} unrecognized catalog number{% if unrecognized != 1 %}s{% endif %}</a>
         {% endif %}
+    </p>
+    <h2 class="mt-4">Audit log</h2>
+    <p>
+        <a href="/settings/audit">Recent changes</a>
     </p>
 {% endblock %}

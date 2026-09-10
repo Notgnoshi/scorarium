@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE audit_entry SET fields = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6d12b3b7ed97668f2cc62b37c6dd1291c54d4c3e9c6b7090a156fd04f6576bee"
+}

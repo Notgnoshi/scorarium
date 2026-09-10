@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT title AS \"title!\" FROM work WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "title!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ebc1210180f8a8869e4ffab8afc08564097057d6aa9cb4cfb785448e014859a7"
+}

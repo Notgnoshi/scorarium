@@ -1,6 +1,8 @@
 use axum::http::StatusCode;
-use scorarium_archive::{HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput};
-use scorarium_tests::{TestDb, browser};
+use scorarium_archive::{
+    ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
+};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn password_change_flow() {
@@ -117,10 +119,11 @@ async fn settings_lists_unrecognized_catalog_numbers() {
     assert!(!response.text().contains("Op. 28 No. 15"));
 }
 
-/// The demo logs everyone in, so it offers the settings page but not the password on it.
+/// The demo logs in without a password, so it offers the settings page but not the password on it.
 #[tokio::test]
 async fn the_demo_has_settings_without_a_password() {
     let server = browser(TestDb::new().demo().build().await);
+    demo_login(&server).await;
 
     // The page it leads to hides its own link, so the link is checked from somewhere else
     let response = server.get("/").await;
@@ -136,4 +139,74 @@ async fn the_demo_has_settings_without_a_password() {
         .form(&[("current", ""), ("new", "hunter2"), ("confirm", "hunter2")])
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
+}
+
+/// The page names the entity, the fields that changed, and the deletions the edit caused. What
+/// still exists links to its page; what was deleted renders as text.
+#[tokio::test]
+async fn the_audit_page_shows_an_edit_and_its_consequences() {
+    let state = TestDb::new()
+        .library("Test")
+        .password("hunter2")
+        .build()
+        .await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let mut publication = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Goldberg Variations".into(),
+                holdings: vec![HoldingRawInput {
+                    id: None,
+                    kind: HoldingKind::Physical,
+                    location: "Shelf".into(),
+                }],
+                contents: vec![WorkRawInput {
+                    title: "Aria".into(),
+                    contributors: vec![ContributorInput {
+                        name: "Bach".into(),
+                        role: "composer".into(),
+                    }],
+                    ..WorkRawInput::default()
+                }],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Emptying the publication orphans the work, and the work's only composer with it
+    let works = publication.works().await.unwrap();
+    let mut emptied = publication.raw_input(&works);
+    emptied.contents.clear();
+    publication.update(&emptied.parse().unwrap()).await.unwrap();
+
+    let server = browser(state.clone());
+    server.post("/login").form(&[("password", "hunter2")]).await;
+    let response = server.get("/settings").await;
+    response.assert_text_contains("href=\"/settings/audit\"");
+
+    let response = server.get("/settings/audit").await;
+    response.assert_status_ok();
+    response.assert_text_contains("Updated publication");
+    response.assert_text_contains(format!(
+        "href=\"/library/{}/publication/{}\"",
+        library.id, publication.id
+    ));
+    response.assert_text_contains("(contents)");
+    response.assert_text_contains("orphan cleanup");
+    response.assert_text_contains("Deleted work");
+    response.assert_text_contains("Aria");
+    response.assert_text_contains("Deleted person");
+    response.assert_text_contains("Bach");
+    // The work and the person are gone, so nothing links to them
+    let body = response.text();
+    assert!(
+        !body.contains(&format!("/library/{}/work/", library.id)),
+        "{body}"
+    );
+    assert!(
+        !body.contains(&format!("/library/{}/person/", library.id)),
+        "{body}"
+    );
 }

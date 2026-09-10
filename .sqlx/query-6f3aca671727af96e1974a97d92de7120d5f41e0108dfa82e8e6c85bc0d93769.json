@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work\n           WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)\n           RETURNING id AS \"id!\", title AS \"title!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "title!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null,
+      false
+    ]
+  },
+  "hash": "6f3aca671727af96e1974a97d92de7120d5f41e0108dfa82e8e6c85bc0d93769"
+}

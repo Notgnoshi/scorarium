@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn claim_flow() {
@@ -31,16 +31,31 @@ async fn claim_flow() {
 }
 
 #[tokio::test]
-async fn demo_needs_no_login() {
+async fn demo_login_flow() {
     let state = TestDb::new().demo().build().await;
     let library = state.archive.libraries().await.unwrap()[0].id;
     let server = browser(state.clone());
+    let import = format!("/library/{library}/import");
 
-    // A page that would otherwise redirect to /login
-    let response = server.get(&format!("/library/{library}/import")).await;
+    // The demo still asks anonymous visitors to log in
+    let response = server.get(&import).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/login");
+
+    // But the login page has a notice instead of a password field
+    let response = server.get("/login").await;
+    response.assert_status_ok();
+    response.assert_text_contains("does not require a password");
+    assert!(!response.text().contains("type=\"password\""));
+
+    let response = demo_login(&server).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/");
+
+    let response = server.get(&import).await;
     response.assert_status_ok();
     response.assert_text_contains("demo</span>");
-    assert!(!response.text().contains("Log out"));
+    response.assert_text_contains("Log out");
 
     let response = server.get("/login").await;
     response.assert_status(StatusCode::SEE_OTHER);

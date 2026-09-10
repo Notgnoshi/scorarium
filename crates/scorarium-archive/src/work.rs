@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
-use crate::{ArchiveInner, NotFound, library};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -92,9 +94,11 @@ impl WorkRawInput {
 }
 
 /// A work with its children, as read back
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Comparable)]
 pub struct Work {
+    #[comparable_ignore]
     pub id: i64,
+    #[comparable_ignore]
     pub library_id: i64,
     pub title: String,
     pub key: Option<String>,
@@ -104,13 +108,32 @@ pub struct Work {
     pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
     pub contributors: Vec<Contributor>,
+    #[comparable_ignore]
     archive: Arc<ArchiveInner>,
+}
+
+/// Which fields an edit changed, for the audit log.
+fn changed_fields(old: &Work, new: &Work) -> Vec<Field> {
+    let Changed::Changed(changes) = old.comparison(new) else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|change| match change {
+            WorkChange::Title(_) => Field::Title,
+            WorkChange::Key(_) => Field::Key,
+            WorkChange::TimeSignature(_) => Field::TimeSignature,
+            WorkChange::Instrumentation(_) => Field::Instrumentation,
+            WorkChange::CatalogNumbers(_) => Field::CatalogNumbers,
+            WorkChange::Contributors(_) => Field::Contributors,
+        })
+        .collect()
 }
 
 impl Work {
     /// The publications containing this work, in arbitrary order
     pub async fn publications(&self) -> crate::Result<Vec<Publication>> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut tx = self.archive.begin_read().await?;
         let publications = publication::load_publications(
             &self.archive,
             &mut tx,
@@ -173,7 +196,13 @@ impl Work {
     ///
     /// Returns a [NotFound] error if the work has since been collected.
     pub async fn update(&mut self, input: &WorkInput) -> crate::Result<()> {
-        let mut tx = self.archive.pool.begin().await?;
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Updated, self.entity_ref()),
+            )
+            .await?;
         let result = sqlx::query!(
             "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
              WHERE library_id = ? AND id = ?",
@@ -184,19 +213,32 @@ impl Work {
             self.library_id,
             self.id
         )
-        .execute(&mut *tx)
+        .execute(&mut *audited)
         .await?;
         if result.rows_affected() == 0 {
-            tx.rollback().await?;
+            audited.rollback().await?;
             return Err(NotFound.into());
         }
-        write_work_contributors(&mut tx, self.library_id, self.id, &input.contributors).await?;
-        write_work_catalog_numbers(&mut tx, self.id, &input.catalog_numbers).await?;
-        let survivor = absorb_into_duplicate(&mut tx, self.library_id, self.id).await?;
-        library::collect_orphans(&mut tx, self.library_id).await?;
+        write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
+            .await?;
+        write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
+        // Before the merge, or the comparison is against whichever work absorbed this one
+        let edited = load_works(
+            &self.archive,
+            &mut audited,
+            self.library_id,
+            Some(self.id),
+            None,
+        )
+        .await?
+        .pop()
+        .expect("the work was just updated on this transaction");
+        audited.set_fields(&changed_fields(self, &edited)).await?;
+        let survivor = absorb_into_duplicate(&mut audited, self.library_id, self.id).await?;
+        library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_works(
             &self.archive,
-            &mut tx,
+            &mut audited,
             self.library_id,
             Some(survivor),
             None,
@@ -204,9 +246,19 @@ impl Work {
         .await?
         .pop()
         .expect("the work was just updated on this transaction");
-        tx.commit().await?;
+        audited.commit().await?;
         *self = reloaded;
         Ok(())
+    }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Work,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
     }
 }
 
@@ -359,7 +411,7 @@ pub(crate) async fn load_catalog_numbers(
 /// The input's id is ignored: a publication creates every work it names, since linking an existing
 /// work into another publication is not something the input can ask for yet.
 pub(crate) async fn create_work_in_publication(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     publication_id: i64,
     input: &WorkInput,
@@ -372,7 +424,7 @@ pub(crate) async fn create_work_in_publication(
         input.time_signature,
         input.instrumentation,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
     sqlx::query!(
@@ -381,11 +433,11 @@ pub(crate) async fn create_work_in_publication(
         publication_id,
         id,
     )
-    .execute(&mut *conn)
+    .execute(&mut **audited)
     .await?;
-    write_work_contributors(&mut *conn, library_id, id, &input.contributors).await?;
-    write_work_catalog_numbers(&mut *conn, id, &input.catalog_numbers).await?;
-    absorb_into_duplicate(&mut *conn, library_id, id).await
+    write_work_contributors(audited, library_id, id, &input.contributors).await?;
+    write_work_catalog_numbers(audited, id, &input.catalog_numbers).await?;
+    absorb_into_duplicate(audited, library_id, id).await
 }
 
 /// Reconcile a publication's contents against the works its input names.
@@ -395,7 +447,7 @@ pub(crate) async fn create_work_in_publication(
 /// deleted; cleanup is handled by orphan cleanup on the library. Existing links keep their
 /// position, so reordering the input does not reorder the contents.
 pub(crate) async fn write_publication_works(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     publication_id: i64,
     contents: &[WorkInput],
@@ -404,7 +456,7 @@ pub(crate) async fn write_publication_works(
         "SELECT work_id FROM publication_work WHERE publication_id = ?",
         publication_id
     )
-    .fetch_all(&mut *conn)
+    .fetch_all(&mut **audited)
     .await?;
     let named: Vec<i64> = contents.iter().filter_map(|work| work.id).collect();
     for work_id in stored.iter().filter(|id| !named.contains(id)) {
@@ -413,13 +465,13 @@ pub(crate) async fn write_publication_works(
             publication_id,
             work_id
         )
-        .execute(&mut *conn)
+        .execute(&mut **audited)
         .await?;
     }
     for input in contents {
         // An id the publication does not contain names nothing this input may edit
         let Some(work_id) = input.id.filter(|id| stored.contains(id)) else {
-            create_work_in_publication(&mut *conn, library_id, publication_id, input).await?;
+            create_work_in_publication(audited, library_id, publication_id, input).await?;
             continue;
         };
         sqlx::query!(
@@ -432,11 +484,11 @@ pub(crate) async fn write_publication_works(
             library_id,
             work_id
         )
-        .execute(&mut *conn)
+        .execute(&mut **audited)
         .await?;
-        write_work_contributors(&mut *conn, library_id, work_id, &input.contributors).await?;
-        write_work_catalog_numbers(&mut *conn, work_id, &input.catalog_numbers).await?;
-        absorb_into_duplicate(&mut *conn, library_id, work_id).await?;
+        write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
+        write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
+        absorb_into_duplicate(audited, library_id, work_id).await?;
     }
     Ok(())
 }
@@ -581,19 +633,29 @@ async fn find_duplicate(
         .map(|row| row.id))
 }
 
-/// Merge this work into a duplicate if it has one; returns the surviving id
+/// Merge this work into a duplicate if it has one, returning the surviving id.
 pub(crate) async fn absorb_into_duplicate(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     work_id: i64,
 ) -> crate::Result<i64> {
-    match find_duplicate(&mut *conn, library_id, work_id).await? {
-        Some(into) => {
-            merge_works(conn, library_id, work_id, into).await?;
-            Ok(into)
-        }
-        None => Ok(work_id),
-    }
+    let Some(into) = find_duplicate(audited, library_id, work_id).await? else {
+        return Ok(work_id);
+    };
+    let survivor = sqlx::query_scalar!(r#"SELECT title AS "title!" FROM work WHERE id = ?"#, into)
+        .fetch_one(&mut **audited)
+        .await?;
+    merge_works(audited, library_id, work_id, into).await?;
+    let entity = EntityRef {
+        kind: EntityKind::Work,
+        id: into,
+        library_id: Some(library_id),
+        label: survivor,
+    };
+    audited
+        .record(Source::Merge, Event::about(Action::Merged, entity))
+        .await?;
+    Ok(into)
 }
 
 /// Rebuild a work's catalog numbers, so input order becomes stored order.

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM audit_entry\n         WHERE group_id IS NULL\n           AND id NOT IN (SELECT id FROM audit_entry WHERE group_id IS NULL ORDER BY id DESC LIMIT ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "44e1fec10503fdfa8dca28f10fd5675ec7f1775e1c3cc4309151ae5c0f41044a"
+}
