@@ -77,7 +77,7 @@ pub async fn change_password(
     base: BaseContext,
     Form(form): Form<PasswordForm>,
 ) -> Result<Response, AppError> {
-    // The demo hands out a session to everyone, so it must not hand out the password with it
+    // The demo logs anyone in without a password, so it must not let them set one
     if state.demo {
         return Err(NotFound.into());
     }

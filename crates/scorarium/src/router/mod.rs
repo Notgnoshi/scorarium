@@ -115,10 +115,9 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
-        let logged_in = state.demo
-            || jar
-                .get(SESSION_COOKIE)
-                .is_some_and(|cookie| state.sessions.validate(cookie.value()));
+        let logged_in = jar
+            .get(SESSION_COOKIE)
+            .is_some_and(|cookie| state.sessions.validate(cookie.value()));
         let pending_import_count = if logged_in {
             state.archive.pending_import_count().await?
         } else {
@@ -515,9 +514,6 @@ impl FromRequestParts<Arc<AppState>> for Session {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        if state.demo {
-            return Ok(Session(String::new()));
-        }
         let jar = CookieJar::from_headers(&parts.headers);
         match jar.get(SESSION_COOKIE) {
             Some(cookie) if state.sessions.validate(cookie.value()) => {

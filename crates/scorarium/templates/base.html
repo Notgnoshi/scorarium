@@ -55,13 +55,11 @@
                                     <a class="nav-link" href="/settings">Settings</a>
                                 </li>
                             {% endif %}
-                            {% if !base.demo %}
-                                <li class="nav-item">
-                                    <form method="post" action="/logout">
-                                        <button class="nav-link">Log out</button>
-                                    </form>
-                                </li>
-                            {% endif %}
+                            <li class="nav-item">
+                                <form method="post" action="/logout">
+                                    <button class="nav-link">Log out</button>
+                                </form>
+                            </li>
                         {% else if base.path != "/login" %}
                             <li class="nav-item">
                                 <a class="nav-link" href="/login">Log in</a>

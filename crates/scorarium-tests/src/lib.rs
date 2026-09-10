@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum_test::TestServer;
+use axum_test::{TestResponse, TestServer};
 use scorarium::AppState;
 use scorarium_archive::Archive;
 
@@ -73,4 +73,15 @@ pub fn browser(state: Arc<AppState>) -> TestServer {
     let mut server = TestServer::new(scorarium::router(state));
     server.save_cookies();
     server
+}
+
+/// Submit the demo mode's login form, which has no fields.
+///
+/// A browser still sends an empty form with the form content type, which the login handler
+/// requires even though the demo ignores the form.
+pub async fn demo_login(server: &TestServer) -> TestResponse {
+    server
+        .post("/login")
+        .content_type("application/x-www-form-urlencoded")
+        .await
 }

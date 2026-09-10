@@ -6,14 +6,21 @@
             {% if let Some(error) = error %}
                 <div class="alert alert-danger" role="alert">{{ error }}</div>
             {% endif %}
-            <div class="mb-3">
-                <label class="form-label" for="password">Password</label>
-                <input class="form-control"
-                       type="password"
-                       id="password"
-                       name="password"
-                       required />
-            </div>
+            {% if base.demo %}
+                <div class="alert alert-info" role="alert">
+                    This is a demo instance that does not require a password. All changes are ephemeral and will be
+                    lost with the next deployment.
+                </div>
+            {% else %}
+                <div class="mb-3">
+                    <label class="form-label" for="password">Password</label>
+                    <input class="form-control"
+                           type="password"
+                           id="password"
+                           name="password"
+                           required />
+                </div>
+            {% endif %}
             <button class="btn btn-primary">Log in</button>
         </form>
     </div>

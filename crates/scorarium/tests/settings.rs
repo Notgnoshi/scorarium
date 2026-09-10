@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use scorarium_archive::{
     ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
 };
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn password_change_flow() {
@@ -119,10 +119,11 @@ async fn settings_lists_unrecognized_catalog_numbers() {
     assert!(!response.text().contains("Op. 28 No. 15"));
 }
 
-/// The demo logs everyone in, so it offers the settings page but not the password on it.
+/// The demo logs in without a password, so it offers the settings page but not the password on it.
 #[tokio::test]
 async fn the_demo_has_settings_without_a_password() {
     let server = browser(TestDb::new().demo().build().await);
+    demo_login(&server).await;
 
     // The page it leads to hides its own link, so the link is checked from somewhere else
     let response = server.get("/").await;
