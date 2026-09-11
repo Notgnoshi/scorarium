@@ -1,7 +1,5 @@
 use axum::http::StatusCode;
-use axum_test::TestServer;
-use scorarium::router;
-use scorarium_tests::TestDb;
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn person_page() {
@@ -38,7 +36,9 @@ async fn person_page() {
     };
     let rachmaninoff = person_id("Sergei Rachmaninoff");
     let kabalevsky = person_id("Dmitri Kabalevsky");
-    let server = TestServer::new(router(state));
+    // The Books library is private
+    let server = browser(state);
+    demo_login(&server).await;
 
     let response = server
         .get(&format!(
@@ -104,7 +104,9 @@ async fn composers_and_authors_pages() {
     let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
     let sheet_music = library.id;
     let composers = library.persons_with_role("composer").await.unwrap();
-    let server = TestServer::new(router(state));
+    // The Books library is private
+    let server = browser(state);
+    demo_login(&server).await;
 
     let response = server
         .get(&format!("/library/{sheet_music}/composers"))

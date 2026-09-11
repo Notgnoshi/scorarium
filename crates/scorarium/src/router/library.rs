@@ -37,7 +37,7 @@ async fn render(
     base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(id).await?.or_not_found()?;
+    let library = base.visible_library(&state.archive, id).await?;
     let roles = library.roles().await?;
     let page = LibraryPage {
         base: base.page(library.name.clone(), vec![Crumb::home()]),

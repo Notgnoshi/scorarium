@@ -28,9 +28,13 @@ pub(super) async fn render(
     base: BaseContext,
     error: Option<&'static str>,
 ) -> Result<Html<String>, AppError> {
+    let mut libraries = state.archive.libraries().await?;
+    if !base.logged_in {
+        libraries.retain(|library| !library.private);
+    }
     let page = IndexPage {
         base: base.page("Libraries", Vec::new()),
-        libraries: state.archive.libraries().await?,
+        libraries,
         error,
     };
     Ok(Html(page.render()?))

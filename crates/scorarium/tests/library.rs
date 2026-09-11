@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::router;
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn library_page() {
@@ -62,7 +62,8 @@ async fn library_page_links_to_listings() {
         .find(|l| l.name == "Sheet music")
         .unwrap()
         .id;
-    let server = TestServer::new(router(state));
+    let server = browser(state);
+    demo_login(&server).await;
 
     let response = server.get(&format!("/library/{sheet_music}")).await;
     response.assert_text_contains(format!("href=\"/library/{sheet_music}/composers\""));
@@ -79,6 +80,39 @@ async fn library_page_links_to_listings() {
             .text()
             .contains(&format!("href=\"/library/{books}/composers\""))
     );
+}
+
+/// The demo's Books library is private and Sheet music is public.
+#[tokio::test]
+async fn private_library_requires_login() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name == "Books").unwrap();
+    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publication = books.publications().await.unwrap()[0].id;
+    let books_href = format!("href=\"/library/{}\"", books.id);
+    let sheet_music_href = format!("href=\"/library/{}\"", sheet_music.id);
+    let server = browser(state);
+
+    let response = server.get("/").await;
+    response.assert_text_contains(&sheet_music_href);
+    assert!(!response.text().contains(&books_href));
+
+    for path in [
+        format!("/library/{}", books.id),
+        format!("/library/{}/publication/{publication}", books.id),
+    ] {
+        let response = server.get(&path).await;
+        response.assert_status(StatusCode::SEE_OTHER);
+        response.assert_header("location", &format!("/login?back={path}"));
+    }
+
+    demo_login(&server).await;
+    let response = server.get("/").await;
+    response.assert_text_contains(&sheet_music_href);
+    response.assert_text_contains(&books_href);
+    let response = server.get(&format!("/library/{}", books.id)).await;
+    response.assert_status_ok();
 }
 
 #[tokio::test]
