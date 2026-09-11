@@ -176,7 +176,7 @@ async fn publication_edit_flow() {
     // Editing and deleting require login, and the button that leads there is hidden until then
     let response = server.get(&edit).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", &format!("/login?back={edit}"));
     let response = server.post(&format!("{view}/delete")).await;
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", "/login");

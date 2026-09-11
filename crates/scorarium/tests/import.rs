@@ -17,7 +17,7 @@ async fn manual_import_flow() {
     // Importing requires login
     let response = server.get(&entry).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", &format!("/login?back={entry}"));
     server.post("/login").form(&[("password", "hunter2")]).await;
 
     // A digital copy needs a file; the rejected form comes back as typed

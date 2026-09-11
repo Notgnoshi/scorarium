@@ -14,8 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::extract::FromRequestParts;
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
@@ -24,6 +24,7 @@ use scorarium_archive::{
     PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError, Work,
     WorkErrors, WorkRawInput,
 };
+use serde::Deserialize;
 use tower_http::trace::TraceLayer;
 
 use crate::AppState;
@@ -31,6 +32,34 @@ use crate::publication_post::{self, BadForm};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
+
+/// Which page opened this one, so it can return there when it is done.
+#[derive(Deserialize)]
+pub struct BackQuery {
+    pub back: Option<String>,
+}
+
+/// The `back` parameter if it is a path on this site, else `default`.
+///
+/// Only a local absolute path is honored, so the parameter cannot send the user elsewhere. A
+/// scheme-relative "//evil.example" starts with a slash too, and browsers read a backslash as a
+/// slash, so "/\evil.example" is refused the same way.
+pub(crate) fn back_or(back: Option<String>, default: String) -> String {
+    back.filter(|back| back.starts_with('/') && !back[1..].starts_with(['/', '\\']))
+        .unwrap_or(default)
+}
+
+/// Where an anonymous request goes to log in: `/login?back=<path>`.
+pub(crate) fn login_redirect(back: Option<&str>) -> Redirect {
+    match back {
+        Some(back) => {
+            // The filter leaves `/` alone, so the location stays readable as a path
+            let Ok(encoded) = askama::filters::urlencode(back);
+            Redirect::to(&format!("/login?back={encoded}"))
+        }
+        None => Redirect::to("/login"),
+    }
+}
 
 pub struct Crumb {
     pub label: String,
@@ -519,7 +548,13 @@ impl FromRequestParts<Arc<AppState>> for Session {
             Some(cookie) if state.sessions.validate(cookie.value()) => {
                 Ok(Session(cookie.value().to_string()))
             }
-            _ => Err(Redirect::to("/login")),
+            _ => {
+                // Returning to a POST after login would only 405, so only a GET carries `back`
+                let back = (parts.method == Method::GET)
+                    .then(|| parts.uri.path_and_query().map(|pq| pq.as_str()))
+                    .flatten();
+                Err(login_redirect(back))
+            }
         }
     }
 }

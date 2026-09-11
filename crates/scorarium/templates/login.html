@@ -6,6 +6,9 @@
             {% if let Some(error) = error %}
                 <div class="alert alert-danger" role="alert">{{ error }}</div>
             {% endif %}
+            {% if let Some(back) = back %}
+                <input type="hidden" name="back" value="{{ back }}" />
+            {% endif %}
             {% if base.demo %}
                 <div class="alert alert-info" role="alert">
                     This is a demo instance that does not require a password. All changes are ephemeral and will be

@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use scorarium_tests::{TestDb, browser, demo_login};
+use scorarium_tests::{TestDb, browser};
 
 #[tokio::test]
 async fn claim_flow() {
@@ -37,10 +37,10 @@ async fn demo_login_flow() {
     let server = browser(state.clone());
     let import = format!("/library/{library}/import");
 
-    // The demo still asks anonymous visitors to log in
+    // The demo still asks anonymous visitors to log in, and remembers where they were going
     let response = server.get(&import).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", &format!("/login?back={import}"));
 
     // But the login page has a notice instead of a password field
     let response = server.get("/login").await;
@@ -48,9 +48,12 @@ async fn demo_login_flow() {
     response.assert_text_contains("does not require a password");
     assert!(!response.text().contains("type=\"password\""));
 
-    let response = demo_login(&server).await;
+    let response = server
+        .post("/login")
+        .form(&[("back", import.as_str())])
+        .await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
+    response.assert_header("location", &import);
 
     let response = server.get(&import).await;
     response.assert_status_ok();

@@ -11,7 +11,7 @@ async fn password_change_flow() {
     // The page requires login
     let response = server.get("/settings").await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", "/login?back=/settings");
 
     let response = server.post("/login").form(&[("password", "hunter2")]).await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -99,7 +99,7 @@ async fn settings_lists_unrecognized_catalog_numbers() {
 
     let response = server.get("/settings/catalog-numbers").await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", "/login?back=/settings/catalog-numbers");
     server.post("/login").form(&[("password", "hunter2")]).await;
 
     let response = server.get("/settings").await;
