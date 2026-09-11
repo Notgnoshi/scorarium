@@ -6,7 +6,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, OrNotFound, Session, WorkFields};
+use super::{AppError, BackQuery, BaseContext, Crumb, OrNotFound, Session, WorkFields, back_or};
 use crate::{AppState, publication_post};
 
 #[derive(Template)]
@@ -67,20 +67,9 @@ impl From<WorkPost> for WorkRawInput {
     }
 }
 
-/// Which page opened the edit page, so Save and Cancel can return to it.
-#[derive(Deserialize)]
-pub struct BackQuery {
-    back: Option<String>,
-}
-
 /// Where Save and Cancel lead: the page that opened this one, else the work page.
-///
-/// Only a path on this site is honored, so the parameter cannot send the user elsewhere. Browsers
-/// read a backslash as a slash when parsing a URL, so "/\evil.example" is "//evil.example" to them
-/// and is refused the same way.
 fn back_to(library_id: i64, id: i64, back: Option<String>) -> String {
-    back.filter(|back| back.starts_with('/') && !back[1..].starts_with(['/', '\\']))
-        .unwrap_or_else(|| format!("/library/{library_id}/work/{id}"))
+    back_or(back, format!("/library/{library_id}/work/{id}"))
 }
 
 /// GET /library/{library_id}/work/{id}
@@ -89,7 +78,7 @@ pub async fn work(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let library = base.visible_library(&state.archive, library_id).await?;
     let work = library.work(id).await?.or_not_found()?;
     let publications = work.publications().await?;
     let page = WorkPage {

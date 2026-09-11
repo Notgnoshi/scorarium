@@ -8,43 +8,52 @@ use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::work::{self, CatalogNumberEntry, Work};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Result, Source};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
 pub struct Library {
     pub id: i64,
     pub name: String,
+    pub private: bool,
     archive: Arc<ArchiveInner>,
 }
 
 impl Library {
-    /// Rename the given library.
+    /// Rename the library or change who can see it. Records one update naming what changed.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
-    pub async fn rename(&mut self, name: &str) -> Result<()> {
-        // The entry carries the name the library was renamed to
-        let entity = EntityRef {
-            label: name.to_string(),
-            ..self.entity_ref()
-        };
+    pub async fn update(&mut self, name: &str, private: bool) -> Result<()> {
         let mut audited = self
             .archive
-            .begin_audit(Source::User, Event::about(Action::Renamed, entity))
+            .begin_audit(Source::User, Event::new(Action::Updated))
             .await?;
-        let renamed = sqlx::query_scalar!(
-            r#"UPDATE library SET name = ? WHERE id = ? RETURNING name AS "name!""#,
+        let updated = sqlx::query!(
+            r#"UPDATE library SET name = ?, private = ? WHERE id = ?
+               RETURNING name AS "name!", private AS "private!: bool""#,
             name,
+            private,
             self.id
         )
         .fetch_optional(&mut *audited)
         .await?;
-        let Some(renamed) = renamed else {
+        let Some(updated) = updated else {
             audited.rollback().await?;
             return Err(NotFound.into());
         };
+        let mut fields = Vec::new();
+        if updated.name != self.name {
+            fields.push(Field::Name);
+        }
+        if updated.private != self.private {
+            fields.push(Field::Visibility);
+        }
+        self.name = updated.name;
+        self.private = updated.private;
+        // The entry carries the new name
+        audited.set_entity(&self.entity_ref()).await?;
+        audited.set_fields(&fields).await?;
         audited.commit().await?;
-        self.name = renamed;
         Ok(())
     }
 
@@ -175,14 +184,10 @@ impl Library {
         Ok(work)
     }
 
-    /// The catalog numbers of works reachable through a publication that is not private,
-    /// optionally only those credited to one composer
-    pub async fn public_catalog_numbers(
-        &self,
-        composer: Option<&str>,
-    ) -> Result<Vec<CatalogNumberEntry>> {
+    /// Every catalog number in the library, optionally only those credited to one composer
+    pub async fn catalog_numbers(&self, composer: Option<&str>) -> Result<Vec<CatalogNumberEntry>> {
         let mut conn = self.archive.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, Some(self.id), composer, true).await
+        work::load_catalog_numbers(&mut conn, Some(self.id), composer).await
     }
 
     /// Fold one work into another and delete it; the survivor is returned reloaded.
@@ -296,14 +301,16 @@ pub(crate) async fn list_libraries(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<Library>> {
-    let rows = sqlx::query!("SELECT id, name FROM library ORDER BY name")
-        .fetch_all(conn)
-        .await?;
+    let rows =
+        sqlx::query!(r#"SELECT id, name, private AS "private: bool" FROM library ORDER BY name"#)
+            .fetch_all(conn)
+            .await?;
     Ok(rows
         .into_iter()
         .map(|row| Library {
             id: row.id,
             name: row.name,
+            private: row.private,
             archive: shared.clone(),
         })
         .collect())
@@ -314,12 +321,16 @@ pub(crate) async fn get_library(
     conn: &mut SqliteConnection,
     id: i64,
 ) -> Result<Option<Library>> {
-    let row = sqlx::query!("SELECT id, name FROM library WHERE id = ?", id)
-        .fetch_optional(conn)
-        .await?;
+    let row = sqlx::query!(
+        r#"SELECT id, name, private AS "private: bool" FROM library WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?;
     Ok(row.map(|row| Library {
         id: row.id,
         name: row.name,
+        private: row.private,
         archive: shared.clone(),
     }))
 }
@@ -328,14 +339,20 @@ pub(crate) async fn create_library(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     name: &str,
+    private: bool,
 ) -> Result<Library> {
-    let id = sqlx::query!("INSERT INTO library (name) VALUES (?)", name)
-        .execute(conn)
-        .await?
-        .last_insert_rowid();
+    let id = sqlx::query!(
+        "INSERT INTO library (name, private) VALUES (?, ?)",
+        name,
+        private
+    )
+    .execute(conn)
+    .await?
+    .last_insert_rowid();
     Ok(Library {
         id,
         name: name.to_string(),
+        private,
         archive: shared.clone(),
     })
 }

@@ -57,7 +57,7 @@ fn gymnopedies() -> PublicationRawInput {
 #[tokio::test]
 async fn a_created_publication_reads_back_whole() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
 
     let created = library
         .create_publication(&gymnopedies().parse().unwrap())
@@ -113,7 +113,7 @@ async fn a_created_publication_reads_back_whole() {
     assert_eq!(listed[0].id, created.id);
 
     // A publication belongs to its own library alone
-    let books = archive.create_library("Books").await.unwrap();
+    let books = archive.create_library("Books", false).await.unwrap();
     assert!(books.publication(created.id).await.unwrap().is_none());
     assert!(books.publications().await.unwrap().is_empty());
 }
@@ -121,7 +121,7 @@ async fn a_created_publication_reads_back_whole() {
 #[tokio::test]
 async fn works_come_back_whole_and_scoped_to_their_library() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
@@ -144,7 +144,7 @@ async fn works_come_back_whole_and_scoped_to_their_library() {
     // The work is reachable on its own, and only through the library holding it
     let found = library.work(gymnopedie.id).await.unwrap().unwrap();
     assert_eq!(found.title, gymnopedie.title);
-    let books = archive.create_library("Books").await.unwrap();
+    let books = archive.create_library("Books", false).await.unwrap();
     assert!(books.work(gymnopedie.id).await.unwrap().is_none());
 
     let containing = gymnopedie.publications().await.unwrap();
@@ -157,7 +157,7 @@ async fn works_come_back_whole_and_scoped_to_their_library() {
 #[tokio::test]
 async fn raw_input_shows_what_was_stored() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
@@ -179,7 +179,7 @@ async fn raw_input_shows_what_was_stored() {
 #[tokio::test]
 async fn suggestions_span_publications_and_their_contents() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
@@ -219,7 +219,7 @@ async fn suggestions_span_publications_and_their_contents() {
 #[tokio::test]
 async fn update_reconciles_every_child() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let mut start = gymnopedies();
     start.contributors.push(contributor("Cid", "editor"));
     start.contents.push(WorkRawInput {
@@ -321,7 +321,7 @@ async fn update_reconciles_every_child() {
 #[tokio::test]
 async fn updating_a_deleted_publication_is_not_found() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
@@ -381,7 +381,7 @@ async fn delete_collects_only_what_nothing_else_reaches() {
 #[tokio::test]
 async fn a_work_rebuilds_its_credits_in_input_order() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await

@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use scorarium::router;
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn library_page() {
@@ -62,7 +62,8 @@ async fn library_page_links_to_listings() {
         .find(|l| l.name == "Sheet music")
         .unwrap()
         .id;
-    let server = TestServer::new(router(state));
+    let server = browser(state);
+    demo_login(&server).await;
 
     let response = server.get(&format!("/library/{sheet_music}")).await;
     response.assert_text_contains(format!("href=\"/library/{sheet_music}/composers\""));
@@ -79,6 +80,39 @@ async fn library_page_links_to_listings() {
             .text()
             .contains(&format!("href=\"/library/{books}/composers\""))
     );
+}
+
+/// The demo's Books library is private and Sheet music is public.
+#[tokio::test]
+async fn private_library_requires_login() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name == "Books").unwrap();
+    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let publication = books.publications().await.unwrap()[0].id;
+    let books_href = format!("href=\"/library/{}\"", books.id);
+    let sheet_music_href = format!("href=\"/library/{}\"", sheet_music.id);
+    let server = browser(state);
+
+    let response = server.get("/").await;
+    response.assert_text_contains(&sheet_music_href);
+    assert!(!response.text().contains(&books_href));
+
+    for path in [
+        format!("/library/{}", books.id),
+        format!("/library/{}/publication/{publication}", books.id),
+    ] {
+        let response = server.get(&path).await;
+        response.assert_status(StatusCode::SEE_OTHER);
+        response.assert_header("location", &format!("/login?back={path}"));
+    }
+
+    demo_login(&server).await;
+    let response = server.get("/").await;
+    response.assert_text_contains(&sheet_music_href);
+    response.assert_text_contains(&books_href);
+    let response = server.get(&format!("/library/{}", books.id)).await;
+    response.assert_status_ok();
 }
 
 #[tokio::test]
@@ -105,9 +139,21 @@ async fn library_crud_flow() {
     server.get("/").await.assert_text_contains("Books");
 
     let id = state.archive.libraries().await.unwrap()[0].id;
+    let edit = format!("/library/{id}/edit");
+
+    // Editing requires login too, even for a GET
+    let anonymous = browser(state.clone());
+    let response = anonymous.get(&edit).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &format!("/login?back={edit}"));
+
+    let response = server.get(&edit).await;
+    response.assert_status_ok();
+    response.assert_text_contains("Edit library");
+
     let response = server
-        .post(&format!("/library/{id}/rename"))
-        .form(&[("name", "Novels")])
+        .post(&edit)
+        .form(&[("name", "Novels"), ("visibility", "public")])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let location = format!("/library/{id}");
@@ -115,6 +161,8 @@ async fn library_crud_flow() {
     let home = server.get("/").await;
     home.assert_text_contains("Novels");
     assert!(!home.text().contains("Books"));
+    let stored = state.archive.library(id).await.unwrap().unwrap();
+    assert!(!stored.private);
 
     let response = server.post(&format!("/library/{id}/delete")).await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -123,8 +171,8 @@ async fn library_crud_flow() {
 
     // The deleted library's id no longer exists
     let response = server
-        .post(&format!("/library/{id}/rename"))
-        .form(&[("name", "Novels")])
+        .post(&edit)
+        .form(&[("name", "Novels"), ("visibility", "public")])
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
     let response = server.post(&format!("/library/{id}/delete")).await;

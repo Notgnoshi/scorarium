@@ -17,7 +17,7 @@ fn holdings(kind: HoldingKind, location: &str) -> Vec<HoldingRawInput> {
 
 async fn library() -> (Archive, Library) {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     (archive, library)
 }
 
@@ -43,7 +43,7 @@ async fn a_started_import_shows_up_everywhere_it_should() {
     assert!(library.pending_import(import.id).await.unwrap().is_some());
 
     // An import belongs to the library it was started in
-    let books = archive.create_library("Books").await.unwrap();
+    let books = archive.create_library("Books", false).await.unwrap();
     assert!(books.pending_import(import.id).await.unwrap().is_none());
 }
 

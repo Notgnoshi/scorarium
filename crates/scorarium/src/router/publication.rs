@@ -51,7 +51,7 @@ pub async fn publication(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let library = base.visible_library(&state.archive, library_id).await?;
     let publication = library.publication(id).await?.or_not_found()?;
     let (works, show_catalog_numbers, roles) = works_table(publication.works().await?);
     let page = PublicationPage {

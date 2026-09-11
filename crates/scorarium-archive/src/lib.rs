@@ -182,24 +182,24 @@ impl Archive {
         library::get_library(&self.shared, &mut conn, id).await
     }
 
-    /// Create a library with the given name
+    /// Create a library with the given name and visibility
     ///
     /// Names need not be unique.
-    pub async fn create_library(&self, name: &str) -> Result<Library> {
+    pub async fn create_library(&self, name: &str, private: bool) -> Result<Library> {
         let mut audited = self
             .shared
             .begin_audit(Source::User, Event::new(Action::Created))
             .await?;
-        let library = library::create_library(&self.shared, &mut audited, name).await?;
+        let library = library::create_library(&self.shared, &mut audited, name, private).await?;
         audited.set_entity(&library.entity_ref()).await?;
         audited.commit().await?;
         Ok(library)
     }
 
-    /// Every catalog number in every library, private works included, for the settings page
+    /// Every catalog number in every library
     pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
         let mut conn = self.shared.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, None, None, false).await
+        work::load_catalog_numbers(&mut conn, None, None).await
     }
 
     /// Every library's pending imports, oldest first

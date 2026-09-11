@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "toggle.html" as toggle %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    {% call toggle::style() %}
+    {% endcall %}
+    {% if let Some(error) = error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/library/{{ library.id }}/edit">
+        <div class="mb-3">
+            <label class="form-label" for="name">Name</label>
+            <input class="form-control"
+                   id="name"
+                   name="name"
+                   value="{{ name }}"
+                   required
+                   autofocus />
+        </div>
+        <div class="mb-3">
+            {% call toggle::toggle("visibility", "public", "Public", "private", "Private", visibility) %}
+            {% endcall %}
+            <div class="form-text">A private library is hidden from anyone who is not logged in.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary">Save</button>
+            <a class="btn btn-outline-secondary" href="/library/{{ library.id }}">Cancel</a>
+            <button type="button"
+                    class="btn btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#delete-library">Delete</button>
+        </div>
+    </form>
+    <div class="modal fade"
+         id="delete-library"
+         tabindex="-1"
+         aria-labelledby="delete-library-title"
+         aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content"
+                  method="post"
+                  action="/library/{{ library.id }}/delete">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="delete-library-title">Delete library</h1>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">Delete {{ library.name }} and everything in it?</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-danger">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

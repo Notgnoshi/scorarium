@@ -23,7 +23,7 @@ pub async fn person(
     base: BaseContext,
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let library = base.visible_library(&state.archive, library_id).await?;
     let person = library.person(id).await?.or_not_found()?;
     let mut publications = person.publications().await?;
     publications.sort_by(|a, b| a.title.cmp(&b.title));
@@ -81,7 +81,7 @@ async fn listing(
     role: &str,
     title: &str,
 ) -> Result<Response, AppError> {
-    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let library = base.visible_library(&state.archive, library_id).await?;
     let page = PersonsPage {
         base: base.page(title, vec![Crumb::home(), Crumb::library(&library)]),
         persons: library.persons_with_role(role).await?,

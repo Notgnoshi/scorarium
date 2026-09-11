@@ -23,6 +23,7 @@ impl TestDb {
         self
     }
 
+    /// A public library, since most web tests read pages without logging in
     pub fn library(mut self, name: &str) -> Self {
         self.libraries.push(name.to_string());
         self
@@ -47,7 +48,7 @@ impl TestDb {
 
         for name in &self.libraries {
             archive
-                .create_library(name)
+                .create_library(name, false)
                 .await
                 .expect("failed to create test library");
         }

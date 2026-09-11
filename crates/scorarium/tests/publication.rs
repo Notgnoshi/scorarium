@@ -1,11 +1,9 @@
 use axum::http::StatusCode;
-use axum_test::TestServer;
-use scorarium::router;
 use scorarium_archive::{
     ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PublicationRawInput,
     WorkRawInput,
 };
-use scorarium_tests::{TestDb, browser};
+use scorarium_tests::{TestDb, browser, demo_login};
 
 #[tokio::test]
 async fn publication_page() {
@@ -32,7 +30,9 @@ async fn publication_page() {
         .iter()
         .find(|p| p.title.ends_with("Ambrose Bierce"))
         .unwrap();
-    let server = TestServer::new(router(state));
+    // The Books library is private
+    let server = browser(state);
+    demo_login(&server).await;
 
     let response = server
         .get(&format!(
@@ -176,7 +176,7 @@ async fn publication_edit_flow() {
     // Editing and deleting require login, and the button that leads there is hidden until then
     let response = server.get(&edit).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    response.assert_header("location", &format!("/login?back={edit}"));
     let response = server.post(&format!("{view}/delete")).await;
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", "/login");

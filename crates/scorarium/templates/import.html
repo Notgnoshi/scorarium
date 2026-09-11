@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% import "rows.html" as rows %}
+{% import "toggle.html" as toggle %}
 {% block content %}
     <h1>Import</h1>
     {% call rows::style() %}
+    {% endcall %}
+    {% call toggle::style() %}
     {% endcall %}
     <div class="row">
         <form class="col-md-8 col-lg-6"

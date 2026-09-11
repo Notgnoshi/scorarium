@@ -40,7 +40,6 @@ pub enum Action {
     Updated,
     Deleted,
     Merged,
-    Renamed,
     ImportStarted,
     ImportAccepted,
     ImportDiscarded,
@@ -55,7 +54,6 @@ impl Action {
             Action::Updated => "updated",
             Action::Deleted => "deleted",
             Action::Merged => "merged",
-            Action::Renamed => "renamed",
             Action::ImportStarted => "import_started",
             Action::ImportAccepted => "import_accepted",
             Action::ImportDiscarded => "import_discarded",
@@ -70,7 +68,6 @@ impl Action {
             "updated" => Action::Updated,
             "deleted" => Action::Deleted,
             "merged" => Action::Merged,
-            "renamed" => Action::Renamed,
             "import_started" => Action::ImportStarted,
             "import_accepted" => Action::ImportAccepted,
             "import_discarded" => Action::ImportDiscarded,
@@ -126,6 +123,8 @@ pub enum Field {
     TimeSignature,
     Instrumentation,
     CatalogNumbers,
+    Name,
+    Visibility,
 }
 
 impl Field {
@@ -142,6 +141,8 @@ impl Field {
             Field::TimeSignature => "time_signature",
             Field::Instrumentation => "instrumentation",
             Field::CatalogNumbers => "catalog_numbers",
+            Field::Name => "name",
+            Field::Visibility => "visibility",
         }
     }
 
@@ -158,6 +159,8 @@ impl Field {
             "time_signature" => Field::TimeSignature,
             "instrumentation" => Field::Instrumentation,
             "catalog_numbers" => Field::CatalogNumbers,
+            "name" => Field::Name,
+            "visibility" => Field::Visibility,
             other => eyre::bail!("unknown audit field {other:?}"),
         })
     }

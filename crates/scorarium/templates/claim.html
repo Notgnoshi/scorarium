@@ -7,6 +7,9 @@
             {% if let Some(error) = error %}
                 <div class="alert alert-danger" role="alert">{{ error }}</div>
             {% endif %}
+            {% if let Some(back) = back %}
+                <input type="hidden" name="back" value="{{ back }}" />
+            {% endif %}
             <div class="mb-3">
                 <label class="form-label" for="password">Password</label>
                 <input class="form-control"

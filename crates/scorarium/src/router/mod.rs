@@ -14,16 +14,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
 use axum::extract::FromRequestParts;
-use axum::http::StatusCode;
 use axum::http::request::Parts;
+use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
-    CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library, NotFound,
-    PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError, Work,
-    WorkErrors, WorkRawInput,
+    Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
+    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError,
+    Work, WorkErrors, WorkRawInput,
 };
+use serde::Deserialize;
 use tower_http::trace::TraceLayer;
 
 use crate::AppState;
@@ -31,6 +32,34 @@ use crate::publication_post::{self, BadForm};
 
 /// The name of the cookie holding the login session token.
 const SESSION_COOKIE: &str = "session";
+
+/// Which page opened this one, so it can return there when it is done.
+#[derive(Deserialize)]
+pub struct BackQuery {
+    pub back: Option<String>,
+}
+
+/// The `back` parameter if it is a path on this site, else `default`.
+///
+/// Only a local absolute path is honored, so the parameter cannot send the user elsewhere. A
+/// scheme-relative "//evil.example" starts with a slash too, and browsers read a backslash as a
+/// slash, so "/\evil.example" is refused the same way.
+pub(crate) fn back_or(back: Option<String>, default: String) -> String {
+    back.filter(|back| back.starts_with('/') && !back[1..].starts_with(['/', '\\']))
+        .unwrap_or(default)
+}
+
+/// Where an anonymous request goes to log in: `/login?back=<path>`.
+pub(crate) fn login_redirect(back: Option<&str>) -> Redirect {
+    match back {
+        Some(back) => {
+            // The filter leaves `/` alone, so the location stays readable as a path
+            let Ok(encoded) = askama::filters::urlencode(back);
+            Redirect::to(&format!("/login?back={encoded}"))
+        }
+        None => Redirect::to("/login"),
+    }
+}
 
 pub struct Crumb {
     pub label: String,
@@ -96,6 +125,7 @@ pub struct BaseContext {
     pub title: String,
     /// The request path, so header links to the current page can be hidden.
     pub path: String,
+    pub back: String,
     pub logged_in: bool,
     pub demo: bool,
     /// Imports awaiting review, for the header badge. Zero when logged out.
@@ -126,6 +156,12 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
         Ok(Self {
             title: String::new(),
             path: parts.uri.path().to_string(),
+            back: parts
+                .uri
+                .path_and_query()
+                .map(|pq| pq.as_str())
+                .unwrap_or(parts.uri.path())
+                .to_string(),
             logged_in,
             demo: state.demo,
             pending_import_count,
@@ -144,7 +180,32 @@ impl BaseContext {
         self.breadcrumbs = breadcrumbs;
         self
     }
+
+    /// The library, if it exists and this visitor may see it.
+    ///
+    /// A private library is a login redirect rather than a 404 for anonymous visitors. This
+    /// technically leaks the existence of a private library and its ID, but that seems acceptable
+    /// for the convenience.
+    pub async fn visible_library(&self, archive: &Archive, id: i64) -> Result<Library, AppError> {
+        let library = archive.library(id).await?.or_not_found()?;
+        if library.private && !self.logged_in {
+            return Err(AppError(LoginRequired(Some(self.back.clone())).into()));
+        }
+        Ok(library)
+    }
 }
+
+/// An anonymous request for something only a logged-in visitor may see. Carries where to return.
+#[derive(Debug)]
+struct LoginRequired(Option<String>);
+
+impl std::fmt::Display for LoginRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("login required")
+    }
+}
+
+impl std::error::Error for LoginRequired {}
 
 /// Suggested alongside the library's existing roles, so a new library still gets a datalist.
 const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
@@ -455,7 +516,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/review", get(import::queue))
         .route("/library", post(library::create))
         .route("/library/{id}", get(library::library))
-        .route("/library/{id}/rename", post(library::rename))
+        .route("/library/{id}/edit", get(library::edit).post(library::save))
         .route("/library/{id}/delete", post(library::delete))
         .route(
             "/library/{id}/import",
@@ -519,7 +580,13 @@ impl FromRequestParts<Arc<AppState>> for Session {
             Some(cookie) if state.sessions.validate(cookie.value()) => {
                 Ok(Session(cookie.value().to_string()))
             }
-            _ => Err(Redirect::to("/login")),
+            _ => {
+                // Returning to a POST after login would only 405, so only a GET carries `back`
+                let back = (parts.method == Method::GET)
+                    .then(|| parts.uri.path_and_query().map(|pq| pq.as_str()))
+                    .flatten();
+                Err(login_redirect(back))
+            }
         }
     }
 }
@@ -530,6 +597,9 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         if self.0.downcast_ref::<NotFound>().is_some() {
             return StatusCode::NOT_FOUND.into_response();
+        }
+        if let Some(LoginRequired(back)) = self.0.downcast_ref::<LoginRequired>() {
+            return login_redirect(back.as_deref()).into_response();
         }
         if self.0.downcast_ref::<BadForm>().is_some() {
             return StatusCode::UNPROCESSABLE_ENTITY.into_response();

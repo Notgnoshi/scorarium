@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% import "toggle.html" as toggle %}
 {% block content %}
     <h1>Libraries</h1>
+    {% call toggle::style() %}
+    {% endcall %}
     {% if let Some(error) = error %}
         <div class="alert alert-danger" role="alert">{{ error }}</div>
     {% endif %}
@@ -31,12 +34,17 @@
                                 aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <label class="form-label" for="create-library-name">Name</label>
-                        <input class="form-control"
-                               id="create-library-name"
-                               name="name"
-                               required
-                               autofocus />
+                        <div class="mb-3">
+                            <label class="form-label" for="create-library-name">Name</label>
+                            <input class="form-control"
+                                   id="create-library-name"
+                                   name="name"
+                                   required
+                                   autofocus />
+                        </div>
+                        {% call toggle::toggle("visibility", "public", "Public", "private", "Private", "private") %}
+                        {% endcall %}
+                        <div class="form-text">A private library is hidden from anyone who is not logged in.</div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

@@ -39,7 +39,7 @@ fn values(work: &scorarium_archive::Work) -> Vec<&str> {
 #[tokio::test]
 async fn catalog_numbers_round_trip_and_survive_publication_edits() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let mut publication = library
         .create_publication(
             &album("Preludes", "Raindrop", &["Op. 28 No. 15", "B. 107"])
@@ -71,7 +71,7 @@ async fn catalog_numbers_round_trip_and_survive_publication_edits() {
 #[tokio::test]
 async fn a_new_work_with_a_known_number_joins_the_existing_work() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let mut preludes = album("Preludes", "Raindrop Prelude", &["Op. 28 No. 15"]);
     preludes.contents[0].key = "D-flat major".into();
     let preludes = library
@@ -132,7 +132,7 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
 #[tokio::test]
 async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let preludes = library
         .create_publication(
             &album("Preludes", "Raindrop Prelude", &["Op. 28 No. 15"])
@@ -178,7 +178,7 @@ async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
 #[tokio::test]
 async fn merge_works_is_available_directly() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     let a = library
         .create_publication(&album("A", "Nocturne", &["Op. 9 No. 2"]).parse().unwrap())
         .await

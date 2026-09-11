@@ -11,8 +11,9 @@ const SATIE: &str = "Erik Satie";
 const BIERCE: &str = "Ambrose Bierce";
 
 pub(crate) async fn populate(archive: &Archive) -> Result<()> {
-    let books = archive.create_library("Books").await?;
-    let sheet_music = archive.create_library("Sheet music").await?;
+    // One of each, so the demo shows what a logged-out visitor does and does not see
+    let books = archive.create_library("Books", true).await?;
+    let sheet_music = archive.create_library("Sheet music", false).await?;
 
     books
         .create_publication(&PublicationInput {

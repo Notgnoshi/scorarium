@@ -39,7 +39,7 @@ fn publication(
 /// through works, Bob only ever directly.
 async fn library() -> (Archive, scorarium_archive::Library) {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music").await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
     for input in [
         publication(
             "Three gymnopedies",
@@ -101,7 +101,7 @@ async fn publications_union_direct_and_work_credits() {
     assert_eq!(credits[0].title, "Three gymnopedies");
 
     // A person belongs to their own library alone
-    let books = archive.create_library("Books").await.unwrap();
+    let books = archive.create_library("Books", false).await.unwrap();
     assert!(library.person(satie.id).await.unwrap().is_some());
     assert!(books.person(satie.id).await.unwrap().is_none());
 }
@@ -109,7 +109,7 @@ async fn publications_union_direct_and_work_credits() {
 #[tokio::test]
 async fn a_role_spans_publications_and_works() {
     let (archive, library) = library().await;
-    let other = archive.create_library("Books").await.unwrap();
+    let other = archive.create_library("Books", false).await.unwrap();
     other
         .create_publication(
             &publication(
