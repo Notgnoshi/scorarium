@@ -52,7 +52,7 @@ async fn a_rolled_back_mutation_records_nothing() {
     let library = archive.create_library("Test", false).await.unwrap();
     let before = archive.audit_log().await.unwrap().len();
 
-    // Renaming a library that was already deleted fails after the headline is written
+    // Updating a library that was already deleted fails after the headline is written
     let mut doomed = archive.library(library.id).await.unwrap().unwrap();
     archive
         .library(library.id)
@@ -62,9 +62,9 @@ async fn a_rolled_back_mutation_records_nothing() {
         .delete()
         .await
         .unwrap();
-    assert!(doomed.rename("Gone").await.is_err());
+    assert!(doomed.update("Gone", false).await.is_err());
 
-    // The delete added one entry; the failed rename added none
+    // The delete added one entry; the failed update added none
     assert_eq!(archive.audit_log().await.unwrap().len(), before + 1);
 }
 

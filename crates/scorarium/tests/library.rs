@@ -139,9 +139,21 @@ async fn library_crud_flow() {
     server.get("/").await.assert_text_contains("Books");
 
     let id = state.archive.libraries().await.unwrap()[0].id;
+    let edit = format!("/library/{id}/edit");
+
+    // Editing requires login too, even for a GET
+    let anonymous = browser(state.clone());
+    let response = anonymous.get(&edit).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &format!("/login?back={edit}"));
+
+    let response = server.get(&edit).await;
+    response.assert_status_ok();
+    response.assert_text_contains("Edit library");
+
     let response = server
-        .post(&format!("/library/{id}/rename"))
-        .form(&[("name", "Novels")])
+        .post(&edit)
+        .form(&[("name", "Novels"), ("visibility", "public")])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let location = format!("/library/{id}");
@@ -149,6 +161,8 @@ async fn library_crud_flow() {
     let home = server.get("/").await;
     home.assert_text_contains("Novels");
     assert!(!home.text().contains("Books"));
+    let stored = state.archive.library(id).await.unwrap().unwrap();
+    assert!(!stored.private);
 
     let response = server.post(&format!("/library/{id}/delete")).await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -157,8 +171,8 @@ async fn library_crud_flow() {
 
     // The deleted library's id no longer exists
     let response = server
-        .post(&format!("/library/{id}/rename"))
-        .form(&[("name", "Novels")])
+        .post(&edit)
+        .form(&[("name", "Novels"), ("visibility", "public")])
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
     let response = server.post(&format!("/library/{id}/delete")).await;

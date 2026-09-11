@@ -516,7 +516,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/review", get(import::queue))
         .route("/library", post(library::create))
         .route("/library/{id}", get(library::library))
-        .route("/library/{id}/rename", post(library::rename))
+        .route("/library/{id}/edit", get(library::edit).post(library::save))
         .route("/library/{id}/delete", post(library::delete))
         .route(
             "/library/{id}/import",

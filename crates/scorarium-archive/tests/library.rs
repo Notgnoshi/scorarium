@@ -1,4 +1,4 @@
-use scorarium_archive::{Archive, NotFound};
+use scorarium_archive::{Action, Archive, Field, NotFound};
 
 #[tokio::test]
 async fn library_retrieval() {
@@ -28,15 +28,22 @@ async fn library_retrieval() {
 }
 
 #[tokio::test]
-async fn rename_changes_the_handle_and_the_stored_name() {
+async fn update_changes_the_handle_and_the_stored_values() {
     let archive = Archive::in_memory().await.unwrap();
     let mut library = archive.create_library("Books", false).await.unwrap();
 
-    library.rename("Novels").await.unwrap();
+    library.update("Novels", true).await.unwrap();
 
     assert_eq!(library.name, "Novels");
+    assert!(library.private);
     let stored = archive.library(library.id).await.unwrap().unwrap();
     assert_eq!(stored.name, "Novels");
+    assert!(stored.private);
+
+    let newest = archive.audit_log().await.unwrap().remove(0);
+    assert_eq!(newest.event.action, Action::Updated);
+    assert_eq!(newest.event.fields, [Field::Name, Field::Visibility]);
+    assert_eq!(newest.event.entity.unwrap().label, "Novels");
 }
 
 /// Two browser tabs, one of which deleted the library the other is still attempting to use
@@ -49,7 +56,7 @@ async fn writing_a_deleted_library_is_not_found() {
     library.delete().await.unwrap();
     assert!(archive.library(stale.id).await.unwrap().is_none());
 
-    let err = stale.rename("Novels").await.unwrap_err();
+    let err = stale.update("Novels", false).await.unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());
     let err = stale.delete().await.unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());

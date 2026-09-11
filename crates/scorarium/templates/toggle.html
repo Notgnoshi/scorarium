@@ -1,0 +1,51 @@
+{# A two-option radio group styled as a joined button pair. `checked` is one of the two values. #}
+{% macro toggle(name, first_value, first_label, second_value, second_label, checked) %}
+    <div class="toggle-pair d-inline-flex" role="group">
+        <label>
+            <input type="radio"
+                   class="visually-hidden"
+                   name="{{ name }}"
+                   value="{{ first_value }}"
+                   {% if checked == first_value %}checked{% endif %} />
+            <span class="btn btn-outline-secondary">{{ first_label }}</span>
+        </label>
+        <label>
+            <input type="radio"
+                   class="visually-hidden"
+                   name="{{ name }}"
+                   value="{{ second_value }}"
+                   {% if checked == second_value %}checked{% endif %} />
+            <span class="btn btn-outline-secondary">{{ second_label }}</span>
+        </label>
+    </div>
+{% endmacro %}
+{% macro style() %}
+    <style>
+        /* Each option is its own label, so the pair is joined by label position, not by the
+           buttons' position within a shared parent */
+        .toggle-pair label:first-child .btn {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+        .toggle-pair label:last-child .btn {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            margin-left: calc(-1 * var(--bs-border-width));
+        }
+
+        .toggle-pair :checked+.btn {
+            color: var(--bs-btn-active-color);
+            background-color: var(--bs-btn-active-bg);
+            border-color: var(--bs-btn-active-border-color);
+            pointer-events: none;
+            /* Over the neighbor's overlapping border */
+            position: relative;
+            z-index: 1;
+        }
+
+        .toggle-pair:has(:focus-visible) .btn {
+            box-shadow: var(--bs-btn-focus-box-shadow);
+        }
+    </style>
+{% endmacro %}

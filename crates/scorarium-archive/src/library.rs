@@ -8,7 +8,7 @@ use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::work::{self, CatalogNumberEntry, Work};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Result, Source};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -20,32 +20,40 @@ pub struct Library {
 }
 
 impl Library {
-    /// Rename the given library.
+    /// Rename the library or change who can see it. Records one update naming what changed.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
-    pub async fn rename(&mut self, name: &str) -> Result<()> {
-        // The entry carries the name the library was renamed to
-        let entity = EntityRef {
-            label: name.to_string(),
-            ..self.entity_ref()
-        };
+    pub async fn update(&mut self, name: &str, private: bool) -> Result<()> {
         let mut audited = self
             .archive
-            .begin_audit(Source::User, Event::about(Action::Renamed, entity))
+            .begin_audit(Source::User, Event::new(Action::Updated))
             .await?;
-        let renamed = sqlx::query_scalar!(
-            r#"UPDATE library SET name = ? WHERE id = ? RETURNING name AS "name!""#,
+        let updated = sqlx::query!(
+            r#"UPDATE library SET name = ?, private = ? WHERE id = ?
+               RETURNING name AS "name!", private AS "private!: bool""#,
             name,
+            private,
             self.id
         )
         .fetch_optional(&mut *audited)
         .await?;
-        let Some(renamed) = renamed else {
+        let Some(updated) = updated else {
             audited.rollback().await?;
             return Err(NotFound.into());
         };
+        let mut fields = Vec::new();
+        if updated.name != self.name {
+            fields.push(Field::Name);
+        }
+        if updated.private != self.private {
+            fields.push(Field::Visibility);
+        }
+        self.name = updated.name;
+        self.private = updated.private;
+        // The entry carries the new name
+        audited.set_entity(&self.entity_ref()).await?;
+        audited.set_fields(&fields).await?;
         audited.commit().await?;
-        self.name = renamed;
         Ok(())
     }
 
