@@ -88,4 +88,9 @@ async fn login_logout_flow() {
     let response = server.get("/login").await;
     response.assert_status_ok();
     response.assert_text_contains("Log in");
+
+    // The header link remembers which page the visitor was on
+    let response = server.get("/").await;
+    response.assert_status_ok();
+    response.assert_text_contains("href=\"/login?back=/\"");
 }

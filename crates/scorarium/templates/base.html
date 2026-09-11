@@ -62,7 +62,7 @@
                             </li>
                         {% else if base.path != "/login" %}
                             <li class="nav-item">
-                                <a class="nav-link" href="/login">Log in</a>
+                                <a class="nav-link" href="/login?back={{ base.back|urlencode }}">Log in</a>
                             </li>
                         {% endif %}
                     </ul>
