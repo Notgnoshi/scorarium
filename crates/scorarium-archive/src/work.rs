@@ -364,14 +364,10 @@ pub struct CatalogNumberEntry {
 
 /// Every catalog number in a library or in the whole archive, by library, work title, and the
 /// order the numbers were entered.
-///
-/// `public_only` leaves out works no non-private publication reaches, for the unauthenticated
-/// suggestion route.
 pub(crate) async fn load_catalog_numbers(
     conn: &mut SqliteConnection,
     library_id: Option<i64>,
     composer: Option<&str>,
-    public_only: bool,
 ) -> crate::Result<Vec<CatalogNumberEntry>> {
     let rows = sqlx::query!(
         "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,
@@ -383,13 +379,9 @@ pub(crate) async fn load_catalog_numbers(
          LEFT JOIN person p ON p.id = c.person_id
          WHERE (?1 IS NULL OR w.library_id = ?1)
            AND (?2 IS NULL OR p.name = ?2)
-           AND (?3 = 0 OR EXISTS (SELECT 1 FROM publication_work pw
-                                  JOIN publication pub ON pub.id = pw.publication_id
-                                  WHERE pw.work_id = w.id AND pub.private = 0))
          ORDER BY l.name, w.title, cn.id",
         library_id,
-        composer,
-        public_only
+        composer
     )
     .fetch_all(conn)
     .await?;

@@ -33,7 +33,7 @@ fn goldberg() -> PublicationInput {
 #[tokio::test]
 async fn consequences_group_under_their_headline() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
 
     let entries = archive.audit_log().await.unwrap();
     assert_eq!(entries.len(), 1);
@@ -49,7 +49,7 @@ async fn consequences_group_under_their_headline() {
 #[tokio::test]
 async fn a_rolled_back_mutation_records_nothing() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
     let before = archive.audit_log().await.unwrap().len();
 
     // Renaming a library that was already deleted fails after the headline is written
@@ -72,7 +72,7 @@ async fn a_rolled_back_mutation_records_nothing() {
 #[tokio::test]
 async fn every_mutation_records_a_headline() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
     let input = goldberg();
     let mut publication = library.create_publication(&input).await.unwrap();
     publication.update(&input).await.unwrap();
@@ -105,7 +105,7 @@ async fn every_mutation_records_a_headline() {
 #[tokio::test]
 async fn an_update_names_only_the_fields_that_changed() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
     let mut publication = library.create_publication(&goldberg()).await.unwrap();
     library.create_publication(&goldberg()).await.unwrap();
 
@@ -127,7 +127,7 @@ async fn an_update_names_only_the_fields_that_changed() {
 #[tokio::test]
 async fn an_update_that_changes_nothing_names_no_fields() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
     let mut publication = library.create_publication(&goldberg()).await.unwrap();
     library.create_publication(&goldberg()).await.unwrap();
 
@@ -146,7 +146,7 @@ async fn an_update_that_changes_nothing_names_no_fields() {
 #[tokio::test]
 async fn an_edit_records_the_deletions_it_caused() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Test").await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
     let mut publication = library.create_publication(&goldberg()).await.unwrap();
 
     let works = publication.works().await.unwrap();

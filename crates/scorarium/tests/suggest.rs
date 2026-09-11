@@ -53,7 +53,11 @@ fn matches(body: &Value) -> Vec<(&str, &str, &str, bool)> {
 
 #[tokio::test]
 async fn catalog_number_suggestions_rank_by_how_well_they_fit() {
-    let state = TestDb::new().library("Sheet music").build().await;
+    let state = TestDb::new()
+        .library("Sheet music")
+        .password("hunter2")
+        .build()
+        .await;
     let library = state.archive.libraries().await.unwrap().remove(0);
     publish(
         &library,
@@ -76,8 +80,8 @@ async fn catalog_number_suggestions_rank_by_how_well_they_fit() {
         ],
     )
     .await;
-    // Suggestions are what a form offers while typing, so they need no login
     let server = browser(state.clone());
+    server.post("/login").form(&[("password", "hunter2")]).await;
     let suggest = format!("/library/{}/suggest/catalog-numbers", library.id);
 
     let body = server

@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use scorarium_archive::{CatalogNumber, CatalogNumberEntry, Similarity};
 use serde::{Deserialize, Serialize};
 
-use super::{AppError, OrNotFound};
+use super::{AppError, OrNotFound, Session};
 use crate::AppState;
 
 /// What the form has typed so far, and the composer it credits the work to
@@ -36,8 +36,9 @@ const LIMIT: usize = 10;
 
 /// GET /library/{id}/suggest/catalog-numbers
 ///
-/// Unauthenticated, so it answers only from works a public publication reaches.
+/// Requires being logged in
 pub async fn catalog_numbers(
+    _session: Session,
     State(state): State<Arc<AppState>>,
     Path(library_id): Path<i64>,
     Query(query): Query<SuggestQuery>,
@@ -50,7 +51,7 @@ pub async fn catalog_numbers(
         .map(str::trim)
         .filter(|composer| !composer.is_empty());
     let mut ranked: Vec<(Similarity, CatalogNumberEntry)> = library
-        .public_catalog_numbers(composer)
+        .catalog_numbers(composer)
         .await?
         .into_iter()
         .filter_map(|entry| {

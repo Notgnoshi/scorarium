@@ -3,27 +3,34 @@ use scorarium_archive::{Archive, NotFound};
 #[tokio::test]
 async fn library_retrieval() {
     let archive = Archive::in_memory().await.unwrap();
-    archive.create_library("Sheet music").await.unwrap();
-    let books = archive.create_library("Books").await.unwrap();
+    archive.create_library("Sheet music", false).await.unwrap();
+    let books = archive.create_library("Books", true).await.unwrap();
 
-    let names: Vec<String> = archive
+    let listed: Vec<(String, bool)> = archive
         .libraries()
         .await
         .unwrap()
         .into_iter()
-        .map(|library| library.name)
+        .map(|library| (library.name, library.private))
         .collect();
-    assert_eq!(names, ["Books", "Sheet music"]);
+    assert_eq!(
+        listed,
+        [
+            ("Books".to_string(), true),
+            ("Sheet music".to_string(), false)
+        ]
+    );
 
     let found = archive.library(books.id).await.unwrap().unwrap();
     assert_eq!(found.name, "Books");
+    assert!(found.private);
     assert!(archive.library(books.id + 1000).await.unwrap().is_none());
 }
 
 #[tokio::test]
 async fn rename_changes_the_handle_and_the_stored_name() {
     let archive = Archive::in_memory().await.unwrap();
-    let mut library = archive.create_library("Books").await.unwrap();
+    let mut library = archive.create_library("Books", false).await.unwrap();
 
     library.rename("Novels").await.unwrap();
 
@@ -36,7 +43,7 @@ async fn rename_changes_the_handle_and_the_stored_name() {
 #[tokio::test]
 async fn writing_a_deleted_library_is_not_found() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Books").await.unwrap();
+    let library = archive.create_library("Books", false).await.unwrap();
     let mut stale = archive.library(library.id).await.unwrap().unwrap();
 
     library.delete().await.unwrap();

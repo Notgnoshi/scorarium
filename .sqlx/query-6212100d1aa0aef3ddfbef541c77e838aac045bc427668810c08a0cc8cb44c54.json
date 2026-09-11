@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name FROM library ORDER BY name",
+  "query": "SELECT id, name, private AS \"private: bool\" FROM library WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -24,15 +24,27 @@
             "name": "name"
           }
         }
+      },
+      {
+        "name": "private: bool",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "private"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false
     ]
   },
-  "hash": "705aa83be56b1724cc495fa75e2d62ab937ab41a5b48a927362a858dc8ffa908"
+  "hash": "6212100d1aa0aef3ddfbef541c77e838aac045bc427668810c08a0cc8cb44c54"
 }

@@ -70,7 +70,7 @@ pub async fn create(
             .await?
             .into_response());
     }
-    state.archive.create_library(name).await?;
+    state.archive.create_library(name, true).await?;
     Ok(Redirect::to("/").into_response())
 }
 

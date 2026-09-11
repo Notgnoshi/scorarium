@@ -15,6 +15,7 @@ use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Result
 pub struct Library {
     pub id: i64,
     pub name: String,
+    pub private: bool,
     archive: Arc<ArchiveInner>,
 }
 
@@ -175,14 +176,10 @@ impl Library {
         Ok(work)
     }
 
-    /// The catalog numbers of works reachable through a publication that is not private,
-    /// optionally only those credited to one composer
-    pub async fn public_catalog_numbers(
-        &self,
-        composer: Option<&str>,
-    ) -> Result<Vec<CatalogNumberEntry>> {
+    /// Every catalog number in the library, optionally only those credited to one composer
+    pub async fn catalog_numbers(&self, composer: Option<&str>) -> Result<Vec<CatalogNumberEntry>> {
         let mut conn = self.archive.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, Some(self.id), composer, true).await
+        work::load_catalog_numbers(&mut conn, Some(self.id), composer).await
     }
 
     /// Fold one work into another and delete it; the survivor is returned reloaded.
@@ -296,14 +293,16 @@ pub(crate) async fn list_libraries(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<Library>> {
-    let rows = sqlx::query!("SELECT id, name FROM library ORDER BY name")
-        .fetch_all(conn)
-        .await?;
+    let rows =
+        sqlx::query!(r#"SELECT id, name, private AS "private: bool" FROM library ORDER BY name"#)
+            .fetch_all(conn)
+            .await?;
     Ok(rows
         .into_iter()
         .map(|row| Library {
             id: row.id,
             name: row.name,
+            private: row.private,
             archive: shared.clone(),
         })
         .collect())
@@ -314,12 +313,16 @@ pub(crate) async fn get_library(
     conn: &mut SqliteConnection,
     id: i64,
 ) -> Result<Option<Library>> {
-    let row = sqlx::query!("SELECT id, name FROM library WHERE id = ?", id)
-        .fetch_optional(conn)
-        .await?;
+    let row = sqlx::query!(
+        r#"SELECT id, name, private AS "private: bool" FROM library WHERE id = ?"#,
+        id
+    )
+    .fetch_optional(conn)
+    .await?;
     Ok(row.map(|row| Library {
         id: row.id,
         name: row.name,
+        private: row.private,
         archive: shared.clone(),
     }))
 }
@@ -328,14 +331,20 @@ pub(crate) async fn create_library(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     name: &str,
+    private: bool,
 ) -> Result<Library> {
-    let id = sqlx::query!("INSERT INTO library (name) VALUES (?)", name)
-        .execute(conn)
-        .await?
-        .last_insert_rowid();
+    let id = sqlx::query!(
+        "INSERT INTO library (name, private) VALUES (?, ?)",
+        name,
+        private
+    )
+    .execute(conn)
+    .await?
+    .last_insert_rowid();
     Ok(Library {
         id,
         name: name.to_string(),
+        private,
         archive: shared.clone(),
     })
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,\n                p.name AS composer, cn.value\n         FROM work_catalog_number cn\n         JOIN work w ON w.id = cn.work_id\n         JOIN library l ON l.id = w.library_id\n         LEFT JOIN work_contributor c ON c.work_id = w.id AND c.role = 'composer'\n         LEFT JOIN person p ON p.id = c.person_id\n         WHERE (?1 IS NULL OR w.library_id = ?1)\n           AND (?2 IS NULL OR p.name = ?2)\n           AND (?3 = 0 OR EXISTS (SELECT 1 FROM publication_work pw\n                                  JOIN publication pub ON pub.id = pw.publication_id\n                                  WHERE pw.work_id = w.id AND pub.private = 0))\n         ORDER BY l.name, w.title, cn.id",
+  "query": "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,\n                p.name AS composer, cn.value\n         FROM work_catalog_number cn\n         JOIN work w ON w.id = cn.work_id\n         JOIN library l ON l.id = w.library_id\n         LEFT JOIN work_contributor c ON c.work_id = w.id AND c.role = 'composer'\n         LEFT JOIN person p ON p.id = c.person_id\n         WHERE (?1 IS NULL OR w.library_id = ?1)\n           AND (?2 IS NULL OR p.name = ?2)\n         ORDER BY l.name, w.title, cn.id",
   "describe": {
     "columns": [
       {
@@ -71,7 +71,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       false,
@@ -82,5 +82,5 @@
       false
     ]
   },
-  "hash": "0e8a24bcea71c6808d40de40e8c67d7e3abf4fbf71551d5f6da0193b6bc97e52"
+  "hash": "597436f996a9c823d7347ecfeff837f3c3f34f072821d344d2c7c99c1bb18a5b"
 }
