@@ -1,5 +1,8 @@
 {% extends "base.html" %}
+{% import "stars.html" as stars %}
 {% block content %}
+    {% call stars::style() %}
+    {% endcall %}
     <h1>{{ person.name }}</h1>
     <h2>Publications</h2>
     {% for (p, works) in publications %}
@@ -7,6 +10,10 @@
             <div class="card-header">
                 <a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a>
                 {% for role in p.roles_of(*person.id) %}<span class="badge text-bg-secondary">{{ role }}</span>{% endfor %}
+                {% if base.logged_in %}
+                    {% call stars::show(p.stars.unwrap_or_default()) %}
+                    {% endcall %}
+                {% endif %}
             </div>
             {% if !works.is_empty() %}
                 <div class="card-body">
@@ -15,6 +22,10 @@
                             <li>
                                 <a href="/library/{{ w.library_id }}/work/{{ w.id }}">{{ w.title }}</a>
                                 {% for role in w.roles_of(*person.id) %}<span class="badge text-bg-secondary">{{ role }}</span>{% endfor %}
+                                {% if base.logged_in %}
+                                    {% call stars::show(w.stars.unwrap_or_default()) %}
+                                    {% endcall %}
+                                {% endif %}
                             </li>
                         {% endfor %}
                     </ul>

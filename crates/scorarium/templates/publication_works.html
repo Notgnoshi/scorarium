@@ -1,4 +1,5 @@
 {% import "catalog.html" as catalog %}
+{% import "stars.html" as stars %}
 {% if !works.is_empty() %}
     <h2>Works</h2>
     <div class="table-responsive">
@@ -8,6 +9,7 @@
                     <th>Title</th>
                     {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
                     {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
+                    {% if base.logged_in %}<th>Stars</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -16,6 +18,12 @@
                         <td><a href="/library/{{ publication.library_id }}/work/{{ w.id }}">{{ w.title }}</a></td>
                         {% if show_catalog_numbers %}<td>{% for n in w.catalog_numbers %}{% if !loop.first %}, {% endif %}{% call catalog::number(n) %}{% endcall %}{% endfor %}</td>{% endif %}
                         {% for role in roles %}<td>{% for c in w.with_role(role) %}{% if !loop.first %}, {% endif %}<a href="/library/{{ publication.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>{% endfor %}
+                        {% if base.logged_in %}
+                            <td>
+                                {% call stars::show(w.stars.unwrap_or_default()) %}
+                                {% endcall %}
+                            </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
