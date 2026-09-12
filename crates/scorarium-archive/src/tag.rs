@@ -35,6 +35,34 @@ pub(crate) async fn list_vocabulary(
     Ok(tags)
 }
 
+/// One tag in the library and how many things carry it
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TagCount {
+    pub tag: String,
+    pub uses: i64,
+}
+
+/// Every tag in the library with its use count, alphabetically.
+pub(crate) async fn counts(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+) -> crate::Result<Vec<TagCount>> {
+    let rows = sqlx::query!(
+        r#"SELECT tag, COUNT(*) AS "uses!: i64" FROM tag
+           WHERE library_id = ? GROUP BY tag ORDER BY tag"#,
+        library_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| TagCount {
+            tag: row.tag,
+            uses: row.uses,
+        })
+        .collect())
+}
+
 /// Every tag on a library's publications, as (publication_id, tag), alphabetically.
 pub(crate) async fn publication_tags(
     conn: &mut SqliteConnection,

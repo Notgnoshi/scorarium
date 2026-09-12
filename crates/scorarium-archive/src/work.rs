@@ -179,6 +179,7 @@ impl Work {
             None,
             Some(self.id),
             None,
+            None,
         )
         .await?;
         tx.commit().await?;
@@ -277,6 +278,7 @@ impl Work {
             self.library_id,
             Some(self.id),
             None,
+            None,
         )
         .await?
         .pop()
@@ -289,6 +291,7 @@ impl Work {
             &mut audited,
             self.library_id,
             Some(survivor),
+            None,
             None,
         )
         .await?
@@ -310,26 +313,30 @@ impl Work {
     }
 }
 
-/// Load a library's works with their children: the one with `id`, or those a publication contains.
+/// Load a library's works with their children: all of them, the one with `id`, those a publication
+/// contains, or those carrying `tag`.
 ///
-/// The three reads run on the caller's transaction so they see one snapshot. A publication's
-/// contents come back in the order the works were added to it.
+/// The reads run on the caller's transaction so they see one snapshot. A publication's contents
+/// come back in the order the works were added to it.
 pub(crate) async fn load_works(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     library_id: i64,
     id: Option<i64>,
     publication_id: Option<i64>,
+    tag: Option<&str>,
 ) -> crate::Result<Vec<Work>> {
     let mut works: Vec<Work> = sqlx::query!(
         "SELECT id, library_id, title, \"key\", time_signature, instrumentation, stars, note FROM work
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+           AND (?4 IS NULL OR id IN (SELECT work_id FROM tag WHERE tag = ?4))
          ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
         library_id,
         id,
-        publication_id
+        publication_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?
@@ -361,11 +368,13 @@ pub(crate) async fn load_works(
             (SELECT id FROM work
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+               AND (?4 IS NULL OR id IN (SELECT work_id FROM tag WHERE tag = ?4)))
          ORDER BY id",
         library_id,
         id,
-        publication_id
+        publication_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -382,11 +391,13 @@ pub(crate) async fn load_works(
             (SELECT id FROM work
              WHERE library_id = ?1
                AND (?2 IS NULL OR id = ?2)
-               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3)))
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+               AND (?4 IS NULL OR id IN (SELECT work_id FROM tag WHERE tag = ?4)))
          ORDER BY c.id",
         library_id,
         id,
-        publication_id
+        publication_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;

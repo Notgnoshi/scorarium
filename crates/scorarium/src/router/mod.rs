@@ -7,6 +7,7 @@ mod person;
 mod publication;
 mod settings;
 mod suggest;
+mod tag;
 mod work;
 
 use std::sync::Arc;
@@ -110,6 +111,13 @@ impl Crumb {
         Self {
             label: "Settings".to_string(),
             href: "/settings".to_string(),
+        }
+    }
+
+    pub fn tags(library: &Library) -> Self {
+        Self {
+            label: "Tags".to_string(),
+            href: format!("/library/{}/tags", library.id),
         }
     }
 
@@ -562,6 +570,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/library/{id}/suggest/catalog-numbers",
             get(suggest::catalog_numbers),
         )
+        .route("/library/{id}/tags", get(tag::cloud))
+        .route("/library/{library_id}/tags/{tag}", get(tag::tagged))
         .route("/library/{library_id}/work/{id}", get(work::work))
         .route(
             "/library/{library_id}/work/{id}/edit",

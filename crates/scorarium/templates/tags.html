@@ -12,6 +12,10 @@
         </datalist>
     </div>
 {% endmacro %}
+{% macro badges(library_id, tags) %}
+    {% for t in tags.iter() %}<a class="badge text-bg-secondary me-1"
+   href="/library/{{ library_id }}/tags/{{ t }}">{{ t }}</a>{% endfor %}
+{% endmacro %}
 {% macro style() %}
     <style>
         .tag-box {

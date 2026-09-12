@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "catalog.html" as catalog %}
 {% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% block content %}
     {% call stars::style() %}
     {% endcall %}
@@ -56,7 +57,8 @@
     {% if base.logged_in %}
         {% if !work.tags.is_empty() %}
             <p>
-                {% for t in work.tags %}<span class="badge text-bg-secondary me-1">{{ t }}</span>{% endfor %}
+                {% call tags::badges(work.library_id, work.tags) %}
+                {% endcall %}
             </p>
         {% endif %}
         {% if let Some(note) = work.note %}

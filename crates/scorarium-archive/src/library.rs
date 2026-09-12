@@ -7,10 +7,9 @@ use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
+use crate::tag::{self, TagCount};
 use crate::work::{self, CatalogNumberEntry, Work};
-use crate::{
-    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source, tag,
-};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -104,7 +103,7 @@ impl Library {
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         let mut tx = self.archive.begin_read().await?;
         let publications =
-            publication::load_publications(&self.archive, &mut tx, self.id, None, None, None)
+            publication::load_publications(&self.archive, &mut tx, self.id, None, None, None, None)
                 .await?;
         tx.commit().await?;
         Ok(publications)
@@ -113,10 +112,17 @@ impl Library {
     /// The given publication, if this library has it
     pub async fn publication(&self, id: i64) -> Result<Option<Publication>> {
         let mut tx = self.archive.begin_read().await?;
-        let publication =
-            publication::load_publications(&self.archive, &mut tx, self.id, Some(id), None, None)
-                .await?
-                .pop();
+        let publication = publication::load_publications(
+            &self.archive,
+            &mut tx,
+            self.id,
+            Some(id),
+            None,
+            None,
+            None,
+        )
+        .await?
+        .pop();
         tx.commit().await?;
         Ok(publication)
     }
@@ -179,7 +185,7 @@ impl Library {
     /// The given work, if this library has it
     pub async fn work(&self, id: i64) -> Result<Option<Work>> {
         let mut tx = self.archive.begin_read().await?;
-        let work = work::load_works(&self.archive, &mut tx, self.id, Some(id), None)
+        let work = work::load_works(&self.archive, &mut tx, self.id, Some(id), None, None)
             .await?
             .pop();
         tx.commit().await?;
@@ -214,10 +220,11 @@ impl Library {
         }
         work::merge_works(&mut audited, self.id, from, into).await?;
         collect_orphans(&mut audited, self.id).await?;
-        let survivor = work::load_works(&self.archive, &mut audited, self.id, Some(into), None)
-            .await?
-            .pop()
-            .expect("the survivor was just verified on this transaction");
+        let survivor =
+            work::load_works(&self.archive, &mut audited, self.id, Some(into), None, None)
+                .await?
+                .pop()
+                .expect("the survivor was just verified on this transaction");
         audited.set_entity(&survivor.entity_ref()).await?;
         audited.commit().await?;
         Ok(survivor)
@@ -254,6 +261,31 @@ impl Library {
     pub async fn tag_vocabulary(&self) -> Result<Vec<String>> {
         let mut conn = self.archive.acquire_read().await?;
         tag::list_vocabulary(&mut conn, self.id).await
+    }
+
+    /// Every tag in the library with its use count, alphabetically
+    pub async fn tag_counts(&self) -> Result<Vec<TagCount>> {
+        let mut conn = self.archive.acquire_read().await?;
+        tag::counts(&mut conn, self.id).await
+    }
+
+    /// The publications and works carrying one tag
+    pub async fn tagged(&self, tag: &str) -> Result<(Vec<Publication>, Vec<Work>)> {
+        let mut tx = self.archive.begin_read().await?;
+        let publications = publication::load_publications(
+            &self.archive,
+            &mut tx,
+            self.id,
+            None,
+            None,
+            None,
+            Some(tag),
+        )
+        .await?;
+        let works =
+            work::load_works(&self.archive, &mut tx, self.id, None, None, Some(tag)).await?;
+        tx.commit().await?;
+        Ok((publications, works))
     }
 }
 

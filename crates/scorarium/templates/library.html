@@ -37,6 +37,7 @@
     </div>
     {% if has_composers %}<a href="/library/{{ library.id }}/composers">Composers</a>{% endif %}
     {% if has_authors %}<a href="/library/{{ library.id }}/authors">Authors</a>{% endif %}
+    {% if base.logged_in && has_tags %}<a href="/library/{{ library.id }}/tags">Tags</a>{% endif %}
     {% if base.logged_in %}
         <div class="d-flex gap-2">
             <a class="btn btn-primary" href="/library/{{ library.id }}/import">Import</a>

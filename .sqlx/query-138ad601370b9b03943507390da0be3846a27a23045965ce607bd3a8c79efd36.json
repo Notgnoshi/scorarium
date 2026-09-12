@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT tag, COUNT(*) AS \"uses!: i64\" FROM tag\n           WHERE library_id = ? GROUP BY tag ORDER BY tag",
+  "describe": {
+    "columns": [
+      {
+        "name": "tag",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "tag"
+          }
+        }
+      },
+      {
+        "name": "uses!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "138ad601370b9b03943507390da0be3846a27a23045965ce607bd3a8c79efd36"
+}

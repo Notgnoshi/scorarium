@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.publication_id, c.person_id, p.name, c.role\n         FROM publication_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.publication_id IN\n            (SELECT id FROM publication\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))\n               AND (?4 IS NULL\n                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)\n                    OR id IN (SELECT pw.publication_id FROM publication_work pw\n                              JOIN work_contributor wc ON wc.work_id = pw.work_id\n                              WHERE wc.person_id = ?4)))\n         ORDER BY c.id",
+  "query": "SELECT c.publication_id, c.person_id, p.name, c.role\n         FROM publication_contributor c JOIN person p ON p.id = c.person_id\n         WHERE c.publication_id IN\n            (SELECT id FROM publication\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))\n               AND (?4 IS NULL\n                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)\n                    OR id IN (SELECT pw.publication_id FROM publication_work pw\n                              JOIN work_contributor wc ON wc.work_id = pw.work_id\n                              WHERE wc.person_id = ?4))\n               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))\n         ORDER BY c.id",
   "describe": {
     "columns": [
       {
@@ -49,7 +49,7 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 5
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "5516b69e63613ec06927cbc81207122974edfcd578cc45155cd9226a10054129"
+  "hash": "fa093abd72e1ef6e5c01ee38f75c6663a34c099c4defcbbee1c7ad57231c70f9"
 }

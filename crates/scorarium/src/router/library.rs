@@ -19,6 +19,7 @@ struct LibraryPage {
     // Link only to listings with something in them
     has_composers: bool,
     has_authors: bool,
+    has_tags: bool,
 }
 
 /// GET /library/{id}
@@ -34,6 +35,7 @@ pub async fn library(
         publications: library.publications().await?,
         has_composers: roles.iter().any(|role| role == "composer"),
         has_authors: roles.iter().any(|role| role == "author"),
+        has_tags: !library.tag_counts().await?.is_empty(),
         library,
     };
     Ok(Html(page.render()?).into_response())

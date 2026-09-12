@@ -202,8 +202,15 @@ impl Publication {
     /// The works this publication contains, in the order they were added to it
     pub async fn works(&self) -> crate::Result<Vec<Work>> {
         let mut tx = self.archive.begin_read().await?;
-        let contents =
-            work::load_works(&self.archive, &mut tx, self.library_id, None, Some(self.id)).await?;
+        let contents = work::load_works(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            None,
+            Some(self.id),
+            None,
+        )
+        .await?;
         tx.commit().await?;
         Ok(contents)
     }
@@ -302,6 +309,7 @@ impl Publication {
             Some(self.id),
             None,
             None,
+            None,
         )
         .await?
         .pop()
@@ -372,10 +380,11 @@ async fn contained_work_ids(
 }
 
 /// Load a library's publications with their children: all of them, just the one with `id`, those
-/// containing `work_id`, or those crediting `person_id` directly or through a contained work.
+/// containing `work_id`, those crediting `person_id` directly or through a contained work, or
+/// those carrying `tag`.
 ///
-/// The four reads run on the caller's transaction so they see one snapshot. Otherwise a child row
-/// of a publication created between the parent read and the child reads would have no parent here.
+/// The reads run on the caller's transaction so they see one snapshot. Otherwise a child row of a
+/// publication created between the parent read and the child reads would have no parent here.
 pub(crate) async fn load_publications(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
@@ -383,6 +392,7 @@ pub(crate) async fn load_publications(
     id: Option<i64>,
     work_id: Option<i64>,
     person_id: Option<i64>,
+    tag: Option<&str>,
 ) -> crate::Result<Vec<Publication>> {
     let mut publications: Vec<Publication> = sqlx::query!(
         "SELECT id, library_id, title, publisher, year, stars, note FROM publication
@@ -393,11 +403,13 @@ pub(crate) async fn load_publications(
                 OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                 OR id IN (SELECT pw.publication_id FROM publication_work pw
                           JOIN work_contributor wc ON wc.work_id = pw.work_id
-                          WHERE wc.person_id = ?4))",
+                          WHERE wc.person_id = ?4))
+           AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5))",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?
@@ -434,12 +446,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -466,12 +480,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY c.id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -496,12 +512,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -552,7 +570,7 @@ pub(crate) async fn create_publication(
     for content in &input.contents {
         work::create_work_in_publication(audited, library_id, id, content).await?;
     }
-    let publication = load_publications(shared, audited, library_id, Some(id), None, None)
+    let publication = load_publications(shared, audited, library_id, Some(id), None, None, None)
         .await?
         .pop()
         .expect("the publication was just created on this transaction");

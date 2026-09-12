@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Tags</h1>
+    <p class="d-flex flex-wrap align-items-center gap-2">
+        {% for t in tags %}
+            <a class="badge text-bg-secondary tag-size-{{ t.size }}"
+               href="/library/{{ library.id }}/tags/{{ t.tag }}"
+               title="{{ t.uses }} in this library">{{ t.tag }}</a>
+        {% endfor %}
+    </p>
+    <style>
+        .tag-size-1 {
+            font-size: 0.8rem
+        }
+
+        .tag-size-2 {
+            font-size: 1rem
+        }
+
+        .tag-size-3 {
+            font-size: 1.2rem
+        }
+
+        .tag-size-4 {
+            font-size: 1.45rem
+        }
+
+        .tag-size-5 {
+            font-size: 1.7rem
+        }
+    </style>
+{% endblock %}
