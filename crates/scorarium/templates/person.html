@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% block content %}
     {% call stars::style() %}
     {% endcall %}
@@ -13,6 +14,8 @@
                 {% if base.logged_in %}
                     {% call stars::show(p.stars.unwrap_or_default()) %}
                     {% endcall %}
+                    {% call tags::badges(p.library_id, p.tags) %}
+                    {% endcall %}
                 {% endif %}
             </div>
             {% if !works.is_empty() %}
@@ -24,6 +27,8 @@
                                 {% for role in w.roles_of(*person.id) %}<span class="badge text-bg-secondary">{{ role }}</span>{% endfor %}
                                 {% if base.logged_in %}
                                     {% call stars::show(w.stars.unwrap_or_default()) %}
+                                    {% endcall %}
+                                    {% call tags::badges(w.library_id, w.tags) %}
                                     {% endcall %}
                                 {% endif %}
                             </li>

@@ -74,6 +74,7 @@
                 {% if base.logged_in %}
                     <th>Copies</th>
                     <th>Stars</th>
+                    <th>Tags</th>
                 {% endif %}
             </tr>
         </thead>
@@ -85,6 +86,10 @@
                         <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>{% if let Some(location) = h.location %} {{ location }}{% endif %} {% endfor %}</td>
                         <td>
                             {% call stars::show(p.stars.unwrap_or_default()) %}
+                            {% endcall %}
+                        </td>
+                        <td>
+                            {% call tags::badges(p.library_id, p.tags) %}
                             {% endcall %}
                         </td>
                     {% endif %}

@@ -1,5 +1,6 @@
 {% import "catalog.html" as catalog %}
 {% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% if !works.is_empty() %}
     <h2>Works</h2>
     <div class="table-responsive">
@@ -9,7 +10,10 @@
                     <th>Title</th>
                     {% if show_catalog_numbers %}<th>Catalog numbers</th>{% endif %}
                     {% for role in roles %}<th>{{ role | capitalize }}</th>{% endfor %}
-                    {% if base.logged_in %}<th>Stars</th>{% endif %}
+                    {% if base.logged_in %}
+                        <th>Stars</th>
+                        <th>Tags</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -21,6 +25,10 @@
                         {% if base.logged_in %}
                             <td>
                                 {% call stars::show(w.stars.unwrap_or_default()) %}
+                                {% endcall %}
+                            </td>
+                            <td>
+                                {% call tags::badges(publication.library_id, w.tags) %}
                                 {% endcall %}
                             </td>
                         {% endif %}
