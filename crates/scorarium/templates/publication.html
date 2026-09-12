@@ -37,13 +37,15 @@
         {% endfor %}
     </ul>
     {% include "publication_works.html" %}
-    <h2>Copies</h2>
-    <ul>
-        {% for h in publication.holdings %}
-            <li>
-                <span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>
-                {% if let Some(location) = h.location %}{{ location }}{% endif %}
-            </li>
-        {% endfor %}
-    </ul>
+    {% if base.logged_in %}
+        <h2>Copies</h2>
+        <ul>
+            {% for h in publication.holdings %}
+                <li>
+                    <span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>
+                    {% if let Some(location) = h.location %}{{ location }}{% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
 {% endblock %}

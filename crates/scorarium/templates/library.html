@@ -8,7 +8,7 @@
                     <th>Title</th>
                     <th>People</th>
                     <th>Year</th>
-                    <th>Copies</th>
+                    {% if base.logged_in %}<th>Copies</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -17,7 +17,7 @@
                         <td><a href="/library/{{ library.id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
                         <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ library.id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>
                         <td>{% if let Some(year) = p.year %}{{ year }}{% endif %}</td>
-                        <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {% endfor %}</td>
+                        {% if base.logged_in %}<td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {% endfor %}</td>{% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
