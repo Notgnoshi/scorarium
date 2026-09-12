@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work\n         WHERE library_id = ?1\n           AND (?2 IS NULL OR id = ?2)\n           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))\n         ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
+  "query": "SELECT id, library_id, title, \"key\", time_signature, instrumentation, stars FROM work\n         WHERE library_id = ?1\n           AND (?2 IS NULL OR id = ?2)\n           AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))\n         ORDER BY (SELECT id FROM publication_work WHERE work_id = work.id AND publication_id = ?3)",
   "describe": {
     "columns": [
       {
@@ -68,6 +68,17 @@
             "name": "instrumentation"
           }
         }
+      },
+      {
+        "name": "stars",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "stars"
+          }
+        }
       }
     ],
     "parameters": {
@@ -79,8 +90,9 @@
       false,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "3ce151f60fb556a5bbd66b79dafcbb066c17083b1613ab7bd3f0a6da08dc7934"
+  "hash": "0018e5fad56d2d51f4240cf181faa3bb36716f9edb8723e7d7891f16ca6ab05d"
 }

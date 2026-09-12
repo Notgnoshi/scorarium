@@ -1,5 +1,10 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
+{% import "stars.html" as stars %}
+{% call stars::style() %}
+{% endcall %}
+{% call stars::script() %}
+{% endcall %}
 <div>
     <div class="mb-3">
         <label class="form-label" for="title">Title</label>
@@ -33,6 +38,8 @@
                placeholder="piano"
                value="{{ fields.input.instrumentation }}" />
     </div>
+    {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
+    {% endcall %}
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Catalog numbers</legend>
         <div data-rows-list>

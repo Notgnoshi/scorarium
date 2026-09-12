@@ -1,9 +1,14 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
 {% import "toggle.html" as toggle %}
+{% import "stars.html" as stars %}
 {% call rows::style() %}
 {% endcall %}
 {% call toggle::style() %}
+{% endcall %}
+{% call stars::style() %}
+{% endcall %}
+{% call stars::script() %}
 {% endcall %}
 <div data-publication-fields>
     <div class="mb-3">
@@ -30,6 +35,8 @@
                value="{{ fields.input.year }}" />
         {% if let Some(error) = fields.errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
+    {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
+    {% endcall %}
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
         <div data-rows-list>

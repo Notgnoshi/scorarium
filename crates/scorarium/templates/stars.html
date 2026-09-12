@@ -1,0 +1,110 @@
+{% macro star(name, value, rating) %}
+    <input type="radio"
+           class="visually-hidden"
+           id="{{ name }}-{{ value }}"
+           name="{{ name }}"
+           value="{{ value }}"
+           {% if rating == value %}checked{% endif %} />
+    <label for="{{ name }}-{{ value }}">
+        <i class="bi bi-star-fill" aria-hidden="true"></i>
+        <span class="visually-hidden">{{ value }} stars</span>
+    </label>
+{% endmacro %}
+{# The editable rating. `name` only has to be unique on the page: it scopes the radio group. #}
+{% macro input(name, rating, error) %}
+    <div class="mb-3">
+        <div class="form-label">Rating</div>
+        <div data-stars>
+            {# Reversed in the DOM, so the sibling selectors reach the lower-numbered stars #}
+            <div class="star-input d-inline-flex">
+                {% call star(name, "5", rating) %}
+                {% endcall %}
+                {% call star(name, "4", rating) %}
+                {% endcall %}
+                {% call star(name, "3", rating) %}
+                {% endcall %}
+                {% call star(name, "2", rating) %}
+                {% endcall %}
+                {% call star(name, "1", rating) %}
+                {% endcall %}
+            </div>
+            {# Where clicking the star that is already set sends the group, and what makes the
+               form post a stars key when nothing is rated. Outside the reversed group: within
+               it, this being checked would fill all five stars. #}
+            <input type="radio"
+                   class="visually-hidden"
+                   name="{{ name }}"
+                   value=""
+                   aria-label="Unrated"
+                   data-stars-none
+                   {% if rating.is_empty() %}checked{% endif %} />
+        </div>
+        {% if let Some(error) = error %}<div class="invalid-feedback d-block">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{# The rating as it reads on a page that cannot change it. Unrated renders nothing. #}
+{% macro show(rating) %}
+    {% if rating > 0 %}
+        <span class="stars text-nowrap">
+            {% for star in 1..6 %}
+                <i class="bi {% if star <= rating %}bi-star-fill{% else %}bi-star{% endif %}"
+                   aria-hidden="true"></i>
+            {% endfor %}
+            <span class="visually-hidden">{{ rating }} of 5 stars</span>
+        </span>
+    {% endif %}
+{% endmacro %}
+{% macro style() %}
+    <style>
+        .stars,
+        .star-input {
+            --star-color: var(--bs-body-color);
+        }
+
+        .stars {
+            color: var(--star-color);
+        }
+
+        .star-input {
+            flex-direction: row-reverse;
+        }
+
+        .star-input label {
+            color: var(--bs-border-color);
+            cursor: pointer;
+            line-height: 1;
+            padding: 0 0.1rem;
+        }
+
+        .star-input label:hover,
+        .star-input label:hover~label {
+            color: var(--star-color);
+            opacity: 0.5;
+        }
+
+        .star-input input:checked~label {
+            color: var(--star-color);
+            opacity: 1;
+        }
+
+        .star-input input:focus-visible+label {
+            outline: var(--bs-border-width) solid var(--bs-focus-ring-color);
+        }
+    </style>
+{% endmacro %}
+{% macro script() %}
+    <script>
+        // Clicking a radio cannot uncheck it, so clicking the star the rating is already set to
+        // hands the group to its unrated option instead. Without scripting a rating can still be
+        // set and changed, just not cleared.
+        document.addEventListener("click", (e) => {
+            const label = e.target.closest("[data-stars] .star-input label");
+            if (!label) return;
+            const star = document.getElementById(label.htmlFor);
+            if (!star.checked) return;
+            // Otherwise the label re-checks the star it points at
+            e.preventDefault();
+            label.closest("[data-stars]").querySelector("[data-stars-none]").checked = true;
+        });
+    </script>
+{% endmacro %}

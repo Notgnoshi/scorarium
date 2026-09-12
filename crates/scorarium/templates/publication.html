@@ -1,6 +1,17 @@
 {% extends "base.html" %}
+{% import "stars.html" as stars %}
 {% block content %}
-    <h1>{{ publication.title }}</h1>
+    {% call stars::style() %}
+    {% endcall %}
+    <h1>
+        {{ publication.title }}
+        {% if base.logged_in %}
+            <span class="fs-5 align-middle">
+                {% call stars::show(publication.stars.unwrap_or_default()) %}
+                {% endcall %}
+            </span>
+        {% endif %}
+    </h1>
     {% if base.logged_in %}
         <a class="btn btn-outline-secondary btn-sm mb-3"
            href="/library/{{ publication.library_id }}/publication/{{ publication.id }}/edit">

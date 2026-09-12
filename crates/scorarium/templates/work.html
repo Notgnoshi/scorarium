@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% import "catalog.html" as catalog %}
+{% import "stars.html" as stars %}
 {% block content %}
-    <h1>{{ work.title }}</h1>
+    {% call stars::style() %}
+    {% endcall %}
+    <h1>
+        {{ work.title }}
+        {% if base.logged_in %}
+            <span class="fs-5 align-middle">
+                {% call stars::show(work.stars.unwrap_or_default()) %}
+                {% endcall %}
+            </span>
+        {% endif %}
+    </h1>
     {% if base.logged_in %}
         <a class="btn btn-outline-secondary btn-sm mb-3"
            href="/library/{{ work.library_id }}/work/{{ work.id }}/edit">

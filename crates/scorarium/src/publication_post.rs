@@ -33,6 +33,8 @@ struct Fields {
     title: String,
     publisher: String,
     year: String,
+    #[serde(default)]
+    stars: String,
     // `default` covers a submission with none at all
     #[serde(default)]
     identifier_kind: Vec<String>,
@@ -97,6 +99,7 @@ impl PublicationPost {
             title,
             publisher,
             year,
+            stars,
             identifier_kind,
             identifier_value,
             contributor_name,
@@ -151,6 +154,7 @@ impl PublicationPost {
             title: title.trim().to_string(),
             publisher: publisher.trim().to_string(),
             year: year.trim().to_string(),
+            stars: stars.trim().to_string(),
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
             contributors: contributors(contributor_name, contributor_role),
@@ -373,6 +377,7 @@ mod tests {
                 title: "Album".into(),
                 publisher: String::new(),
                 year: String::new(),
+                stars: String::new(),
                 identifier_kind: Vec::new(),
                 identifier_value: Vec::new(),
                 contributor_name: Vec::new(),

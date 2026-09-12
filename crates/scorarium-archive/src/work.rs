@@ -20,6 +20,7 @@ pub struct WorkRawInput {
     pub key: String,
     pub time_signature: String,
     pub instrumentation: String,
+    pub stars: String,
     pub contributors: Vec<ContributorInput>,
     pub catalog_numbers: Vec<String>,
 }
@@ -32,6 +33,7 @@ pub struct WorkInput {
     pub(crate) key: Option<String>,
     pub(crate) time_signature: Option<String>,
     pub(crate) instrumentation: Option<String>,
+    pub(crate) stars: Option<i64>,
     pub(crate) contributors: Vec<ContributorInput>,
     pub(crate) catalog_numbers: Vec<CatalogNumber>,
 }
@@ -39,6 +41,7 @@ pub struct WorkInput {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct WorkErrors {
     pub title: Option<ValidationError>,
+    pub stars: Option<ValidationError>,
     /// One slot per contributor, empty when they all passed
     pub contributors: Vec<Option<ValidationError>>,
     /// One slot per catalog number, empty when they all passed
@@ -48,6 +51,7 @@ pub struct WorkErrors {
 impl WorkErrors {
     pub fn is_empty(&self) -> bool {
         self.title.is_none()
+            && self.stars.is_none()
             && self.contributors.iter().all(Option::is_none)
             && self.catalog_numbers.iter().all(Option::is_none)
     }
@@ -61,8 +65,16 @@ impl WorkRawInput {
         let title = self.title.trim();
         let mut errors = WorkErrors {
             title: title.is_empty().then_some(ValidationError::TitleRequired),
+            stars: None,
             contributors: Vec::new(),
             catalog_numbers: Vec::new(),
+        };
+        let stars = match input::parse_stars(&self.stars) {
+            Ok(stars) => stars,
+            Err(error) => {
+                errors.stars = Some(error);
+                None
+            }
         };
         let contributors = match input::parse_contributors(&self.contributors) {
             Ok(contributors) => contributors,
@@ -87,6 +99,7 @@ impl WorkRawInput {
             key: input::trimmed_or_none(&self.key),
             time_signature: input::trimmed_or_none(&self.time_signature),
             instrumentation: input::trimmed_or_none(&self.instrumentation),
+            stars,
             contributors,
             catalog_numbers,
         })
@@ -104,6 +117,7 @@ pub struct Work {
     pub key: Option<String>,
     pub time_signature: Option<String>,
     pub instrumentation: Option<String>,
+    pub stars: Option<i64>,
     /// In the order they were entered
     pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
@@ -124,6 +138,7 @@ fn changed_fields(old: &Work, new: &Work) -> Vec<Field> {
             WorkChange::Key(_) => Field::Key,
             WorkChange::TimeSignature(_) => Field::TimeSignature,
             WorkChange::Instrumentation(_) => Field::Instrumentation,
+            WorkChange::Stars(_) => Field::Stars,
             WorkChange::CatalogNumbers(_) => Field::CatalogNumbers,
             WorkChange::Contributors(_) => Field::Contributors,
         })
@@ -155,6 +170,10 @@ impl Work {
             key: self.key.clone().unwrap_or_default(),
             time_signature: self.time_signature.clone().unwrap_or_default(),
             instrumentation: self.instrumentation.clone().unwrap_or_default(),
+            stars: self
+                .stars
+                .map(|stars| stars.to_string())
+                .unwrap_or_default(),
             contributors: self
                 .contributors
                 .iter()
@@ -204,12 +223,13 @@ impl Work {
             )
             .await?;
         let result = sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?, stars = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.key,
             input.time_signature,
             input.instrumentation,
+            input.stars,
             self.library_id,
             self.id
         )
@@ -274,7 +294,7 @@ pub(crate) async fn load_works(
     publication_id: Option<i64>,
 ) -> crate::Result<Vec<Work>> {
     let mut works: Vec<Work> = sqlx::query!(
-        "SELECT id, library_id, title, \"key\", time_signature, instrumentation FROM work
+        "SELECT id, library_id, title, \"key\", time_signature, instrumentation, stars FROM work
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
@@ -293,6 +313,7 @@ pub(crate) async fn load_works(
         key: row.key,
         time_signature: row.time_signature,
         instrumentation: row.instrumentation,
+        stars: row.stars,
         catalog_numbers: Vec::new(),
         contributors: Vec::new(),
         archive: shared.clone(),
@@ -409,12 +430,13 @@ pub(crate) async fn create_work_in_publication(
     input: &WorkInput,
 ) -> crate::Result<i64> {
     let created = sqlx::query!(
-        "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation, stars) VALUES (?, ?, ?, ?, ?, ?)",
         library_id,
         input.title,
         input.key,
         input.time_signature,
         input.instrumentation,
+        input.stars,
     )
     .execute(&mut **audited)
     .await?;
@@ -467,12 +489,13 @@ pub(crate) async fn write_publication_works(
             continue;
         };
         sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?, stars = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.key,
             input.time_signature,
             input.instrumentation,
+            input.stars,
             library_id,
             work_id
         )
@@ -516,7 +539,7 @@ pub(crate) async fn merge_works(
     into: i64,
 ) -> crate::Result<()> {
     let source = sqlx::query!(
-        "SELECT \"key\", time_signature, instrumentation FROM work WHERE library_id = ? AND id = ?",
+        "SELECT \"key\", time_signature, instrumentation, stars FROM work WHERE library_id = ? AND id = ?",
         library_id,
         from
     )
@@ -524,11 +547,12 @@ pub(crate) async fn merge_works(
     .await?;
     sqlx::query!(
         "UPDATE work SET \"key\" = COALESCE(\"key\", ?), time_signature = COALESCE(time_signature, ?),
-             instrumentation = COALESCE(instrumentation, ?)
+             instrumentation = COALESCE(instrumentation, ?), stars = COALESCE(stars, ?)
          WHERE library_id = ? AND id = ?",
         source.key,
         source.time_signature,
         source.instrumentation,
+        source.stars,
         library_id,
         into
     )
@@ -718,6 +742,7 @@ mod tests {
     #[test]
     fn parse_reports_every_problem() {
         let raw = WorkRawInput {
+            stars: "0".into(),
             contributors: vec![
                 contributor("Erik Satie", ""),
                 contributor("Erik Satie", "composer"),
@@ -731,6 +756,7 @@ mod tests {
             raw.parse().unwrap_err(),
             WorkErrors {
                 title: Some(ValidationError::TitleRequired),
+                stars: Some(ValidationError::StarsInvalid),
                 contributors: vec![
                     Some(ValidationError::RoleRequired),
                     None,
@@ -754,6 +780,7 @@ mod tests {
             key: String::new(),
             time_signature: "3/4".into(),
             instrumentation: "piano".into(),
+            stars: "5".into(),
             contributors: vec![contributor(" Erik Satie ", "composer")],
             catalog_numbers: vec![" BWV 988 ".into()],
         };
@@ -769,6 +796,7 @@ mod tests {
                 key: None,
                 time_signature: Some("3/4".into()),
                 instrumentation: Some("piano".into()),
+                stars: Some(5),
                 contributors: vec![contributor("Erik Satie", "composer")],
                 catalog_numbers: vec![CatalogNumber::parse("BWV 988")],
             }

@@ -18,6 +18,7 @@ pub struct PublicationRawInput {
     pub title: String,
     pub publisher: String,
     pub year: String,
+    pub stars: String,
     pub holdings: Vec<HoldingRawInput>,
     pub identifiers: Vec<IdentifierRawInput>,
     pub contributors: Vec<ContributorInput>,
@@ -30,6 +31,7 @@ pub struct PublicationInput {
     pub(crate) title: String,
     pub(crate) publisher: Option<String>,
     pub(crate) year: Option<i64>,
+    pub(crate) stars: Option<i64>,
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
@@ -40,6 +42,7 @@ pub struct PublicationInput {
 pub struct PublicationErrors {
     pub title: Option<ValidationError>,
     pub year: Option<ValidationError>,
+    pub stars: Option<ValidationError>,
     pub holdings: HoldingErrors,
     /// One per identifier, empty when they all passed
     pub identifiers: Vec<Option<ValidationError>>,
@@ -53,6 +56,7 @@ impl PublicationErrors {
     pub fn is_empty(&self) -> bool {
         self.title.is_none()
             && self.year.is_none()
+            && self.stars.is_none()
             && self.holdings.is_empty()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
@@ -77,6 +81,13 @@ impl PublicationRawInput {
                     None
                 }
             },
+        };
+        let stars = match input::parse_stars(&self.stars) {
+            Ok(stars) => stars,
+            Err(error) => {
+                errors.stars = Some(error);
+                None
+            }
         };
         let holdings = match holding::parse_holdings(&self.holdings) {
             Ok(holdings) => holdings,
@@ -118,6 +129,7 @@ impl PublicationRawInput {
             title: title.to_string(),
             publisher: input::trimmed_or_none(&self.publisher),
             year,
+            stars,
             holdings,
             identifiers,
             contributors,
@@ -136,6 +148,7 @@ pub struct Publication {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
+    pub stars: Option<i64>,
     pub identifiers: Vec<Identifier>,
     /// In link order
     pub contributors: Vec<Contributor>,
@@ -155,6 +168,7 @@ fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
             PublicationChange::Title(_) => Field::Title,
             PublicationChange::Publisher(_) => Field::Publisher,
             PublicationChange::Year(_) => Field::Year,
+            PublicationChange::Stars(_) => Field::Stars,
             PublicationChange::Identifiers(_) => Field::Identifiers,
             PublicationChange::Contributors(_) => Field::Contributors,
             PublicationChange::Holdings(_) => Field::Holdings,
@@ -181,6 +195,10 @@ impl Publication {
             title: self.title.clone(),
             publisher: self.publisher.clone().unwrap_or_default(),
             year: self.year.map(|year| year.to_string()).unwrap_or_default(),
+            stars: self
+                .stars
+                .map(|stars| stars.to_string())
+                .unwrap_or_default(),
             holdings: self
                 .holdings
                 .iter()
@@ -231,11 +249,12 @@ impl Publication {
             )
             .await?;
         let result = sqlx::query!(
-            "UPDATE publication SET title = ?, publisher = ?, year = ?
+            "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.publisher,
             input.year,
+            input.stars,
             self.library_id,
             self.id
         )
@@ -341,7 +360,7 @@ pub(crate) async fn load_publications(
     person_id: Option<i64>,
 ) -> crate::Result<Vec<Publication>> {
     let mut publications: Vec<Publication> = sqlx::query!(
-        "SELECT id, library_id, title, publisher, year FROM publication
+        "SELECT id, library_id, title, publisher, year, stars FROM publication
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
@@ -364,6 +383,7 @@ pub(crate) async fn load_publications(
         title: row.title,
         publisher: row.publisher,
         year: row.year,
+        stars: row.stars,
         identifiers: Vec::new(),
         contributors: Vec::new(),
         holdings: Vec::new(),
@@ -483,11 +503,12 @@ pub(crate) async fn create_publication(
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
     let created = sqlx::query!(
-        "INSERT INTO publication (library_id, title, publisher, year) VALUES (?, ?, ?, ?)",
+        "INSERT INTO publication (library_id, title, publisher, year, stars) VALUES (?, ?, ?, ?, ?)",
         library_id,
         input.title,
         input.publisher,
         input.year,
+        input.stars,
     )
     .execute(&mut **audited)
     .await?;
@@ -583,6 +604,7 @@ mod tests {
     fn parse_reports_every_problem() {
         let raw = PublicationRawInput {
             year: "abc".into(),
+            stars: "6".into(),
             holdings: vec![holding(HoldingKind::Digital, "")],
             identifiers: vec![
                 isbn("978-1-4950-0871-0"),
@@ -618,6 +640,7 @@ mod tests {
             PublicationErrors {
                 title: Some(ValidationError::TitleRequired),
                 year: Some(ValidationError::YearNotANumber),
+                stars: Some(ValidationError::StarsInvalid),
                 holdings: HoldingErrors {
                     none: None,
                     each: vec![Some(ValidationError::FileRequired)],
@@ -640,9 +663,8 @@ mod tests {
                 ],
                 contents: vec![
                     WorkErrors {
-                        title: None,
                         contributors: vec![Some(ValidationError::NameRequired)],
-                        catalog_numbers: Vec::new(),
+                        ..WorkErrors::default()
                     },
                     WorkErrors::default(),
                 ],
@@ -674,6 +696,7 @@ mod tests {
             title: "  Three gymnopedies  ".into(),
             publisher: String::new(),
             year: " 1888 ".into(),
+            stars: "4".into(),
             holdings: vec![holding(HoldingKind::Physical, "")],
             identifiers: vec![isbn("0-486-23134-8")],
             contributors: vec![contributor("Erik Satie", "composer")],
@@ -688,6 +711,7 @@ mod tests {
         assert_eq!(input.title, "Three gymnopedies");
         assert_eq!(input.publisher, None);
         assert_eq!(input.year, Some(1888));
+        assert_eq!(input.stars, Some(4));
         assert_eq!(
             input.holdings,
             [HoldingInput {

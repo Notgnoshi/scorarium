@@ -224,6 +224,7 @@ async fn publication_edit_flow() {
             ("title", "Practical Vim"),
             ("publisher", "Pragmatic Bookshelf"),
             ("year", "2015"),
+            ("stars", "4"),
             ("holding_id_0", &shelf.to_string()),
             ("holding_id_1", ""),
             ("holding_kind_0", "physical"),
@@ -256,6 +257,7 @@ async fn publication_edit_flow() {
     assert_eq!(stored.title, "Practical Vim");
     assert_eq!(stored.publisher.as_deref(), Some("Pragmatic Bookshelf"));
     assert_eq!(stored.year, Some(2015));
+    assert_eq!(stored.stars, Some(4));
     assert_eq!(
         stored
             .holdings
@@ -309,6 +311,23 @@ async fn publication_edit_flow() {
 
     let response = server.get(&edit).await;
     response.assert_text_contains("value=\"Op. 1\"");
+
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Practical Vim"),
+            ("publisher", "Pragmatic Bookshelf"),
+            ("year", "2015"),
+            ("stars", ""),
+            ("holding_id_0", &shelf.to_string()),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let stored = library.publication(publication).await.unwrap().unwrap();
+    assert_eq!(stored.stars, None);
 
     // Removing the last copy is what the delete dialog warns about, so the form says so up front
     let response = server.get(&edit).await;
