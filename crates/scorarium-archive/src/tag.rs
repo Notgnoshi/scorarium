@@ -21,6 +21,20 @@ pub(crate) fn parse_tags(field: &str) -> Result<Vec<String>, ValidationError> {
     Ok(tags)
 }
 
+/// Every distinct tag in the library, alphabetically, for the tag field's suggestions.
+pub(crate) async fn list_vocabulary(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+) -> crate::Result<Vec<String>> {
+    let tags = sqlx::query_scalar!(
+        "SELECT DISTINCT tag FROM tag WHERE library_id = ? ORDER BY tag",
+        library_id
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(tags)
+}
+
 /// Every tag on a library's publications, as (publication_id, tag), alphabetically.
 pub(crate) async fn publication_tags(
     conn: &mut SqliteConnection,

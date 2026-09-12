@@ -8,7 +8,9 @@ use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::work::{self, CatalogNumberEntry, Work};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
+use crate::{
+    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source, tag,
+};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -246,6 +248,12 @@ impl Library {
     pub async fn person_names(&self) -> Result<Vec<String>> {
         let mut conn = self.archive.acquire_read().await?;
         person::list_person_names(&mut conn, self.id).await
+    }
+
+    /// Every distinct tag in the library, alphabetically, for the tag field's suggestions
+    pub async fn tag_vocabulary(&self) -> Result<Vec<String>> {
+        let mut conn = self.archive.acquire_read().await?;
+        tag::list_vocabulary(&mut conn, self.id).await
     }
 }
 

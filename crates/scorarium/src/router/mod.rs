@@ -278,6 +278,7 @@ pub struct FormFields {
     // Datalist suggestions for the role and name inputs
     pub roles: Vec<String>,
     pub names: Vec<String>,
+    pub tag_vocabulary: Vec<String>,
     pub no_copies_warning: String,
     pub work_edit: WorkEdit,
 }
@@ -288,7 +289,7 @@ impl FormFields {
         input: PublicationRawInput,
         errors: PublicationErrors,
     ) -> Result<Self, AppError> {
-        let (roles, names) = suggestions(library).await?;
+        let (roles, names, tag_vocabulary) = suggestions(library).await?;
         Ok(Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
@@ -299,6 +300,7 @@ impl FormFields {
             work_edit: WorkEdit::default(),
             roles,
             names,
+            tag_vocabulary,
             input,
             errors,
         })
@@ -333,6 +335,7 @@ pub struct WorkFields {
     pub catalog_numbers: Vec<ShownCatalogNumber>,
     pub roles: Vec<String>,
     pub names: Vec<String>,
+    pub tag_vocabulary: Vec<String>,
 }
 
 impl WorkFields {
@@ -341,12 +344,13 @@ impl WorkFields {
         input: WorkRawInput,
         errors: WorkErrors,
     ) -> Result<Self, AppError> {
-        let (roles, names) = suggestions(library).await?;
+        let (roles, names, tag_vocabulary) = suggestions(library).await?;
         Ok(Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             roles,
             names,
+            tag_vocabulary,
             input,
             errors,
         })
@@ -368,8 +372,10 @@ fn shown_catalog_numbers(
         .collect()
 }
 
-/// Datalist suggestions for the role and name inputs, as (roles, names).
-async fn suggestions(library: &Library) -> Result<(Vec<String>, Vec<String>), AppError> {
+/// Suggestions the forms offer, as (roles, names, tags).
+async fn suggestions(
+    library: &Library,
+) -> Result<(Vec<String>, Vec<String>, Vec<String>), AppError> {
     let roles = library
         .roles()
         .await?
@@ -378,7 +384,11 @@ async fn suggestions(library: &Library) -> Result<(Vec<String>, Vec<String>), Ap
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    Ok((roles, library.person_names().await?))
+    Ok((
+        roles,
+        library.person_names().await?,
+        library.tag_vocabulary().await?,
+    ))
 }
 
 fn shown_holdings(

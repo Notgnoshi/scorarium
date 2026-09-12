@@ -35,10 +35,9 @@ impl Display for ValidationError {
             ValidationError::UnknownIdentifierKind => write!(f, "Unknown identifier kind."),
             ValidationError::InvalidIdentifier(err) => write!(f, "{err}"),
             ValidationError::StarsInvalid => write!(f, "A rating is 1 to 5 stars."),
-            ValidationError::InvalidTag(tag) => write!(
-                f,
-                "'{tag}' has invalid characters. Use [a-zA-Z0-9_-]"
-            ),
+            ValidationError::InvalidTag(tag) => {
+                write!(f, "'{tag}' has invalid characters. Use [a-zA-Z0-9_-]")
+            }
         }
     }
 }
