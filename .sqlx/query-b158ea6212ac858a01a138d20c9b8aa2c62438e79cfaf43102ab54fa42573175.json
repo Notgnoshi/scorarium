@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT publication_id AS \"publication_id!\", tag FROM tag\n           WHERE library_id = ? AND publication_id IS NOT NULL\n           ORDER BY tag",
+  "describe": {
+    "columns": [
+      {
+        "name": "publication_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "tag",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "tag"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "b158ea6212ac858a01a138d20c9b8aa2c62438e79cfaf43102ab54fa42573175"
+}

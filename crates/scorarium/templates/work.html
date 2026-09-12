@@ -1,7 +1,19 @@
 {% extends "base.html" %}
 {% import "catalog.html" as catalog %}
+{% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% block content %}
-    <h1>{{ work.title }}</h1>
+    {% call stars::style() %}
+    {% endcall %}
+    <h1>
+        {{ work.title }}
+        {% if base.logged_in %}
+            <span class="fs-5 align-middle">
+                {% call stars::show(work.stars.unwrap_or_default()) %}
+                {% endcall %}
+            </span>
+        {% endif %}
+    </h1>
     {% if base.logged_in %}
         <a class="btn btn-outline-secondary btn-sm mb-3"
            href="/library/{{ work.library_id }}/work/{{ work.id }}/edit">
@@ -42,19 +54,45 @@
             </dd>
         {% endif %}
     </dl>
+    {% if base.logged_in %}
+        {% if !work.tags.is_empty() %}
+            <p>
+                {% call tags::badges(work.library_id, work.tags) %}
+                {% endcall %}
+            </p>
+        {% endif %}
+        {% if let Some(note) = work.note %}
+            <h2>Notes</h2>
+            {{ note|paragraphbreaks }}
+        {% endif %}
+    {% endif %}
     <h2>Publications</h2>
     <table class="table table-hover">
         <thead>
             <tr>
                 <th>Title</th>
-                <th>Copies</th>
+                {% if base.logged_in %}
+                    <th>Copies</th>
+                    <th>Stars</th>
+                    <th>Tags</th>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
             {% for p in publications %}
                 <tr>
                     <td><a href="/library/{{ p.library_id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
-                    <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>{% if let Some(location) = h.location %} {{ location }}{% endif %} {% endfor %}</td>
+                    {% if base.logged_in %}
+                        <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span>{% if let Some(location) = h.location %} {{ location }}{% endif %} {% endfor %}</td>
+                        <td>
+                            {% call stars::show(p.stars.unwrap_or_default()) %}
+                            {% endcall %}
+                        </td>
+                        <td>
+                            {% call tags::badges(p.library_id, p.tags) %}
+                            {% endcall %}
+                        </td>
+                    {% endif %}
                 </tr>
             {% endfor %}
         </tbody>

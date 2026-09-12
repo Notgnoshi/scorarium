@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT note FROM work WHERE library_id = ? AND id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "note",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "615652f95826a9e8bbcb8b7e57a4fc1cf222552257d8cb61e7af313387f06035"
+}

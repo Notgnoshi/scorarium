@@ -20,6 +20,11 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             title: "Practical Vim".into(),
             publisher: Some("Pragmatic Bookshelf".into()),
             year: Some(2015),
+            stars: Some(5),
+            note: Some(
+                "The chapter on the dot command is the one to reread.\n\nLent to Sam once".into(),
+            ),
+            tags: vec!["editor".into(), "reference".into()],
             holdings: vec![physical(Some("Desk"))],
             identifiers: vec![normalized(Kind::Isbn, "978-1-68050-127-8")?],
             contributors: vec![contributor("Drew Neil", "author")],
@@ -32,6 +37,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             title: "Pro Git".into(),
             publisher: Some("Apress".into()),
             year: Some(2014),
+            stars: Some(3),
+            note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None), digital("pro-git.pdf")],
             identifiers: vec![normalized(Kind::Isbn, "978-1-4842-0077-3")?],
             contributors: vec![
@@ -48,6 +56,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             title: "The Collected Writings of Ambrose Bierce".into(),
             publisher: Some("Citadel Press".into()),
             year: Some(1979),
+            stars: None,
+            note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-8065-0180-4")?],
             contributors: vec![contributor(BIERCE, "author")],
@@ -72,11 +83,24 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     .map(|name| contributor(name, "composer"))
     .collect();
     composers.push(contributor(RACHMANINOFF, "composer"));
+    let mut prelude = piano_piece(
+        "Prelude in C-sharp minor",
+        "C-sharp minor",
+        None,
+        &["Op. 3 No. 2"],
+    );
+    prelude.stars = Some(5);
+    prelude.note = Some("The big chords at the end need the whole arm, not the fingers.".into());
+    // Shared with its publication below, so browsing a tag has a case that spans both kinds
+    prelude.tags = vec!["learning".into(), "russian".into()];
     let russian_album = sheet_music
         .create_publication(&PublicationInput {
             title: "Russian piano album".into(),
             publisher: Some("Schirmer".into()),
             year: None,
+            stars: Some(4),
+            note: None,
+            tags: vec!["anthology".into(), "russian".into()],
             holdings: vec![physical(None)],
             identifiers: vec![
                 normalized(Kind::Isbn, "978-1-4950-0871-9")?,
@@ -84,12 +108,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             ],
             contributors: composers,
             contents: vec![
-                piano_piece(
-                    "Prelude in C-sharp minor",
-                    "C-sharp minor",
-                    None,
-                    &["Op. 3 No. 2"],
-                ),
+                prelude,
                 piano_piece("Etude-Tableau", "A minor", None, &["Op. 39 No. 2"]),
             ],
         })
@@ -100,6 +119,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             title: "Rachmaninoff masterpieces for solo piano".into(),
             publisher: Some("Dover".into()),
             year: None,
+            stars: None,
+            note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-486-43122-3")?],
             contributors: vec![contributor(RACHMANINOFF, "composer")],
@@ -117,11 +139,16 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     tone_poem
         .contributors
         .push(contributor("Georgy Kirkor", "arranger"));
+    tone_poem.stars = Some(4);
+    tone_poem.tags = vec!["transcription".into(), "want-to-learn".into()];
     sheet_music
         .create_publication(&PublicationInput {
             title: "The Isle of the Dead".into(),
             publisher: Some("State Music Publishers".into()),
             year: None,
+            stars: None,
+            note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::PlateNumber, "M 26277")?],
             contributors: vec![
@@ -137,6 +164,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             title: "Three gymnopedies for the piano".into(),
             publisher: Some("Schirmer".into()),
             year: None,
+            stars: Some(4),
+            note: None,
+            tags: Vec::new(),
             holdings: vec![physical(Some("Piano bench"))],
             identifiers: vec![
                 normalized(Kind::Isbn, "978-0-7935-2590-4")?,
@@ -205,6 +235,9 @@ fn piano_piece(
         key: Some(key.into()),
         time_signature: time_signature.map(str::to_string),
         instrumentation: Some("piano".into()),
+        stars: None,
+        note: None,
+        tags: Vec::new(),
         contributors: vec![contributor(RACHMANINOFF, "composer")],
         catalog_numbers: catalog_numbers
             .iter()
@@ -220,6 +253,12 @@ fn gymnopedie(number: usize, key: &str) -> WorkInput {
         key: Some(key.into()),
         time_signature: Some("3/4".into()),
         instrumentation: Some("piano".into()),
+        stars: (number == 1).then_some(5),
+        note: None,
+        tags: match number {
+            1 => vec!["memorized".into()],
+            _ => vec!["want-to-learn".into()],
+        },
         contributors: vec![contributor(SATIE, "composer")],
         catalog_numbers: Vec::new(),
     }
@@ -233,6 +272,9 @@ fn writing(title: &str) -> WorkInput {
         key: None,
         time_signature: None,
         instrumentation: None,
+        stars: None,
+        note: None,
+        tags: Vec::new(),
         contributors: vec![contributor(BIERCE, "author")],
         catalog_numbers: Vec::new(),
     }

@@ -13,6 +13,7 @@ mod library;
 mod password;
 mod person;
 mod publication;
+mod tag;
 mod work;
 
 use std::collections::HashMap;
@@ -38,6 +39,7 @@ pub use crate::person::{Contributor, Person};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
+pub use crate::tag::TagCount;
 pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;

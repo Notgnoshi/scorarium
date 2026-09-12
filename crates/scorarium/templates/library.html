@@ -1,5 +1,9 @@
 {% extends "base.html" %}
+{% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% block content %}
+    {% call stars::style() %}
+    {% endcall %}
     <h1>{{ library.name }}</h1>
     <div class="table-responsive">
         <table class="table table-hover">
@@ -8,7 +12,11 @@
                     <th>Title</th>
                     <th>People</th>
                     <th>Year</th>
-                    <th>Copies</th>
+                    {% if base.logged_in %}
+                        <th>Copies</th>
+                        <th>Stars</th>
+                        <th>Tags</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -17,7 +25,17 @@
                         <td><a href="/library/{{ library.id }}/publication/{{ p.id }}">{{ p.title }}</a></td>
                         <td>{% for c in p.contributors %}{% if !loop.first %}, {% endif %}<a href="/library/{{ library.id }}/person/{{ c.person_id }}">{{ c.name }}</a>{% endfor %}</td>
                         <td>{% if let Some(year) = p.year %}{{ year }}{% endif %}</td>
-                        <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {% endfor %}</td>
+                        {% if base.logged_in %}
+                            <td>{% for h in p.holdings %}<span class="badge text-bg-secondary">{{ h.kind.as_str() }}</span> {% endfor %}</td>
+                            <td>
+                                {% call stars::show(p.stars.unwrap_or_default()) %}
+                                {% endcall %}
+                            </td>
+                            <td>
+                                {% call tags::badges(library.id, p.tags) %}
+                                {% endcall %}
+                            </td>
+                        {% endif %}
                     </tr>
                 {% endfor %}
             </tbody>
@@ -25,6 +43,7 @@
     </div>
     {% if has_composers %}<a href="/library/{{ library.id }}/composers">Composers</a>{% endif %}
     {% if has_authors %}<a href="/library/{{ library.id }}/authors">Authors</a>{% endif %}
+    {% if base.logged_in && has_tags %}<a href="/library/{{ library.id }}/tags">Tags</a>{% endif %}
     {% if base.logged_in %}
         <div class="d-flex gap-2">
             <a class="btn btn-primary" href="/library/{{ library.id }}/import">Import</a>

@@ -17,6 +17,8 @@ pub enum ValidationError {
     FileRequired,
     UnknownIdentifierKind,
     InvalidIdentifier(identifier::Error),
+    StarsInvalid,
+    InvalidTag(String),
 }
 
 impl Display for ValidationError {
@@ -32,6 +34,10 @@ impl Display for ValidationError {
             ValidationError::FileRequired => write!(f, "Choose a file for a digital copy."),
             ValidationError::UnknownIdentifierKind => write!(f, "Unknown identifier kind."),
             ValidationError::InvalidIdentifier(err) => write!(f, "{err}"),
+            ValidationError::StarsInvalid => write!(f, "A rating is 1 to 5 stars."),
+            ValidationError::InvalidTag(tag) => {
+                write!(f, "'{tag}' has invalid characters. Use [a-zA-Z0-9_-]")
+            }
         }
     }
 }
@@ -108,6 +114,17 @@ pub(crate) fn parse_catalog_numbers(
         Ok(numbers)
     } else {
         Err(errors)
+    }
+}
+
+/// Check a rating, which a publication and a work each carry
+pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
+    match raw.trim() {
+        "" => Ok(None),
+        stars => match stars.parse::<i64>() {
+            Ok(stars) if (1..=5).contains(&stars) => Ok(Some(stars)),
+            _ => Err(ValidationError::StarsInvalid),
+        },
     }
 }
 

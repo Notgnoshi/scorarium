@@ -1,5 +1,11 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
+{% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
+{% call stars::style() %}
+{% endcall %}
+{% call tags::style() %}
+{% endcall %}
 <div>
     <div class="mb-3">
         <label class="form-label" for="title">Title</label>
@@ -32,6 +38,14 @@
                name="instrumentation"
                placeholder="piano"
                value="{{ fields.input.instrumentation }}" />
+    </div>
+    {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
+    {% endcall %}
+    {% call tags::input(fields.input.tags.as_str(), fields.tag_vocabulary, fields.errors.tags) %}
+    {% endcall %}
+    <div class="mb-3">
+        <label class="form-label" for="note">Notes</label>
+        <textarea class="form-control" id="note" name="note" rows="4">{{ fields.input.note }}</textarea>
     </div>
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Catalog numbers</legend>
@@ -81,4 +95,8 @@
 {% call rows::script() %}
 {% endcall %}
 {% call catalog::script() %}
+{% endcall %}
+{% call stars::script() %}
+{% endcall %}
+{% call tags::script() %}
 {% endcall %}

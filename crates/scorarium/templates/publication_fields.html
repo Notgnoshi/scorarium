@@ -1,9 +1,15 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
 {% import "toggle.html" as toggle %}
+{% import "stars.html" as stars %}
+{% import "tags.html" as tags %}
 {% call rows::style() %}
 {% endcall %}
 {% call toggle::style() %}
+{% endcall %}
+{% call stars::style() %}
+{% endcall %}
+{% call tags::style() %}
 {% endcall %}
 <div data-publication-fields>
     <div class="mb-3">
@@ -29,6 +35,14 @@
                inputmode="numeric"
                value="{{ fields.input.year }}" />
         {% if let Some(error) = fields.errors.year %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+    {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
+    {% endcall %}
+    {% call tags::input(fields.input.tags.as_str(), fields.tag_vocabulary, fields.errors.tags) %}
+    {% endcall %}
+    <div class="mb-3">
+        <label class="form-label" for="note">Notes</label>
+        <textarea class="form-control" id="note" name="note" rows="4">{{ fields.input.note }}</textarea>
     </div>
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
@@ -142,6 +156,10 @@
 {% call rows::script() %}
 {% endcall %}
 {% call catalog::script() %}
+{% endcall %}
+{% call stars::script() %}
+{% endcall %}
+{% call tags::script() %}
 {% endcall %}
 <script>
     // Seed the new work's contributor role with "composer" or "author" based on what the owning

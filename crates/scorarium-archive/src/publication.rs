@@ -10,7 +10,9 @@ use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
+use crate::{
+    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -18,6 +20,9 @@ pub struct PublicationRawInput {
     pub title: String,
     pub publisher: String,
     pub year: String,
+    pub stars: String,
+    pub note: String,
+    pub tags: String,
     pub holdings: Vec<HoldingRawInput>,
     pub identifiers: Vec<IdentifierRawInput>,
     pub contributors: Vec<ContributorInput>,
@@ -30,6 +35,9 @@ pub struct PublicationInput {
     pub(crate) title: String,
     pub(crate) publisher: Option<String>,
     pub(crate) year: Option<i64>,
+    pub(crate) stars: Option<i64>,
+    pub(crate) note: Option<String>,
+    pub(crate) tags: Vec<String>,
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
@@ -40,6 +48,8 @@ pub struct PublicationInput {
 pub struct PublicationErrors {
     pub title: Option<ValidationError>,
     pub year: Option<ValidationError>,
+    pub stars: Option<ValidationError>,
+    pub tags: Option<ValidationError>,
     pub holdings: HoldingErrors,
     /// One per identifier, empty when they all passed
     pub identifiers: Vec<Option<ValidationError>>,
@@ -53,6 +63,8 @@ impl PublicationErrors {
     pub fn is_empty(&self) -> bool {
         self.title.is_none()
             && self.year.is_none()
+            && self.stars.is_none()
+            && self.tags.is_none()
             && self.holdings.is_empty()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
@@ -62,7 +74,7 @@ impl PublicationErrors {
 
 impl PublicationRawInput {
     /// Parse, validate, and convert the input
-    pub fn parse(&self) -> Result<PublicationInput, PublicationErrors> {
+    pub fn parse(&self) -> Result<PublicationInput, Box<PublicationErrors>> {
         let mut errors = PublicationErrors::default();
         let title = self.title.trim();
         if title.is_empty() {
@@ -77,6 +89,20 @@ impl PublicationRawInput {
                     None
                 }
             },
+        };
+        let stars = match input::parse_stars(&self.stars) {
+            Ok(stars) => stars,
+            Err(error) => {
+                errors.stars = Some(error);
+                None
+            }
+        };
+        let tags = match tag::parse_tags(&self.tags) {
+            Ok(tags) => tags,
+            Err(error) => {
+                errors.tags = Some(error);
+                Vec::new()
+            }
         };
         let holdings = match holding::parse_holdings(&self.holdings) {
             Ok(holdings) => holdings,
@@ -112,12 +138,15 @@ impl PublicationRawInput {
         }
 
         if !errors.is_empty() {
-            return Err(errors);
+            return Err(Box::new(errors));
         }
         Ok(PublicationInput {
             title: title.to_string(),
             publisher: input::trimmed_or_none(&self.publisher),
             year,
+            stars,
+            note: input::trimmed_or_none(&self.note),
+            tags,
             holdings,
             identifiers,
             contributors,
@@ -136,6 +165,10 @@ pub struct Publication {
     pub title: String,
     pub publisher: Option<String>,
     pub year: Option<i64>,
+    pub stars: Option<i64>,
+    pub note: Option<String>,
+    /// Alphabetical
+    pub tags: Vec<String>,
     pub identifiers: Vec<Identifier>,
     /// In link order
     pub contributors: Vec<Contributor>,
@@ -155,6 +188,9 @@ fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
             PublicationChange::Title(_) => Field::Title,
             PublicationChange::Publisher(_) => Field::Publisher,
             PublicationChange::Year(_) => Field::Year,
+            PublicationChange::Stars(_) => Field::Stars,
+            PublicationChange::Note(_) => Field::Note,
+            PublicationChange::Tags(_) => Field::Tags,
             PublicationChange::Identifiers(_) => Field::Identifiers,
             PublicationChange::Contributors(_) => Field::Contributors,
             PublicationChange::Holdings(_) => Field::Holdings,
@@ -166,8 +202,15 @@ impl Publication {
     /// The works this publication contains, in the order they were added to it
     pub async fn works(&self) -> crate::Result<Vec<Work>> {
         let mut tx = self.archive.begin_read().await?;
-        let contents =
-            work::load_works(&self.archive, &mut tx, self.library_id, None, Some(self.id)).await?;
+        let contents = work::load_works(
+            &self.archive,
+            &mut tx,
+            self.library_id,
+            None,
+            Some(self.id),
+            None,
+        )
+        .await?;
         tx.commit().await?;
         Ok(contents)
     }
@@ -181,6 +224,12 @@ impl Publication {
             title: self.title.clone(),
             publisher: self.publisher.clone().unwrap_or_default(),
             year: self.year.map(|year| year.to_string()).unwrap_or_default(),
+            stars: self
+                .stars
+                .map(|stars| stars.to_string())
+                .unwrap_or_default(),
+            note: self.note.clone().unwrap_or_default(),
+            tags: self.tags.join(" "),
             holdings: self
                 .holdings
                 .iter()
@@ -231,11 +280,13 @@ impl Publication {
             )
             .await?;
         let result = sqlx::query!(
-            "UPDATE publication SET title = ?, publisher = ?, year = ?
+            "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.publisher,
             input.year,
+            input.stars,
+            input.note,
             self.library_id,
             self.id
         )
@@ -256,6 +307,7 @@ impl Publication {
             &mut audited,
             self.library_id,
             Some(self.id),
+            None,
             None,
             None,
         )
@@ -328,10 +380,11 @@ async fn contained_work_ids(
 }
 
 /// Load a library's publications with their children: all of them, just the one with `id`, those
-/// containing `work_id`, or those crediting `person_id` directly or through a contained work.
+/// containing `work_id`, those crediting `person_id` directly or through a contained work, or
+/// those carrying `tag`.
 ///
-/// The four reads run on the caller's transaction so they see one snapshot. Otherwise a child row
-/// of a publication created between the parent read and the child reads would have no parent here.
+/// The reads run on the caller's transaction so they see one snapshot. Otherwise a child row of a
+/// publication created between the parent read and the child reads would have no parent here.
 pub(crate) async fn load_publications(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
@@ -339,9 +392,10 @@ pub(crate) async fn load_publications(
     id: Option<i64>,
     work_id: Option<i64>,
     person_id: Option<i64>,
+    tag: Option<&str>,
 ) -> crate::Result<Vec<Publication>> {
     let mut publications: Vec<Publication> = sqlx::query!(
-        "SELECT id, library_id, title, publisher, year FROM publication
+        "SELECT id, library_id, title, publisher, year, stars, note FROM publication
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
@@ -349,11 +403,13 @@ pub(crate) async fn load_publications(
                 OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                 OR id IN (SELECT pw.publication_id FROM publication_work pw
                           JOIN work_contributor wc ON wc.work_id = pw.work_id
-                          WHERE wc.person_id = ?4))",
+                          WHERE wc.person_id = ?4))
+           AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5))",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?
@@ -364,6 +420,9 @@ pub(crate) async fn load_publications(
         title: row.title,
         publisher: row.publisher,
         year: row.year,
+        stars: row.stars,
+        note: row.note,
+        tags: Vec::new(),
         identifiers: Vec::new(),
         contributors: Vec::new(),
         holdings: Vec::new(),
@@ -387,12 +446,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -419,12 +480,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY c.id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -449,12 +512,14 @@ pub(crate) async fn load_publications(
                     OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
                     OR id IN (SELECT pw.publication_id FROM publication_work pw
                               JOIN work_contributor wc ON wc.work_id = pw.work_id
-                              WHERE wc.person_id = ?4)))
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
          ORDER BY id",
         library_id,
         id,
         work_id,
-        person_id
+        person_id,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;
@@ -467,6 +532,12 @@ pub(crate) async fn load_publications(
                 kind,
                 location: row.location,
             });
+    }
+
+    for (publication_id, tag) in tag::publication_tags(&mut *conn, library_id).await? {
+        if let Some(&i) = index.get(&publication_id) {
+            publications[i].tags.push(tag);
+        }
     }
 
     Ok(publications)
@@ -483,11 +554,14 @@ pub(crate) async fn create_publication(
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
     let created = sqlx::query!(
-        "INSERT INTO publication (library_id, title, publisher, year) VALUES (?, ?, ?, ?)",
+        "INSERT INTO publication (library_id, title, publisher, year, stars, note)
+         VALUES (?, ?, ?, ?, ?, ?)",
         library_id,
         input.title,
         input.publisher,
         input.year,
+        input.stars,
+        input.note,
     )
     .execute(&mut **audited)
     .await?;
@@ -496,7 +570,7 @@ pub(crate) async fn create_publication(
     for content in &input.contents {
         work::create_work_in_publication(audited, library_id, id, content).await?;
     }
-    let publication = load_publications(shared, audited, library_id, Some(id), None, None)
+    let publication = load_publications(shared, audited, library_id, Some(id), None, None, None)
         .await?
         .pop()
         .expect("the publication was just created on this transaction");
@@ -517,6 +591,7 @@ pub(crate) async fn write_publication_children(
     write_publication_contributors(&mut *conn, library_id, publication_id, &input.contributors)
         .await?;
     holding::write_holdings(&mut *conn, publication_id, &input.holdings).await?;
+    tag::write_publication_tags(&mut *conn, library_id, publication_id, &input.tags).await?;
     Ok(())
 }
 
@@ -583,6 +658,8 @@ mod tests {
     fn parse_reports_every_problem() {
         let raw = PublicationRawInput {
             year: "abc".into(),
+            stars: "6".into(),
+            tags: "Christmas!".into(),
             holdings: vec![holding(HoldingKind::Digital, "")],
             identifiers: vec![
                 isbn("978-1-4950-0871-0"),
@@ -614,10 +691,12 @@ mod tests {
             ..PublicationRawInput::default()
         };
         assert_eq!(
-            raw.parse().unwrap_err(),
+            *raw.parse().unwrap_err(),
             PublicationErrors {
                 title: Some(ValidationError::TitleRequired),
                 year: Some(ValidationError::YearNotANumber),
+                stars: Some(ValidationError::StarsInvalid),
+                tags: Some(ValidationError::InvalidTag("Christmas!".into())),
                 holdings: HoldingErrors {
                     none: None,
                     each: vec![Some(ValidationError::FileRequired)],
@@ -640,9 +719,8 @@ mod tests {
                 ],
                 contents: vec![
                     WorkErrors {
-                        title: None,
                         contributors: vec![Some(ValidationError::NameRequired)],
-                        catalog_numbers: Vec::new(),
+                        ..WorkErrors::default()
                     },
                     WorkErrors::default(),
                 ],
@@ -657,7 +735,7 @@ mod tests {
             ..PublicationRawInput::default()
         };
         assert_eq!(
-            raw.parse().unwrap_err(),
+            *raw.parse().unwrap_err(),
             PublicationErrors {
                 holdings: HoldingErrors {
                     none: Some(ValidationError::NoHoldings),
@@ -674,6 +752,9 @@ mod tests {
             title: "  Three gymnopedies  ".into(),
             publisher: String::new(),
             year: " 1888 ".into(),
+            stars: "4".into(),
+            note: "  \n ".into(),
+            tags: " Piano  duet ".into(),
             holdings: vec![holding(HoldingKind::Physical, "")],
             identifiers: vec![isbn("0-486-23134-8")],
             contributors: vec![contributor("Erik Satie", "composer")],
@@ -688,6 +769,9 @@ mod tests {
         assert_eq!(input.title, "Three gymnopedies");
         assert_eq!(input.publisher, None);
         assert_eq!(input.year, Some(1888));
+        assert_eq!(input.stars, Some(4));
+        assert_eq!(input.note, None);
+        assert_eq!(input.tags, ["piano", "duet"]);
         assert_eq!(
             input.holdings,
             [HoldingInput {

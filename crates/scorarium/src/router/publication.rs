@@ -109,7 +109,7 @@ pub async fn save(
             publication.update(&parsed).await?;
             Ok(Redirect::to(&format!("/library/{library_id}/publication/{id}")).into_response())
         }
-        Err(errors) => render_edit(base, library, publication, input, errors).await,
+        Err(errors) => render_edit(base, library, publication, input, *errors).await,
     }
 }
 

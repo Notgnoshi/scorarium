@@ -190,7 +190,7 @@ pub async fn review(
     let title = label(&import, &draft.input);
     // Errors show for saved drafts only; a fresh import should not open covered in warnings
     let errors = if draft.saved {
-        draft.input.parse().err().unwrap_or_default()
+        draft.input.parse().err().map(|e| *e).unwrap_or_default()
     } else {
         PublicationErrors::default()
     };

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation, stars, note)\n         VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "1279f159f56d64d325e40970ea2b0177c5f338dde84bf1cc21a9d249ac2d916e"
+}

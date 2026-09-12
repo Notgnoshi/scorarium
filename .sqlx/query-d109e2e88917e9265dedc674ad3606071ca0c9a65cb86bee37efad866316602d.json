@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET \"key\" = COALESCE(\"key\", ?), time_signature = COALESCE(time_signature, ?),\n             instrumentation = COALESCE(instrumentation, ?), stars = COALESCE(stars, ?), note = ?\n         WHERE library_id = ? AND id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "d109e2e88917e9265dedc674ad3606071ca0c9a65cb86bee37efad866316602d"
+}

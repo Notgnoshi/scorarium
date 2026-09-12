@@ -178,3 +178,40 @@ async fn library_crud_flow() {
     let response = server.post(&format!("/library/{id}/delete")).await;
     response.assert_status(StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn browsing_by_tag() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
+    let cloud = format!("/library/{}/tags", library.id);
+    let russian = format!("{cloud}/russian");
+    let server = browser(state);
+
+    // Everything about tags requires login, public library or not
+    for path in [cloud.as_str(), russian.as_str()] {
+        let response = server.get(path).await;
+        response.assert_status(StatusCode::SEE_OTHER);
+        response.assert_header("location", &format!("/login?back={path}"));
+    }
+
+    demo_login(&server).await;
+    let response = server.get(&cloud).await;
+    response.assert_status_ok();
+    response.assert_text_contains(format!("href=\"{russian}\""));
+
+    let response = server.get(&russian).await;
+    response.assert_status_ok();
+    response.assert_text_contains("Russian piano album");
+    response.assert_text_contains("Prelude in C-sharp minor");
+    assert_eq!(
+        response.text().matches("<tr>").count(),
+        // One heading and the two entities, which is the publication and the work together
+        3
+    );
+
+    // A tag nothing carries is not a page, which is also what an invalid slug gets
+    for path in [format!("{cloud}/unused"), format!("{cloud}/Christmas!")] {
+        server.get(&path).await.assert_status(StatusCode::NOT_FOUND);
+    }
+}

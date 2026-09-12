@@ -36,7 +36,12 @@ pub struct WorkPost {
     key: String,
     time_signature: String,
     instrumentation: String,
-    // `default` covers a submission with no contributors at all
+    #[serde(default)]
+    stars: String,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    tags: String,
     #[serde(default)]
     contributor_name: Vec<String>,
     #[serde(default)]
@@ -54,6 +59,9 @@ impl From<WorkPost> for WorkRawInput {
             key: post.key.trim().to_string(),
             time_signature: post.time_signature.trim().to_string(),
             instrumentation: post.instrumentation.trim().to_string(),
+            stars: post.stars.trim().to_string(),
+            note: post.note.trim().to_string(),
+            tags: post.tags.trim().to_string(),
             contributors: publication_post::contributors(
                 post.contributor_name,
                 post.contributor_role,
