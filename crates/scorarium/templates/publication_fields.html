@@ -37,6 +37,10 @@
     </div>
     {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
     {% endcall %}
+    <div class="mb-3">
+        <label class="form-label" for="note">Notes</label>
+        <textarea class="form-control" id="note" name="note" rows="4">{{ fields.input.note }}</textarea>
+    </div>
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Publication identifiers</legend>
         <div data-rows-list>

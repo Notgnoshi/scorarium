@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?, note = ?\n             WHERE library_id = ? AND id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "146ab9c6f72f9125645cee605b89957ef7c85215ce0d16cea9a88ef4dcb2807a"
+}

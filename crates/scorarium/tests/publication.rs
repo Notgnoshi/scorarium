@@ -225,6 +225,10 @@ async fn publication_edit_flow() {
             ("publisher", "Pragmatic Bookshelf"),
             ("year", "2015"),
             ("stars", "4"),
+            (
+                "note",
+                "Reread the dot command chapter.\n\nLent to Sam once.",
+            ),
             ("holding_id_0", &shelf.to_string()),
             ("holding_id_1", ""),
             ("holding_kind_0", "physical"),
@@ -258,6 +262,10 @@ async fn publication_edit_flow() {
     assert_eq!(stored.publisher.as_deref(), Some("Pragmatic Bookshelf"));
     assert_eq!(stored.year, Some(2015));
     assert_eq!(stored.stars, Some(4));
+    assert_eq!(
+        stored.note.as_deref(),
+        Some("Reread the dot command chapter.\n\nLent to Sam once.")
+    );
     assert_eq!(
         stored
             .holdings
@@ -319,6 +327,7 @@ async fn publication_edit_flow() {
             ("publisher", "Pragmatic Bookshelf"),
             ("year", "2015"),
             ("stars", ""),
+            ("note", "   \n  "),
             ("holding_id_0", &shelf.to_string()),
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Piano bench"),
@@ -328,6 +337,7 @@ async fn publication_edit_flow() {
     response.assert_status(StatusCode::SEE_OTHER);
     let stored = library.publication(publication).await.unwrap().unwrap();
     assert_eq!(stored.stars, None);
+    assert_eq!(stored.note, None, "a note of only whitespace is no note");
 
     // Removing the last copy is what the delete dialog warns about, so the form says so up front
     let response = server.get(&edit).await;

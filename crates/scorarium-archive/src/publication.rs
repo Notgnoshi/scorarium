@@ -19,6 +19,7 @@ pub struct PublicationRawInput {
     pub publisher: String,
     pub year: String,
     pub stars: String,
+    pub note: String,
     pub holdings: Vec<HoldingRawInput>,
     pub identifiers: Vec<IdentifierRawInput>,
     pub contributors: Vec<ContributorInput>,
@@ -32,6 +33,7 @@ pub struct PublicationInput {
     pub(crate) publisher: Option<String>,
     pub(crate) year: Option<i64>,
     pub(crate) stars: Option<i64>,
+    pub(crate) note: Option<String>,
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
@@ -130,6 +132,7 @@ impl PublicationRawInput {
             publisher: input::trimmed_or_none(&self.publisher),
             year,
             stars,
+            note: input::trimmed_or_none(&self.note),
             holdings,
             identifiers,
             contributors,
@@ -149,6 +152,7 @@ pub struct Publication {
     pub publisher: Option<String>,
     pub year: Option<i64>,
     pub stars: Option<i64>,
+    pub note: Option<String>,
     pub identifiers: Vec<Identifier>,
     /// In link order
     pub contributors: Vec<Contributor>,
@@ -169,6 +173,7 @@ fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
             PublicationChange::Publisher(_) => Field::Publisher,
             PublicationChange::Year(_) => Field::Year,
             PublicationChange::Stars(_) => Field::Stars,
+            PublicationChange::Note(_) => Field::Note,
             PublicationChange::Identifiers(_) => Field::Identifiers,
             PublicationChange::Contributors(_) => Field::Contributors,
             PublicationChange::Holdings(_) => Field::Holdings,
@@ -199,6 +204,7 @@ impl Publication {
                 .stars
                 .map(|stars| stars.to_string())
                 .unwrap_or_default(),
+            note: self.note.clone().unwrap_or_default(),
             holdings: self
                 .holdings
                 .iter()
@@ -249,12 +255,13 @@ impl Publication {
             )
             .await?;
         let result = sqlx::query!(
-            "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?
+            "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.publisher,
             input.year,
             input.stars,
+            input.note,
             self.library_id,
             self.id
         )
@@ -360,7 +367,7 @@ pub(crate) async fn load_publications(
     person_id: Option<i64>,
 ) -> crate::Result<Vec<Publication>> {
     let mut publications: Vec<Publication> = sqlx::query!(
-        "SELECT id, library_id, title, publisher, year, stars FROM publication
+        "SELECT id, library_id, title, publisher, year, stars, note FROM publication
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
@@ -384,6 +391,7 @@ pub(crate) async fn load_publications(
         publisher: row.publisher,
         year: row.year,
         stars: row.stars,
+        note: row.note,
         identifiers: Vec::new(),
         contributors: Vec::new(),
         holdings: Vec::new(),
@@ -503,12 +511,14 @@ pub(crate) async fn create_publication(
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
     let created = sqlx::query!(
-        "INSERT INTO publication (library_id, title, publisher, year, stars) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO publication (library_id, title, publisher, year, stars, note)
+         VALUES (?, ?, ?, ?, ?, ?)",
         library_id,
         input.title,
         input.publisher,
         input.year,
         input.stars,
+        input.note,
     )
     .execute(&mut **audited)
     .await?;
@@ -697,6 +707,7 @@ mod tests {
             publisher: String::new(),
             year: " 1888 ".into(),
             stars: "4".into(),
+            note: "  \n ".into(),
             holdings: vec![holding(HoldingKind::Physical, "")],
             identifiers: vec![isbn("0-486-23134-8")],
             contributors: vec![contributor("Erik Satie", "composer")],
@@ -712,6 +723,7 @@ mod tests {
         assert_eq!(input.publisher, None);
         assert_eq!(input.year, Some(1888));
         assert_eq!(input.stars, Some(4));
+        assert_eq!(input.note, None);
         assert_eq!(
             input.holdings,
             [HoldingInput {

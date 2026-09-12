@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT \"key\", time_signature, instrumentation, stars FROM work WHERE library_id = ? AND id = ?",
+  "query": "SELECT \"key\", time_signature, instrumentation, stars, note FROM work WHERE library_id = ? AND id = ?",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "stars"
           }
         }
+      },
+      {
+        "name": "note",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "note"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "814aa21337365da88e6c5fb364a26e1aedbd64c178ddd126ac2a85bc73e50af2"
+  "hash": "b603ca82d8da466d0f01fa92e2ee345e47025f09ab57fa68c85cd6e085371eef"
 }

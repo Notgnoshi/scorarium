@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, publisher, year, stars FROM publication\n         WHERE library_id = ?1\n           AND (?2 IS NULL OR id = ?2)\n           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))\n           AND (?4 IS NULL\n                OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)\n                OR id IN (SELECT pw.publication_id FROM publication_work pw\n                          JOIN work_contributor wc ON wc.work_id = pw.work_id\n                          WHERE wc.person_id = ?4))",
+  "query": "SELECT id, library_id, title, publisher, year, stars, note FROM publication\n         WHERE library_id = ?1\n           AND (?2 IS NULL OR id = ?2)\n           AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))\n           AND (?4 IS NULL\n                OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)\n                OR id IN (SELECT pw.publication_id FROM publication_work pw\n                          JOIN work_contributor wc ON wc.work_id = pw.work_id\n                          WHERE wc.person_id = ?4))",
   "describe": {
     "columns": [
       {
@@ -68,6 +68,17 @@
             "name": "stars"
           }
         }
+      },
+      {
+        "name": "note",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "note"
+          }
+        }
       }
     ],
     "parameters": {
@@ -79,8 +90,9 @@
       false,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "335bd4537e04efde0e21d83e8c2fd1398c71f54eb52544c0cff67fbb7989c515"
+  "hash": "b6fe49ce60a86ce7de2ea6f5a04930263a9411451dcb2ca6824d4985c9b4749c"
 }

@@ -53,6 +53,12 @@
             </dd>
         {% endif %}
     </dl>
+    {% if base.logged_in %}
+        {% if let Some(note) = work.note %}
+            <h2>Notes</h2>
+            {{ note|paragraphbreaks }}
+        {% endif %}
+    {% endif %}
     <h2>Publications</h2>
     <table class="table table-hover">
         <thead>

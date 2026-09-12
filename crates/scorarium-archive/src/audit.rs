@@ -126,6 +126,7 @@ pub enum Field {
     Name,
     Visibility,
     Stars,
+    Note,
 }
 
 impl Field {
@@ -145,6 +146,7 @@ impl Field {
             Field::Name => "name",
             Field::Visibility => "visibility",
             Field::Stars => "stars",
+            Field::Note => "note",
         }
     }
 
@@ -164,6 +166,7 @@ impl Field {
             "name" => Field::Name,
             "visibility" => Field::Visibility,
             "stars" => Field::Stars,
+            "note" => Field::Note,
             other => eyre::bail!("unknown audit field {other:?}"),
         })
     }

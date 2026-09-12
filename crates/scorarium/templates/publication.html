@@ -38,6 +38,12 @@
             </dd>
         {% endfor %}
     </dl>
+    {% if base.logged_in %}
+        {% if let Some(note) = publication.note %}
+            <h2>Notes</h2>
+            {{ note|paragraphbreaks }}
+        {% endif %}
+    {% endif %}
     <h2>Contributors</h2>
     <ul>
         {% for c in publication.contributors %}

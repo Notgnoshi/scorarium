@@ -25,6 +25,7 @@ fn gymnopedies() -> PublicationRawInput {
         publisher: "Dover".into(),
         year: "1987".into(),
         stars: "4".into(),
+        note: "Bought secondhand.".into(),
         holdings: vec![
             holding(HoldingKind::Physical, "Piano bench"),
             holding(HoldingKind::Digital, "gymnopedies.pdf"),

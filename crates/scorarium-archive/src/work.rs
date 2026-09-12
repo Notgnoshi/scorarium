@@ -21,6 +21,7 @@ pub struct WorkRawInput {
     pub time_signature: String,
     pub instrumentation: String,
     pub stars: String,
+    pub note: String,
     pub contributors: Vec<ContributorInput>,
     pub catalog_numbers: Vec<String>,
 }
@@ -34,6 +35,7 @@ pub struct WorkInput {
     pub(crate) time_signature: Option<String>,
     pub(crate) instrumentation: Option<String>,
     pub(crate) stars: Option<i64>,
+    pub(crate) note: Option<String>,
     pub(crate) contributors: Vec<ContributorInput>,
     pub(crate) catalog_numbers: Vec<CatalogNumber>,
 }
@@ -100,6 +102,7 @@ impl WorkRawInput {
             time_signature: input::trimmed_or_none(&self.time_signature),
             instrumentation: input::trimmed_or_none(&self.instrumentation),
             stars,
+            note: input::trimmed_or_none(&self.note),
             contributors,
             catalog_numbers,
         })
@@ -118,6 +121,7 @@ pub struct Work {
     pub time_signature: Option<String>,
     pub instrumentation: Option<String>,
     pub stars: Option<i64>,
+    pub note: Option<String>,
     /// In the order they were entered
     pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
@@ -139,6 +143,7 @@ fn changed_fields(old: &Work, new: &Work) -> Vec<Field> {
             WorkChange::TimeSignature(_) => Field::TimeSignature,
             WorkChange::Instrumentation(_) => Field::Instrumentation,
             WorkChange::Stars(_) => Field::Stars,
+            WorkChange::Note(_) => Field::Note,
             WorkChange::CatalogNumbers(_) => Field::CatalogNumbers,
             WorkChange::Contributors(_) => Field::Contributors,
         })
@@ -170,6 +175,7 @@ impl Work {
             key: self.key.clone().unwrap_or_default(),
             time_signature: self.time_signature.clone().unwrap_or_default(),
             instrumentation: self.instrumentation.clone().unwrap_or_default(),
+            note: self.note.clone().unwrap_or_default(),
             stars: self
                 .stars
                 .map(|stars| stars.to_string())
@@ -223,13 +229,15 @@ impl Work {
             )
             .await?;
         let result = sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?, stars = ?
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
+                 stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.key,
             input.time_signature,
             input.instrumentation,
             input.stars,
+            input.note,
             self.library_id,
             self.id
         )
@@ -294,7 +302,7 @@ pub(crate) async fn load_works(
     publication_id: Option<i64>,
 ) -> crate::Result<Vec<Work>> {
     let mut works: Vec<Work> = sqlx::query!(
-        "SELECT id, library_id, title, \"key\", time_signature, instrumentation, stars FROM work
+        "SELECT id, library_id, title, \"key\", time_signature, instrumentation, stars, note FROM work
          WHERE library_id = ?1
            AND (?2 IS NULL OR id = ?2)
            AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
@@ -314,6 +322,7 @@ pub(crate) async fn load_works(
         time_signature: row.time_signature,
         instrumentation: row.instrumentation,
         stars: row.stars,
+        note: row.note,
         catalog_numbers: Vec::new(),
         contributors: Vec::new(),
         archive: shared.clone(),
@@ -430,13 +439,15 @@ pub(crate) async fn create_work_in_publication(
     input: &WorkInput,
 ) -> crate::Result<i64> {
     let created = sqlx::query!(
-        "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation, stars) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation, stars, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
         library_id,
         input.title,
         input.key,
         input.time_signature,
         input.instrumentation,
         input.stars,
+        input.note,
     )
     .execute(&mut **audited)
     .await?;
@@ -489,13 +500,15 @@ pub(crate) async fn write_publication_works(
             continue;
         };
         sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?, stars = ?
+            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
+                 stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
             input.title,
             input.key,
             input.time_signature,
             input.instrumentation,
             input.stars,
+            input.note,
             library_id,
             work_id
         )
@@ -529,9 +542,7 @@ pub(crate) async fn link_work_to_publication(
 /// Fold `from` into `into` and delete `from`, on the caller's transaction.
 ///
 /// `into` keeps every field it has; `from` fills only blanks, because the older record is the more
-/// likely to be complete and correct. Credits, catalog numbers, and publication links move across
-/// unless `into` already has them; links keep their rowid, so `into` takes `from`'s place in each
-/// publication's contents.
+/// likely to be complete and correct.
 pub(crate) async fn merge_works(
     conn: &mut SqliteConnection,
     library_id: i64,
@@ -539,20 +550,33 @@ pub(crate) async fn merge_works(
     into: i64,
 ) -> crate::Result<()> {
     let source = sqlx::query!(
-        "SELECT \"key\", time_signature, instrumentation, stars FROM work WHERE library_id = ? AND id = ?",
+        "SELECT \"key\", time_signature, instrumentation, stars, note FROM work WHERE library_id = ? AND id = ?",
         library_id,
         from
     )
     .fetch_one(&mut *conn)
     .await?;
+    let kept = sqlx::query_scalar!(
+        "SELECT note FROM work WHERE library_id = ? AND id = ?",
+        library_id,
+        into
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    // A blank line between them, so the survivor's note reads as its own paragraph
+    let note = match (kept, source.note) {
+        (Some(kept), Some(absorbed)) => Some(format!("{kept}\n\n{absorbed}")),
+        (kept, absorbed) => kept.or(absorbed),
+    };
     sqlx::query!(
         "UPDATE work SET \"key\" = COALESCE(\"key\", ?), time_signature = COALESCE(time_signature, ?),
-             instrumentation = COALESCE(instrumentation, ?), stars = COALESCE(stars, ?)
+             instrumentation = COALESCE(instrumentation, ?), stars = COALESCE(stars, ?), note = ?
          WHERE library_id = ? AND id = ?",
         source.key,
         source.time_signature,
         source.instrumentation,
         source.stars,
+        note,
         library_id,
         into
     )
@@ -781,6 +805,7 @@ mod tests {
             time_signature: "3/4".into(),
             instrumentation: "piano".into(),
             stars: "5".into(),
+            note: "  Learn the middle section first.  ".into(),
             contributors: vec![contributor(" Erik Satie ", "composer")],
             catalog_numbers: vec![" BWV 988 ".into()],
         };
@@ -797,6 +822,7 @@ mod tests {
                 time_signature: Some("3/4".into()),
                 instrumentation: Some("piano".into()),
                 stars: Some(5),
+                note: Some("Learn the middle section first.".into()),
                 contributors: vec![contributor("Erik Satie", "composer")],
                 catalog_numbers: vec![CatalogNumber::parse("BWV 988")],
             }
