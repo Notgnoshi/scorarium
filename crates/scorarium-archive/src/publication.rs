@@ -10,7 +10,9 @@ use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library};
+use crate::{
+    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -20,6 +22,7 @@ pub struct PublicationRawInput {
     pub year: String,
     pub stars: String,
     pub note: String,
+    pub tags: String,
     pub holdings: Vec<HoldingRawInput>,
     pub identifiers: Vec<IdentifierRawInput>,
     pub contributors: Vec<ContributorInput>,
@@ -34,6 +37,7 @@ pub struct PublicationInput {
     pub(crate) year: Option<i64>,
     pub(crate) stars: Option<i64>,
     pub(crate) note: Option<String>,
+    pub(crate) tags: Vec<String>,
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
@@ -45,6 +49,7 @@ pub struct PublicationErrors {
     pub title: Option<ValidationError>,
     pub year: Option<ValidationError>,
     pub stars: Option<ValidationError>,
+    pub tags: Option<ValidationError>,
     pub holdings: HoldingErrors,
     /// One per identifier, empty when they all passed
     pub identifiers: Vec<Option<ValidationError>>,
@@ -59,6 +64,7 @@ impl PublicationErrors {
         self.title.is_none()
             && self.year.is_none()
             && self.stars.is_none()
+            && self.tags.is_none()
             && self.holdings.is_empty()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
@@ -68,7 +74,7 @@ impl PublicationErrors {
 
 impl PublicationRawInput {
     /// Parse, validate, and convert the input
-    pub fn parse(&self) -> Result<PublicationInput, PublicationErrors> {
+    pub fn parse(&self) -> Result<PublicationInput, Box<PublicationErrors>> {
         let mut errors = PublicationErrors::default();
         let title = self.title.trim();
         if title.is_empty() {
@@ -89,6 +95,13 @@ impl PublicationRawInput {
             Err(error) => {
                 errors.stars = Some(error);
                 None
+            }
+        };
+        let tags = match tag::parse_tags(&self.tags) {
+            Ok(tags) => tags,
+            Err(error) => {
+                errors.tags = Some(error);
+                Vec::new()
             }
         };
         let holdings = match holding::parse_holdings(&self.holdings) {
@@ -125,7 +138,7 @@ impl PublicationRawInput {
         }
 
         if !errors.is_empty() {
-            return Err(errors);
+            return Err(Box::new(errors));
         }
         Ok(PublicationInput {
             title: title.to_string(),
@@ -133,6 +146,7 @@ impl PublicationRawInput {
             year,
             stars,
             note: input::trimmed_or_none(&self.note),
+            tags,
             holdings,
             identifiers,
             contributors,
@@ -153,6 +167,8 @@ pub struct Publication {
     pub year: Option<i64>,
     pub stars: Option<i64>,
     pub note: Option<String>,
+    /// Alphabetical
+    pub tags: Vec<String>,
     pub identifiers: Vec<Identifier>,
     /// In link order
     pub contributors: Vec<Contributor>,
@@ -174,6 +190,7 @@ fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
             PublicationChange::Year(_) => Field::Year,
             PublicationChange::Stars(_) => Field::Stars,
             PublicationChange::Note(_) => Field::Note,
+            PublicationChange::Tags(_) => Field::Tags,
             PublicationChange::Identifiers(_) => Field::Identifiers,
             PublicationChange::Contributors(_) => Field::Contributors,
             PublicationChange::Holdings(_) => Field::Holdings,
@@ -205,6 +222,7 @@ impl Publication {
                 .map(|stars| stars.to_string())
                 .unwrap_or_default(),
             note: self.note.clone().unwrap_or_default(),
+            tags: self.tags.join(" "),
             holdings: self
                 .holdings
                 .iter()
@@ -392,6 +410,7 @@ pub(crate) async fn load_publications(
         year: row.year,
         stars: row.stars,
         note: row.note,
+        tags: Vec::new(),
         identifiers: Vec::new(),
         contributors: Vec::new(),
         holdings: Vec::new(),
@@ -497,6 +516,12 @@ pub(crate) async fn load_publications(
             });
     }
 
+    for (publication_id, tag) in tag::publication_tags(&mut *conn, library_id).await? {
+        if let Some(&i) = index.get(&publication_id) {
+            publications[i].tags.push(tag);
+        }
+    }
+
     Ok(publications)
 }
 
@@ -548,6 +573,7 @@ pub(crate) async fn write_publication_children(
     write_publication_contributors(&mut *conn, library_id, publication_id, &input.contributors)
         .await?;
     holding::write_holdings(&mut *conn, publication_id, &input.holdings).await?;
+    tag::write_publication_tags(&mut *conn, library_id, publication_id, &input.tags).await?;
     Ok(())
 }
 
@@ -615,6 +641,7 @@ mod tests {
         let raw = PublicationRawInput {
             year: "abc".into(),
             stars: "6".into(),
+            tags: "Christmas!".into(),
             holdings: vec![holding(HoldingKind::Digital, "")],
             identifiers: vec![
                 isbn("978-1-4950-0871-0"),
@@ -646,11 +673,12 @@ mod tests {
             ..PublicationRawInput::default()
         };
         assert_eq!(
-            raw.parse().unwrap_err(),
+            *raw.parse().unwrap_err(),
             PublicationErrors {
                 title: Some(ValidationError::TitleRequired),
                 year: Some(ValidationError::YearNotANumber),
                 stars: Some(ValidationError::StarsInvalid),
+                tags: Some(ValidationError::InvalidTag("Christmas!".into())),
                 holdings: HoldingErrors {
                     none: None,
                     each: vec![Some(ValidationError::FileRequired)],
@@ -689,7 +717,7 @@ mod tests {
             ..PublicationRawInput::default()
         };
         assert_eq!(
-            raw.parse().unwrap_err(),
+            *raw.parse().unwrap_err(),
             PublicationErrors {
                 holdings: HoldingErrors {
                     none: Some(ValidationError::NoHoldings),
@@ -708,6 +736,7 @@ mod tests {
             year: " 1888 ".into(),
             stars: "4".into(),
             note: "  \n ".into(),
+            tags: " Piano  duet ".into(),
             holdings: vec![holding(HoldingKind::Physical, "")],
             identifiers: vec![isbn("0-486-23134-8")],
             contributors: vec![contributor("Erik Satie", "composer")],
@@ -724,6 +753,7 @@ mod tests {
         assert_eq!(input.year, Some(1888));
         assert_eq!(input.stars, Some(4));
         assert_eq!(input.note, None);
+        assert_eq!(input.tags, ["piano", "duet"]);
         assert_eq!(
             input.holdings,
             [HoldingInput {

@@ -24,6 +24,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             note: Some(
                 "The chapter on the dot command is the one to reread.\n\nLent to Sam once".into(),
             ),
+            tags: vec!["editor".into(), "reference".into()],
             holdings: vec![physical(Some("Desk"))],
             identifiers: vec![normalized(Kind::Isbn, "978-1-68050-127-8")?],
             contributors: vec![contributor("Drew Neil", "author")],
@@ -38,6 +39,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: Some(2014),
             stars: Some(3),
             note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None), digital("pro-git.pdf")],
             identifiers: vec![normalized(Kind::Isbn, "978-1-4842-0077-3")?],
             contributors: vec![
@@ -56,6 +58,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: Some(1979),
             stars: None,
             note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-8065-0180-4")?],
             contributors: vec![contributor(BIERCE, "author")],
@@ -88,6 +91,8 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     );
     prelude.stars = Some(5);
     prelude.note = Some("The big chords at the end need the whole arm, not the fingers.".into());
+    // Shared with its publication below, so browsing a tag has a case that spans both kinds
+    prelude.tags = vec!["learning".into(), "russian".into()];
     let russian_album = sheet_music
         .create_publication(&PublicationInput {
             title: "Russian piano album".into(),
@@ -95,6 +100,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: None,
             stars: Some(4),
             note: None,
+            tags: vec!["anthology".into(), "russian".into()],
             holdings: vec![physical(None)],
             identifiers: vec![
                 normalized(Kind::Isbn, "978-1-4950-0871-9")?,
@@ -115,6 +121,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: None,
             stars: None,
             note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-486-43122-3")?],
             contributors: vec![contributor(RACHMANINOFF, "composer")],
@@ -133,6 +140,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
         .contributors
         .push(contributor("Georgy Kirkor", "arranger"));
     tone_poem.stars = Some(4);
+    tone_poem.tags = vec!["transcription".into(), "want-to-learn".into()];
     sheet_music
         .create_publication(&PublicationInput {
             title: "The Isle of the Dead".into(),
@@ -140,6 +148,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: None,
             stars: None,
             note: None,
+            tags: Vec::new(),
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::PlateNumber, "M 26277")?],
             contributors: vec![
@@ -157,6 +166,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             year: None,
             stars: Some(4),
             note: None,
+            tags: Vec::new(),
             holdings: vec![physical(Some("Piano bench"))],
             identifiers: vec![
                 normalized(Kind::Isbn, "978-0-7935-2590-4")?,
@@ -227,6 +237,7 @@ fn piano_piece(
         instrumentation: Some("piano".into()),
         stars: None,
         note: None,
+        tags: Vec::new(),
         contributors: vec![contributor(RACHMANINOFF, "composer")],
         catalog_numbers: catalog_numbers
             .iter()
@@ -244,6 +255,10 @@ fn gymnopedie(number: usize, key: &str) -> WorkInput {
         instrumentation: Some("piano".into()),
         stars: (number == 1).then_some(5),
         note: None,
+        tags: match number {
+            1 => vec!["memorized".into()],
+            _ => vec!["want-to-learn".into()],
+        },
         contributors: vec![contributor(SATIE, "composer")],
         catalog_numbers: Vec::new(),
     }
@@ -259,6 +274,7 @@ fn writing(title: &str) -> WorkInput {
         instrumentation: None,
         stars: None,
         note: None,
+        tags: Vec::new(),
         contributors: vec![contributor(BIERCE, "author")],
         catalog_numbers: Vec::new(),
     }

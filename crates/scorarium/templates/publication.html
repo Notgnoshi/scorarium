@@ -39,6 +39,11 @@
         {% endfor %}
     </dl>
     {% if base.logged_in %}
+        {% if !publication.tags.is_empty() %}
+            <p>
+                {% for t in publication.tags %}<span class="badge text-bg-secondary me-1">{{ t }}</span>{% endfor %}
+            </p>
+        {% endif %}
         {% if let Some(note) = publication.note %}
             <h2>Notes</h2>
             {{ note|paragraphbreaks }}

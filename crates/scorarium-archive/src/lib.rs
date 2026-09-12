@@ -13,6 +13,7 @@ mod library;
 mod password;
 mod person;
 mod publication;
+mod tag;
 mod work;
 
 use std::collections::HashMap;

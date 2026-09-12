@@ -41,6 +41,8 @@ pub struct WorkPost {
     #[serde(default)]
     note: String,
     #[serde(default)]
+    tags: String,
+    #[serde(default)]
     contributor_name: Vec<String>,
     #[serde(default)]
     contributor_role: Vec<String>,
@@ -59,6 +61,7 @@ impl From<WorkPost> for WorkRawInput {
             instrumentation: post.instrumentation.trim().to_string(),
             stars: post.stars.trim().to_string(),
             note: post.note.trim().to_string(),
+            tags: post.tags.trim().to_string(),
             contributors: publication_post::contributors(
                 post.contributor_name,
                 post.contributor_role,

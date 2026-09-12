@@ -38,6 +38,8 @@ struct Fields {
     #[serde(default)]
     note: String,
     #[serde(default)]
+    tags: String,
+    #[serde(default)]
     identifier_kind: Vec<String>,
     #[serde(default)]
     identifier_value: Vec<String>,
@@ -102,6 +104,7 @@ impl PublicationPost {
             year,
             stars,
             note,
+            tags,
             identifier_kind,
             identifier_value,
             contributor_name,
@@ -158,6 +161,7 @@ impl PublicationPost {
             year: year.trim().to_string(),
             stars: stars.trim().to_string(),
             note: note.trim().to_string(),
+            tags: tags.trim().to_string(),
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
             contributors: contributors(contributor_name, contributor_role),
@@ -382,6 +386,7 @@ mod tests {
                 year: String::new(),
                 stars: String::new(),
                 note: String::new(),
+                tags: String::new(),
                 identifier_kind: Vec::new(),
                 identifier_value: Vec::new(),
                 contributor_name: Vec::new(),

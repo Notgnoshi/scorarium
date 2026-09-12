@@ -54,6 +54,11 @@
         {% endif %}
     </dl>
     {% if base.logged_in %}
+        {% if !work.tags.is_empty() %}
+            <p>
+                {% for t in work.tags %}<span class="badge text-bg-secondary me-1">{{ t }}</span>{% endfor %}
+            </p>
+        {% endif %}
         {% if let Some(note) = work.note %}
             <h2>Notes</h2>
             {{ note|paragraphbreaks }}

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT work_id AS \"work_id!\", tag FROM tag\n           WHERE library_id = ? AND work_id IS NOT NULL\n           ORDER BY tag",
+  "describe": {
+    "columns": [
+      {
+        "name": "work_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "work_id"
+          }
+        }
+      },
+      {
+        "name": "tag",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "tag"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "de3b56dc28cdd64e0c82001737ec4cafe1a675e45fb6513936933d21d8758a2f"
+}

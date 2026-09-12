@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO tag (library_id, work_id, tag)\n         SELECT library_id, ?, tag FROM tag WHERE work_id = ? ORDER BY id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8e946e488a9c4b86685b6825b5eb2a16259e35a04a5f5c1ff6c77671a9239127"
+}

@@ -229,6 +229,7 @@ async fn publication_edit_flow() {
                 "note",
                 "Reread the dot command chapter.\n\nLent to Sam once.",
             ),
+            ("tags", "vim Reference"),
             ("holding_id_0", &shelf.to_string()),
             ("holding_id_1", ""),
             ("holding_kind_0", "physical"),
@@ -266,6 +267,8 @@ async fn publication_edit_flow() {
         stored.note.as_deref(),
         Some("Reread the dot command chapter.\n\nLent to Sam once.")
     );
+    // Lowercased on the way in, alphabetical on the way back out
+    assert_eq!(stored.tags, ["reference", "vim"]);
     assert_eq!(
         stored
             .holdings
