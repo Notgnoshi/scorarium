@@ -56,6 +56,11 @@ pub(crate) fn describe(entity: &Entity) -> (&'static str, String, String) {
     }
 }
 
+/// Get the primary and secondary descriptions for a catalog number
+pub(crate) fn describe_number(work: &WorkSummary, number: &str) -> (String, String) {
+    (number.to_string(), credit(Some(&work.title), work))
+}
+
 /// "Op. 9 No. 2 by Frederic Chopin", or whichever half exists
 fn credit(what: Option<&String>, work: &WorkSummary) -> String {
     let by = work
