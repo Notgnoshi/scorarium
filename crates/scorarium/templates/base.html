@@ -119,6 +119,19 @@
             new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
             });
+            // "/" jumps to the search box, unless the visitor is already typing somewhere
+            document.addEventListener("keydown", (e) => {
+                if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+                const active = document.activeElement;
+                if (active?.matches("input, textarea, select") || active?.isContentEditable) return;
+                // Focus belongs to the modal while one is open
+                if (document.querySelector(".modal.show")) return;
+                const search = document.querySelector('[role="search"] input[name="q"]');
+                if (!search) return;
+                // Otherwise the slash lands in the box, and Firefox opens its own quick find
+                e.preventDefault();
+                search.select();
+            });
         </script>
     </body>
 </html>

@@ -37,7 +37,7 @@ async fn search_shows_what_the_viewer_may_see() {
             .get("/login")
             .await
             .text()
-            .contains("role=\"search\"")
+            .contains("action=\"/search\"")
     );
 
     demo_login(&server).await;
