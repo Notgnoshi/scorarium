@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE person SET name = ?, sort_name = ? WHERE library_id = ? AND id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "572276de79c93fe2662dcf53d61e12bb29fde94ff1bef51f4037e0d2381c3cef"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, name, sort_name FROM person\n         WHERE library_id = ?1\n           AND (id IN (SELECT person_id FROM publication_contributor WHERE role = ?2)\n                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?2))\n         ORDER BY sort_name",
+  "query": "SELECT id, library_id, name, sort_name FROM person\n         WHERE library_id = ?1\n           AND (?2 IS NULL OR id = ?2)\n           AND (?3 IS NULL\n                OR id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)\n                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?3))\n         ORDER BY sort_name",
   "describe": {
     "columns": [
       {
@@ -49,7 +49,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "fcde1f925e9f3a7e72cf88354d0c802ad51e75944185b576e9ae46a3548bc385"
+  "hash": "ab1fcb79d6cb2bb92276de37c64f32994b427b05452450afd1433b5ce4c167dc"
 }

@@ -290,7 +290,7 @@ pub async fn work(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     // As on the review page, a saved draft shows what is wrong with it
-    let errors = input.parse().err().unwrap_or_default();
+    let errors = input.parse().err().map(|e| *e).unwrap_or_default();
     let title = if input.title.is_empty() {
         UNTITLED_WORK.to_string()
     } else {

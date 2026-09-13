@@ -39,7 +39,9 @@ pub use crate::import::{Draft, PendingImport};
 pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
-pub use crate::person::{Contributor, Person, credit_priority};
+pub use crate::person::{
+    Contributor, Person, PersonErrors, PersonInput, PersonRawInput, credit_priority,
+};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };

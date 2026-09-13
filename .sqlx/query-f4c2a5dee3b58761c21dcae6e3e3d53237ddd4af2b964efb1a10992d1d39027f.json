@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT person_id, url FROM person_link\n         WHERE person_id IN\n            (SELECT id FROM person\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL\n                    OR id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)\n                    OR id IN (SELECT person_id FROM work_contributor WHERE role = ?3)))\n         ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "person_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "url"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f4c2a5dee3b58761c21dcae6e3e3d53237ddd4af2b964efb1a10992d1d39027f"
+}

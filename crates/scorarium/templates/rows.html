@@ -76,6 +76,45 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
+{% macro link_row(value, error) %}
+    <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
+         data-row>
+        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+               type="url"
+               name="link"
+               value="{{ value }}"
+               placeholder="https://imslp.org/wiki/Category:Satie,_Erik"
+               aria-label="Link" />
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-rows-remove
+                aria-label="Remove">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+        {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+    </div>
+{% endmacro %}
+{% macro links_box(links) %}
+    <fieldset class="border rounded p-3 mb-3" data-rows>
+        <legend class="float-none w-auto px-2 fs-6">Links</legend>
+        <div data-rows-list>
+            {% for (value, error) in links %}
+                {% call link_row(value, error) %}
+                {% endcall %}
+            {% endfor %}
+        </div>
+        <template>
+            {% call link_row("", "") %}
+            {% endcall %}
+        </template>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-rows-add
+                aria-label="Add link">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>
+        </button>
+    </fieldset>
+{% endmacro %}
 {% macro work_row(library_id, id, title, catalog_number, recognized, more_numbers, name, role, more, error, edit) %}
     {# The message names the field at fault, so every input shares the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"

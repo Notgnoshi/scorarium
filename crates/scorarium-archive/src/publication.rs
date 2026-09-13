@@ -26,6 +26,7 @@ pub struct PublicationRawInput {
     pub holdings: Vec<HoldingRawInput>,
     pub identifiers: Vec<IdentifierRawInput>,
     pub contributors: Vec<ContributorInput>,
+    pub links: Vec<String>,
     pub contents: Vec<WorkRawInput>,
 }
 
@@ -41,6 +42,7 @@ pub struct PublicationInput {
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
+    pub(crate) links: Vec<String>,
     pub(crate) contents: Vec<WorkInput>,
 }
 
@@ -55,6 +57,8 @@ pub struct PublicationErrors {
     pub identifiers: Vec<Option<ValidationError>>,
     /// One per contributor, empty when they all passed
     pub contributors: Vec<Option<ValidationError>>,
+    /// One per link, empty when they all passed
+    pub links: Vec<Option<ValidationError>>,
     /// One per work
     pub contents: Vec<WorkErrors>,
 }
@@ -68,6 +72,7 @@ impl PublicationErrors {
             && self.holdings.is_empty()
             && self.identifiers.iter().all(Option::is_none)
             && self.contributors.iter().all(Option::is_none)
+            && self.links.iter().all(Option::is_none)
             && self.contents.iter().all(WorkErrors::is_empty)
     }
 }
@@ -125,6 +130,13 @@ impl PublicationRawInput {
                 Vec::new()
             }
         };
+        let links = match input::parse_links(&self.links) {
+            Ok(links) => links,
+            Err(slots) => {
+                errors.links = slots;
+                Vec::new()
+            }
+        };
         // A work reports its own problems, so the contents keep one slot each either way
         let mut contents = Vec::new();
         for work in &self.contents {
@@ -133,7 +145,7 @@ impl PublicationRawInput {
                     contents.push(work);
                     errors.contents.push(WorkErrors::default());
                 }
-                Err(work_errors) => errors.contents.push(work_errors),
+                Err(work_errors) => errors.contents.push(*work_errors),
             }
         }
 
@@ -150,6 +162,7 @@ impl PublicationRawInput {
             holdings,
             identifiers,
             contributors,
+            links,
             contents,
         })
     }
@@ -173,6 +186,8 @@ pub struct Publication {
     /// In link order
     pub contributors: Vec<Contributor>,
     pub holdings: Vec<Holding>,
+    /// In the order they were entered
+    pub links: Vec<String>,
     #[comparable_ignore]
     archive: Arc<ArchiveInner>,
 }
@@ -194,6 +209,7 @@ fn changed_fields(old: &Publication, new: &Publication) -> Vec<Field> {
             PublicationChange::Identifiers(_) => Field::Identifiers,
             PublicationChange::Contributors(_) => Field::Contributors,
             PublicationChange::Holdings(_) => Field::Holdings,
+            PublicationChange::Links(_) => Field::Links,
         })
         .collect()
 }
@@ -255,6 +271,7 @@ impl Publication {
                     role: contributor.role.clone(),
                 })
                 .collect(),
+            links: self.links.clone(),
             contents: contents.iter().map(Work::raw_input).collect(),
         }
     }
@@ -426,6 +443,7 @@ pub(crate) async fn load_publications(
         identifiers: Vec::new(),
         contributors: Vec::new(),
         holdings: Vec::new(),
+        links: Vec::new(),
         archive: shared.clone(),
     })
     .collect();
@@ -534,6 +552,32 @@ pub(crate) async fn load_publications(
             });
     }
 
+    let links = sqlx::query!(
+        "SELECT publication_id, url FROM publication_link
+         WHERE publication_id IN
+            (SELECT id FROM publication
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT publication_id FROM publication_work WHERE work_id = ?3))
+               AND (?4 IS NULL
+                    OR id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?4)
+                    OR id IN (SELECT pw.publication_id FROM publication_work pw
+                              JOIN work_contributor wc ON wc.work_id = pw.work_id
+                              WHERE wc.person_id = ?4))
+               AND (?5 IS NULL OR id IN (SELECT publication_id FROM tag WHERE tag = ?5)))
+         ORDER BY id",
+        library_id,
+        id,
+        work_id,
+        person_id,
+        tag
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in links {
+        publications[index[&row.publication_id]].links.push(row.url);
+    }
+
     for (publication_id, tag) in tag::publication_tags(&mut *conn, library_id).await? {
         if let Some(&i) = index.get(&publication_id) {
             publications[i].tags.push(tag);
@@ -577,7 +621,7 @@ pub(crate) async fn create_publication(
     Ok(publication)
 }
 
-/// Write a publication's identifiers, contributor links and holdings.
+/// Write a publication's identifiers, links, contributor links and holdings.
 ///
 /// What it leaves out is the contents, since a publication being created writes its works in full
 /// while one being edited reconciles them against what is stored.
@@ -588,10 +632,34 @@ pub(crate) async fn write_publication_children(
     input: &PublicationInput,
 ) -> crate::Result<()> {
     identifier::write_identifiers(&mut *conn, publication_id, &input.identifiers).await?;
+    write_publication_links(&mut *conn, publication_id, &input.links).await?;
     write_publication_contributors(&mut *conn, library_id, publication_id, &input.contributors)
         .await?;
     holding::write_holdings(&mut *conn, publication_id, &input.holdings).await?;
     tag::write_publication_tags(&mut *conn, library_id, publication_id, &input.tags).await?;
+    Ok(())
+}
+
+async fn write_publication_links(
+    conn: &mut SqliteConnection,
+    publication_id: i64,
+    links: &[String],
+) -> crate::Result<()> {
+    sqlx::query!(
+        "DELETE FROM publication_link WHERE publication_id = ?",
+        publication_id
+    )
+    .execute(&mut *conn)
+    .await?;
+    for url in links {
+        sqlx::query!(
+            "INSERT INTO publication_link (publication_id, url) VALUES (?, ?)",
+            publication_id,
+            url
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
     Ok(())
 }
 
@@ -677,6 +745,7 @@ mod tests {
                 contributor("Erik Satie", "composer"),
                 contributor("", ""),
             ],
+            links: vec!["imslp.org".into()],
             contents: vec![
                 WorkRawInput {
                     title: "Gnossienne No. 1".into(),
@@ -717,6 +786,7 @@ mod tests {
                     Some(ValidationError::AlreadyListed),
                     Some(ValidationError::FillOrRemove),
                 ],
+                links: vec![Some(ValidationError::InvalidUrl)],
                 contents: vec![
                     WorkErrors {
                         contributors: vec![Some(ValidationError::NameRequired)],
@@ -758,6 +828,7 @@ mod tests {
             holdings: vec![holding(HoldingKind::Physical, "")],
             identifiers: vec![isbn("0-486-23134-8")],
             contributors: vec![contributor("Erik Satie", "composer")],
+            links: vec![" https://IMSLP.org/wiki/Main_Page ".into()],
             contents: vec![WorkRawInput {
                 title: "Gymnopedie No. 1".into(),
                 // An anonymous or folk piece credits nobody
@@ -788,6 +859,7 @@ mod tests {
             )]
         );
         assert_eq!(input.contributors, [contributor("Erik Satie", "composer")]);
+        assert_eq!(input.links, ["https://imslp.org/wiki/Main_Page"]);
         assert_eq!(input.contents.len(), 1);
         assert_eq!(input.contents[0].title, "Gymnopedie No. 1");
     }

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "rows.html" as rows %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    <form method="post"
+          action="/library/{{ library.id }}/person/{{ person.id }}/edit">
+        <div class="mb-3">
+            <label class="form-label" for="name">Name</label>
+            <input class="form-control{% if fields.errors.name.is_some() %} is-invalid{% endif %}"
+                   id="name"
+                   name="name"
+                   value="{{ fields.input.name }}" />
+            {% if let Some(error) = fields.errors.name %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
+        </div>
+        {% call rows::links_box(fields.links) %}
+        {% endcall %}
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary">Save</button>
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library.id }}/person/{{ person.id }}">Cancel</a>
+        </div>
+    </form>
+    {% call rows::script() %}
+    {% endcall %}
+{% endblock %}

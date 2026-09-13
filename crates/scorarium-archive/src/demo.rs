@@ -2,6 +2,8 @@ use crate::catalog::CatalogNumber;
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::identifier::{self, Kind, Normalized};
 use crate::input::ContributorInput;
+use crate::library::Library;
+use crate::person::PersonRawInput;
 use crate::publication::PublicationInput;
 use crate::work::{self, WorkInput};
 use crate::{Action, Archive, Event, Field, Result, Source};
@@ -28,6 +30,10 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(Some("Desk"))],
             identifiers: vec![normalized(Kind::Isbn, "978-1-68050-127-8")?],
             contributors: vec![contributor("Drew Neil", "author")],
+            links: links(&[
+                "https://openlibrary.org/books/OL27196589M/Practical_Vim",
+                "https://www.goodreads.com/book/show/42854052-practical-vim",
+            ]),
             contents: Vec::new(),
         })
         .await?;
@@ -46,11 +52,18 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 contributor("Scott Chacon", "author"),
                 contributor("Ben Straub", "author"),
             ],
+            // A site the table does not know, so the page falls back on its favicon
+            links: links(&[
+                "https://openlibrary.org/books/OL26372169M/Pro_Git",
+                "https://git-scm.com/book/en/v2",
+            ]),
             contents: Vec::new(),
         })
         .await?;
 
     // A book with works, so pages show works without any music-specific fields
+    let mut dictionary = writing("The Devil's Dictionary");
+    dictionary.links = links(&["https://www.gutenberg.org/ebooks/972"]);
     books
         .create_publication(&PublicationInput {
             title: "The Collected Writings of Ambrose Bierce".into(),
@@ -62,9 +75,11 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-8065-0180-4")?],
             contributors: vec![contributor(BIERCE, "author")],
+            links: Vec::new(),
             contents: vec![
                 writing("In the Midst of Life"),
-                writing("The Devil's Dictionary"),
+                // Project Gutenberg is named by the site table but drawn by its own favicon
+                dictionary,
                 writing("The Parenticide Club"),
             ],
         })
@@ -107,6 +122,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 normalized(Kind::PublisherNumber, "Vol 2115")?,
             ],
             contributors: composers,
+            links: Vec::new(),
             contents: vec![
                 prelude,
                 piano_piece("Etude-Tableau", "A minor", None, &["Op. 39 No. 2"]),
@@ -125,6 +141,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-486-43122-3")?],
             contributors: vec![contributor(RACHMANINOFF, "composer")],
+            links: Vec::new(),
             contents: vec![piano_piece(
                 "Polichinelle",
                 "F-sharp minor",
@@ -141,6 +158,12 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
         .push(contributor("Georgy Kirkor", "arranger"));
     tone_poem.stars = Some(4);
     tone_poem.tags = vec!["transcription".into(), "want-to-learn".into()];
+    tone_poem.links = links(&[
+        "https://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)",
+        "https://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637",
+        "https://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)",
+        "https://www.wikidata.org/wiki/Q629711",
+    ]);
     sheet_music
         .create_publication(&PublicationInput {
             title: "The Isle of the Dead".into(),
@@ -155,6 +178,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 contributor(RACHMANINOFF, "composer"),
                 contributor("Georgy Kirkor", "arranger"),
             ],
+            links: Vec::new(),
             contents: vec![tone_poem],
         })
         .await?;
@@ -173,6 +197,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 normalized(Kind::PublisherNumber, "Vol 1869")?,
             ],
             contributors: vec![contributor(SATIE, "composer")],
+            links: links(&["https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)"]),
             contents: ["D major", "C major", "A minor"]
                 .into_iter()
                 .enumerate()
@@ -180,6 +205,28 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 .collect(),
         })
         .await?;
+
+    link_person(
+        &sheet_music,
+        "composer",
+        RACHMANINOFF,
+        &[
+            "https://imslp.org/wiki/Category:Rachmaninoff,_Sergei",
+            "https://en.wikipedia.org/wiki/Sergei_Rachmaninoff",
+            "https://www.wikidata.org/wiki/Q131861",
+        ],
+    )
+    .await?;
+    link_person(
+        &sheet_music,
+        "arranger",
+        "Georgy Kirkor",
+        &[
+            "https://imslp.org/wiki/Category:Kirkor,_Georgy",
+            "https://www.wikidata.org/wiki/Q23656067",
+        ],
+    )
+    .await?;
 
     let prelude_id = russian_album.works().await?[0].id;
     // The same work in two publications, so work pages list more than one
@@ -193,6 +240,27 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     audited.commit().await?;
 
     Ok(())
+}
+
+/// Give a credited person their links, leaving their name as it is.
+async fn link_person(library: &Library, role: &str, name: &str, urls: &[&str]) -> Result<()> {
+    let mut person = library
+        .persons_with_role(role)
+        .await?
+        .into_iter()
+        .find(|person| person.name == name)
+        .expect("the demo credits this person on a publication above");
+    let input = PersonRawInput {
+        name: name.into(),
+        links: links(urls),
+    };
+    let input = input.parse().expect("the demo's links are valid");
+    person.update(&input).await
+}
+
+/// The demo's URLs are written already normalized, so they skip the parser the web forms use
+fn links(urls: &[&str]) -> Vec<String> {
+    urls.iter().map(|url| url.to_string()).collect()
 }
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
@@ -243,6 +311,7 @@ fn piano_piece(
             .iter()
             .map(|number| CatalogNumber::parse(number))
             .collect(),
+        links: Vec::new(),
     }
 }
 
@@ -261,6 +330,7 @@ fn gymnopedie(number: usize, key: &str) -> WorkInput {
         },
         contributors: vec![contributor(SATIE, "composer")],
         catalog_numbers: Vec::new(),
+        links: Vec::new(),
     }
 }
 
@@ -277,5 +347,6 @@ fn writing(title: &str) -> WorkInput {
         tags: Vec::new(),
         contributors: vec![contributor(BIERCE, "author")],
         catalog_numbers: Vec::new(),
+        links: Vec::new(),
     }
 }

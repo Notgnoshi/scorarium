@@ -48,6 +48,8 @@ pub struct WorkPost {
     contributor_role: Vec<String>,
     #[serde(default)]
     catalog_number: Vec<String>,
+    #[serde(default)]
+    link: Vec<String>,
 }
 
 impl From<WorkPost> for WorkRawInput {
@@ -70,6 +72,11 @@ impl From<WorkPost> for WorkRawInput {
                 .catalog_number
                 .iter()
                 .map(|number| number.trim().to_string())
+                .collect(),
+            links: post
+                .link
+                .iter()
+                .map(|link| link.trim().to_string())
                 .collect(),
         }
     }
@@ -150,7 +157,7 @@ pub async fn save(
             };
             Ok(Redirect::to(&next).into_response())
         }
-        Err(errors) => render_edit(base, library, work, query.back, input, errors).await,
+        Err(errors) => render_edit(base, library, work, query.back, input, *errors).await,
     }
 }
 

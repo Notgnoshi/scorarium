@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use askama::Template;
-use axum::extract::{Path, State};
-use axum::response::{Html, IntoResponse, Response};
-use scorarium_archive::{Person, Publication, Work};
+use axum::extract::{Path, RawForm, State};
+use axum::response::{Html, IntoResponse, Redirect, Response};
+use scorarium_archive::{Library, Person, PersonErrors, PersonRawInput, Publication, Work};
+use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, OrNotFound};
-use crate::AppState;
+use super::{AppError, BaseContext, Crumb, OrNotFound, Session, pair_messages};
+use crate::{AppState, publication_post};
 
 #[derive(Template)]
 #[template(path = "person.html")]
@@ -45,6 +46,111 @@ pub async fn person(
         ),
         person,
         publications: nested,
+    };
+    Ok(Html(page.render()?).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "person_edit.html")]
+struct EditPage {
+    base: BaseContext,
+    library: Library,
+    person: Person,
+    fields: PersonFields,
+}
+
+/// Everything the person form renders
+struct PersonFields {
+    input: PersonRawInput,
+    errors: PersonErrors,
+    links: Vec<(String, String)>,
+}
+
+impl PersonFields {
+    fn build(input: PersonRawInput, errors: PersonErrors) -> Self {
+        Self {
+            links: pair_messages(&input.links, &errors.links),
+            input,
+            errors,
+        }
+    }
+}
+
+/// A submitted person form, as the browser sends it.
+#[derive(Deserialize)]
+pub struct PersonPost {
+    name: String,
+    #[serde(default)]
+    link: Vec<String>,
+}
+
+impl From<PersonPost> for PersonRawInput {
+    fn from(post: PersonPost) -> Self {
+        PersonRawInput {
+            name: post.name.trim().to_string(),
+            links: post
+                .link
+                .iter()
+                .map(|link| link.trim().to_string())
+                .collect(),
+        }
+    }
+}
+
+/// GET /library/{library_id}/person/{id}/edit
+pub async fn edit(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    base: BaseContext,
+    Path((library_id, id)): Path<(i64, i64)>,
+) -> Result<Response, AppError> {
+    // A logged-in user sees private libraries, so this does not go through visible_library
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let person = library.person(id).await?.or_not_found()?;
+    let input = person.raw_input();
+    render_edit(base, library, person, input, PersonErrors::default())
+}
+
+/// POST /library/{library_id}/person/{id}/edit
+pub async fn save(
+    _session: Session,
+    State(state): State<Arc<AppState>>,
+    base: BaseContext,
+    Path((library_id, id)): Path<(i64, i64)>,
+    RawForm(body): RawForm,
+) -> Result<Response, AppError> {
+    let post: PersonPost = publication_post::decode_form(&body)?;
+    let library = state.archive.library(library_id).await?.or_not_found()?;
+    let mut person = library.person(id).await?.or_not_found()?;
+    let input = PersonRawInput::from(post);
+    match input.parse() {
+        Ok(parsed) => {
+            person.update(&parsed).await?;
+            Ok(Redirect::to(&format!("/library/{library_id}/person/{id}")).into_response())
+        }
+        Err(errors) => render_edit(base, library, person, input, errors),
+    }
+}
+
+fn render_edit(
+    base: BaseContext,
+    library: Library,
+    person: Person,
+    input: PersonRawInput,
+    errors: PersonErrors,
+) -> Result<Response, AppError> {
+    let page = EditPage {
+        base: base.page(
+            person.name.clone(),
+            vec![
+                Crumb::home(),
+                Crumb::library(&library),
+                Crumb::person(&person),
+            ],
+        ),
+        fields: PersonFields::build(input, errors),
+        library,
+        person,
     };
     Ok(Html(page.render()?).into_response())
 }

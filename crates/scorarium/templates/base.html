@@ -10,6 +10,29 @@
             .form-control::placeholder {
                 opacity: 0.5;
             }
+
+            /* The link icons sit on one baseline, the way Bootstrap Icons do. Some are square
+               marks and some are wordmarks */
+            .link-svg {
+                height: 1em;
+                vertical-align: -0.125em;
+                width: auto;
+            }
+
+            .link-favicon {
+                height: 1em;
+                vertical-align: -0.125em;
+                width: 1em;
+            }
+
+            /* The generic icon shows only once the favicon has failed to load */
+            .link-favicon+.bi {
+                display: none;
+            }
+
+            .link-favicon[hidden]+.bi {
+                display: inline;
+            }
         </style>
         <script>
             // Run before the body paints so the page never flashes light first.

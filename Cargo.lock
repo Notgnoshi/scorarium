@@ -1890,6 +1890,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -1907,6 +1908,7 @@ dependencies = [
  "sqlx",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]

@@ -115,6 +115,134 @@ async fn publication_page() {
 }
 
 #[tokio::test]
+async fn links_open_in_a_new_tab_under_their_site() {
+    let state = TestDb::new().library("Sheet music").build().await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let imslp = "https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)";
+    let henle = "https://www.henle.de/en/detail/?Title=1234";
+    let input = PublicationRawInput {
+        title: "Three gymnopedies".into(),
+        holdings: vec![HoldingRawInput {
+            id: None,
+            kind: HoldingKind::Physical,
+            location: String::new(),
+        }],
+        links: vec![imslp.into(), henle.into()],
+        ..PublicationRawInput::default()
+    };
+    let publication = library
+        .create_publication(&input.parse().unwrap())
+        .await
+        .unwrap();
+
+    let server = browser(state);
+    let response = server
+        .get(&format!(
+            "/library/{}/publication/{}",
+            library.id, publication.id
+        ))
+        .await;
+    response.assert_status_ok();
+    let body = response.text();
+
+    // An external link must not hand the site it opens a handle on this page
+    assert_eq!(body.matches("target=\"_blank\"").count(), 2);
+    assert_eq!(body.matches("rel=\"noopener\"").count(), 2);
+    for expected in [
+        format!("href=\"{imslp}\""),
+        format!("href=\"{henle}\""),
+        // A known host is named and drawn by its vendored logo, which takes the page's text color
+        "IMSLP".to_string(),
+        "currentColor".to_string(),
+        // An unknown one is drawn by whatever favicon its own host serves
+        "src=\"https://www.henle.de/favicon.ico\"".to_string(),
+    ] {
+        assert!(body.contains(&expected), "missing {expected}");
+    }
+}
+
+/// The publication form is the one with the most moving parts between the browser and the
+/// database, so it is where the links fieldset is exercised end to end.
+#[tokio::test]
+async fn the_links_fieldset_saves_what_it_accepts() {
+    let state = TestDb::new()
+        .library("Sheet music")
+        .password("hunter2")
+        .build()
+        .await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let stored = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Three gymnopedies".into(),
+                holdings: vec![HoldingRawInput {
+                    id: None,
+                    kind: HoldingKind::Physical,
+                    location: "Piano bench".into(),
+                }],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let view = format!("/library/{}/publication/{}", library.id, stored.id);
+    let edit = format!("{view}/edit");
+    let imslp = "https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)";
+    let copy = [
+        ("title", "Three gymnopedies"),
+        ("publisher", ""),
+        ("year", ""),
+        ("holding_id_0", ""),
+        ("holding_kind_0", "physical"),
+        ("holding_location_0", "Piano bench"),
+        ("holding_file_0", ""),
+    ];
+    let server = browser(state);
+    server.post("/login").form(&[("password", "hunter2")]).await;
+
+    // A link without a scheme is refused, and the form comes back holding both of them
+    let posted: Vec<(&str, &str)> = copy
+        .iter()
+        .copied()
+        .chain([("link", imslp), ("link", "henle.de")])
+        .collect();
+    let response = server.post(&edit).form(&posted).await;
+    response.assert_status_ok();
+    response.assert_text_contains(scorarium_archive::ValidationError::InvalidUrl.to_string());
+    response.assert_text_contains(format!("value=\"{imslp}\""));
+    response.assert_text_contains("value=\"henle.de\"");
+    assert!(
+        library
+            .publication(stored.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .links
+            .is_empty()
+    );
+
+    // Fixing it stores both, in the order they were entered
+    let henle = "https://www.henle.de/en/detail/?Title=1234";
+    let posted: Vec<(&str, &str)> = copy
+        .iter()
+        .copied()
+        .chain([("link", imslp), ("link", henle)])
+        .collect();
+    let response = server.post(&edit).form(&posted).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &view);
+    assert_eq!(
+        library.publication(stored.id).await.unwrap().unwrap().links,
+        [imslp, henle]
+    );
+    let response = server.get(&view).await;
+    response.assert_text_contains(format!("href=\"{imslp}\""));
+    response.assert_text_contains(format!("href=\"{henle}\""));
+}
+
+#[tokio::test]
 async fn publication_edit_flow() {
     let state = TestDb::new()
         .library("Books")

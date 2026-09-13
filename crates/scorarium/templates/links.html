@@ -1,0 +1,22 @@
+{% macro show(links) %}
+    {% for url in links.iter() %}
+        {%- if !loop.first %}, {% endif -%}
+        {% let site = crate::links::Site::new(url) %}
+        <a href="{{ url }}" target="_blank" rel="noopener">
+            {% match site.icon %}
+            {% when crate::links::Icon::Svg(markup) %}
+            {{ markup|safe }} {{ site.label }}
+            {% when crate::links::Icon::Bootstrap(class) %}
+            <i class="bi bi-{{ class }}" aria-hidden="true"></i> {{ site.label }}
+            {% when crate::links::Icon::Favicon %}
+            {# The error handler hides a favicon that failed, and the CSS uncovers the generic icon beside it. #}
+            <img class="link-favicon"
+                 src="https://{{ site.host }}/favicon.ico"
+                 alt=""
+                 referrerpolicy="no-referrer"
+                 onerror="this.hidden = true" />
+            <i class="bi bi-link-45deg" aria-hidden="true"></i> {{ site.label }}
+    {% endmatch %}
+    </a>
+{%- endfor %}
+{% endmacro %}

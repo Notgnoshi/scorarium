@@ -24,8 +24,8 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError,
-    Work, WorkErrors, WorkRawInput,
+    NotFound, PendingImport, Person, Publication, PublicationErrors, PublicationRawInput,
+    ValidationError, Work, WorkErrors, WorkRawInput,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -127,6 +127,13 @@ impl Crumb {
         Self {
             label: work.title.clone(),
             href: format!("/library/{}/work/{}", work.library_id, work.id),
+        }
+    }
+
+    pub fn person(person: &Person) -> Self {
+        Self {
+            label: person.name.clone(),
+            href: format!("/library/{}/person/{}", person.library_id, person.id),
         }
     }
 }
@@ -282,6 +289,7 @@ pub struct FormFields {
     pub no_holdings: String,
     pub identifiers: Vec<(IdentifierRawInput, String)>,
     pub contributors: Vec<(ContributorInput, String)>,
+    pub links: Vec<(String, String)>,
     pub works: Vec<ShownWork>,
     pub no_copies_warning: String,
     pub work_edit: WorkEdit,
@@ -295,6 +303,7 @@ impl FormFields {
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
             contributors: pair_messages(&input.contributors, &errors.contributors),
+            links: pair_messages(&input.links, &errors.links),
             works: shown_works(&input.contents, &errors.contents),
             no_copies_warning: String::new(),
             work_edit: WorkEdit::default(),
@@ -330,6 +339,7 @@ pub struct WorkFields {
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
     pub catalog_numbers: Vec<ShownCatalogNumber>,
+    pub links: Vec<(String, String)>,
 }
 
 impl WorkFields {
@@ -338,6 +348,7 @@ impl WorkFields {
         Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
+            links: pair_messages(&input.links, &errors.links),
             input,
             errors,
         }
@@ -431,10 +442,12 @@ fn work_message(errors: &WorkErrors, lead: Option<usize>, lead_number: Option<us
     {
         return error.to_string();
     }
+    // A work's links are edited on the work's own page, so a bad one is out of this row's reach
     if errors
         .contributors
         .iter()
         .chain(errors.catalog_numbers.iter())
+        .chain(errors.links.iter())
         .any(Option::is_some)
     {
         return HIDDEN_WORK_PROBLEM.to_string();
@@ -537,6 +550,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(work::edit).post(work::save),
         )
         .route("/library/{library_id}/person/{id}", get(person::person))
+        .route(
+            "/library/{library_id}/person/{id}/edit",
+            get(person::edit).post(person::save),
+        )
         .route("/library/{id}/composers", get(person::composers))
         .route("/library/{id}/authors", get(person::authors))
         .with_state(state)

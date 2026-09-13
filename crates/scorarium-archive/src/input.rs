@@ -19,6 +19,7 @@ pub enum ValidationError {
     InvalidIdentifier(identifier::Error),
     StarsInvalid,
     InvalidTag(String),
+    InvalidUrl,
 }
 
 impl Display for ValidationError {
@@ -37,6 +38,9 @@ impl Display for ValidationError {
             ValidationError::StarsInvalid => write!(f, "A rating is 1 to 5 stars."),
             ValidationError::InvalidTag(tag) => {
                 write!(f, "'{tag}' has invalid characters. Use [a-zA-Z0-9_-]")
+            }
+            ValidationError::InvalidUrl => {
+                write!(f, "Invalid URL")
             }
         }
     }
@@ -117,6 +121,35 @@ pub(crate) fn parse_catalog_numbers(
     }
 }
 
+pub(crate) fn parse_links(raw: &[String]) -> Result<Vec<String>, Vec<Option<ValidationError>>> {
+    let mut links: Vec<String> = Vec::new();
+    let errors: Vec<Option<ValidationError>> = raw
+        .iter()
+        .map(|raw| {
+            let raw = raw.trim();
+            if raw.is_empty() {
+                return Some(ValidationError::FillOrRemove);
+            }
+            let Ok(url) = url::Url::parse(raw) else {
+                return Some(ValidationError::InvalidUrl);
+            };
+            if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+                return Some(ValidationError::InvalidUrl);
+            }
+            if links.iter().any(|seen| seen == url.as_str()) {
+                return Some(ValidationError::AlreadyListed);
+            }
+            links.push(url.into());
+            None
+        })
+        .collect();
+    if errors.iter().all(Option::is_none) {
+        Ok(links)
+    } else {
+        Err(errors)
+    }
+}
+
 /// Check a rating, which a publication and a work each carry
 pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
     match raw.trim() {
@@ -132,4 +165,37 @@ pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
 pub(crate) fn trimmed_or_none(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_are_normalized_and_checked() {
+        let raw = [
+            "  https://IMSLP.org  ",
+            "https://imslp.org:443/",
+            "imslp.org",
+            "javascript:alert(1)",
+            "",
+        ];
+        let raw: Vec<String> = raw.iter().map(|link| link.to_string()).collect();
+        assert_eq!(
+            parse_links(&raw).unwrap_err(),
+            vec![
+                None,
+                // The same address once the host is lowercased and the default port dropped
+                Some(ValidationError::AlreadyListed),
+                // A bare host is not a web address; the scheme is what makes it one
+                Some(ValidationError::InvalidUrl),
+                Some(ValidationError::InvalidUrl),
+                Some(ValidationError::FillOrRemove),
+            ]
+        );
+        assert_eq!(
+            parse_links(&["  https://IMSLP.org  ".to_string()]).unwrap(),
+            vec!["https://imslp.org/".to_string()]
+        );
+    }
 }

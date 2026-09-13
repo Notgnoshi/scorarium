@@ -1,10 +1,23 @@
 {% extends "base.html" %}
+{% import "links.html" as links %}
 {% import "stars.html" as stars %}
 {% import "tags.html" as tags %}
 {% block content %}
     {% call stars::style() %}
     {% endcall %}
     <h1>{{ person.name }}</h1>
+    {% if base.logged_in %}
+        <a class="btn btn-outline-secondary btn-sm mb-3"
+           href="/library/{{ person.library_id }}/person/{{ person.id }}/edit">
+            <i class="bi bi-pencil" aria-hidden="true"></i> Edit
+        </a>
+    {% endif %}
+    {% if !person.links.is_empty() %}
+        <p>
+            {% call links::show(person.links) %}
+            {% endcall %}
+        </p>
+    {% endif %}
     <h2>Publications</h2>
     {% for (p, works) in publications %}
         <div class="card mb-3">
