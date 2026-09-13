@@ -24,8 +24,8 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError,
-    Work, WorkErrors, WorkRawInput,
+    NotFound, PendingImport, Person, Publication, PublicationErrors, PublicationRawInput,
+    ValidationError, Work, WorkErrors, WorkRawInput,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -127,6 +127,13 @@ impl Crumb {
         Self {
             label: work.title.clone(),
             href: format!("/library/{}/work/{}", work.library_id, work.id),
+        }
+    }
+
+    pub fn person(person: &Person) -> Self {
+        Self {
+            label: person.name.clone(),
+            href: format!("/library/{}/person/{}", person.library_id, person.id),
         }
     }
 }
@@ -543,6 +550,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(work::edit).post(work::save),
         )
         .route("/library/{library_id}/person/{id}", get(person::person))
+        .route(
+            "/library/{library_id}/person/{id}/edit",
+            get(person::edit).post(person::save),
+        )
         .route("/library/{id}/composers", get(person::composers))
         .route("/library/{id}/authors", get(person::authors))
         .with_state(state)

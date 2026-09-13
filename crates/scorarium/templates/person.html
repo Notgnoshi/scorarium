@@ -6,6 +6,12 @@
     {% call stars::style() %}
     {% endcall %}
     <h1>{{ person.name }}</h1>
+    {% if base.logged_in %}
+        <a class="btn btn-outline-secondary btn-sm mb-3"
+           href="/library/{{ person.library_id }}/person/{{ person.id }}/edit">
+            <i class="bi bi-pencil" aria-hidden="true"></i> Edit
+        </a>
+    {% endif %}
     {% if !person.links.is_empty() %}
         <p>
             {% call links::show(person.links) %}

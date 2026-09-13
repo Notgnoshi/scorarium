@@ -97,6 +97,88 @@ async fn person_page() {
 }
 
 #[tokio::test]
+async fn person_edit_renames_and_links() {
+    let state = TestDb::new().demo().build().await;
+    let library = state
+        .archive
+        .libraries()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|l| l.name == "Sheet music")
+        .unwrap();
+    let kabalevsky = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.name == "Dmitri Kabalevsky")
+        .unwrap();
+    let view = format!("/library/{}/person/{}", library.id, kabalevsky.id);
+    let edit = format!("{view}/edit");
+    let imslp = "https://imslp.org/wiki/Category:Vaughan_Williams,_Ralph";
+    let henle = "https://www.henle.de/en/";
+    let server = browser(state);
+
+    // Editing requires login, and the button that leads there is hidden until then
+    let response = server.get(&edit).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let response = server.get(&view).await;
+    assert!(!response.text().contains(&format!("href=\"{edit}\"")));
+    demo_login(&server).await;
+    let response = server.get(&view).await;
+    response.assert_text_contains(format!("href=\"{edit}\""));
+
+    // The form opens on the stored name
+    let response = server.get(&edit).await;
+    response.assert_status_ok();
+    response.assert_text_contains("value=\"Dmitri Kabalevsky\"");
+
+    // A rejected submission comes back with its message, having changed nothing
+    let response = server.post(&edit).form(&[("name", "  ")]).await;
+    response.assert_status_ok();
+    response.assert_text_contains(scorarium_archive::ValidationError::NameRequired.to_string());
+    assert_eq!(
+        library.person(kabalevsky.id).await.unwrap().unwrap().name,
+        "Dmitri Kabalevsky"
+    );
+
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("name", "Ralph Vaughan Williams"),
+            ("link", imslp),
+            ("link", henle),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", &view);
+
+    let response = server.get(&view).await;
+    response.assert_status_ok();
+    for expected in [
+        "Ralph Vaughan Williams",
+        &format!("href=\"{imslp}\""),
+        &format!("href=\"{henle}\""),
+        "IMSLP",
+        "henle.de",
+    ] {
+        response.assert_text_contains(expected);
+    }
+
+    // The sort name is derived from the name, so the listing is where a rename shows up. The
+    // heuristic takes the last word as the surname, so this one now sorts under W, at the end.
+    let response = server
+        .get(&format!("/library/{}/composers", library.id))
+        .await;
+    response.assert_status_ok();
+    let body = response.text();
+    let renamed = body.find("Ralph Vaughan Williams").unwrap();
+    let last_other = body.find("Pyotr Ilyich Tchaikovsky").unwrap();
+    assert!(renamed > last_other, "the renamed composer sorts under W");
+}
+
+#[tokio::test]
 async fn composers_and_authors_pages() {
     let state = TestDb::new().demo().build().await;
     let libraries = state.archive.libraries().await.unwrap();
