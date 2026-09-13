@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "catalog.html" as catalog %}
+{% import "links.html" as links %}
 {% import "stars.html" as stars %}
 {% import "tags.html" as tags %}
 {% block content %}
@@ -51,6 +52,13 @@
                 {% for c in work.contributors %}
                     {% if !loop.first %}, {% endif %}<a href="/library/{{ work.library_id }}/person/{{ c.person_id }}">{{ c.name }}</a> <span class="badge text-bg-secondary">{{ c.role }}</span>
                 {% endfor %}
+            </dd>
+        {% endif %}
+        {% if !work.links.is_empty() %}
+            <dt class="col-sm-3">Links</dt>
+            <dd class="col-sm-9">
+                {% call links::show(work.links) %}
+                {% endcall %}
             </dd>
         {% endif %}
     </dl>
