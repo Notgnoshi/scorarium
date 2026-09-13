@@ -17,6 +17,8 @@
         <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
                id="title"
                name="title"
+               data-suggest="publication"
+               autocomplete="off"
                value="{{ fields.input.title }}" />
         {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
@@ -25,6 +27,8 @@
         <input class="form-control"
                id="publisher"
                name="publisher"
+               data-suggest="publisher"
+               autocomplete="off"
                value="{{ fields.input.publisher }}" />
     </div>
     <div class="mb-3">
@@ -38,7 +42,7 @@
     </div>
     {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
     {% endcall %}
-    {% call tags::input(fields.input.tags.as_str(), fields.tag_vocabulary, fields.errors.tags) %}
+    {% call tags::input(fields.input.tags.as_str(), fields.errors.tags) %}
     {% endcall %}
     <div class="mb-3">
         <label class="form-label" for="note">Notes</label>
@@ -115,7 +119,8 @@
                 <input class="form-control"
                        placeholder="Composer"
                        aria-label="Composer"
-                       list="names"
+                       data-suggest="person"
+                       autocomplete="off"
                        data-range-composer />
                 <input class="form-control"
                        placeholder="Op. 28 No."
@@ -146,12 +151,6 @@
     </fieldset>
     {% call rows::holdings_box(fields.holdings, fields.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
-    <datalist id="roles">
-        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
-    </datalist>
-    <datalist id="names">
-        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
-    </datalist>
 </div>
 {% call rows::script() %}
 {% endcall %}

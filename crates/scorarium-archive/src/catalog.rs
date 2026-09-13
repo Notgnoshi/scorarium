@@ -177,37 +177,26 @@ impl CatalogNumber {
         }
     }
 
-    /// How well this stored number fits what was typed; None when it should not be suggested
-    pub fn similarity(&self, typed: &Self) -> Option<Similarity> {
-        if typed.text.is_empty() {
-            return None;
-        }
-        if self.matches(typed) {
-            return Some(Similarity::Exact);
-        }
-        if let (Some(mine), Some(theirs)) = (self.scheme, typed.scheme)
-            && mine == theirs
-            && self.numbers.starts_with(&typed.numbers)
-        {
-            return Some(Similarity::Prefix);
-        }
-        // A half-typed label matches nothing structurally, so the text is the last resort
+    /// The number with everything but its letters and digits removed: "Op. 9 No. 2" is "op9no2".
+    ///
+    /// Searching splits text into words, and a number is as often typed run together as spaced
+    /// out, so this gives "op9" something to match.
+    pub fn squashed(&self) -> String {
         self.text
-            .to_lowercase()
-            .contains(&typed.text.to_lowercase())
-            .then_some(Similarity::Text)
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
     }
-}
 
-/// How well a stored number fits what was typed, best first
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Similarity {
-    /// The same number, however either was spelled
-    Exact,
-    /// The same scheme, and every number typed so far agrees
-    Prefix,
-    /// The typed text appears somewhere in it
-    Text,
+    pub fn starts_with(&self, prefix: &Self) -> bool {
+        match (self.scheme, prefix.scheme) {
+            (Some(mine), Some(theirs)) => {
+                mine == theirs && self.numbers.starts_with(&prefix.numbers)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for CatalogNumber {
@@ -380,39 +369,6 @@ mod tests {
         // Unrecognized values match only on identical text
         assert!(CatalogNumber::parse("Hob. XVI:52").matches(&CatalogNumber::parse("Hob. XVI:52")));
         assert!(!CatalogNumber::parse("Hob. XVI:52").matches(&CatalogNumber::parse("Hob XVI:52")));
-    }
-
-    #[test]
-    fn similarity_tiers() {
-        let sim = |stored: &str, typed: &str| {
-            CatalogNumber::parse(stored).similarity(&CatalogNumber::parse(typed))
-        };
-        assert_eq!(sim("Op. 27 No. 2", "op.27/2"), Some(Similarity::Exact));
-        assert_eq!(sim("Op. 27 No. 2", "Op. 27"), Some(Similarity::Prefix));
-        assert_eq!(
-            sim("Op. 27", "Op. 27 No. 2"),
-            None,
-            "a longer tuple is not a prefix"
-        );
-        assert_eq!(
-            sim("BWV 27", "Op. 27"),
-            None,
-            "prefixes do not cross schemes"
-        );
-        assert_eq!(
-            sim("Op. 27 No. 2", "op"),
-            Some(Similarity::Text),
-            "a bare label finds every number of that scheme"
-        );
-        assert_eq!(sim("Hob. XVI:52", "hob"), Some(Similarity::Text));
-        assert_eq!(sim("Hob. XVI:52", "Hob. XVI:52"), Some(Similarity::Exact));
-        assert_eq!(sim("Hob. XVI:52", "BWV"), None);
-        assert_eq!(
-            sim("Op. 27 No. 2", ""),
-            None,
-            "nothing typed suggests nothing"
-        );
-        assert!(Similarity::Exact < Similarity::Prefix && Similarity::Prefix < Similarity::Text);
     }
 
     #[test]

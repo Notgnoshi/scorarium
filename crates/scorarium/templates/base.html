@@ -38,7 +38,27 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbar">
-                    <ul class="navbar-nav ms-auto">
+                    {% if base.path != "/login" %}
+                        <form class="ms-auto me-md-3 my-2 my-md-0"
+                              role="search"
+                              method="get"
+                              action="/search">
+                            <div class="input-group">
+                                <input class="form-control"
+                                       type="search"
+                                       name="q"
+                                       value="{{ base.search_query }}"
+                                       data-suggest="title"
+                                       autocomplete="off"
+                                       placeholder="Search"
+                                       aria-label="Search" />
+                                <button class="btn btn-outline-secondary" type="submit" aria-label="Search">
+                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </form>
+                    {% endif %}
+                    <ul class="navbar-nav">
                         {% if base.logged_in %}
                             {% if base.path != "/review" %}
                                 <li class="nav-item">
@@ -92,6 +112,7 @@
             </a>
         </footer>
         <script src="{{ base.bootstrap_js }}"></script>
+        <script type="module" src="{{ base.suggest_js }}"></script>
         <script>
             // Bootstrap modals ignore autofocus; so we honor it ourselves.
             //
@@ -100,6 +121,26 @@
             // One delegated tooltip instance covers elements added after load
             new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
+            });
+            // Picking a title in the navbar box goes straight to that page; submitting the form
+            // is still how a full search is run
+            document.addEventListener("suggest:pick", (e) => {
+                if (e.target.matches('[data-suggest="title"]') && e.detail.href) {
+                    window.location.assign(e.detail.href);
+                }
+            });
+            // "/" jumps to the search box, unless the visitor is already typing somewhere
+            document.addEventListener("keydown", (e) => {
+                if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+                const active = document.activeElement;
+                if (active?.matches("input, textarea, select") || active?.isContentEditable) return;
+                // Focus belongs to the modal while one is open
+                if (document.querySelector(".modal.show")) return;
+                const search = document.querySelector('[role="search"] input[name="q"]');
+                if (!search) return;
+                // Otherwise the slash lands in the box, and Firefox opens its own quick find
+                e.preventDefault();
+                search.select();
             });
         </script>
     </body>

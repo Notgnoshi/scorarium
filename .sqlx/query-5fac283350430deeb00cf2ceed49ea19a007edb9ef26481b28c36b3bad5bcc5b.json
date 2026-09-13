@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.title, p.year, l.id AS library_id, l.name AS library_name\n           FROM publication p JOIN library l ON l.id = p.library_id\n           WHERE (?1 IS NULL OR p.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n           ORDER BY l.name, p.title",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "year",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "year"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "5fac283350430deeb00cf2ceed49ea19a007edb9ef26481b28c36b3bad5bcc5b"
+}

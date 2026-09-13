@@ -7,8 +7,9 @@ use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
+use crate::suggest::{self, SuggestField, Suggestion};
 use crate::tag::{self, TagCount};
-use crate::work::{self, CatalogNumberEntry, Work};
+use crate::work::{self, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A named container of publications.
@@ -192,12 +193,6 @@ impl Library {
         Ok(work)
     }
 
-    /// Every catalog number in the library, optionally only those credited to one composer
-    pub async fn catalog_numbers(&self, composer: Option<&str>) -> Result<Vec<CatalogNumberEntry>> {
-        let mut conn = self.archive.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, Some(self.id), composer).await
-    }
-
     /// Fold one work into another and delete it; the survivor is returned reloaded.
     ///
     /// Returns a [NotFound] error when either work is not in this library.
@@ -251,16 +246,10 @@ impl Library {
         person::list_contributor_roles(&mut conn, self.id).await
     }
 
-    /// Every person's display name, by sort name, for input suggestions
+    /// Every person's display name, by sort name
     pub async fn person_names(&self) -> Result<Vec<String>> {
         let mut conn = self.archive.acquire_read().await?;
         person::list_person_names(&mut conn, self.id).await
-    }
-
-    /// Every distinct tag in the library, alphabetically, for the tag field's suggestions
-    pub async fn tag_vocabulary(&self) -> Result<Vec<String>> {
-        let mut conn = self.archive.acquire_read().await?;
-        tag::list_vocabulary(&mut conn, self.id).await
     }
 
     /// Every tag in the library with its use count, alphabetically
@@ -286,6 +275,25 @@ impl Library {
             work::load_works(&self.archive, &mut tx, self.id, None, None, Some(tag)).await?;
         tx.commit().await?;
         Ok((publications, works))
+    }
+}
+
+// suggestions
+impl Library {
+    /// Existing values for one input, best match first.
+    ///
+    /// With nothing typed, the small vocabularies come back whole and alphabetical.
+    pub async fn suggest(
+        &self,
+        field: SuggestField,
+        typed: &str,
+        public_only: bool,
+    ) -> Result<Vec<Suggestion>> {
+        if public_only && self.private {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.archive.acquire_read().await?;
+        suggest::suggest(&mut conn, self.id, field, typed, public_only).await
     }
 }
 

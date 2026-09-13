@@ -12,6 +12,8 @@
         <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
                id="title"
                name="title"
+               data-suggest="work"
+               autocomplete="off"
                value="{{ fields.input.title }}" />
         {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
@@ -20,6 +22,8 @@
         <input class="form-control"
                id="key"
                name="key"
+               data-suggest="key"
+               autocomplete="off"
                placeholder="C-sharp minor"
                value="{{ fields.input.key }}" />
     </div>
@@ -28,6 +32,8 @@
         <input class="form-control"
                id="time-signature"
                name="time_signature"
+               data-suggest="time-signature"
+               autocomplete="off"
                placeholder="3/4"
                value="{{ fields.input.time_signature }}" />
     </div>
@@ -36,12 +42,14 @@
         <input class="form-control"
                id="instrumentation"
                name="instrumentation"
+               data-suggest="instrumentation"
+               autocomplete="off"
                placeholder="piano"
                value="{{ fields.input.instrumentation }}" />
     </div>
     {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
     {% endcall %}
-    {% call tags::input(fields.input.tags.as_str(), fields.tag_vocabulary, fields.errors.tags) %}
+    {% call tags::input(fields.input.tags.as_str(), fields.errors.tags) %}
     {% endcall %}
     <div class="mb-3">
         <label class="form-label" for="note">Notes</label>
@@ -85,12 +93,6 @@
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
     </fieldset>
-    <datalist id="roles">
-        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
-    </datalist>
-    <datalist id="names">
-        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
-    </datalist>
 </div>
 {% call rows::script() %}
 {% endcall %}

@@ -133,6 +133,18 @@ pub(crate) async fn find_or_create_person(
     Ok(created.last_insert_rowid())
 }
 
+/// How strongly a role identifies the work it is credited on, lowest first.
+///
+/// A composer names a piece of music and an author names a piece of prose; everyone else helped
+/// with one. This is what picks the single contributor a work shows wherever it is listed.
+pub fn credit_priority(role: &str) -> u8 {
+    match role {
+        "composer" => 0,
+        "author" => 1,
+        _ => 2,
+    }
+}
+
 /// The distinct roles credited anywhere in the library, sorted
 pub(crate) async fn list_contributor_roles(
     conn: &mut SqliteConnection,

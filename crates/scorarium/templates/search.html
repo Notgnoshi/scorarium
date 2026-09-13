@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Search</h1>
+    {% if !base.search_query.is_empty() %}
+        <p>Results for "{{ base.search_query }}"</p>
+        {% if hits.is_empty() %}
+            <p class="text-body-secondary">Nothing matched.</p>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Kind</th>
+                            <th>Name</th>
+                            <th>Details</th>
+                            <th>Library</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hit in hits %}
+                            <tr>
+                                <td>
+                                    <span class="badge text-bg-secondary">{{ hit.kind }}</span>
+                                </td>
+                                <td>
+                                    <a href="{{ hit.href }}">{{ hit.primary }}</a>
+                                </td>
+                                <td>{{ hit.secondary }}</td>
+                                <td>{{ hit.library_name }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    {% endif %}
+{% endblock %}

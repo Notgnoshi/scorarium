@@ -136,8 +136,7 @@ async fn render_edit(
     input: PublicationRawInput,
     errors: PublicationErrors,
 ) -> Result<Response, AppError> {
-    let fields = FormFields::build(&library, input, errors)
-        .await?
+    let fields = FormFields::build(input, errors)
         .warn_when_empty(NO_COPIES)
         // A work's edit button opens the work, which comes back here when it is done
         .edit_works(WorkEdit::Stored {

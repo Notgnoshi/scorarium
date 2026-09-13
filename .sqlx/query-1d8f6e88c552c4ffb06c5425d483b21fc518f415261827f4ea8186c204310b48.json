@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title,\n                p.name AS composer, cn.value\n         FROM work_catalog_number cn\n         JOIN work w ON w.id = cn.work_id\n         JOIN library l ON l.id = w.library_id\n         LEFT JOIN work_contributor c ON c.work_id = w.id AND c.role = 'composer'\n         LEFT JOIN person p ON p.id = c.person_id\n         WHERE (?1 IS NULL OR w.library_id = ?1)\n           AND (?2 IS NULL OR p.name = ?2)\n         ORDER BY l.name, w.title, cn.id",
+  "query": "SELECT l.id AS library_id, l.name AS library_name, w.id AS work_id, w.title, cn.value\n         FROM work_catalog_number cn\n         JOIN work w ON w.id = cn.work_id\n         JOIN library l ON l.id = w.library_id\n         ORDER BY l.name, w.title, cn.id",
   "describe": {
     "columns": [
       {
@@ -48,19 +48,8 @@
         }
       },
       {
-        "name": "composer",
-        "ordinal": 4,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "person",
-            "name": "name"
-          }
-        }
-      },
-      {
         "name": "value",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,16 +60,15 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 0
     },
     "nullable": [
       false,
       false,
       false,
       false,
-      true,
       false
     ]
   },
-  "hash": "597436f996a9c823d7347ecfeff837f3c3f34f072821d344d2c7c99c1bb18a5b"
+  "hash": "1d8f6e88c552c4ffb06c5425d483b21fc518f415261827f4ea8186c204310b48"
 }

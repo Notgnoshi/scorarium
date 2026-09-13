@@ -9,6 +9,7 @@
     {% endcall %}
     <div class="row">
         <form class="col-md-8 col-lg-6"
+              data-library-id="{{ library.id }}"
               method="post"
               action="/library/{{ library.id }}/import">
             <div class="mb-3">
@@ -17,6 +18,8 @@
                        id="query"
                        name="query"
                        value="{{ query }}"
+                       data-suggest="publication"
+                       autocomplete="off"
                        placeholder="978-0-486-23134-1 or Three gymnopedies"
                        autofocus />
                 <div class="form-text">A title, ISBN, or ISMN identifier</div>

@@ -5,6 +5,7 @@
 mod audit;
 mod catalog;
 mod demo;
+mod fuzzy;
 mod holding;
 pub mod identifier;
 mod import;
@@ -13,6 +14,9 @@ mod library;
 mod password;
 mod person;
 mod publication;
+mod search;
+mod suggest;
+mod summary;
 mod tag;
 mod work;
 
@@ -26,7 +30,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
-pub use crate::catalog::{CatalogNumber, Similarity};
+pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
@@ -35,10 +39,13 @@ pub use crate::import::{Draft, PendingImport};
 pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
-pub use crate::person::{Contributor, Person};
+pub use crate::person::{Contributor, Person, credit_priority};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
+pub use crate::search::{Entity, SearchHit};
+pub use crate::suggest::{SuggestField, Suggested, Suggestion};
+pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary};
 pub use crate::tag::TagCount;
 pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 
@@ -198,10 +205,26 @@ impl Archive {
         Ok(library)
     }
 
+    /// Search for titles, contributors, and catalog numbers
+    pub async fn search(&self, typed: &str, public_only: bool) -> Result<Vec<SearchHit>> {
+        let mut tx = self.shared.begin_read().await?;
+        let hits = search::search(&mut tx, typed, public_only).await?;
+        tx.commit().await?;
+        Ok(hits)
+    }
+
+    /// Publications and works whose title matches, for the navbar typeahead
+    pub async fn suggest_titles(&self, typed: &str, public_only: bool) -> Result<Vec<SearchHit>> {
+        let mut tx = self.shared.begin_read().await?;
+        let hits = search::suggest_titles(&mut tx, typed, public_only).await?;
+        tx.commit().await?;
+        Ok(hits)
+    }
+
     /// Every catalog number in every library
     pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
         let mut conn = self.shared.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, None, None).await
+        work::load_catalog_numbers(&mut conn).await
     }
 
     /// Every library's pending imports, oldest first

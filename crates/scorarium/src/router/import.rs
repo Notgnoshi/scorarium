@@ -204,9 +204,7 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
-        fields: FormFields::build(&library, draft.input, errors)
-            .await?
-            .edit_works(WorkEdit::Draft),
+        fields: FormFields::build(draft.input, errors).edit_works(WorkEdit::Draft),
         library,
         import,
     };
@@ -308,7 +306,7 @@ pub async fn work(
                 Crumb::import_review(&import, &label(&import, &draft.input)),
             ],
         ),
-        fields: WorkFields::build(&library, input, errors).await?,
+        fields: WorkFields::build(input, errors),
         work_id,
         library,
         import,

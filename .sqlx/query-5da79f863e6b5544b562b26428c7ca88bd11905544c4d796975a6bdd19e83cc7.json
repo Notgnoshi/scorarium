@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT c.publication_id, per.name\n           FROM publication_contributor c JOIN person per ON per.id = c.person_id\n           JOIN publication p ON p.id = c.publication_id JOIN library l ON l.id = p.library_id\n           WHERE (?1 IS NULL OR p.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n           ORDER BY c.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "publication_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "5da79f863e6b5544b562b26428c7ca88bd11905544c4d796975a6bdd19e83cc7"
+}

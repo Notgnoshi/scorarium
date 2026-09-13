@@ -5,16 +5,18 @@ mod library;
 mod login;
 mod person;
 mod publication;
+mod search;
 mod settings;
 mod suggest;
 mod tag;
 mod work;
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRequestParts, OptionalFromRequestParts};
 use axum::http::request::Parts;
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -139,9 +141,11 @@ pub struct BaseContext {
     /// Imports awaiting review, for the header badge. Zero when logged out.
     pub pending_import_count: i64,
     pub breadcrumbs: Vec<Crumb>,
+    pub search_query: String,
     pub bootstrap_css: String,
     pub bootstrap_icons_css: String,
     pub bootstrap_js: String,
+    pub suggest_js: String,
 }
 
 /// The request fills in everything the header needs; the handler adds the title and breadcrumbs with [BaseContext::page]
@@ -152,10 +156,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_headers(&parts.headers);
-        let logged_in = jar
-            .get(SESSION_COOKIE)
-            .is_some_and(|cookie| state.sessions.validate(cookie.value()));
+        let logged_in = session_of(parts, state).is_some();
         let pending_import_count = if logged_in {
             state.archive.pending_import_count().await?
         } else {
@@ -174,9 +175,11 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
             demo: state.demo,
             pending_import_count,
             breadcrumbs: Vec::new(),
+            search_query: String::new(),
             bootstrap_css: assets::url("bootstrap.min.css"),
             bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),
             bootstrap_js: assets::url("bootstrap.bundle.min.js"),
+            suggest_js: assets::url("suggest.js"),
         })
     }
 }
@@ -214,9 +217,6 @@ impl std::fmt::Display for LoginRequired {
 }
 
 impl std::error::Error for LoginRequired {}
-
-/// Suggested alongside the library's existing roles, so a new library still gets a datalist.
-const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
 
 /// What a work shows when its only problem is a field the publication form does not reach.
 const HIDDEN_WORK_PROBLEM: &str = "A hidden field is incomplete. Open the work to fix it.";
@@ -283,22 +283,14 @@ pub struct FormFields {
     pub identifiers: Vec<(IdentifierRawInput, String)>,
     pub contributors: Vec<(ContributorInput, String)>,
     pub works: Vec<ShownWork>,
-    // Datalist suggestions for the role and name inputs
-    pub roles: Vec<String>,
-    pub names: Vec<String>,
-    pub tag_vocabulary: Vec<String>,
     pub no_copies_warning: String,
     pub work_edit: WorkEdit,
 }
 
 impl FormFields {
-    pub async fn build(
-        library: &Library,
-        input: PublicationRawInput,
-        errors: PublicationErrors,
-    ) -> Result<Self, AppError> {
-        let (roles, names, tag_vocabulary) = suggestions(library).await?;
-        Ok(Self {
+    /// Everything here comes from the input and its errors, so building a form reads no data
+    pub fn build(input: PublicationRawInput, errors: PublicationErrors) -> Self {
+        Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
@@ -306,12 +298,9 @@ impl FormFields {
             works: shown_works(&input.contents, &errors.contents),
             no_copies_warning: String::new(),
             work_edit: WorkEdit::default(),
-            roles,
-            names,
-            tag_vocabulary,
             input,
             errors,
-        })
+        }
     }
 
     /// What to warn when the last copy is removed, on the page that can act on it.
@@ -341,27 +330,17 @@ pub struct WorkFields {
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
     pub catalog_numbers: Vec<ShownCatalogNumber>,
-    pub roles: Vec<String>,
-    pub names: Vec<String>,
-    pub tag_vocabulary: Vec<String>,
 }
 
 impl WorkFields {
-    pub async fn build(
-        library: &Library,
-        input: WorkRawInput,
-        errors: WorkErrors,
-    ) -> Result<Self, AppError> {
-        let (roles, names, tag_vocabulary) = suggestions(library).await?;
-        Ok(Self {
+    /// Everything here comes from the input and its errors, so building a form reads no data
+    pub fn build(input: WorkRawInput, errors: WorkErrors) -> Self {
+        Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
-            roles,
-            names,
-            tag_vocabulary,
             input,
             errors,
-        })
+        }
     }
 }
 
@@ -378,25 +357,6 @@ fn shown_catalog_numbers(
             message: message(errors.get(i).unwrap_or(&None)),
         })
         .collect()
-}
-
-/// Suggestions the forms offer, as (roles, names, tags).
-async fn suggestions(
-    library: &Library,
-) -> Result<(Vec<String>, Vec<String>, Vec<String>), AppError> {
-    let roles = library
-        .roles()
-        .await?
-        .into_iter()
-        .chain(CONVENTIONAL_ROLES.iter().map(|role| role.to_string()))
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    Ok((
-        roles,
-        library.person_names().await?,
-        library.tag_vocabulary().await?,
-    ))
 }
 
 fn shown_holdings(
@@ -524,6 +484,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
+        .route("/search", get(search::search))
+        .route("/suggest/title", get(suggest::title))
         .route("/settings", get(settings::settings_page))
         .route("/settings/password", post(settings::change_password))
         .route(
@@ -566,10 +528,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/library/{library_id}/publication/{id}/delete",
             post(publication::delete),
         )
-        .route(
-            "/library/{id}/suggest/catalog-numbers",
-            get(suggest::catalog_numbers),
-        )
+        .route("/library/{id}/suggest/{kind}", get(suggest::field))
         .route("/library/{id}/tags", get(tag::cloud))
         .route("/library/{library_id}/tags/{tag}", get(tag::tagged))
         .route("/library/{library_id}/work/{id}", get(work::work))
@@ -588,6 +547,14 @@ pub fn router(state: Arc<AppState>) -> Router {
 /// The session token of a logged-in request.
 struct Session(String);
 
+/// The valid session token the request carries, if it carries one
+fn session_of(parts: &Parts, state: &AppState) -> Option<String> {
+    let jar = CookieJar::from_headers(&parts.headers);
+    jar.get(SESSION_COOKIE)
+        .filter(|cookie| state.sessions.validate(cookie.value()))
+        .map(|cookie| cookie.value().to_string())
+}
+
 impl FromRequestParts<Arc<AppState>> for Session {
     type Rejection = Redirect;
 
@@ -595,12 +562,9 @@ impl FromRequestParts<Arc<AppState>> for Session {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_headers(&parts.headers);
-        match jar.get(SESSION_COOKIE) {
-            Some(cookie) if state.sessions.validate(cookie.value()) => {
-                Ok(Session(cookie.value().to_string()))
-            }
-            _ => {
+        match session_of(parts, state) {
+            Some(token) => Ok(Session(token)),
+            None => {
                 // Returning to a POST after login would only 405, so only a GET carries `back`
                 let back = (parts.method == Method::GET)
                     .then(|| parts.uri.path_and_query().map(|pq| pq.as_str()))
@@ -608,6 +572,18 @@ impl FromRequestParts<Arc<AppState>> for Session {
                 Err(login_redirect(back))
             }
         }
+    }
+}
+
+/// `Option<Session>` for routes that serve everyone but show a logged-in viewer more
+impl OptionalFromRequestParts<Arc<AppState>> for Session {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Option<Self>, Infallible> {
+        Ok(session_of(parts, state).map(Session))
     }
 }
 
