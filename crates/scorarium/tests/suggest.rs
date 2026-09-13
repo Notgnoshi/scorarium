@@ -34,138 +34,6 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
         .unwrap();
 }
 
-/// The (value, title, composer, exact) of each match, in the order the route ranked them
-fn matches(body: &Value) -> Vec<(&str, &str, &str, bool)> {
-    body["matches"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|m| {
-            (
-                m["value"].as_str().unwrap(),
-                m["title"].as_str().unwrap(),
-                m["composer"].as_str().unwrap_or_default(),
-                m["exact"].as_bool().unwrap(),
-            )
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn catalog_number_suggestions_rank_by_how_well_they_fit() {
-    let state = TestDb::new()
-        .library("Sheet music")
-        .password("hunter2")
-        .build()
-        .await;
-    let library = state.archive.libraries().await.unwrap().remove(0);
-    publish(
-        &library,
-        "Beethoven sonatas",
-        "Ludwig van Beethoven",
-        &[
-            ("Sonata No. 13", "Op. 27 No. 1"),
-            ("Sonata No. 14", "Op. 27 No. 2"),
-        ],
-    )
-    .await;
-    publish(
-        &library,
-        "Chopin",
-        "Frederic Chopin",
-        &[
-            ("Nocturne", "Op. 27 No. 2"),
-            ("Etude", "Op. 10 No. 3"),
-            ("Nocturne in C-sharp minor", "KK IVa/16"),
-        ],
-    )
-    .await;
-    let server = browser(state.clone());
-    server.post("/login").form(&[("password", "hunter2")]).await;
-    let suggest = format!("/library/{}/suggest/catalog-numbers", library.id);
-
-    let body = server
-        .get(&suggest)
-        .add_query_params([("q", "Op. 27"), ("composer", "Frederic Chopin")])
-        .await
-        .json::<Value>();
-    assert_eq!(body["recognized"], true);
-    assert_eq!(
-        matches(&body),
-        [("Op. 27 No. 2", "Nocturne", "Frederic Chopin", false)],
-        "a composer narrows the suggestions to their own numbers"
-    );
-
-    let body = server
-        .get(&suggest)
-        .add_query_params([("q", "op.27/2"), ("composer", "Frederic Chopin")])
-        .await
-        .json::<Value>();
-    assert_eq!(
-        matches(&body),
-        [("Op. 27 No. 2", "Nocturne", "Frederic Chopin", true)],
-        "another spelling of the same number is an exact match"
-    );
-
-    let body = server
-        .get(&suggest)
-        .add_query_params([("q", "Op. 27")])
-        .await
-        .json::<Value>();
-    assert_eq!(
-        matches(&body),
-        [
-            (
-                "Op. 27 No. 1",
-                "Sonata No. 13",
-                "Ludwig van Beethoven",
-                false
-            ),
-            ("Op. 27 No. 2", "Nocturne", "Frederic Chopin", false),
-            (
-                "Op. 27 No. 2",
-                "Sonata No. 14",
-                "Ludwig van Beethoven",
-                false
-            ),
-        ],
-        "with no composer the whole library is searched, by number then title"
-    );
-
-    let body = server
-        .get(&suggest)
-        .add_query_params([("q", "kk")])
-        .await
-        .json::<Value>();
-    assert_eq!(body["recognized"], false);
-    assert_eq!(
-        matches(&body),
-        [(
-            "KK IVa/16",
-            "Nocturne in C-sharp minor",
-            "Frederic Chopin",
-            false
-        )],
-        "a number the parser does not recognize is still found by its text"
-    );
-
-    let body = server
-        .get(&suggest)
-        .add_query_params([("q", "")])
-        .await
-        .json::<Value>();
-    assert_eq!(body["recognized"], false);
-    assert_eq!(matches(&body), [], "nothing typed suggests nothing");
-
-    let response = server
-        .get(&format!(
-            "/library/{}/suggest/catalog-numbers",
-            library.id + 100
-        ))
-        .await;
-    response.assert_status(StatusCode::NOT_FOUND);
-}
-
 #[tokio::test]
 async fn field_suggestions_are_formatted_and_capped() {
     let state = TestDb::new().demo().build().await;
@@ -232,6 +100,75 @@ async fn field_suggestions_are_formatted_and_capped() {
 
     server
         .get(&format!("/library/{books}/suggest/colour?q=x"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn work_number_suggestions_carry_the_indicator_and_contributor() {
+    let state = TestDb::new()
+        .library("Sheet music")
+        .password("hunter2")
+        .build()
+        .await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    publish(
+        &library,
+        "Nocturnes",
+        "Frederic Chopin",
+        &[("Nocturne in E-flat major", "Op. 9 No. 2")],
+    )
+    .await;
+    publish(
+        &library,
+        "Sonatas",
+        "Ludwig van Beethoven",
+        &[("Sonata No. 14", "Op. 27 No. 2")],
+    )
+    .await;
+    let server = browser(state);
+    server.post("/login").form(&[("password", "hunter2")]).await;
+    let route = |q: &str| format!("/library/{}/suggest/work-number?{q}", library.id);
+
+    let body: Value = server.get(&route("q=op%209%20no%202")).await.json();
+    assert_eq!(body["recognized"], true);
+    let first = &body["matches"][0];
+    assert_eq!(first["kind"], "work");
+    assert_eq!(first["value"], "Op. 9 No. 2");
+    assert_eq!(first["primary"], "Op. 9 No. 2");
+    assert_eq!(
+        first["secondary"],
+        "Nocturne in E-flat major by Frederic Chopin"
+    );
+    assert_eq!(first["exact"], true);
+    assert_eq!(first["recognized"], true);
+    assert_eq!(first["title"], "Nocturne in E-flat major");
+    assert_eq!(first["contributor"], "Frederic Chopin");
+    assert_eq!(first["role"], "composer");
+
+    // A title is not a number, but it still finds the numbers of the works carrying it
+    let body: Value = server.get(&route("q=nocturne")).await.json();
+    assert_eq!(body["recognized"], false);
+    assert_eq!(body["matches"][0]["recognized"], true);
+
+    // The neighbouring composer input narrows the numbers to that composer's works
+    let body: Value = server
+        .get(&route("q=no%202&composer=Ludwig%20van%20Beethoven"))
+        .await
+        .json();
+    let values: Vec<&str> = body["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["value"].as_str().unwrap())
+        .collect();
+    assert_eq!(values, ["Op. 27 No. 2"]);
+
+    server
+        .get(&format!(
+            "/library/{}/suggest/catalog-numbers?q=op9",
+            library.id
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

@@ -30,7 +30,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
-pub use crate::catalog::{CatalogNumber, Similarity};
+pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
@@ -224,7 +224,7 @@ impl Archive {
     /// Every catalog number in every library
     pub async fn all_catalog_numbers(&self) -> Result<Vec<CatalogNumberEntry>> {
         let mut conn = self.shared.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, None, None).await
+        work::load_catalog_numbers(&mut conn).await
     }
 
     /// Every library's pending imports, oldest first

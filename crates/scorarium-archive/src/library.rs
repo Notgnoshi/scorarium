@@ -9,7 +9,7 @@ use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::tag::{self, TagCount};
-use crate::work::{self, CatalogNumberEntry, Work};
+use crate::work::{self, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A named container of publications.
@@ -191,12 +191,6 @@ impl Library {
             .pop();
         tx.commit().await?;
         Ok(work)
-    }
-
-    /// Every catalog number in the library, optionally only those credited to one composer
-    pub async fn catalog_numbers(&self, composer: Option<&str>) -> Result<Vec<CatalogNumberEntry>> {
-        let mut conn = self.archive.acquire_read().await?;
-        work::load_catalog_numbers(&mut conn, Some(self.id), composer).await
     }
 
     /// Fold one work into another and delete it; the survivor is returned reloaded.

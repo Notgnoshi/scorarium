@@ -570,10 +570,6 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/library/{library_id}/publication/{id}/delete",
             post(publication::delete),
         )
-        .route(
-            "/library/{id}/suggest/catalog-numbers",
-            get(suggest::catalog_numbers),
-        )
         .route("/library/{id}/suggest/{kind}", get(suggest::field))
         .route("/library/{id}/tags", get(tag::cloud))
         .route("/library/{library_id}/tags/{tag}", get(tag::tagged))

@@ -41,26 +41,16 @@ pub async fn catalog_numbers_page(
 }
 
 /// The numbers the parser does not recognize, in the order the archive lists them
-///
-/// A work with two composers is listed once per composer, so the entries are deduplicated by the
-/// number they name rather than shown twice.
 async fn unrecognized_catalog_numbers(
     state: &AppState,
 ) -> Result<Vec<CatalogNumberEntry>, AppError> {
-    let mut seen = Vec::new();
-    let mut entries = Vec::new();
-    for entry in state.archive.all_catalog_numbers().await? {
-        if entry.number.is_recognized() {
-            continue;
-        }
-        let key = (entry.work_id, entry.number.as_str().to_string());
-        if seen.contains(&key) {
-            continue;
-        }
-        seen.push(key);
-        entries.push(entry);
-    }
-    Ok(entries)
+    Ok(state
+        .archive
+        .all_catalog_numbers()
+        .await?
+        .into_iter()
+        .filter(|entry| !entry.number.is_recognized())
+        .collect())
 }
 
 #[derive(Deserialize)]
