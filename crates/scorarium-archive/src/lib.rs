@@ -14,6 +14,7 @@ mod library;
 mod password;
 mod person;
 mod publication;
+mod search;
 mod suggest;
 mod summary;
 mod tag;
@@ -42,6 +43,7 @@ pub use crate::person::{Contributor, Person, credit_priority};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
+pub use crate::search::{Entity, SearchHit};
 pub use crate::suggest::{SuggestField, Suggested, Suggestion};
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary};
 pub use crate::tag::TagCount;
@@ -201,6 +203,32 @@ impl Archive {
         audited.set_entity(&library.entity_ref()).await?;
         audited.commit().await?;
         Ok(library)
+    }
+
+    /// Search for titles, contributors, and catalog numbers
+    pub async fn search(
+        &self,
+        typed: &str,
+        public_only: bool,
+        library: Option<i64>,
+    ) -> Result<Vec<SearchHit>> {
+        let mut tx = self.shared.begin_read().await?;
+        let hits = search::search(&mut tx, typed, public_only, library).await?;
+        tx.commit().await?;
+        Ok(hits)
+    }
+
+    /// Publications and works whose title matches, for the navbar typeahead
+    pub async fn suggest_titles(
+        &self,
+        typed: &str,
+        public_only: bool,
+        library: Option<i64>,
+    ) -> Result<Vec<SearchHit>> {
+        let mut tx = self.shared.begin_read().await?;
+        let hits = search::suggest_titles(&mut tx, typed, public_only, library).await?;
+        tx.commit().await?;
+        Ok(hits)
     }
 
     /// Every catalog number in every library

@@ -177,6 +177,18 @@ impl CatalogNumber {
         }
     }
 
+    /// The number with everything but its letters and digits removed: "Op. 9 No. 2" is "op9no2".
+    ///
+    /// Searching splits text into words, and a number is as often typed run together as spaced
+    /// out, so this gives "op9" something to match.
+    pub fn squashed(&self) -> String {
+        self.text
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
+    }
+
     pub fn starts_with(&self, prefix: &Self) -> bool {
         match (self.scheme, prefix.scheme) {
             (Some(mine), Some(theirs)) => {
