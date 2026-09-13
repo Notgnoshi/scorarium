@@ -5,6 +5,7 @@
 mod audit;
 mod catalog;
 mod demo;
+mod fuzzy;
 mod holding;
 pub mod identifier;
 mod import;
