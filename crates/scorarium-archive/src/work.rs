@@ -27,6 +27,7 @@ pub struct WorkRawInput {
     pub tags: String,
     pub contributors: Vec<ContributorInput>,
     pub catalog_numbers: Vec<String>,
+    pub links: Vec<String>,
 }
 
 /// A work's parsed and validated fields
@@ -42,6 +43,7 @@ pub struct WorkInput {
     pub(crate) tags: Vec<String>,
     pub(crate) contributors: Vec<ContributorInput>,
     pub(crate) catalog_numbers: Vec<CatalogNumber>,
+    pub(crate) links: Vec<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -53,6 +55,8 @@ pub struct WorkErrors {
     pub contributors: Vec<Option<ValidationError>>,
     /// One slot per catalog number, empty when they all passed
     pub catalog_numbers: Vec<Option<ValidationError>>,
+    /// One slot per link, empty when they all passed
+    pub links: Vec<Option<ValidationError>>,
 }
 
 impl WorkErrors {
@@ -62,6 +66,7 @@ impl WorkErrors {
             && self.tags.is_none()
             && self.contributors.iter().all(Option::is_none)
             && self.catalog_numbers.iter().all(Option::is_none)
+            && self.links.iter().all(Option::is_none)
     }
 }
 
@@ -69,7 +74,7 @@ impl WorkRawInput {
     /// Check and convert the input
     ///
     /// The key, the time signature and the instrumentation are free text
-    pub fn parse(&self) -> Result<WorkInput, WorkErrors> {
+    pub fn parse(&self) -> Result<WorkInput, Box<WorkErrors>> {
         let title = self.title.trim();
         let mut errors = WorkErrors {
             title: title.is_empty().then_some(ValidationError::TitleRequired),
@@ -77,6 +82,7 @@ impl WorkRawInput {
             tags: None,
             contributors: Vec::new(),
             catalog_numbers: Vec::new(),
+            links: Vec::new(),
         };
         let stars = match input::parse_stars(&self.stars) {
             Ok(stars) => stars,
@@ -106,8 +112,15 @@ impl WorkRawInput {
                 Vec::new()
             }
         };
+        let links = match input::parse_links(&self.links) {
+            Ok(links) => links,
+            Err(slots) => {
+                errors.links = slots;
+                Vec::new()
+            }
+        };
         if !errors.is_empty() {
-            return Err(errors);
+            return Err(Box::new(errors));
         }
         Ok(WorkInput {
             id: self.id,
@@ -120,6 +133,7 @@ impl WorkRawInput {
             tags,
             contributors,
             catalog_numbers,
+            links,
         })
     }
 }
@@ -143,6 +157,8 @@ pub struct Work {
     pub catalog_numbers: Vec<CatalogNumber>,
     /// In link order
     pub contributors: Vec<Contributor>,
+    /// In the order they were entered
+    pub links: Vec<String>,
     #[comparable_ignore]
     archive: Arc<ArchiveInner>,
 }
@@ -164,6 +180,7 @@ fn changed_fields(old: &Work, new: &Work) -> Vec<Field> {
             WorkChange::Tags(_) => Field::Tags,
             WorkChange::CatalogNumbers(_) => Field::CatalogNumbers,
             WorkChange::Contributors(_) => Field::Contributors,
+            WorkChange::Links(_) => Field::Links,
         })
         .collect()
 }
@@ -213,6 +230,7 @@ impl Work {
                 .iter()
                 .map(|number| number.as_str().to_string())
                 .collect(),
+            links: self.links.clone(),
         }
     }
 
@@ -270,6 +288,7 @@ impl Work {
         write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
             .await?;
         write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
+        write_work_links(&mut audited, self.id, &input.links).await?;
         tag::write_work_tags(&mut audited, self.library_id, self.id, &input.tags).await?;
         // Before the merge, or the comparison is against whichever work absorbed this one
         let edited = load_works(
@@ -353,6 +372,7 @@ pub(crate) async fn load_works(
         tags: Vec::new(),
         catalog_numbers: Vec::new(),
         contributors: Vec::new(),
+        links: Vec::new(),
         archive: shared.clone(),
     })
     .collect();
@@ -407,6 +427,26 @@ pub(crate) async fn load_works(
             name: row.name,
             role: row.role,
         });
+    }
+
+    let links = sqlx::query!(
+        "SELECT work_id, url FROM work_link
+         WHERE work_id IN
+            (SELECT id FROM work
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))
+               AND (?4 IS NULL OR id IN (SELECT work_id FROM tag WHERE tag = ?4)))
+         ORDER BY id",
+        library_id,
+        id,
+        publication_id,
+        tag
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    for row in links {
+        works[index[&row.work_id]].links.push(row.url);
     }
 
     for (work_id, tag) in tag::work_tags(&mut *conn, library_id).await? {
@@ -488,6 +528,7 @@ pub(crate) async fn create_work_in_publication(
     .await?;
     write_work_contributors(audited, library_id, id, &input.contributors).await?;
     write_work_catalog_numbers(audited, id, &input.catalog_numbers).await?;
+    write_work_links(audited, id, &input.links).await?;
     tag::write_work_tags(audited, library_id, id, &input.tags).await?;
     absorb_into_duplicate(audited, library_id, id).await
 }
@@ -543,6 +584,7 @@ pub(crate) async fn write_publication_works(
         .await?;
         write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
         write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
+        write_work_links(audited, work_id, &input.links).await?;
         tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
         absorb_into_duplicate(audited, library_id, work_id).await?;
     }
@@ -622,6 +664,15 @@ pub(crate) async fn merge_works(
     sqlx::query!(
         "INSERT OR IGNORE INTO tag (library_id, work_id, tag)
          SELECT library_id, ?, tag FROM tag WHERE work_id = ? ORDER BY id",
+        into,
+        from
+    )
+    .execute(&mut *conn)
+    .await?;
+    // Normalization at parse time is what makes the work_link_url index the union of the two sets
+    sqlx::query!(
+        "INSERT OR IGNORE INTO work_link (work_id, url)
+         SELECT ?, url FROM work_link WHERE work_id = ? ORDER BY id",
         into,
         from
     )
@@ -760,6 +811,26 @@ pub(crate) async fn write_work_catalog_numbers(
     Ok(())
 }
 
+pub(crate) async fn write_work_links(
+    conn: &mut SqliteConnection,
+    work_id: i64,
+    links: &[String],
+) -> crate::Result<()> {
+    sqlx::query!("DELETE FROM work_link WHERE work_id = ?", work_id)
+        .execute(&mut *conn)
+        .await?;
+    for url in links {
+        sqlx::query!(
+            "INSERT INTO work_link (work_id, url) VALUES (?, ?)",
+            work_id,
+            url
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 /// Rebuild a work's contributor links, so input order becomes link order.
 ///
 /// A link holds nothing beyond what the input shows, so rebuilding outright loses nothing. On a
@@ -812,10 +883,11 @@ mod tests {
                 contributor("", ""),
             ],
             catalog_numbers: vec!["Op. 27 No. 2".into(), "".into(), "op.27/2".into()],
+            links: vec!["imslp.org".into()],
             ..WorkRawInput::default()
         };
         assert_eq!(
-            raw.parse().unwrap_err(),
+            *raw.parse().unwrap_err(),
             WorkErrors {
                 title: Some(ValidationError::TitleRequired),
                 stars: Some(ValidationError::StarsInvalid),
@@ -831,6 +903,7 @@ mod tests {
                     Some(ValidationError::FillOrRemove),
                     Some(ValidationError::AlreadyListed),
                 ],
+                links: vec![Some(ValidationError::InvalidUrl)],
             }
         );
     }
@@ -848,6 +921,7 @@ mod tests {
             tags: "  Piano CHRISTMAS piano ".into(),
             contributors: vec![contributor(" Erik Satie ", "composer")],
             catalog_numbers: vec![" BWV 988 ".into()],
+            links: vec![" https://imslp.org/wiki/Main_Page ".into()],
         };
         let parsed = raw.parse().unwrap();
         // A catalog number is kept as typed, apart from trimming
@@ -866,6 +940,7 @@ mod tests {
                 tags: vec!["piano".into(), "christmas".into()],
                 contributors: vec![contributor("Erik Satie", "composer")],
                 catalog_numbers: vec![CatalogNumber::parse("BWV 988")],
+                links: vec!["https://imslp.org/wiki/Main_Page".into()],
             }
         );
     }

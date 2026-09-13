@@ -133,7 +133,7 @@ impl PublicationRawInput {
                     contents.push(work);
                     errors.contents.push(WorkErrors::default());
                 }
-                Err(work_errors) => errors.contents.push(work_errors),
+                Err(work_errors) => errors.contents.push(*work_errors),
             }
         }
 

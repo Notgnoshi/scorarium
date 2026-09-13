@@ -71,6 +71,7 @@ impl From<WorkPost> for WorkRawInput {
                 .iter()
                 .map(|number| number.trim().to_string())
                 .collect(),
+            links: Vec::new(),
         }
     }
 }
@@ -150,7 +151,7 @@ pub async fn save(
             };
             Ok(Redirect::to(&next).into_response())
         }
-        Err(errors) => render_edit(base, library, work, query.back, input, errors).await,
+        Err(errors) => render_edit(base, library, work, query.back, input, *errors).await,
     }
 }
 

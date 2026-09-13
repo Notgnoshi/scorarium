@@ -243,6 +243,7 @@ fn piano_piece(
             .iter()
             .map(|number| CatalogNumber::parse(number))
             .collect(),
+        links: Vec::new(),
     }
 }
 
@@ -261,6 +262,7 @@ fn gymnopedie(number: usize, key: &str) -> WorkInput {
         },
         contributors: vec![contributor(SATIE, "composer")],
         catalog_numbers: Vec::new(),
+        links: Vec::new(),
     }
 }
 
@@ -277,5 +279,6 @@ fn writing(title: &str) -> WorkInput {
         tags: Vec::new(),
         contributors: vec![contributor(BIERCE, "author")],
         catalog_numbers: Vec::new(),
+        links: Vec::new(),
     }
 }

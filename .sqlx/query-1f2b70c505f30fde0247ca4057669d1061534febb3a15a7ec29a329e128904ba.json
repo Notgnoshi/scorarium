@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT work_id, url FROM work_link\n         WHERE work_id IN\n            (SELECT id FROM work\n             WHERE library_id = ?1\n               AND (?2 IS NULL OR id = ?2)\n               AND (?3 IS NULL OR id IN (SELECT work_id FROM publication_work WHERE publication_id = ?3))\n               AND (?4 IS NULL OR id IN (SELECT work_id FROM tag WHERE tag = ?4)))\n         ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "work_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_link",
+            "name": "work_id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_link",
+            "name": "url"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1f2b70c505f30fde0247ca4057669d1061534febb3a15a7ec29a329e128904ba"
+}
