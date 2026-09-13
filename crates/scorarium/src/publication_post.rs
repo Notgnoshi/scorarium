@@ -48,6 +48,8 @@ struct Fields {
     #[serde(default)]
     contributor_role: Vec<String>,
     #[serde(default)]
+    link: Vec<String>,
+    #[serde(default)]
     work_id: Vec<String>,
     #[serde(default)]
     work_title: Vec<String>,
@@ -109,6 +111,7 @@ impl PublicationPost {
             identifier_value,
             contributor_name,
             contributor_role,
+            link,
             work_id,
             work_title,
             work_catalog_number,
@@ -165,7 +168,7 @@ impl PublicationPost {
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
             contributors: contributors(contributor_name, contributor_role),
-            links: Vec::new(),
+            links: link.iter().map(|link| link.trim().to_string()).collect(),
             contents,
         }
     }
@@ -387,6 +390,7 @@ mod tests {
                 identifier_value: Vec::new(),
                 contributor_name: Vec::new(),
                 contributor_role: Vec::new(),
+                link: Vec::new(),
                 work_id: works
                     .iter()
                     .map(|(id, ..)| id.map(|id| id.to_string()).unwrap_or_default())

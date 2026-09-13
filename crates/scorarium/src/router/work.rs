@@ -48,6 +48,8 @@ pub struct WorkPost {
     contributor_role: Vec<String>,
     #[serde(default)]
     catalog_number: Vec<String>,
+    #[serde(default)]
+    link: Vec<String>,
 }
 
 impl From<WorkPost> for WorkRawInput {
@@ -71,7 +73,11 @@ impl From<WorkPost> for WorkRawInput {
                 .iter()
                 .map(|number| number.trim().to_string())
                 .collect(),
-            links: Vec::new(),
+            links: post
+                .link
+                .iter()
+                .map(|link| link.trim().to_string())
+                .collect(),
         }
     }
 }
