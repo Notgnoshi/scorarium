@@ -3,6 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::Form;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -76,7 +77,7 @@ pub async fn login(
                 // Lost a race against a concurrent claim
                 login_page(
                     base,
-                    Some("A password was already set. Log in with it."),
+                    Some("A password was already set. Log in with it.".into()),
                     form.back,
                 )?
             }
@@ -88,15 +89,28 @@ pub async fn login(
         )?,
         (true, Some(_)) => login_page(
             base,
-            Some("A password is already set. Log in with it."),
+            Some("A password is already set. Log in with it.".into()),
             form.back,
         )?,
-        (true, None) => match state.archive.verify_password(&form.password).await? {
-            PasswordCheck::Correct => return Ok(start_session(&state, jar, &next)),
-            PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
-                login_page(base, Some("Login failed"), form.back)?
+        (true, None) => {
+            // Refuse before checking, so a locked-out attacker also can't burn argon2 time
+            if let Some(remaining) = state.throttle.locked_for() {
+                let minutes = remaining.as_secs().div_ceil(60).max(1);
+                let error = format!("Too many failed logins. Try again in {minutes} minutes.");
+                let page = login_page(base, Some(error), form.back)?;
+                return Ok((StatusCode::TOO_MANY_REQUESTS, Html(page)).into_response());
             }
-        },
+            match state.archive.verify_password(&form.password).await? {
+                PasswordCheck::Correct => {
+                    state.throttle.reset();
+                    return Ok(start_session(&state, jar, &next));
+                }
+                PasswordCheck::Wrong | PasswordCheck::Unclaimed => {
+                    state.throttle.record_failure();
+                    login_page(base, Some("Login failed".into()), form.back)?
+                }
+            }
+        }
     };
     Ok(Html(page).into_response())
 }
@@ -127,7 +141,7 @@ fn start_session(state: &AppState, jar: CookieJar, next: &str) -> Response {
 #[template(path = "login.html")]
 struct LoginPage {
     base: BaseContext,
-    error: Option<&'static str>,
+    error: Option<String>,
     back: Option<String>,
 }
 
@@ -141,7 +155,7 @@ struct ClaimPage {
 
 fn login_page(
     base: BaseContext,
-    error: Option<&'static str>,
+    error: Option<String>,
     back: Option<String>,
 ) -> askama::Result<String> {
     LoginPage {

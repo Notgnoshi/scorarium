@@ -94,3 +94,19 @@ async fn login_logout_flow() {
     response.assert_status_ok();
     response.assert_text_contains("href=\"/login?back=/\"");
 }
+
+#[tokio::test]
+async fn repeated_failures_lock_out_login() {
+    let server = browser(TestDb::new().password("hunter2").build().await);
+
+    for _ in 0..scorarium::session::LOGIN_ATTEMPTS {
+        let response = server.post("/login").form(&[("password", "wrong")]).await;
+        response.assert_status_ok();
+        response.assert_text_contains("Login failed");
+    }
+
+    // Once locked out, even the right password is refused: the check runs before verification
+    let response = server.post("/login").form(&[("password", "hunter2")]).await;
+    response.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    response.assert_text_contains("Too many failed logins");
+}
