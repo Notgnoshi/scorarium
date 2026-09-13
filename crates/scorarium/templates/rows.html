@@ -85,6 +85,8 @@
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_title"
                value="{{ title }}"
+               data-suggest="work"
+               autocomplete="off"
                placeholder="Title"
                aria-label="Work title" />
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"

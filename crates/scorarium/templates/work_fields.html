@@ -12,6 +12,8 @@
         <input class="form-control{% if fields.errors.title.is_some() %} is-invalid{% endif %}"
                id="title"
                name="title"
+               data-suggest="work"
+               autocomplete="off"
                value="{{ fields.input.title }}" />
         {% if let Some(error) = fields.errors.title %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
