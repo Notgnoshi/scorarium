@@ -115,6 +115,53 @@ async fn publication_page() {
 }
 
 #[tokio::test]
+async fn links_open_in_a_new_tab_under_their_site() {
+    let state = TestDb::new().library("Sheet music").build().await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let imslp = "https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)";
+    let henle = "https://www.henle.de/en/detail/?Title=1234";
+    let input = PublicationRawInput {
+        title: "Three gymnopedies".into(),
+        holdings: vec![HoldingRawInput {
+            id: None,
+            kind: HoldingKind::Physical,
+            location: String::new(),
+        }],
+        links: vec![imslp.into(), henle.into()],
+        ..PublicationRawInput::default()
+    };
+    let publication = library
+        .create_publication(&input.parse().unwrap())
+        .await
+        .unwrap();
+
+    let server = browser(state);
+    let response = server
+        .get(&format!(
+            "/library/{}/publication/{}",
+            library.id, publication.id
+        ))
+        .await;
+    response.assert_status_ok();
+    let body = response.text();
+
+    // An external link must not hand the site it opens a handle on this page
+    assert_eq!(body.matches("target=\"_blank\"").count(), 2);
+    assert_eq!(body.matches("rel=\"noopener\"").count(), 2);
+    for expected in [
+        format!("href=\"{imslp}\""),
+        format!("href=\"{henle}\""),
+        // A known host is named and drawn by its vendored logo, which takes the page's text color
+        "IMSLP".to_string(),
+        "currentColor".to_string(),
+        // An unknown one is drawn by whatever favicon its own host serves
+        "src=\"https://www.henle.de/favicon.ico\"".to_string(),
+    ] {
+        assert!(body.contains(&expected), "missing {expected}");
+    }
+}
+
+#[tokio::test]
 async fn publication_edit_flow() {
     let state = TestDb::new()
         .library("Books")
