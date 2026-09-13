@@ -91,12 +91,6 @@
             <i class="bi bi-plus-lg" aria-hidden="true"></i>
         </button>
     </fieldset>
-    <datalist id="roles">
-        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
-    </datalist>
-    <datalist id="names">
-        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
-    </datalist>
 </div>
 {% call rows::script() %}
 {% endcall %}

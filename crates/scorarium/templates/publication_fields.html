@@ -117,7 +117,8 @@
                 <input class="form-control"
                        placeholder="Composer"
                        aria-label="Composer"
-                       list="names"
+                       data-suggest="person"
+                       autocomplete="off"
                        data-range-composer />
                 <input class="form-control"
                        placeholder="Op. 28 No."
@@ -148,12 +149,6 @@
     </fieldset>
     {% call rows::holdings_box(fields.holdings, fields.no_holdings, fields.no_copies_warning) %}
     {% endcall %}
-    <datalist id="roles">
-        {% for role in fields.roles %}<option value="{{ role }}"></option>{% endfor %}
-    </datalist>
-    <datalist id="names">
-        {% for name in fields.names %}<option value="{{ name }}"></option>{% endfor %}
-    </datalist>
 </div>
 {% call rows::script() %}
 {% endcall %}

@@ -23,8 +23,8 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, SuggestField,
-    Suggested, ValidationError, Work, WorkErrors, WorkRawInput,
+    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError,
+    Work, WorkErrors, WorkRawInput,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -285,9 +285,6 @@ pub struct FormFields {
     pub identifiers: Vec<(IdentifierRawInput, String)>,
     pub contributors: Vec<(ContributorInput, String)>,
     pub works: Vec<ShownWork>,
-    // Datalist suggestions for the role and name inputs
-    pub roles: Vec<String>,
-    pub names: Vec<String>,
     pub tag_vocabulary: Vec<String>,
     pub no_copies_warning: String,
     pub work_edit: WorkEdit,
@@ -299,8 +296,8 @@ impl FormFields {
         input: PublicationRawInput,
         errors: PublicationErrors,
     ) -> Result<Self, AppError> {
-        let (roles, names, tag_vocabulary) = suggestions(library).await?;
         Ok(Self {
+            tag_vocabulary: library.tag_vocabulary().await?,
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
@@ -308,9 +305,6 @@ impl FormFields {
             works: shown_works(&input.contents, &errors.contents),
             no_copies_warning: String::new(),
             work_edit: WorkEdit::default(),
-            roles,
-            names,
-            tag_vocabulary,
             input,
             errors,
         })
@@ -343,8 +337,6 @@ pub struct WorkFields {
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
     pub catalog_numbers: Vec<ShownCatalogNumber>,
-    pub roles: Vec<String>,
-    pub names: Vec<String>,
     pub tag_vocabulary: Vec<String>,
 }
 
@@ -354,13 +346,10 @@ impl WorkFields {
         input: WorkRawInput,
         errors: WorkErrors,
     ) -> Result<Self, AppError> {
-        let (roles, names, tag_vocabulary) = suggestions(library).await?;
         Ok(Self {
+            tag_vocabulary: library.tag_vocabulary().await?,
             contributors: pair_messages(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
-            roles,
-            names,
-            tag_vocabulary,
             input,
             errors,
         })
@@ -380,26 +369,6 @@ fn shown_catalog_numbers(
             message: message(errors.get(i).unwrap_or(&None)),
         })
         .collect()
-}
-
-/// Suggestions the forms offer, as (roles, names, tags).
-async fn suggestions(
-    library: &Library,
-) -> Result<(Vec<String>, Vec<String>, Vec<String>), AppError> {
-    let roles = library
-        .suggest(SuggestField::Role, "", false)
-        .await?
-        .into_iter()
-        .filter_map(|suggestion| match suggestion.item {
-            Suggested::Role(role) => Some(role),
-            _ => None,
-        })
-        .collect();
-    Ok((
-        roles,
-        library.person_names().await?,
-        library.tag_vocabulary().await?,
-    ))
 }
 
 fn shown_holdings(

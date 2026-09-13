@@ -246,7 +246,7 @@ impl Library {
         person::list_contributor_roles(&mut conn, self.id).await
     }
 
-    /// Every person's display name, by sort name, for input suggestions
+    /// Every person's display name, by sort name
     pub async fn person_names(&self) -> Result<Vec<String>> {
         let mut conn = self.archive.acquire_read().await?;
         person::list_person_names(&mut conn, self.id).await
