@@ -48,6 +48,8 @@
                                        type="search"
                                        name="q"
                                        value="{{ base.search_query }}"
+                                       data-suggest="title"
+                                       autocomplete="off"
                                        placeholder="Search"
                                        aria-label="Search" />
                                 <button class="btn btn-outline-secondary" type="submit" aria-label="Search">
@@ -119,6 +121,13 @@
             // One delegated tooltip instance covers elements added after load
             new bootstrap.Tooltip(document.body, {
                 selector: '[data-bs-toggle="tooltip"]'
+            });
+            // Picking a title in the navbar box goes straight to that page; submitting the form
+            // is still how a full search is run
+            document.addEventListener("suggest:pick", (e) => {
+                if (e.target.matches('[data-suggest="title"]') && e.detail.href) {
+                    window.location.assign(e.detail.href);
+                }
             });
             // "/" jumps to the search box, unless the visitor is already typing somewhere
             document.addEventListener("keydown", (e) => {

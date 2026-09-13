@@ -1,4 +1,5 @@
 use scorarium_tests::{TestDb, browser, demo_login};
+use serde_json::Value;
 
 #[tokio::test]
 async fn search_shows_what_the_viewer_may_see() {
@@ -9,6 +10,7 @@ async fn search_shows_what_the_viewer_may_see() {
         .find(|l| l.name == "Sheet music")
         .unwrap()
         .id;
+    let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
     let server = browser(state);
 
     // The box is on every page but the login form, and always searches every library
@@ -40,6 +42,25 @@ async fn search_shows_what_the_viewer_may_see() {
             .contains("action=\"/search\"")
     );
 
+    // The typeahead serves anonymous viewers, with public results only
+    let body: Value = server.get("/suggest/title?q=rachmaninoff").await.json();
+    let first = &body["matches"][0];
+    assert_eq!(first["kind"], "publication");
+    assert!(
+        first["href"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("/library/{sheet_music}/publication/"))
+    );
+    assert!(
+        first["secondary"]
+            .as_str()
+            .unwrap()
+            .ends_with(" in Sheet music")
+    );
+    let body: Value = server.get("/suggest/title?q=vim").await.json();
+    assert_eq!(body["matches"].as_array().unwrap().len(), 0);
+
     demo_login(&server).await;
     let response = server.get("/search?q=bierce").await;
     response.assert_text_contains("The Collected Writings of Ambrose Bierce");
@@ -48,4 +69,14 @@ async fn search_shows_what_the_viewer_may_see() {
     // A hit names the library it is in, since results span all of them
     let response = server.get("/search?q=rachmaninoff").await;
     response.assert_text_contains("Sheet music");
+
+    // Logging in opens the private library to the typeahead as well
+    let body: Value = server.get("/suggest/title?q=vim").await.json();
+    assert_eq!(body["matches"][0]["value"], "Practical Vim");
+    assert!(
+        body["matches"][0]["href"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("/library/{books}/publication/"))
+    );
 }

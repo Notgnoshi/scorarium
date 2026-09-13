@@ -11,11 +11,12 @@ mod suggest;
 mod tag;
 mod work;
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::Router;
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRequestParts, OptionalFromRequestParts};
 use axum::http::request::Parts;
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -155,10 +156,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_headers(&parts.headers);
-        let logged_in = jar
-            .get(SESSION_COOKIE)
-            .is_some_and(|cookie| state.sessions.validate(cookie.value()));
+        let logged_in = session_of(parts, state).is_some();
         let pending_import_count = if logged_in {
             state.archive.pending_import_count().await?
         } else {
@@ -487,6 +485,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
         .route("/search", get(search::search))
+        .route("/suggest/title", get(suggest::title))
         .route("/settings", get(settings::settings_page))
         .route("/settings/password", post(settings::change_password))
         .route(
@@ -548,6 +547,14 @@ pub fn router(state: Arc<AppState>) -> Router {
 /// The session token of a logged-in request.
 struct Session(String);
 
+/// The valid session token the request carries, if it carries one
+fn session_of(parts: &Parts, state: &AppState) -> Option<String> {
+    let jar = CookieJar::from_headers(&parts.headers);
+    jar.get(SESSION_COOKIE)
+        .filter(|cookie| state.sessions.validate(cookie.value()))
+        .map(|cookie| cookie.value().to_string())
+}
+
 impl FromRequestParts<Arc<AppState>> for Session {
     type Rejection = Redirect;
 
@@ -555,12 +562,9 @@ impl FromRequestParts<Arc<AppState>> for Session {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_headers(&parts.headers);
-        match jar.get(SESSION_COOKIE) {
-            Some(cookie) if state.sessions.validate(cookie.value()) => {
-                Ok(Session(cookie.value().to_string()))
-            }
-            _ => {
+        match session_of(parts, state) {
+            Some(token) => Ok(Session(token)),
+            None => {
                 // Returning to a POST after login would only 405, so only a GET carries `back`
                 let back = (parts.method == Method::GET)
                     .then(|| parts.uri.path_and_query().map(|pq| pq.as_str()))
@@ -568,6 +572,18 @@ impl FromRequestParts<Arc<AppState>> for Session {
                 Err(login_redirect(back))
             }
         }
+    }
+}
+
+/// `Option<Session>` for routes that serve everyone but show a logged-in viewer more
+impl OptionalFromRequestParts<Arc<AppState>> for Session {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Option<Self>, Infallible> {
+        Ok(session_of(parts, state).map(Session))
     }
 }
 

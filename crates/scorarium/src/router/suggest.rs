@@ -38,6 +38,8 @@ struct FieldMatch {
     primary: String,
     /// Secondary description to display (e.g., author, composer)
     secondary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    href: Option<String>,
     #[serde(flatten)]
     data: Data,
 }
@@ -132,82 +134,79 @@ pub async fn field(
     }))
 }
 
+fn item(entity: Entity, exact: bool) -> FieldMatch {
+    let (kind, primary, secondary) = search::describe(&entity);
+    let (value, data) = match entity {
+        Entity::Person(person) => (
+            person.name.clone(),
+            Data::Person {
+                id: person.id,
+                name: person.name,
+                works: person.works,
+            },
+        ),
+        Entity::Publication(publication) => (
+            publication.title.clone(),
+            Data::Publication {
+                id: publication.id,
+                title: publication.title,
+                people: publication.people,
+                year: publication.year,
+            },
+        ),
+        Entity::Work(work) => (
+            work.title.clone(),
+            Data::Work {
+                id: work.id,
+                title: work.title,
+                contributor: work.contributor.as_ref().map(|person| person.name.clone()),
+                role: work.contributor.map(|person| person.role),
+                // A title pick puts the work's first number in the catalog input
+                recognized: work
+                    .numbers
+                    .first()
+                    .map(|number| CatalogNumber::parse(number).is_recognized()),
+                numbers: work.numbers,
+            },
+        ),
+    };
+    FieldMatch {
+        kind,
+        value,
+        exact,
+        primary,
+        secondary,
+        href: None,
+        data,
+    }
+}
+
 /// One suggestion as a dropdown item
 fn shown(suggestion: Suggestion) -> FieldMatch {
     let exact = suggestion.exact;
     match suggestion.item {
-        Suggested::Person(person) => {
-            let (kind, primary, secondary) = search::describe(&Entity::Person(person.clone()));
-            FieldMatch {
-                kind,
-                value: person.name.clone(),
-                exact,
-                primary,
-                secondary,
-                data: Data::Person {
-                    id: person.id,
-                    name: person.name,
-                    works: person.works,
-                },
+        Suggested::Person(person) => item(Entity::Person(person), exact),
+        Suggested::Publication(publication) => item(Entity::Publication(publication), exact),
+        Suggested::Work { work, number: None } => item(Entity::Work(work), exact),
+        // A number input puts the matched number in the input and leads with it, rather than the
+        // title a work input would lead with
+        Suggested::Work {
+            work,
+            number: Some(number),
+        } => {
+            let (primary, secondary) = search::describe_number(&work, &number);
+            let recognized = CatalogNumber::parse(&number).is_recognized();
+            let mut shown = item(Entity::Work(work), exact);
+            shown.value = number;
+            shown.primary = primary;
+            shown.secondary = secondary;
+            if let Data::Work {
+                recognized: slot, ..
+            } = &mut shown.data
+            {
+                *slot = Some(recognized);
             }
-        }
-        Suggested::Publication(publication) => {
-            let (kind, primary, secondary) =
-                search::describe(&Entity::Publication(publication.clone()));
-            FieldMatch {
-                kind,
-                value: publication.title.clone(),
-                exact,
-                primary,
-                secondary,
-                data: Data::Publication {
-                    id: publication.id,
-                    title: publication.title,
-                    people: publication.people,
-                    year: publication.year,
-                },
-            }
-        }
-        Suggested::Work { work, number } => {
-            // A number input puts the matched number in the input and leads with it; a title
-            // input puts the title in and leads with that
-            let (value, primary, secondary, recognized) = match &number {
-                Some(number) => {
-                    let (primary, secondary) = search::describe_number(&work, number);
-                    (
-                        number.clone(),
-                        primary,
-                        secondary,
-                        CatalogNumber::parse(number).is_recognized(),
-                    )
-                }
-                None => {
-                    let lead = work.numbers.first();
-                    let (_, primary, secondary) = search::describe(&Entity::Work(work.clone()));
-                    (
-                        work.title.clone(),
-                        primary,
-                        secondary,
-                        lead.is_some_and(|number| CatalogNumber::parse(number).is_recognized()),
-                    )
-                }
-            };
-            let has_number = number.is_some() || !work.numbers.is_empty();
-            FieldMatch {
-                kind: "work",
-                value,
-                exact,
-                primary,
-                secondary,
-                data: Data::Work {
-                    id: work.id,
-                    title: work.title,
-                    contributor: work.contributor.as_ref().map(|person| person.name.clone()),
-                    role: work.contributor.map(|person| person.role),
-                    numbers: work.numbers,
-                    recognized: has_number.then_some(recognized),
-                },
-            }
+            shown
         }
         Suggested::Tag { name, count } => FieldMatch {
             kind: "tag",
@@ -215,6 +214,7 @@ fn shown(suggestion: Suggestion) -> FieldMatch {
             exact,
             primary: name,
             secondary: format!("{count} tagged"),
+            href: None,
             data: Data::Tag { count },
         },
         Suggested::Role(value)
@@ -228,7 +228,45 @@ fn shown(suggestion: Suggestion) -> FieldMatch {
             exact,
             primary: value,
             secondary: String::new(),
+            href: None,
             data: Data::Plain {},
         },
     }
+}
+
+#[derive(Deserialize)]
+pub struct TitleQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// GET /suggest/title
+pub async fn title(
+    session: Option<Session>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<TitleQuery>,
+) -> Result<Json<FieldSuggestions>, AppError> {
+    let hits = state
+        .archive
+        .suggest_titles(&query.q, session.is_none())
+        .await?;
+    let matches = hits
+        .into_iter()
+        .take(ENTITY_LIMIT)
+        .map(|hit| {
+            let href = search::href(hit.library_id, &hit.entity);
+            // Results span every library, so each says which one it is in
+            let mut shown = item(hit.entity, false);
+            shown.secondary = match shown.secondary.as_str() {
+                "" => format!("in {}", hit.library_name),
+                secondary => format!("{secondary} in {}", hit.library_name),
+            };
+            shown.href = Some(href);
+            shown
+        })
+        .collect();
+    Ok(Json(FieldSuggestions {
+        recognized: None,
+        matches,
+    }))
 }
