@@ -1,4 +1,4 @@
-{% macro input(value, vocabulary, error) %}
+{% macro input(value, error) %}
     <div class="mb-3 position-relative" data-tags>
         <label class="form-label" for="tags">Tags</label>
         <input class="form-control{% if error.is_some() %} is-invalid{% endif %}"
@@ -7,9 +7,6 @@
                placeholder="christmas piano-duet want-to-learn"
                value="{{ value }}" />
         {% if let Some(error) = error %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
-        <datalist id="tag-vocabulary">
-            {% for tag in vocabulary %}<option value="{{ tag }}"></option>{% endfor %}
-        </datalist>
     </div>
 {% endmacro %}
 {% macro badges(library_id, tags) %}
@@ -53,154 +50,120 @@
 {% endmacro %}
 {% macro script() %}
     <script>
-        (() => {
-            const MOST_SUGGESTIONS = 10;
-            const SLUG = /^[a-z0-9_-]+$/;
-            let menu = null;
+        // The chip widget over the tags field
 
-            const field = (box) => box.querySelector("input[name=tags]");
-            const entry = (box) => box.querySelector(".tag-entry");
-            const tagsOf = (box) => field(box).value.split(/\s+/).filter(Boolean);
+        const SLUG = /^[a-z0-9_-]+$/;
 
-            const closeMenu = () => {
-                menu?.remove();
-                menu = null;
-            };
+        function field(box) {
+            return box.querySelector("input[name=tags]");
+        }
 
-            const render = (box, tags) => {
-                field(box).value = tags.join(" ");
-                for (const chip of box.querySelectorAll(".tag-chip")) chip.remove();
-                const entryBox = entry(box);
-                for (const tag of tags) {
-                    const chip = document.createElement("span");
-                    chip.className = "tag-chip badge text-bg-secondary d-inline-flex align-items-center gap-1";
-                    chip.append(tag);
-                    const remove = document.createElement("button");
-                    remove.type = "button";
-                    remove.className = "tag-remove";
-                    remove.dataset.tagsRemove = tag;
-                    remove.setAttribute("aria-label", `Remove ${tag}`);
-                    remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
-                    chip.appendChild(remove);
-                    entryBox.before(chip);
-                }
-            };
+        function entry(box) {
+            return box.querySelector(".tag-entry");
+        }
 
-            // Enter, a space, focus leaving the box and the form submitting all commit what is typed.
-            const commit = (box) => {
-                const input = entry(box);
-                const typed = input.value.trim().toLowerCase();
-                input.classList.remove("is-invalid");
-                if (!typed) {
-                    input.value = "";
-                    return true;
-                }
-                if (!SLUG.test(typed)) {
-                    input.classList.add("is-invalid");
-                    return false;
-                }
-                const tags = tagsOf(box);
-                if (!tags.includes(typed)) render(box, [...tags, typed]);
+        function tagsOf(box) {
+            return field(box).value.split(/\s+/).filter(Boolean);
+        }
+
+        function render(box, tags) {
+            field(box).value = tags.join(" ");
+            for (const chip of box.querySelectorAll(".tag-chip")) chip.remove();
+            const entryBox = entry(box);
+            for (const tag of tags) {
+                const chip = document.createElement("span");
+                chip.className = "tag-chip badge text-bg-secondary d-inline-flex align-items-center gap-1";
+                chip.append(tag);
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "tag-remove";
+                remove.dataset.tagsRemove = tag;
+                remove.setAttribute("aria-label", `Remove ${tag}`);
+                remove.innerHTML = '<i class="bi bi-x-lg" aria-hidden="true"></i>';
+                chip.appendChild(remove);
+                entryBox.before(chip);
+            }
+        }
+
+        // Enter, a space, focus leaving the box and the form submitting all commit what is typed.
+        function commit(box) {
+            const input = entry(box);
+            const typed = input.value.trim().toLowerCase();
+            input.classList.remove("is-invalid");
+            if (!typed) {
                 input.value = "";
-                closeMenu();
                 return true;
-            };
-
-            const suggest = (box) => {
-                closeMenu();
-                const typed = entry(box).value.trim().toLowerCase();
-                const carried = tagsOf(box);
-                const matches = [...box.querySelectorAll("#tag-vocabulary option")]
-                    .map((option) => option.value)
-                    .filter((tag) => tag.includes(typed) && !carried.includes(tag))
-                    .sort((a, b) => Number(b.startsWith(typed)) - Number(a.startsWith(typed)))
-                    .slice(0, MOST_SUGGESTIONS);
-                if (!matches.length) return;
-                menu = document.createElement("div");
-                menu.className = "dropdown-menu show";
-                menu.style.cssText = "position: absolute; top: 100%; left: 0; z-index: 1000";
-                for (const tag of matches) {
-                    const item = document.createElement("button");
-                    item.type = "button";
-                    item.className = "dropdown-item";
-                    item.textContent = tag;
-                    // Ahead of the entry losing focus, so the click is not lost to the menu closing
-                    item.addEventListener("mousedown", (e) => {
-                        e.preventDefault();
-                        entry(box).value = tag;
-                        commit(box);
-                    });
-                    menu.appendChild(item);
-                }
-                box.appendChild(menu);
-            };
-
-            for (const box of document.querySelectorAll("[data-tags]")) {
-                const input = field(box);
-                input.hidden = true;
-                const shell = document.createElement("div");
-                shell.className = "tag-box form-control d-flex flex-wrap align-items-center gap-1";
-                const typing = document.createElement("input");
-                typing.type = "text";
-                typing.className = "tag-entry";
-                typing.autocomplete = "off";
-                typing.setAttribute("aria-label", "Add a tag");
-                shell.appendChild(typing);
-                input.after(shell);
-                render(box, tagsOf(box));
             }
-
-            document.addEventListener("keydown", (e) => {
-                if (!e.target.matches(".tag-entry")) return;
-                const box = e.target.closest("[data-tags]");
-                const items = menu ? [...menu.children] : [];
-                const active = menu?.querySelector(".active");
-                if (menu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                    e.preventDefault();
-                    const step = e.key === "ArrowDown" ? 1 : -1;
-                    const next = Math.min(Math.max(items.indexOf(active) + step, 0), items.length - 1);
-                    active?.classList.remove("active");
-                    items[next].classList.add("active");
-                } else if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    if (active) e.target.value = active.textContent;
-                    commit(box);
-                } else if (e.key === "Escape" && menu) {
-                    closeMenu();
-                } else if (e.key === "Backspace" && !e.target.value) {
-                    render(box, tagsOf(box).slice(0, -1));
-                }
-            });
-
-            for (const event of ["focusin", "input"]) {
-                document.addEventListener(event, (e) => {
-                    if (e.target.matches(".tag-entry")) suggest(e.target.closest("[data-tags]"));
-                });
+            if (!SLUG.test(typed)) {
+                input.classList.add("is-invalid");
+                return false;
             }
+            const tags = tagsOf(box);
+            if (!tags.includes(typed)) render(box, [...tags, typed]);
+            input.value = "";
+            return true;
+        }
 
-            document.addEventListener("focusout", (e) => {
-                if (!e.target.matches(".tag-entry")) return;
-                closeMenu();
-                commit(e.target.closest("[data-tags]"));
-            });
+        for (const box of document.querySelectorAll("[data-tags]")) {
+            const input = field(box);
+            input.hidden = true;
+            const shell = document.createElement("div");
+            shell.className = "tag-box form-control d-flex flex-wrap align-items-center gap-1";
+            const typing = document.createElement("input");
+            typing.type = "text";
+            typing.className = "tag-entry";
+            typing.autocomplete = "off";
+            typing.dataset.suggest = "tag";
+            typing.setAttribute("aria-label", "Add a tag");
+            shell.appendChild(typing);
+            input.after(shell);
+            render(box, tagsOf(box));
+        }
 
-            document.addEventListener("click", (e) => {
-                const remove = e.target.closest("[data-tags-remove]");
-                if (remove) {
-                    const box = remove.closest("[data-tags]");
-                    const dropped = remove.dataset.tagsRemove;
-                    render(box, tagsOf(box).filter((tag) => tag !== dropped));
-                    return;
-                }
-                const box = e.target.closest("[data-tags] label, [data-tags] .tag-box");
-                if (box) entry(box.closest("[data-tags]")).focus();
-            });
+        // A tag already carried is not worth offering again
+        document.addEventListener("suggest:query", (e) => {
+            if (e.target.matches(".tag-entry")) {
+                e.detail.params.set("exclude", tagsOf(e.target.closest("[data-tags]")).join(","));
+            }
+        });
 
-            document.addEventListener("submit", (e) => {
-                for (const box of e.target.querySelectorAll("[data-tags]")) {
-                    if (!commit(box)) e.preventDefault();
-                }
-            });
-        })();
+        document.addEventListener("suggest:pick", (e) => {
+            if (e.target.matches(".tag-entry")) commit(e.target.closest("[data-tags]"));
+        });
+
+        document.addEventListener("keydown", (e) => {
+            if (!e.target.matches(".tag-entry")) return;
+            const box = e.target.closest("[data-tags]");
+            // A pick by Enter has already committed the tag it chose
+            if (e.defaultPrevented) return;
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                commit(box);
+            } else if (e.key === "Backspace" && !e.target.value) {
+                render(box, tagsOf(box).slice(0, -1));
+            }
+        });
+
+        document.addEventListener("focusout", (e) => {
+            if (e.target.matches(".tag-entry")) commit(e.target.closest("[data-tags]"));
+        });
+
+        document.addEventListener("click", (e) => {
+            const remove = e.target.closest("[data-tags-remove]");
+            if (remove) {
+                const box = remove.closest("[data-tags]");
+                const dropped = remove.dataset.tagsRemove;
+                render(box, tagsOf(box).filter((tag) => tag !== dropped));
+                return;
+            }
+            const box = e.target.closest("[data-tags] label, [data-tags] .tag-box");
+            if (box) entry(box.closest("[data-tags]")).focus();
+        });
+
+        document.addEventListener("submit", (e) => {
+            for (const box of e.target.querySelectorAll("[data-tags]")) {
+                if (!commit(box)) e.preventDefault();
+            }
+        });
     </script>
 {% endmacro %}

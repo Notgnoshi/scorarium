@@ -42,7 +42,7 @@
     </div>
     {% call stars::input("stars", fields.input.stars.as_str(), fields.errors.stars) %}
     {% endcall %}
-    {% call tags::input(fields.input.tags.as_str(), fields.tag_vocabulary, fields.errors.tags) %}
+    {% call tags::input(fields.input.tags.as_str(), fields.errors.tags) %}
     {% endcall %}
     <div class="mb-3">
         <label class="form-label" for="note">Notes</label>

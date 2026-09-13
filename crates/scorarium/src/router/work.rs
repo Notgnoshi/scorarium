@@ -162,7 +162,7 @@ async fn render_edit(
     input: WorkRawInput,
     errors: WorkErrors,
 ) -> Result<Response, AppError> {
-    let fields = WorkFields::build(&library, input, errors).await?;
+    let fields = WorkFields::build(input, errors);
     let page = EditPage {
         base: base.page(
             work.title.clone(),

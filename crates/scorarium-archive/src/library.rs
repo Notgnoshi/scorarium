@@ -252,12 +252,6 @@ impl Library {
         person::list_person_names(&mut conn, self.id).await
     }
 
-    /// Every distinct tag in the library, alphabetically, for the tag field's suggestions
-    pub async fn tag_vocabulary(&self) -> Result<Vec<String>> {
-        let mut conn = self.archive.acquire_read().await?;
-        tag::list_vocabulary(&mut conn, self.id).await
-    }
-
     /// Every tag in the library with its use count, alphabetically
     pub async fn tag_counts(&self) -> Result<Vec<TagCount>> {
         let mut conn = self.archive.acquire_read().await?;

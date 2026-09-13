@@ -285,19 +285,14 @@ pub struct FormFields {
     pub identifiers: Vec<(IdentifierRawInput, String)>,
     pub contributors: Vec<(ContributorInput, String)>,
     pub works: Vec<ShownWork>,
-    pub tag_vocabulary: Vec<String>,
     pub no_copies_warning: String,
     pub work_edit: WorkEdit,
 }
 
 impl FormFields {
-    pub async fn build(
-        library: &Library,
-        input: PublicationRawInput,
-        errors: PublicationErrors,
-    ) -> Result<Self, AppError> {
-        Ok(Self {
-            tag_vocabulary: library.tag_vocabulary().await?,
+    /// Everything here comes from the input and its errors, so building a form reads no data
+    pub fn build(input: PublicationRawInput, errors: PublicationErrors) -> Self {
+        Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
@@ -307,7 +302,7 @@ impl FormFields {
             work_edit: WorkEdit::default(),
             input,
             errors,
-        })
+        }
     }
 
     /// What to warn when the last copy is removed, on the page that can act on it.
@@ -337,22 +332,17 @@ pub struct WorkFields {
     pub errors: WorkErrors,
     pub contributors: Vec<(ContributorInput, String)>,
     pub catalog_numbers: Vec<ShownCatalogNumber>,
-    pub tag_vocabulary: Vec<String>,
 }
 
 impl WorkFields {
-    pub async fn build(
-        library: &Library,
-        input: WorkRawInput,
-        errors: WorkErrors,
-    ) -> Result<Self, AppError> {
-        Ok(Self {
-            tag_vocabulary: library.tag_vocabulary().await?,
+    /// Everything here comes from the input and its errors, so building a form reads no data
+    pub fn build(input: WorkRawInput, errors: WorkErrors) -> Self {
+        Self {
             contributors: pair_messages(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             input,
             errors,
-        })
+        }
     }
 }
 
