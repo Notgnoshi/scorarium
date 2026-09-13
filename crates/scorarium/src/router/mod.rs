@@ -5,6 +5,7 @@ mod library;
 mod login;
 mod person;
 mod publication;
+mod search;
 mod settings;
 mod suggest;
 mod tag;
@@ -139,6 +140,8 @@ pub struct BaseContext {
     /// Imports awaiting review, for the header badge. Zero when logged out.
     pub pending_import_count: i64,
     pub breadcrumbs: Vec<Crumb>,
+    pub search_library: Option<i64>,
+    pub search_query: String,
     pub bootstrap_css: String,
     pub bootstrap_icons_css: String,
     pub bootstrap_js: String,
@@ -174,6 +177,13 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
             demo: state.demo,
             pending_import_count,
             breadcrumbs: Vec::new(),
+            search_library: parts
+                .uri
+                .path()
+                .strip_prefix("/library/")
+                .and_then(|rest| rest.split('/').next())
+                .and_then(|id| id.parse().ok()),
+            search_query: String::new(),
             bootstrap_css: assets::url("bootstrap.min.css"),
             bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),
             bootstrap_js: assets::url("bootstrap.bundle.min.js"),
@@ -522,6 +532,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
+        .route("/search", get(search::search))
         .route("/settings", get(settings::settings_page))
         .route("/settings/password", post(settings::change_password))
         .route(

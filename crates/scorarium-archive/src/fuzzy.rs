@@ -18,6 +18,12 @@ pub(crate) fn normalize(text: &str) -> String {
 
 /// How many characters of a typed word may be absent from the word it matches
 fn typo_budget(word: &str) -> u16 {
+    // A word carrying a digit gets none. Letters can be misspelled, but a digit is higher signal
+    // data: reading "op29" with one character absent finds Op. 39 and Op. 3, which are other
+    // numbers entirely.
+    if word.bytes().any(|byte| byte.is_ascii_digit()) {
+        return 0;
+    }
     match word.len() {
         0..=3 => 0,
         4..=7 => 1,
@@ -102,5 +108,17 @@ mod tests {
         assert!(rank("saintsaens", &names).is_empty());
         assert!(rank("erx", &names).is_empty());
         assert!(rank("  ", &names).is_empty());
+    }
+
+    #[test]
+    fn a_typed_digit_must_be_there() {
+        let numbers = ["op29", "op29no1", "op39no2", "op3no2"];
+        // Op. 39 and Op. 3 No. 2 are reached by dropping the 2 and the 9 respectively, which is
+        // what a typo budget would allow and what makes them the wrong numbers
+        assert_eq!(rank("op29", &numbers), [0, 1]);
+        // A digit that is really there still reaches everything it begins
+        let mut begun = rank("op3", &numbers);
+        begun.sort();
+        assert_eq!(begun, [2, 3]);
     }
 }
