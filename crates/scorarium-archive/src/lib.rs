@@ -206,27 +206,17 @@ impl Archive {
     }
 
     /// Search for titles, contributors, and catalog numbers
-    pub async fn search(
-        &self,
-        typed: &str,
-        public_only: bool,
-        library: Option<i64>,
-    ) -> Result<Vec<SearchHit>> {
+    pub async fn search(&self, typed: &str, public_only: bool) -> Result<Vec<SearchHit>> {
         let mut tx = self.shared.begin_read().await?;
-        let hits = search::search(&mut tx, typed, public_only, library).await?;
+        let hits = search::search(&mut tx, typed, public_only).await?;
         tx.commit().await?;
         Ok(hits)
     }
 
     /// Publications and works whose title matches, for the navbar typeahead
-    pub async fn suggest_titles(
-        &self,
-        typed: &str,
-        public_only: bool,
-        library: Option<i64>,
-    ) -> Result<Vec<SearchHit>> {
+    pub async fn suggest_titles(&self, typed: &str, public_only: bool) -> Result<Vec<SearchHit>> {
         let mut tx = self.shared.begin_read().await?;
-        let hits = search::suggest_titles(&mut tx, typed, public_only, library).await?;
+        let hits = search::suggest_titles(&mut tx, typed, public_only).await?;
         tx.commit().await?;
         Ok(hits)
     }

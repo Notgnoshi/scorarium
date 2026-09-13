@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Response};
-use scorarium_archive::{Entity, Library, WorkSummary};
+use scorarium_archive::{Entity, WorkSummary};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb};
@@ -13,7 +13,6 @@ use crate::AppState;
 pub struct SearchQuery {
     #[serde(default)]
     q: String,
-    library: Option<i64>,
 }
 
 /// One hit as the page shows it
@@ -29,8 +28,6 @@ struct ShownHit {
 #[template(path = "search.html")]
 struct SearchPage {
     base: BaseContext,
-    /// The scope, when there is one
-    library: Option<Library>,
     hits: Vec<ShownHit>,
 }
 
@@ -88,14 +85,10 @@ pub async fn search(
     mut base: BaseContext,
     Query(query): Query<SearchQuery>,
 ) -> Result<Response, AppError> {
-    let library = match query.library {
-        Some(id) => Some(base.visible_library(&state.archive, id).await?),
-        None => None,
-    };
     let typed = query.q.trim().to_string();
     let hits = state
         .archive
-        .search(&typed, !base.logged_in, library.as_ref().map(|l| l.id))
+        .search(&typed, !base.logged_in)
         .await?
         .into_iter()
         .map(|hit| {
@@ -109,11 +102,9 @@ pub async fn search(
             }
         })
         .collect();
-    base.search_library = library.as_ref().map(|l| l.id);
     base.search_query = typed;
     let page = SearchPage {
         base: base.page("Search", vec![Crumb::home()]),
-        library,
         hits,
     };
     Ok(Html(page.render()?).into_response())

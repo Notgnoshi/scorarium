@@ -11,9 +11,10 @@ async fn search_shows_what_the_viewer_may_see() {
         .id;
     let server = browser(state);
 
-    // A library page scopes the navbar box to itself
+    // The box is on every page but the login form, and always searches every library
     let response = server.get(&format!("/library/{sheet_music}")).await;
-    response.assert_text_contains(format!("name=\"library\" value=\"{sheet_music}\""));
+    response.assert_text_contains("action=\"/search\"");
+    assert!(!response.text().contains("name=\"library\""));
 
     let response = server.get("/search?q=rachmaninoff").await;
     response.assert_status_ok();
@@ -44,10 +45,7 @@ async fn search_shows_what_the_viewer_may_see() {
     response.assert_text_contains("The Collected Writings of Ambrose Bierce");
     response.assert_text_contains("Books");
 
-    let response = server
-        .get(&format!("/search?q=bierce&library={sheet_music}"))
-        .await;
-    response.assert_text_contains("in <a href=\"/library/");
+    // A hit names the library it is in, since results span all of them
+    let response = server.get("/search?q=rachmaninoff").await;
     response.assert_text_contains("Sheet music");
-    response.assert_text_contains("Nothing matched.");
 }

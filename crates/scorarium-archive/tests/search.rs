@@ -61,29 +61,23 @@ async fn search_sees_what_the_viewer_sees() {
         .unwrap();
 
     // A private library answers nobody but a logged-in viewer
+    assert_eq!(shown(&archive.search("hymnal", true).await.unwrap()), []);
     assert_eq!(
-        shown(&archive.search("hymnal", true, None).await.unwrap()),
-        []
-    );
-    assert_eq!(
-        shown(&archive.search("hymnal", false, None).await.unwrap()),
+        shown(&archive.search("hymnal", false).await.unwrap()),
         [("Books", "publication", "The Hymnal")]
     );
 
     // A note and a tag are not searched, however visible they are
+    assert_eq!(shown(&archive.search("carols", false).await.unwrap()), []);
     assert_eq!(
-        shown(&archive.search("carols", false, None).await.unwrap()),
-        []
-    );
-    assert_eq!(
-        shown(&archive.search("christmas", false, None).await.unwrap()),
+        shown(&archive.search("christmas", false).await.unwrap()),
         []
     );
 
     // A catalog number finds its work, spaced out or run together
     for typed in ["Op. 9 No. 2", "op9no2", "op9"] {
         assert_eq!(
-            shown(&archive.search(typed, false, None).await.unwrap()),
+            shown(&archive.search(typed, false).await.unwrap()),
             [("Sheet music", "work", "Nocturne")],
             "{typed:?}"
         );
@@ -91,34 +85,19 @@ async fn search_sees_what_the_viewer_sees() {
 
     // A composer is both the work crediting them and a person of their own
     assert_eq!(
-        shown(&archive.search("chopin", false, None).await.unwrap()),
+        shown(&archive.search("chopin", false).await.unwrap()),
         [
             ("Sheet music", "work", "Nocturne"),
             ("Sheet music", "person", "Frederic Chopin")
         ]
     );
-    assert_eq!(
-        shown(
-            &archive
-                .search("chopin", false, Some(books.id))
-                .await
-                .unwrap()
-        ),
-        []
-    );
-
     // The typeahead reads titles alone, so a composer's name finds nothing there
     assert_eq!(
-        shown(&archive.suggest_titles("chopin", false, None).await.unwrap()),
+        shown(&archive.suggest_titles("chopin", false).await.unwrap()),
         []
     );
     assert_eq!(
-        shown(
-            &archive
-                .suggest_titles("nocturne", false, None)
-                .await
-                .unwrap()
-        ),
+        shown(&archive.suggest_titles("nocturne", false).await.unwrap()),
         // The work's title is the typed word, so it outranks the publication's near miss
         [
             ("Sheet music", "work", "Nocturne"),

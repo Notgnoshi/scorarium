@@ -140,7 +140,6 @@ pub struct BaseContext {
     /// Imports awaiting review, for the header badge. Zero when logged out.
     pub pending_import_count: i64,
     pub breadcrumbs: Vec<Crumb>,
-    pub search_library: Option<i64>,
     pub search_query: String,
     pub bootstrap_css: String,
     pub bootstrap_icons_css: String,
@@ -177,12 +176,6 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
             demo: state.demo,
             pending_import_count,
             breadcrumbs: Vec::new(),
-            search_library: parts
-                .uri
-                .path()
-                .strip_prefix("/library/")
-                .and_then(|rest| rest.split('/').next())
-                .and_then(|id| id.parse().ok()),
             search_query: String::new(),
             bootstrap_css: assets::url("bootstrap.min.css"),
             bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),

@@ -26,15 +26,14 @@ pub(crate) async fn search(
     conn: &mut SqliteConnection,
     typed: &str,
     public_only: bool,
-    library: Option<i64>,
 ) -> Result<Vec<SearchHit>> {
     if normalize(typed).is_empty() {
         return Ok(Vec::new());
     }
-    let publication_text = texts_of_publications(conn, library, public_only).await?;
-    let work_text = texts_of_works(conn, library, public_only).await?;
+    let publication_text = texts_of_publications(conn, public_only).await?;
+    let work_text = texts_of_works(conn, public_only).await?;
     let mut candidates: Vec<(SearchHit, String)> = Vec::new();
-    for found in summary::publications(conn, library, public_only).await? {
+    for found in summary::publications(conn, None, public_only).await? {
         let text = publication_text
             .get(&found.summary.id)
             .cloned()
@@ -48,7 +47,7 @@ pub(crate) async fn search(
             text,
         ));
     }
-    for found in summary::works(conn, library, public_only, None).await? {
+    for found in summary::works(conn, None, public_only, None).await? {
         let mut text = work_text
             .get(&found.summary.id)
             .cloned()
@@ -68,7 +67,7 @@ pub(crate) async fn search(
             text,
         ));
     }
-    for found in summary::persons(conn, library, public_only).await? {
+    for found in summary::persons(conn, None, public_only).await? {
         let text = found.summary.name.clone();
         candidates.push((
             hit(
@@ -87,13 +86,12 @@ pub(crate) async fn suggest_titles(
     conn: &mut SqliteConnection,
     typed: &str,
     public_only: bool,
-    library: Option<i64>,
 ) -> Result<Vec<SearchHit>> {
     if normalize(typed).is_empty() {
         return Ok(Vec::new());
     }
     let mut candidates: Vec<(SearchHit, String)> = Vec::new();
-    for found in summary::publications(conn, library, public_only).await? {
+    for found in summary::publications(conn, None, public_only).await? {
         let title = found.summary.title.clone();
         candidates.push((
             hit(
@@ -104,7 +102,7 @@ pub(crate) async fn suggest_titles(
             title,
         ));
     }
-    for found in summary::works(conn, library, public_only, None).await? {
+    for found in summary::works(conn, None, public_only, None).await? {
         let title = found.summary.title.clone();
         candidates.push((
             hit(
@@ -141,7 +139,6 @@ fn ranked(typed: &str, candidates: Vec<(SearchHit, String)>) -> Vec<SearchHit> {
 /// What each publication is found by, by publication id
 async fn texts_of_publications(
     conn: &mut SqliteConnection,
-    library: Option<i64>,
     public_only: bool,
 ) -> Result<HashMap<i64, String>> {
     let rows = sqlx::query!(
@@ -152,8 +149,7 @@ async fn texts_of_publications(
                                               WHERE c.publication_id = p.id), '')
                   AS "text!: String"
            FROM publication p JOIN library l ON l.id = p.library_id
-           WHERE (?1 IS NULL OR p.library_id = ?1) AND (NOT ?2 OR l.private = 0)"#,
-        library,
+           WHERE NOT ?1 OR l.private = 0"#,
         public_only
     )
     .fetch_all(conn)
@@ -164,7 +160,6 @@ async fn texts_of_publications(
 /// What each work is found by, by work id
 async fn texts_of_works(
     conn: &mut SqliteConnection,
-    library: Option<i64>,
     public_only: bool,
 ) -> Result<HashMap<i64, String>> {
     let rows = sqlx::query!(
@@ -177,8 +172,7 @@ async fn texts_of_works(
                                       WHERE work_id = w.id), '')
                   AS "text!: String"
            FROM work w JOIN library l ON l.id = w.library_id
-           WHERE (?1 IS NULL OR w.library_id = ?1) AND (NOT ?2 OR l.private = 0)"#,
-        library,
+           WHERE NOT ?1 OR l.private = 0"#,
         public_only
     )
     .fetch_all(conn)

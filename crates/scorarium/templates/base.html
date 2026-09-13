@@ -43,9 +43,6 @@
                               role="search"
                               method="get"
                               action="/search">
-                            {% if let Some(library) = base.search_library %}
-                                <input type="hidden" name="library" value="{{ library }}" />
-                            {% endif %}
                             <div class="input-group">
                                 <input class="form-control"
                                        type="search"
