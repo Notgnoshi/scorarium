@@ -22,8 +22,8 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, ValidationError,
-    Work, WorkErrors, WorkRawInput,
+    NotFound, PendingImport, Publication, PublicationErrors, PublicationRawInput, SuggestField,
+    Suggested, ValidationError, Work, WorkErrors, WorkRawInput,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -215,9 +215,6 @@ impl std::fmt::Display for LoginRequired {
 
 impl std::error::Error for LoginRequired {}
 
-/// Suggested alongside the library's existing roles, so a new library still gets a datalist.
-const CONVENTIONAL_ROLES: [&str; 5] = ["arranger", "author", "composer", "editor", "translator"];
-
 /// What a work shows when its only problem is a field the publication form does not reach.
 const HIDDEN_WORK_PROBLEM: &str = "A hidden field is incomplete. Open the work to fix it.";
 
@@ -385,12 +382,13 @@ async fn suggestions(
     library: &Library,
 ) -> Result<(Vec<String>, Vec<String>, Vec<String>), AppError> {
     let roles = library
-        .roles()
+        .suggest(SuggestField::Role, "", false)
         .await?
         .into_iter()
-        .chain(CONVENTIONAL_ROLES.iter().map(|role| role.to_string()))
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
+        .filter_map(|suggestion| match suggestion.item {
+            Suggested::Role(role) => Some(role),
+            _ => None,
+        })
         .collect();
     Ok((
         roles,

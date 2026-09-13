@@ -7,6 +7,7 @@ use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
+use crate::suggest::{self, SuggestField, Suggestion};
 use crate::tag::{self, TagCount};
 use crate::work::{self, CatalogNumberEntry, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
@@ -286,6 +287,25 @@ impl Library {
             work::load_works(&self.archive, &mut tx, self.id, None, None, Some(tag)).await?;
         tx.commit().await?;
         Ok((publications, works))
+    }
+}
+
+// suggestions
+impl Library {
+    /// Existing values for one input, best match first.
+    ///
+    /// With nothing typed, the small vocabularies come back whole and alphabetical.
+    pub async fn suggest(
+        &self,
+        field: SuggestField,
+        typed: &str,
+        public_only: bool,
+    ) -> Result<Vec<Suggestion>> {
+        if public_only && self.private {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.archive.acquire_read().await?;
+        suggest::suggest(&mut conn, self.id, field, typed, public_only).await
     }
 }
 

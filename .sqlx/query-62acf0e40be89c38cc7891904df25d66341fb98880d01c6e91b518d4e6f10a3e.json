@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT publisher AS \"publisher!\" FROM publication\n                   WHERE library_id = ? AND publisher IS NOT NULL ORDER BY publisher",
+  "describe": {
+    "columns": [
+      {
+        "name": "publisher!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "publisher"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "62acf0e40be89c38cc7891904df25d66341fb98880d01c6e91b518d4e6f10a3e"
+}

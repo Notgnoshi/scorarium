@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT instrumentation AS \"instrumentation!\" FROM work\n                   WHERE library_id = ? AND instrumentation IS NOT NULL ORDER BY instrumentation",
+  "describe": {
+    "columns": [
+      {
+        "name": "instrumentation!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "instrumentation"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "fb1c838246c8a94841b7d46cd13841a5d325e56638353a9a33feadf472a02b8d"
+}

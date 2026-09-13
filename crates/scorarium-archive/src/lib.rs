@@ -14,6 +14,7 @@ mod library;
 mod password;
 mod person;
 mod publication;
+mod suggest;
 mod tag;
 mod work;
 
@@ -40,6 +41,7 @@ pub use crate::person::{Contributor, Person};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
+pub use crate::suggest::{SuggestField, Suggested, Suggestion};
 pub use crate::tag::TagCount;
 pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 
