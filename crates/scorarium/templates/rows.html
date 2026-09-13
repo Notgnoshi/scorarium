@@ -150,6 +150,8 @@
             </span>
             <input class="form-control physical-only{% if !error.is_empty() %} is-invalid{% endif %}"
                    name="holding_location_{{ index }}"
+                   data-suggest="location"
+                   autocomplete="off"
                    value="{% if kind == "physical" %}{{ location }}{% endif %}"
                    placeholder="Piano bench"
                    aria-label="Location" />

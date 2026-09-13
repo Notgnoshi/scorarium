@@ -9,6 +9,7 @@
     {% endcall %}
     <div class="row">
         <form class="col-md-8 col-lg-6"
+              data-library-id="{{ library.id }}"
               method="post"
               action="/library/{{ library.id }}/import">
             <div class="mb-3">

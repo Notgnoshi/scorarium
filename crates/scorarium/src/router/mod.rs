@@ -144,6 +144,7 @@ pub struct BaseContext {
     pub bootstrap_css: String,
     pub bootstrap_icons_css: String,
     pub bootstrap_js: String,
+    pub suggest_js: String,
 }
 
 /// The request fills in everything the header needs; the handler adds the title and breadcrumbs with [BaseContext::page]
@@ -180,6 +181,7 @@ impl FromRequestParts<Arc<AppState>> for BaseContext {
             bootstrap_css: assets::url("bootstrap.min.css"),
             bootstrap_icons_css: assets::url("bootstrap-icons.min.css"),
             bootstrap_js: assets::url("bootstrap.bundle.min.js"),
+            suggest_js: assets::url("suggest.js"),
         })
     }
 }
