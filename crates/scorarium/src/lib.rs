@@ -10,6 +10,7 @@ pub use crate::router::router;
 pub struct AppState {
     pub archive: Archive,
     pub sessions: session::SessionStore,
+    pub throttle: session::LoginThrottle,
     /// Whether the login cookie is marked Secure
     pub secure_cookies: bool,
     pub demo: bool,
@@ -20,6 +21,7 @@ impl AppState {
         Self {
             archive,
             sessions: session::SessionStore::default(),
+            throttle: session::LoginThrottle::default(),
             secure_cookies,
             demo: false,
         }

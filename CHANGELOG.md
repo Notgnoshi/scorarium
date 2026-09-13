@@ -12,6 +12,14 @@ the focus on user impact** rather than the mechanics of the change.
 
 <!-- Please add new changelog entries here -->
 
+# Scorarium - 0.1.0 - (2026-09-13)
+
+This release marks the completion of Scorarium's first milestone! Scorarium supports manually
+importing, editing, and searching publications and works, as well as annotating entries with tags,
+notes, and star ratings.
+
+The next milestone will be using open APIs to enrich the metadata of imported works.
+
 # Scorarium - 0.1.0-rc2 - (2026-09-07)
 
 * Scorarium isn't quite so ugly any more!

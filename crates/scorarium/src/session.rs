@@ -4,6 +4,46 @@ use std::time::{Duration, Instant};
 
 pub const SESSION_LIFETIME: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
 
+pub const LOGIN_ATTEMPTS: u32 = 5;
+pub const LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+
+/// Caps how fast the single password can be guessed.
+#[derive(Default)]
+pub struct LoginThrottle {
+    /// Failures in the current window, and when that window started
+    failures: Mutex<Option<(u32, Instant)>>,
+}
+
+impl LoginThrottle {
+    /// If logins are currently refused, how long until they are accepted again.
+    pub fn locked_for(&self) -> Option<Duration> {
+        let mut failures = self.failures.lock().expect("throttle lock poisoned");
+        match *failures {
+            Some((count, since)) if count >= LOGIN_ATTEMPTS => {
+                let remaining = LOGIN_WINDOW.checked_sub(since.elapsed());
+                if remaining.is_none() {
+                    *failures = None;
+                }
+                remaining
+            }
+            _ => None,
+        }
+    }
+
+    pub fn record_failure(&self) {
+        let mut failures = self.failures.lock().expect("throttle lock poisoned");
+        *failures = match *failures {
+            Some((count, since)) if since.elapsed() < LOGIN_WINDOW => Some((count + 1, since)),
+            _ => Some((1, Instant::now())),
+        };
+    }
+
+    /// A correct password ends the current window
+    pub fn reset(&self) {
+        *self.failures.lock().expect("throttle lock poisoned") = None;
+    }
+}
+
 /// The set of live login sessions, keyed by the token each browser holds in its session cookie.
 ///
 /// Sessions are held in memory and get reset if the server restarts.
@@ -98,6 +138,36 @@ mod tests {
         let token = store.create();
         store.revoke(&token);
         assert!(!store.validate(&token));
+    }
+
+    #[test]
+    fn throttle_locks_after_limit_and_expires() {
+        let throttle = LoginThrottle::default();
+        for _ in 0..LOGIN_ATTEMPTS - 1 {
+            throttle.record_failure();
+        }
+        assert!(throttle.locked_for().is_none());
+        throttle.record_failure();
+        assert!(throttle.locked_for().is_some());
+
+        // Start the window in the past so the lockout has run out
+        let mut failures = throttle.failures.lock().unwrap();
+        failures.as_mut().unwrap().1 = Instant::now() - LOGIN_WINDOW - Duration::from_secs(5);
+        drop(failures);
+        assert!(throttle.locked_for().is_none());
+        // And the expired window was cleared, so one more failure starts a fresh one
+        throttle.record_failure();
+        assert!(throttle.locked_for().is_none());
+    }
+
+    #[test]
+    fn throttle_reset_clears_failures() {
+        let throttle = LoginThrottle::default();
+        for _ in 0..LOGIN_ATTEMPTS {
+            throttle.record_failure();
+        }
+        throttle.reset();
+        assert!(throttle.locked_for().is_none());
     }
 
     #[test]
