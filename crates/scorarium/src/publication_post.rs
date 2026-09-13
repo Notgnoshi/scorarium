@@ -165,6 +165,7 @@ impl PublicationPost {
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
             contributors: contributors(contributor_name, contributor_role),
+            links: Vec::new(),
             contents,
         }
     }

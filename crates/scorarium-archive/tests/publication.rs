@@ -45,6 +45,7 @@ fn gymnopedies() -> PublicationRawInput {
             contributor("Erik Satie", "composer"),
             contributor("Bob", "arranger"),
         ],
+        links: vec!["https://imslp.org/wiki/3_Gymnopedies_(Satie,_Erik)".into()],
         contents: vec![WorkRawInput {
             title: "Gymnopedie No. 1".into(),
             key: "D major".into(),
@@ -105,12 +106,18 @@ async fn a_created_publication_reads_back_whole() {
         ]
     );
 
+    assert_eq!(
+        created.links,
+        ["https://imslp.org/wiki/3_Gymnopedies_(Satie,_Erik)"]
+    );
+
     // Both lookups see what create returned
     let found = library.publication(created.id).await.unwrap().unwrap();
     assert_eq!(found.title, created.title);
     assert_eq!(found.identifiers, created.identifiers);
     assert_eq!(found.contributors, created.contributors);
     assert_eq!(found.holdings, created.holdings);
+    assert_eq!(found.links, created.links);
     let listed = library.publications().await.unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.id);

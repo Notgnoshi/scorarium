@@ -28,6 +28,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(Some("Desk"))],
             identifiers: vec![normalized(Kind::Isbn, "978-1-68050-127-8")?],
             contributors: vec![contributor("Drew Neil", "author")],
+            links: Vec::new(),
             contents: Vec::new(),
         })
         .await?;
@@ -46,6 +47,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 contributor("Scott Chacon", "author"),
                 contributor("Ben Straub", "author"),
             ],
+            links: Vec::new(),
             contents: Vec::new(),
         })
         .await?;
@@ -62,6 +64,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-8065-0180-4")?],
             contributors: vec![contributor(BIERCE, "author")],
+            links: Vec::new(),
             contents: vec![
                 writing("In the Midst of Life"),
                 writing("The Devil's Dictionary"),
@@ -107,6 +110,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 normalized(Kind::PublisherNumber, "Vol 2115")?,
             ],
             contributors: composers,
+            links: Vec::new(),
             contents: vec![
                 prelude,
                 piano_piece("Etude-Tableau", "A minor", None, &["Op. 39 No. 2"]),
@@ -125,6 +129,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(None)],
             identifiers: vec![normalized(Kind::Isbn, "0-486-43122-3")?],
             contributors: vec![contributor(RACHMANINOFF, "composer")],
+            links: Vec::new(),
             contents: vec![piano_piece(
                 "Polichinelle",
                 "F-sharp minor",
@@ -155,6 +160,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 contributor(RACHMANINOFF, "composer"),
                 contributor("Georgy Kirkor", "arranger"),
             ],
+            links: Vec::new(),
             contents: vec![tone_poem],
         })
         .await?;
@@ -173,6 +179,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 normalized(Kind::PublisherNumber, "Vol 1869")?,
             ],
             contributors: vec![contributor(SATIE, "composer")],
+            links: Vec::new(),
             contents: ["D major", "C major", "A minor"]
                 .into_iter()
                 .enumerate()
