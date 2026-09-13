@@ -177,6 +177,15 @@ impl CatalogNumber {
         }
     }
 
+    pub fn starts_with(&self, prefix: &Self) -> bool {
+        match (self.scheme, prefix.scheme) {
+            (Some(mine), Some(theirs)) => {
+                mine == theirs && self.numbers.starts_with(&prefix.numbers)
+            }
+            _ => false,
+        }
+    }
+
     /// How well this stored number fits what was typed; None when it should not be suggested
     pub fn similarity(&self, typed: &Self) -> Option<Similarity> {
         if typed.text.is_empty() {
@@ -185,10 +194,7 @@ impl CatalogNumber {
         if self.matches(typed) {
             return Some(Similarity::Exact);
         }
-        if let (Some(mine), Some(theirs)) = (self.scheme, typed.scheme)
-            && mine == theirs
-            && self.numbers.starts_with(&typed.numbers)
-        {
+        if self.starts_with(typed) {
             return Some(Similarity::Prefix);
         }
         // A half-typed label matches nothing structurally, so the text is the last resort

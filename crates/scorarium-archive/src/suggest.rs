@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use sqlx::SqliteConnection;
 
+use crate::catalog::CatalogNumber;
 use crate::fuzzy::{normalize, rank};
 use crate::summary::{self, PersonSummary, PublicationSummary, WorkSummary};
 use crate::tag::TagCount;
@@ -12,6 +13,7 @@ use crate::{Result, person, tag};
 pub enum SuggestField {
     Person,
     Work,
+    WorkNumber { composer: Option<String> },
     Publication,
     Role,
     Publisher,
@@ -65,7 +67,10 @@ pub(crate) async fn suggest(
     if normalize(typed).is_empty()
         && matches!(
             field,
-            SuggestField::Person | SuggestField::Work | SuggestField::Publication
+            SuggestField::Person
+                | SuggestField::Work
+                | SuggestField::WorkNumber { .. }
+                | SuggestField::Publication
         )
     {
         return Ok(Vec::new());
@@ -107,6 +112,24 @@ pub(crate) async fn suggest(
                 |work| work.title.as_str(),
                 |work| Suggested::Work { work, number: None },
             )
+        }
+        SuggestField::WorkNumber { composer } => {
+            // The composer is matched by an exact name and never fuzzily; guessing wrong would
+            // silently offer one composer's numbers while the user reads another's name.
+            let credited_to = match &composer {
+                Some(name) => summary::persons(conn, Some(library_id), false)
+                    .await?
+                    .into_iter()
+                    .find(|person| is_exact(name, &person.summary.name))
+                    .map(|person| person.summary.id),
+                None => None,
+            };
+            let works = summary::works(conn, Some(library_id), false, credited_to)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
+            work_numbers(typed, works)
         }
         SuggestField::Publication => {
             let publications = summary::publications(conn, Some(library_id), false)
@@ -281,4 +304,64 @@ fn ranked_entities<T>(
 
 fn is_exact(typed: &str, name: &str) -> bool {
     normalize(name) == normalize(typed)
+}
+
+/// Every catalog number that fits what was typed, best first.
+fn work_numbers(typed: &str, works: Vec<WorkSummary>) -> Vec<Suggestion> {
+    let wanted = CatalogNumber::parse(typed);
+    let (mut same, mut begun, mut other) = (Vec::new(), Vec::new(), Vec::new());
+    for work in &works {
+        for number in &work.numbers {
+            let parsed = CatalogNumber::parse(number);
+            if parsed.matches(&wanted) {
+                same.push((work, number, parsed));
+            } else if parsed.starts_with(&wanted) {
+                begun.push((work, number, parsed));
+            } else {
+                other.push((work, number));
+            }
+        }
+    }
+    // The structural tiers read as a catalog does: by number, then by the work it belongs to
+    for tier in [&mut same, &mut begun] {
+        tier.sort_by(|(work, _, number), (its_work, _, its_number)| {
+            number
+                .cmp(its_number)
+                .then_with(|| work.title.cmp(&its_work.title))
+        });
+    }
+
+    let offered = |work: &WorkSummary, number: &String, exact: bool| Suggestion {
+        exact,
+        item: Suggested::Work {
+            work: work.clone(),
+            number: Some(number.clone()),
+        },
+    };
+    let mut suggestions: Vec<Suggestion> = same
+        .iter()
+        .map(|(work, number, _)| offered(work, number, true))
+        .chain(
+            begun
+                .iter()
+                .map(|(work, number, _)| offered(work, number, false)),
+        )
+        .collect();
+    // What is left is found by everything that identifies the work, not by the number alone
+    let texts: Vec<String> = other
+        .iter()
+        .map(|(work, number)| {
+            let mut text = format!("{number} {}", work.title);
+            if let Some(person) = &work.contributor {
+                text.push(' ');
+                text.push_str(&person.name);
+            }
+            text
+        })
+        .collect();
+    for i in rank(typed, &texts) {
+        let (work, number) = other[i];
+        suggestions.push(offered(work, number, false));
+    }
+    suggestions
 }

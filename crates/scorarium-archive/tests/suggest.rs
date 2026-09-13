@@ -230,3 +230,130 @@ async fn entities_are_one_suggestion_each() {
         matches!(&dictionary[0].item, Suggested::Publication(p) if p.people == ["Ambrose Bierce"])
     );
 }
+
+#[tokio::test]
+async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
+    let piece = |title: &str, composer: &str, number: &str| WorkRawInput {
+        title: title.into(),
+        contributors: vec![contributor(composer, "composer")],
+        catalog_numbers: vec![number.into()],
+        ..WorkRawInput::default()
+    };
+    let chopin = PublicationRawInput {
+        title: "Nocturnes".into(),
+        holdings: vec![holding(HoldingKind::Physical, "")],
+        contents: vec![
+            piece("Nocturne in E-flat major", "Frederic Chopin", "Op. 9 No. 2"),
+            piece(
+                "Nocturne in C-sharp minor",
+                "Frederic Chopin",
+                "Op. 27 No. 2",
+            ),
+        ],
+        ..PublicationRawInput::default()
+    };
+    library
+        .create_publication(&chopin.parse().unwrap())
+        .await
+        .unwrap();
+    let rachmaninoff = PublicationRawInput {
+        title: "Morceaux de fantaisie".into(),
+        holdings: vec![holding(HoldingKind::Physical, "")],
+        contents: vec![
+            piece(
+                "Prelude in C-sharp minor",
+                "Sergei Rachmaninoff",
+                "Op. 3 No. 2",
+            ),
+            WorkRawInput {
+                title: "Nocturne".into(),
+                contributors: vec![contributor("Sergei Rachmaninoff", "composer")],
+                ..WorkRawInput::default()
+            },
+        ],
+        ..PublicationRawInput::default()
+    };
+    library
+        .create_publication(&rachmaninoff.parse().unwrap())
+        .await
+        .unwrap();
+
+    let numbers = |suggestions: &[Suggestion]| -> Vec<(bool, String, String)> {
+        suggestions
+            .iter()
+            .map(|suggestion| match &suggestion.item {
+                Suggested::Work {
+                    work,
+                    number: Some(number),
+                } => (suggestion.exact, number.clone(), work.title.clone()),
+                other => panic!("Not a numbered work: {other:?}"),
+            })
+            .collect()
+    };
+    let suggest = async |typed: &str, composer: Option<&str>| {
+        library
+            .suggest(
+                SuggestField::WorkNumber {
+                    composer: composer.map(str::to_string),
+                },
+                typed,
+                false,
+            )
+            .await
+            .unwrap()
+    };
+
+    // The same number, however either was spelled
+    assert_eq!(
+        numbers(&suggest("op 9 no 2", None).await),
+        [(
+            true,
+            "Op. 9 No. 2".to_string(),
+            "Nocturne in E-flat major".to_string()
+        )]
+    );
+    // A number the typed text has only begun is offered, but is not yet the number itself
+    assert_eq!(
+        numbers(&suggest("op9", None).await),
+        [(
+            false,
+            "Op. 9 No. 2".to_string(),
+            "Nocturne in E-flat major".to_string()
+        )]
+    );
+    assert_eq!(
+        numbers(&suggest("Op. 27", None).await),
+        [(
+            false,
+            "Op. 27 No. 2".to_string(),
+            "Nocturne in C-sharp minor".to_string()
+        )]
+    );
+    // A fragment that parses as no number at all still reaches every number spelling it, through
+    // the fuzzy tier, where the order is how well each matched rather than catalog order
+    let mut seconds: Vec<String> = numbers(&suggest("no 2", None).await)
+        .into_iter()
+        .map(|(_, number, _)| number)
+        .collect();
+    seconds.sort();
+    assert_eq!(seconds, ["Op. 27 No. 2", "Op. 3 No. 2", "Op. 9 No. 2"]);
+    // A composer nobody answers to narrows nothing
+    assert_eq!(
+        numbers(&suggest("no 2", Some("rachmaninof")).await).len(),
+        3
+    );
+    let narrowed: Vec<String> = numbers(&suggest("no 2", Some("sergei rachmaninoff")).await)
+        .into_iter()
+        .map(|(_, number, _)| number)
+        .collect();
+    assert_eq!(narrowed, ["Op. 3 No. 2"]);
+    // A title reaches the numbers of the works carrying it, through the fuzzy tier. The
+    // Rachmaninoff work of the same name has no number, so it has nothing to offer a number input.
+    let by_title = numbers(&suggest("nocturne", None).await);
+    assert!(by_title.iter().all(|(exact, ..)| !exact));
+    let mut titled: Vec<String> = by_title.into_iter().map(|(_, number, _)| number).collect();
+    titled.sort();
+    assert_eq!(titled, ["Op. 27 No. 2", "Op. 9 No. 2"]);
+}
