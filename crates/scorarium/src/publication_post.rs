@@ -1,6 +1,6 @@
 use scorarium_archive::{
     CatalogNumber, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput,
-    PublicationRawInput, WorkRawInput,
+    PublicationRawInput, WorkRawInput, credit_priority,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -172,16 +172,11 @@ impl PublicationPost {
 
 /// The contributor a work shows on the publication pages
 pub fn lead_contributor(contributors: &[ContributorInput]) -> Option<usize> {
-    // Prioritize composers or authors, if they exist
     contributors
         .iter()
-        .position(|contributor| contributor.role == "composer")
-        .or_else(|| {
-            contributors
-                .iter()
-                .position(|contributor| contributor.role == "author")
-        })
-        .or_else(|| (!contributors.is_empty()).then_some(0))
+        .enumerate()
+        .min_by_key(|(_, contributor)| credit_priority(&contributor.role))
+        .map(|(i, _)| i)
 }
 
 /// Apply the posted contributor to a work's lead, leaving the ones the page does not show alone.

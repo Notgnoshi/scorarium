@@ -15,6 +15,7 @@ mod password;
 mod person;
 mod publication;
 mod suggest;
+mod summary;
 mod tag;
 mod work;
 
@@ -37,11 +38,12 @@ pub use crate::import::{Draft, PendingImport};
 pub use crate::input::{ContributorInput, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
-pub use crate::person::{Contributor, Person};
+pub use crate::person::{Contributor, Person, credit_priority};
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationRawInput,
 };
 pub use crate::suggest::{SuggestField, Suggested, Suggestion};
+pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary};
 pub use crate::tag::TagCount;
 pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
 

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT w.id, w.title, l.id AS library_id, l.name AS library_name\n           FROM work w JOIN library l ON l.id = w.library_id\n           WHERE (?1 IS NULL OR w.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n             AND (?3 IS NULL OR w.id IN (SELECT work_id FROM work_contributor WHERE person_id = ?3))\n           ORDER BY l.name, w.title",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "87bfac435088b75b05e781e830c705a54d0eff55281cfc98e38d19568c8ed38f"
+}

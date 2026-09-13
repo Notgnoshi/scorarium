@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT cn.work_id, cn.value\n           FROM work_catalog_number cn JOIN work w ON w.id = cn.work_id\n           JOIN library l ON l.id = w.library_id\n           WHERE (?1 IS NULL OR w.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n             AND (?3 IS NULL OR w.id IN (SELECT work_id FROM work_contributor WHERE person_id = ?3))\n           ORDER BY cn.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "work_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_catalog_number",
+            "name": "work_id"
+          }
+        }
+      },
+      {
+        "name": "value",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_catalog_number",
+            "name": "value"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d11dfe6d15ebe25118d4abc434e35979c91d02d25f31e2c350dbdc439bc5c994"
+}

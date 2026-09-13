@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT h.publication_id, h.kind\n           FROM holding h JOIN publication p ON p.id = h.publication_id\n           JOIN library l ON l.id = p.library_id\n           WHERE (?1 IS NULL OR p.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n           ORDER BY h.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "publication_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c0b38e22d42be7896ae4a5b65bd3898314665f8cdfbd1bc03f4f54c8d0880af7"
+}

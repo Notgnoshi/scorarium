@@ -3,12 +3,16 @@ use std::collections::BTreeSet;
 use sqlx::SqliteConnection;
 
 use crate::fuzzy::{normalize, rank};
+use crate::summary::{self, PersonSummary, PublicationSummary, WorkSummary};
 use crate::tag::TagCount;
 use crate::{Result, person, tag};
 
 /// Which field to generate suggestions for
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SuggestField {
+    Person,
+    Work,
+    Publication,
     Role,
     Publisher,
     Tag,
@@ -20,9 +24,19 @@ pub enum SuggestField {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Suggested {
+    Person(PersonSummary),
+    /// `number` is the catalog number that matched; None from a title input
+    Work {
+        work: WorkSummary,
+        number: Option<String>,
+    },
+    Publication(PublicationSummary),
     Role(String),
     Publisher(String),
-    Tag { name: String, count: i64 },
+    Tag {
+        name: String,
+        count: i64,
+    },
     Key(String),
     TimeSignature(String),
     Instrumentation(String),
@@ -46,7 +60,75 @@ pub(crate) async fn suggest(
     typed: &str,
     public_suggestions_only: bool,
 ) -> Result<Vec<Suggestion>> {
+    // An entity field has no small vocabulary to fall back on, so nothing typed means nothing to
+    // yield as suggestions.
+    if normalize(typed).is_empty()
+        && matches!(
+            field,
+            SuggestField::Person | SuggestField::Work | SuggestField::Publication
+        )
+    {
+        return Ok(Vec::new());
+    }
     Ok(match field {
+        SuggestField::Person => {
+            let persons = summary::persons(conn, Some(library_id), false)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
+            ranked_entities(
+                typed,
+                persons,
+                |person| person.name.clone(),
+                |person| person.name.as_str(),
+                Suggested::Person,
+            )
+        }
+        SuggestField::Work => {
+            let works = summary::works(conn, Some(library_id), false, None)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
+            ranked_entities(
+                typed,
+                works,
+                // A work is found by what identifies it, not by its title alone
+                |work| {
+                    let mut text = work.title.clone();
+                    let credited = work.contributor.iter().map(|person| &person.name);
+                    for part in credited.chain(work.numbers.iter()) {
+                        text.push(' ');
+                        text.push_str(part);
+                    }
+                    text
+                },
+                |work| work.title.as_str(),
+                |work| Suggested::Work { work, number: None },
+            )
+        }
+        SuggestField::Publication => {
+            let publications = summary::publications(conn, Some(library_id), false)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
+            ranked_entities(
+                typed,
+                publications,
+                |publication| {
+                    let mut text = publication.title.clone();
+                    for person in &publication.people {
+                        text.push(' ');
+                        text.push_str(person);
+                    }
+                    text
+                },
+                |publication| publication.title.as_str(),
+                Suggested::Publication,
+            )
+        }
         SuggestField::Role => {
             let roles: Vec<String> = person::list_contributor_roles(conn, library_id)
                 .await?
@@ -162,16 +244,41 @@ fn ranked<T>(
         let values: Vec<&str> = items.iter().map(value).collect();
         rank(typed, &values)
     };
-    let typed = normalize(typed);
     let mut items: Vec<Option<T>> = items.into_iter().map(Some).collect();
     order
         .into_iter()
         .map(|i| {
             let item = items[i].take().expect("each index is ranked once");
             Suggestion {
-                exact: normalize(value(&item)) == typed,
+                exact: is_exact(typed, value(&item)),
                 item: wrap(item),
             }
         })
         .collect()
+}
+
+/// Rank entities by the text their dropdown item shows, best first.
+fn ranked_entities<T>(
+    typed: &str,
+    entities: Vec<T>,
+    text: fn(&T) -> String,
+    name: fn(&T) -> &str,
+    wrap: fn(T) -> Suggested,
+) -> Vec<Suggestion> {
+    let texts: Vec<String> = entities.iter().map(text).collect();
+    let mut entities: Vec<Option<T>> = entities.into_iter().map(Some).collect();
+    rank(typed, &texts)
+        .into_iter()
+        .map(|i| {
+            let entity = entities[i].take().expect("each index is ranked once");
+            Suggestion {
+                exact: is_exact(typed, name(&entity)),
+                item: wrap(entity),
+            }
+        })
+        .collect()
+}
+
+fn is_exact(typed: &str, name: &str) -> bool {
+    normalize(name) == normalize(typed)
 }
