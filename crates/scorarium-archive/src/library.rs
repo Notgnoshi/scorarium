@@ -231,13 +231,15 @@ impl Library {
     /// The given person, if this library has them
     pub async fn person(&self, id: i64) -> Result<Option<Person>> {
         let mut conn = self.archive.acquire_read().await?;
-        person::get_person(&self.archive, &mut conn, self.id, id).await
+        let persons =
+            person::load_persons(&self.archive, &mut conn, self.id, Some(id), None).await?;
+        Ok(persons.into_iter().next())
     }
 
     /// Everyone credited with `role` on any publication or work here, by sort name
     pub async fn persons_with_role(&self, role: &str) -> Result<Vec<Person>> {
         let mut conn = self.archive.acquire_read().await?;
-        person::list_persons_with_role(&self.archive, &mut conn, self.id, role).await
+        person::load_persons(&self.archive, &mut conn, self.id, None, Some(role)).await
     }
 
     /// The distinct roles credited anywhere in the library, sorted, for input suggestions

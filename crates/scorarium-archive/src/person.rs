@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use comparable::Comparable;
+use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::input::{self, ValidationError};
 use crate::publication::{self, Publication};
-use crate::{ArchiveInner, Result};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A person who contributed to a publication or work
 ///
@@ -17,17 +19,91 @@ pub struct Contributor {
     pub role: String,
 }
 
+/// A person's editable fields as entered from the web form
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PersonRawInput {
+    pub name: String,
+    pub links: Vec<String>,
+}
+
+/// A person's parsed and validated fields
+#[derive(Debug, PartialEq, Eq)]
+pub struct PersonInput {
+    pub(crate) name: String,
+    pub(crate) links: Vec<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PersonErrors {
+    pub name: Option<ValidationError>,
+    /// One slot per link, empty when they all passed
+    pub links: Vec<Option<ValidationError>>,
+}
+
+impl PersonErrors {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.links.iter().all(Option::is_none)
+    }
+}
+
+impl PersonRawInput {
+    /// Check and convert the input
+    ///
+    /// The sort name is not input: it is derived from the name.
+    pub fn parse(&self) -> std::result::Result<PersonInput, PersonErrors> {
+        let name = self.name.trim();
+        let mut errors = PersonErrors {
+            name: name.is_empty().then_some(ValidationError::NameRequired),
+            links: Vec::new(),
+        };
+        let links = match input::parse_links(&self.links) {
+            Ok(links) => links,
+            Err(slots) => {
+                errors.links = slots;
+                Vec::new()
+            }
+        };
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(PersonInput {
+            name: name.to_string(),
+            links,
+        })
+    }
+}
+
 /// Someone credited somewhere in a library
 ///
 /// A [Contributor] is a [Person] that contributed to a publication or work with a specific role.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Comparable)]
 pub struct Person {
+    #[comparable_ignore]
     pub id: i64,
+    #[comparable_ignore]
     pub library_id: i64,
     pub name: String,
     /// How the name should get sorted: "Satie, Erik" for "Erik Satie"
+    #[comparable_ignore]
     pub sort_name: String,
+    /// In the order they were entered
+    pub links: Vec<String>,
+    #[comparable_ignore]
     archive: Arc<ArchiveInner>,
+}
+
+/// Which fields an edit changed, for the audit log.
+fn changed_fields(old: &Person, new: &Person) -> Vec<Field> {
+    let Changed::Changed(changes) = old.comparison(new) else {
+        return Vec::new();
+    };
+    changes
+        .iter()
+        .map(|change| match change {
+            PersonChange::Name(_) => Field::Name,
+            PersonChange::Links(_) => Field::Links,
+        })
+        .collect()
 }
 
 impl Person {
@@ -48,58 +124,146 @@ impl Person {
         tx.commit().await?;
         Ok(publications)
     }
+
+    /// What the person's edit page opens with
+    pub fn raw_input(&self) -> PersonRawInput {
+        PersonRawInput {
+            name: self.name.clone(),
+            links: self.links.clone(),
+        }
+    }
+
+    /// Apply an edited input.
+    ///
+    /// Returns a [NotFound] error if the person has since been collected.
+    pub async fn update(&mut self, input: &PersonInput) -> Result<()> {
+        let mut audited = self
+            .archive
+            .begin_audit(
+                Source::User,
+                Event::about(Action::Updated, self.entity_ref()),
+            )
+            .await?;
+        let sort_name = sort_name(&input.name);
+        let result = sqlx::query!(
+            "UPDATE person SET name = ?, sort_name = ? WHERE library_id = ? AND id = ?",
+            input.name,
+            sort_name,
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *audited)
+        .await?;
+        if result.rows_affected() == 0 {
+            audited.rollback().await?;
+            return Err(NotFound.into());
+        }
+        write_person_links(&mut audited, self.id, &input.links).await?;
+        let reloaded = load_persons(
+            &self.archive,
+            &mut audited,
+            self.library_id,
+            Some(self.id),
+            None,
+        )
+        .await?
+        .pop()
+        .expect("the person was just updated on this transaction");
+        audited.set_fields(&changed_fields(self, &reloaded)).await?;
+        audited.commit().await?;
+        *self = reloaded;
+        Ok(())
+    }
+
+    /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: EntityKind::Person,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.name.clone(),
+        }
+    }
 }
 
-pub(crate) async fn get_person(
+pub(crate) async fn load_persons(
     shared: &Arc<ArchiveInner>,
     conn: &mut SqliteConnection,
     library_id: i64,
-    id: i64,
-) -> Result<Option<Person>> {
-    let row = sqlx::query!(
-        "SELECT id, library_id, name, sort_name FROM person WHERE library_id = ? AND id = ?",
+    id: Option<i64>,
+    role: Option<&str>,
+) -> Result<Vec<Person>> {
+    let mut persons: Vec<Person> = sqlx::query!(
+        "SELECT id, library_id, name, sort_name FROM person
+         WHERE library_id = ?1
+           AND (?2 IS NULL OR id = ?2)
+           AND (?3 IS NULL
+                OR id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)
+                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?3))
+         ORDER BY sort_name",
         library_id,
-        id
+        id,
+        role
     )
-    .fetch_optional(conn)
-    .await?;
-    Ok(row.map(|row| Person {
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Person {
         id: row.id,
         library_id: row.library_id,
         name: row.name,
         sort_name: row.sort_name,
+        links: Vec::new(),
         archive: shared.clone(),
-    }))
-}
+    })
+    .collect();
+    let index: HashMap<i64, usize> = persons
+        .iter()
+        .enumerate()
+        .map(|(i, person)| (person.id, i))
+        .collect();
 
-/// Everyone credited with `role` on any publication or work in the library, by sort name
-pub(crate) async fn list_persons_with_role(
-    shared: &Arc<ArchiveInner>,
-    conn: &mut SqliteConnection,
-    library_id: i64,
-    role: &str,
-) -> Result<Vec<Person>> {
-    let rows = sqlx::query!(
-        "SELECT id, library_id, name, sort_name FROM person
-         WHERE library_id = ?1
-           AND (id IN (SELECT person_id FROM publication_contributor WHERE role = ?2)
-                OR id IN (SELECT person_id FROM work_contributor WHERE role = ?2))
-         ORDER BY sort_name",
+    let links = sqlx::query!(
+        "SELECT person_id, url FROM person_link
+         WHERE person_id IN
+            (SELECT id FROM person
+             WHERE library_id = ?1
+               AND (?2 IS NULL OR id = ?2)
+               AND (?3 IS NULL
+                    OR id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)
+                    OR id IN (SELECT person_id FROM work_contributor WHERE role = ?3)))
+         ORDER BY id",
         library_id,
+        id,
         role
     )
-    .fetch_all(conn)
+    .fetch_all(&mut *conn)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| Person {
-            id: row.id,
-            library_id: row.library_id,
-            name: row.name,
-            sort_name: row.sort_name,
-            archive: shared.clone(),
-        })
-        .collect())
+    for row in links {
+        persons[index[&row.person_id]].links.push(row.url);
+    }
+
+    Ok(persons)
+}
+
+async fn write_person_links(
+    conn: &mut SqliteConnection,
+    person_id: i64,
+    links: &[String],
+) -> Result<()> {
+    sqlx::query!("DELETE FROM person_link WHERE person_id = ?", person_id)
+        .execute(&mut *conn)
+        .await?;
+    for url in links {
+        sqlx::query!(
+            "INSERT INTO person_link (person_id, url) VALUES (?, ?)",
+            person_id,
+            url
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
 }
 
 /// The person with this exact name, created if the library has none

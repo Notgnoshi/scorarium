@@ -1,5 +1,6 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PublicationRawInput,
+    WorkRawInput,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
@@ -104,6 +105,58 @@ async fn publications_union_direct_and_work_credits() {
     let books = archive.create_library("Books", false).await.unwrap();
     assert!(library.person(satie.id).await.unwrap().is_some());
     assert!(books.person(satie.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn an_edit_renames_and_relinks() {
+    let (_archive, library) = library().await;
+    let mut satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+
+    let input = PersonRawInput {
+        name: "  Ralph Vaughan Williams  ".into(),
+        links: vec![
+            "https://imslp.org/wiki/Category:Vaughan_Williams,_Ralph".into(),
+            "  https://EN.wikipedia.org/wiki/Ralph_Vaughan_Williams  ".into(),
+        ],
+    };
+    satie.update(&input.parse().unwrap()).await.unwrap();
+
+    let reloaded = library.person(satie.id).await.unwrap().unwrap();
+    assert_eq!(reloaded.name, "Ralph Vaughan Williams");
+    // The heuristic takes the last word as the surname, so a compound one sorts under its tail
+    assert_eq!(reloaded.sort_name, "Williams, Ralph Vaughan");
+    assert_eq!(
+        reloaded.links,
+        [
+            "https://imslp.org/wiki/Category:Vaughan_Williams,_Ralph",
+            "https://en.wikipedia.org/wiki/Ralph_Vaughan_Williams",
+        ]
+    );
+
+    // Renaming onto a name someone else already has merges nothing: two persons may share a name
+    let sue = library.persons_with_role("editor").await.unwrap().remove(1);
+    let mut bob = library
+        .persons_with_role("arranger")
+        .await
+        .unwrap()
+        .remove(0);
+    bob.update(
+        &PersonRawInput {
+            name: sue.name.clone(),
+            links: Vec::new(),
+        }
+        .parse()
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_ne!(bob.id, sue.id);
+    assert_eq!(library.person(bob.id).await.unwrap().unwrap().name, "Sue");
+    assert_eq!(library.person(sue.id).await.unwrap().unwrap().name, "Sue");
 }
 
 #[tokio::test]
