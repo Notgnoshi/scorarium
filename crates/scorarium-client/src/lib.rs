@@ -1,16 +1,16 @@
 #[cfg(feature = "fake-transport")]
 pub mod fake;
 pub mod open_library;
+mod rate_limited_client;
 mod transport;
 
 use std::sync::Arc;
 
-use bytes::Bytes;
 use eyre::WrapErr;
-use http::{HeaderMap, HeaderValue};
-use url::Url;
+use http::HeaderValue;
 
 use crate::open_library::OpenLibrary;
+use crate::rate_limited_client::RateLimitedClient;
 pub use crate::transport::{BoxFuture, ReqwestTransport, Transport};
 
 /// Identifies scorarium to the sources.
@@ -37,7 +37,7 @@ impl UserAgent {
 
 /// The handle every source client is reached through.
 pub struct Client {
-    transport: Arc<dyn Transport>,
+    open_library: RateLimitedClient,
 }
 
 impl Client {
@@ -49,16 +49,17 @@ impl Client {
     /// Builds a client over a transport of the caller's choosing
     ///
     /// The UserAgent is still required because the API clients can base their rate limits on it.
-    pub fn with_transport(_user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
-        Client { transport }
+    pub fn with_transport(user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
+        Client {
+            open_library: RateLimitedClient::spawn(
+                transport.clone(),
+                open_library::limits(&user_agent),
+            ),
+        }
     }
 
     /// Get an API client for [Open Library](https://openlibrary.org)
     pub fn open_library(&self) -> OpenLibrary<'_> {
-        OpenLibrary::new(self)
-    }
-
-    pub async fn get(&self, url: Url) -> eyre::Result<http::Response<Bytes>> {
-        self.transport.get(url, HeaderMap::new()).await
+        OpenLibrary::new(&self.open_library)
     }
 }

@@ -1,24 +1,38 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use eyre::{WrapErr, bail, eyre};
+use http::HeaderMap;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use crate::Client;
+use crate::UserAgent;
+use crate::rate_limited_client::{Limits, RateLimitedClient};
 
 const BASE: &str = "https://openlibrary.org/";
+
+/// Open Library limits us to one request per second, and three per second for a request identified
+/// by a User-Agent carrying contact info
+pub(crate) fn limits(user_agent: &UserAgent) -> Limits {
+    let min_interval = if user_agent.contact.is_some() {
+        Duration::from_millis(334)
+    } else {
+        Duration::from_secs(1)
+    };
+    Limits { min_interval }
+}
 
 /// The Open Library API.
 ///
 /// Open Library describes the same book at two levels: a work is the abstract book, and an edition
 /// is one printing of it.
 pub struct OpenLibrary<'a> {
-    client: &'a Client,
+    client: &'a RateLimitedClient,
 }
 
 impl<'a> OpenLibrary<'a> {
-    pub(crate) fn new(client: &'a Client) -> OpenLibrary<'a> {
+    pub(crate) fn new(client: &'a RateLimitedClient) -> OpenLibrary<'a> {
         OpenLibrary { client }
     }
 
@@ -40,7 +54,7 @@ impl<'a> OpenLibrary<'a> {
     }
 
     async fn get<T: DeserializeOwned>(&self, url: Url) -> eyre::Result<Option<T>> {
-        let response = self.client.get(url.clone()).await?;
+        let response = self.client.get(url.clone(), HeaderMap::new()).await?;
         let status = response.status();
         // Open Library uses 404 for "no record" rather than a 200 with an empty response like
         // others. This is how APIs *should* indicate no record, but ...
@@ -191,9 +205,8 @@ impl From<RawAuthor> for Author {
 mod tests {
     use std::sync::Arc;
 
-    use super::*;
-    use crate::UserAgent;
     use crate::fake::FakeTransport;
+    use crate::{Client, UserAgent};
 
     fn client() -> Client {
         let user_agent = UserAgent {
