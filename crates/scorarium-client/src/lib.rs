@@ -1,3 +1,4 @@
+mod cache;
 #[cfg(feature = "fake-transport")]
 pub mod fake;
 pub mod open_library;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use eyre::WrapErr;
 use http::HeaderValue;
 
+use crate::cache::Cache;
 use crate::open_library::OpenLibrary;
 use crate::rate_limited_client::RateLimitedClient;
 pub use crate::transport::{BoxFuture, ReqwestTransport, Transport};
@@ -53,6 +55,7 @@ pub enum Priority {
 
 /// The handle every source client is reached through.
 pub struct Client {
+    cache: Arc<Cache>,
     open_library: RateLimitedClient,
 }
 
@@ -66,16 +69,28 @@ impl Client {
     ///
     /// The UserAgent is still required because the API clients can base their rate limits on it.
     pub fn with_transport(user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
+        let cache = Arc::new(Cache::default());
         Client {
             open_library: RateLimitedClient::spawn(
                 transport.clone(),
                 open_library::limits(&user_agent),
+                cache.clone(),
             ),
+            cache,
         }
     }
 
     /// Get an API client for [Open Library](https://openlibrary.org)
     pub fn open_library(&self) -> OpenLibrary<'_> {
         OpenLibrary::new(&self.open_library)
+    }
+
+    /// Forgets every response fetched so far.
+    ///
+    /// Responses are kept for the lifetime of the process, so this is the only way to pick up a
+    /// correction made upstream, or to prevent running out of memory. Scorarium doesn't attempt to
+    /// keep its metadata up-to-date against the open APIs; only setting the metadata at import time.
+    pub fn clear_cache(&self) {
+        self.cache.clear();
     }
 }

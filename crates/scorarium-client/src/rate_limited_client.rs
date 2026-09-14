@@ -12,6 +12,8 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use url::Url;
 
+use crate::cache::Cache;
+use crate::transport::request_key;
 use crate::{Priority, Transport};
 
 /// Limits one API asks of the clients that use it.
@@ -39,10 +41,16 @@ const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(5);
 struct Job {
     url: Url,
     headers: HeaderMap,
+    cache_key: String,
     priority: Priority,
     retry: bool,
     attempts: u8,
     reply: oneshot::Sender<eyre::Result<http::Response<Bytes>>>,
+}
+
+enum Pending {
+    Cached(http::Response<Bytes>),
+    Queued(oneshot::Receiver<eyre::Result<http::Response<Bytes>>>),
 }
 
 #[derive(Default)]
@@ -108,17 +116,29 @@ impl JobDeque {
 pub(crate) struct RateLimitedClient {
     deque: Arc<Mutex<JobDeque>>,
     wake: Arc<Notify>,
+    cache: Arc<Cache>,
     worker: JoinHandle<()>,
 }
 
 impl RateLimitedClient {
-    pub(crate) fn spawn(transport: Arc<dyn Transport>, limits: Limits) -> RateLimitedClient {
+    pub(crate) fn spawn(
+        transport: Arc<dyn Transport>,
+        limits: Limits,
+        cache: Arc<Cache>,
+    ) -> RateLimitedClient {
         let deque = Arc::new(Mutex::new(JobDeque::default()));
         let wake = Arc::new(Notify::new());
-        let worker = tokio::spawn(work(deque.clone(), wake.clone(), transport, limits));
+        let worker = tokio::spawn(work(
+            deque.clone(),
+            wake.clone(),
+            transport,
+            limits,
+            cache.clone(),
+        ));
         RateLimitedClient {
             deque,
             wake,
+            cache,
             worker,
         }
     }
@@ -143,26 +163,39 @@ impl RateLimitedClient {
     }
 
     /// Queues the request and returns a future that waits for its response.
+    ///
+    /// A response already in the cache is returned without queuing the job.
     pub(crate) fn get(
         &self,
         url: Url,
         headers: HeaderMap,
         priority: Priority,
     ) -> impl Future<Output = eyre::Result<http::Response<Bytes>>> + use<> {
-        let (reply, response) = oneshot::channel();
-        self.deque.lock().unwrap().push(Job {
-            url,
-            headers,
-            priority,
-            retry: priority == Priority::Background,
-            attempts: 0,
-            reply,
-        });
-        self.wake.notify_one();
+        let key = request_key(&url, &headers);
+        let pending = match self.cache.get(&key) {
+            Some(cached) => Pending::Cached(cached),
+            None => {
+                let (reply, response) = oneshot::channel();
+                self.deque.lock().unwrap().push(Job {
+                    url,
+                    headers,
+                    cache_key: key,
+                    priority,
+                    retry: priority == Priority::Background,
+                    attempts: 0,
+                    reply,
+                });
+                self.wake.notify_one();
+                Pending::Queued(response)
+            }
+        };
         async move {
-            response
-                .await
-                .map_err(|_| eyre!("The rate limited worker exited"))?
+            match pending {
+                Pending::Cached(cached) => Ok(cached),
+                Pending::Queued(response) => response
+                    .await
+                    .map_err(|_| eyre!("The rate limited worker exited"))?,
+            }
         }
     }
 }
@@ -183,6 +216,7 @@ async fn work(
     wake: Arc<Notify>,
     transport: Arc<dyn Transport>,
     limits: Limits,
+    cache: Arc<Cache>,
 ) {
     let mut next_allowed = Instant::now();
     loop {
@@ -196,6 +230,13 @@ async fn work(
 
         let job = deque.lock().unwrap().pop();
         let Some(mut job) = job else { continue };
+
+        // We check the cache again when we start a job so that if there were duplicate requests
+        // queued together, only one of them hits the API.
+        if let Some(cached) = cache.get(&job.cache_key) {
+            let _eat_err = job.reply.send(Ok(cached));
+            continue;
+        }
         job.attempts += 1;
 
         let url = job.url.clone();
@@ -208,6 +249,12 @@ async fn work(
             Err(_elapsed) => Err(eyre!("GET {url} timed out after {:?}", limits.timeout)),
         };
         next_allowed = Instant::now() + limits.min_interval;
+
+        if let Ok(response) = &result
+            && (response.status().is_success() || response.status() == StatusCode::NOT_FOUND)
+        {
+            cache.insert(job.cache_key.clone(), response);
+        }
 
         // A 429 and a gateway failure are both the source asking us (explicitly, or implicitly) to
         // stop for a while.
@@ -340,6 +387,7 @@ mod tests {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
+            Arc::new(Cache::default()),
         );
 
         let a = client.get(url("/a"), HeaderMap::new(), Priority::Background);
@@ -364,6 +412,7 @@ mod tests {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
+            Arc::new(Cache::default()),
         );
         let start = Instant::now();
 
@@ -376,6 +425,26 @@ mod tests {
         assert_eq!(transport.requests(), ["/a", "/b", "/a"]);
         // we did actually suspend for the backoff period
         assert!(start.elapsed() >= PAUSES[0], "{:?}", start.elapsed());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_repeated_request_never_reaches_the_transport() {
+        let transport = Scripted::new([200]);
+        let client = RateLimitedClient::spawn(
+            transport.clone(),
+            Limits {
+                min_interval: Duration::from_secs(1),
+                timeout: Duration::from_secs(30),
+            },
+            Arc::new(Cache::default()),
+        );
+
+        let first = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        assert!(first.await.is_ok());
+        let again = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        assert!(again.await.is_ok());
+
+        assert_eq!(transport.requests(), ["/a"]);
     }
 
     #[test]
