@@ -13,6 +13,7 @@ fake-transport = ["dep:sha2"]
 bytes.workspace = true
 eyre.workspace = true
 http.workspace = true
+httpdate.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

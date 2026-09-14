@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use bytes::Bytes;
 use eyre::{WrapErr, bail, eyre};
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, StatusCode, header};
 use serde::de::DeserializeOwned;
 use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
@@ -22,11 +22,26 @@ pub(crate) struct Limits {
     pub(crate) timeout: Duration,
 }
 
+const MAX_ATTEMPTS: u8 = 4;
+
+/// Progressive backoff for 5xx responses
+const PAUSES: [Duration; 4] = [
+    Duration::from_secs(5),
+    Duration::from_secs(30),
+    Duration::from_secs(2 * 60),
+    Duration::from_secs(5 * 60),
+];
+
+/// How long to wait after a 429 that doesn't include a Retry-After header
+const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(5);
+
 /// One request waiting its turn in the queue
 struct Job {
     url: Url,
     headers: HeaderMap,
     priority: Priority,
+    retry: bool,
+    attempts: u8,
     reply: oneshot::Sender<eyre::Result<http::Response<Bytes>>>,
 }
 
@@ -34,9 +49,19 @@ struct Job {
 struct JobDeque {
     // Use a deque so that we can insert higher priority jobs at the front
     jobs: VecDeque<Job>,
+    paused_until: Option<Instant>,
+    consecutive_failures: u8,
 }
 
 impl JobDeque {
+    /// Leaves the source alone for a while
+    fn pause(&mut self, duration: Duration) {
+        let until = Instant::now() + duration;
+        if self.paused_until.is_none_or(|paused| until > paused) {
+            self.paused_until = Some(until);
+        }
+    }
+
     /// Queues a job, ahead of the background ones if it's interactive.
     ///
     /// Interactive jobs supersede each other. The assumption is that interactive jobs are
@@ -129,6 +154,8 @@ impl RateLimitedClient {
             url,
             headers,
             priority,
+            retry: priority == Priority::Background,
+            attempts: 0,
             reply,
         });
         self.wake.notify_one();
@@ -163,25 +190,93 @@ async fn work(
             wake.notified().await;
             continue;
         }
-        tokio::time::sleep_until(next_allowed).await;
+        let paused_until = deque.lock().unwrap().paused_until;
+        let start_at = paused_until.map_or(next_allowed, |paused| next_allowed.max(paused));
+        tokio::time::sleep_until(start_at).await;
 
         let job = deque.lock().unwrap().pop();
-        let Some(job) = job else { continue };
+        let Some(mut job) = job else { continue };
+        job.attempts += 1;
 
         let url = job.url.clone();
-        let attempt = tokio::time::timeout(limits.timeout, transport.get(job.url, job.headers));
+        let attempt = tokio::time::timeout(
+            limits.timeout,
+            transport.get(job.url.clone(), job.headers.clone()),
+        );
         let result = match attempt.await {
             Ok(result) => result,
             Err(_elapsed) => Err(eyre!("GET {url} timed out after {:?}", limits.timeout)),
         };
         next_allowed = Instant::now() + limits.min_interval;
-        // A caller that dropped its future closed the channel, and there is nobody to answer
-        let _eat_err = job.reply.send(result);
+
+        // A 429 and a gateway failure are both the source asking us (explicitly, or implicitly) to
+        // stop for a while.
+        let asked_to_wait = result.as_ref().ok().and_then(|r| retry_after(r.headers()));
+        let backed_off = match result.as_ref().map(|response| response.status()) {
+            Ok(status) if status == StatusCode::TOO_MANY_REQUESTS => {
+                deque
+                    .lock()
+                    .unwrap()
+                    .pause(asked_to_wait.unwrap_or(DEFAULT_RETRY_AFTER));
+                Some(status)
+            }
+            Ok(status) if is_gateway_failure(status) => {
+                let mut deque = deque.lock().unwrap();
+                deque.consecutive_failures = deque.consecutive_failures.saturating_add(1);
+                let escalated =
+                    PAUSES[usize::from(deque.consecutive_failures).min(PAUSES.len()) - 1];
+                // A gateway failure may carry Retry-After too, and we should follow it if it does
+                deque.pause(asked_to_wait.unwrap_or(escalated));
+                Some(status)
+            }
+            Ok(status) if status.is_success() || status == StatusCode::NOT_FOUND => {
+                deque.lock().unwrap().consecutive_failures = 0;
+                None
+            }
+            _ => None,
+        };
+
+        let Some(status) = backed_off else {
+            let _eat_err = job.reply.send(result);
+            continue;
+        };
+        if job.retry && job.attempts < MAX_ATTEMPTS {
+            deque.lock().unwrap().push(job);
+            continue;
+        }
+        let attempts = job.attempts;
+        let _eat_err = job.reply.send(Err(if job.retry {
+            eyre!("Gave up on GET {url} after {attempts} attempts, last status {status}")
+        } else {
+            eyre!("GET {url} responded {status}")
+        }));
     }
+}
+
+fn is_gateway_failure(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::BAD_GATEWAY | StatusCode::SERVICE_UNAVAILABLE | StatusCode::GATEWAY_TIMEOUT
+    )
+}
+
+/// The `Retry-After` header could be a delay or a datetime
+fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+    let value = headers.get(header::RETRY_AFTER)?.to_str().ok()?.trim();
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let at = httpdate::parse_http_date(value).ok()?;
+    Some(
+        at.duration_since(SystemTime::now())
+            .unwrap_or(Duration::ZERO),
+    )
 }
 
 #[cfg(test)]
 mod tests {
+    use http::HeaderValue;
+
     use super::*;
     use crate::BoxFuture;
 
@@ -192,9 +287,14 @@ mod tests {
     }
 
     impl Scripted {
-        fn new(responses: usize) -> Arc<Scripted> {
-            let responses = (0..responses)
-                .map(|_| http::Response::new(Bytes::new()))
+        fn new(statuses: impl IntoIterator<Item = u16>) -> Arc<Scripted> {
+            let responses = statuses
+                .into_iter()
+                .map(|status| {
+                    let mut response = http::Response::new(Bytes::new());
+                    *response.status_mut() = StatusCode::from_u16(status).unwrap();
+                    response
+                })
                 .collect();
             Arc::new(Scripted {
                 responses: Mutex::new(responses),
@@ -233,7 +333,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn interactive_jobs_overtake_background_ones_and_dropped_callers_are_skipped() {
-        let transport = Scripted::new(3);
+        let transport = Scripted::new([200, 200, 200]);
         let client = RateLimitedClient::spawn(
             transport.clone(),
             Limits {
@@ -253,5 +353,56 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         assert_eq!(transport.requests(), ["/c", "/a"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_gateway_failure_pauses_the_source_and_the_job_is_retried() {
+        let transport = Scripted::new([503, 200, 200]);
+        let client = RateLimitedClient::spawn(
+            transport.clone(),
+            Limits {
+                min_interval: Duration::from_secs(1),
+                timeout: Duration::from_secs(30),
+            },
+        );
+        let start = Instant::now();
+
+        let a = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        let b = client.get(url("/b"), HeaderMap::new(), Priority::Background);
+
+        assert_eq!(a.await.unwrap().status(), StatusCode::OK);
+        assert_eq!(b.await.unwrap().status(), StatusCode::OK);
+
+        assert_eq!(transport.requests(), ["/a", "/b", "/a"]);
+        // we did actually suspend for the backoff period
+        assert!(start.elapsed() >= PAUSES[0], "{:?}", start.elapsed());
+    }
+
+    #[test]
+    fn retry_after_reads_seconds_and_http_dates() {
+        let delay = |value: &str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::RETRY_AFTER, HeaderValue::from_str(value).unwrap());
+            retry_after(&headers)
+        };
+
+        assert_eq!(retry_after(&HeaderMap::new()), None);
+        assert_eq!(delay("120"), Some(Duration::from_secs(120)));
+        assert_eq!(delay("the day after tomorrow"), None);
+
+        let ahead = delay(&httpdate::fmt_http_date(
+            SystemTime::now() + Duration::from_secs(60),
+        ));
+        assert!(
+            ahead.is_some_and(
+                |ahead| ahead > Duration::from_secs(58) && ahead <= Duration::from_secs(60)
+            ),
+            "{ahead:?}"
+        );
+        // a datetime in the past results in no waiting
+        let behind = delay(&httpdate::fmt_http_date(
+            SystemTime::now() - Duration::from_secs(60),
+        ));
+        assert_eq!(behind, Some(Duration::ZERO));
     }
 }
