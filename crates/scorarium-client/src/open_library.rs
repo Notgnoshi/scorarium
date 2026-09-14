@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use eyre::{WrapErr, eyre};
+use eyre::{WrapErr, bail, eyre};
 use http::HeaderMap;
 use serde::Deserialize;
 use url::Url;
@@ -10,6 +10,9 @@ use crate::rate_limited_client::{Limits, RateLimitedClient};
 use crate::{Priority, UserAgent};
 
 const BASE: &str = "https://openlibrary.org/";
+
+/// only what [WorkHit], [AuthorHit], and [EditionHit] use
+const SEARCH_FIELDS: &str = "key,title,subtitle,author_name,author_key,first_publish_year,cover_i,editions,editions.key,editions.isbn,editions.publisher,editions.publish_date";
 
 /// Open Library limits us to one request per second, and three per second for a request identified
 /// by a User-Agent carrying contact info
@@ -64,6 +67,35 @@ impl<'a> OpenLibrary<'a> {
             .await?;
         Ok(raw.map(Author::from))
     }
+
+    /// Search-as-you-type candidates for a title.
+    ///
+    /// Deciding when a query is long enough to be worth sending, and debouncing keystrokes, is the
+    /// caller's responsibility.
+    pub async fn search_title(
+        &self,
+        title: &str,
+        limit: u8,
+        priority: Priority,
+    ) -> eyre::Result<Vec<WorkHit>> {
+        let mut url = url(["search.json"])?;
+        url.query_pairs_mut()
+            .append_pair("title", title)
+            .append_pair("limit", &limit.to_string())
+            .append_pair("fields", SEARCH_FIELDS);
+
+        let response = self
+            .client
+            .get(url.clone(), HeaderMap::new(), priority)
+            .await?;
+        let status = response.status();
+        if !status.is_success() {
+            bail!("GET {url} responded {status}");
+        }
+        let results: RawSearch = serde_json::from_slice(response.body())
+            .wrap_err_with(|| format!("Failed to parse the response to GET {url}"))?;
+        Ok(results.docs.into_iter().map(WorkHit::from).collect())
+    }
 }
 
 /// One printing of a book, as Open Library records it.
@@ -104,7 +136,42 @@ pub struct Author {
     pub remote_ids: HashMap<String, String>,
 }
 
-fn url(segments: [&str; 2]) -> eyre::Result<Url> {
+/// A work as the Open Library search API describes it
+///
+/// Not an [Edition]. A pick goes back through [OpenLibrary::edition_by_isbn] for the real [Edition]
+/// record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkHit {
+    /// "OL1258206W"
+    pub olid: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub authors: Vec<AuthorHit>,
+    /// The earliest edition of the work, not the one that matched.
+    pub first_publish_year: Option<u16>,
+    /// A cover from any edition of the work, for covers.openlibrary.org
+    pub cover_id: Option<i64>,
+    pub edition: Option<EditionHit>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthorHit {
+    /// "OL127077A"
+    pub olid: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditionHit {
+    /// "OL7636066M"
+    pub olid: String,
+    pub isbn_13: Vec<String>,
+    pub isbn_10: Vec<String>,
+    pub publishers: Vec<String>,
+    pub publish_date: Option<String>,
+}
+
+fn url<const N: usize>(segments: [&str; N]) -> eyre::Result<Url> {
     let mut url = Url::parse(BASE).wrap_err("Failed to parse the Open Library base URL")?;
     url.path_segments_mut()
         .map_err(|()| eyre!("{BASE} cannot have path segments"))?
@@ -161,6 +228,87 @@ struct RawKey {
     key: String,
 }
 
+#[derive(Deserialize)]
+struct RawSearch {
+    #[serde(default)]
+    docs: Vec<RawWorkHit>,
+}
+
+#[derive(Deserialize)]
+struct RawWorkHit {
+    key: String,
+    title: String,
+    subtitle: Option<String>,
+    /// Parallel to `author_key`
+    #[serde(default)]
+    author_name: Vec<String>,
+    #[serde(default)]
+    author_key: Vec<String>,
+    first_publish_year: Option<u16>,
+    cover_i: Option<i64>,
+    editions: Option<RawEditionHits>,
+}
+
+#[derive(Deserialize)]
+struct RawEditionHits {
+    #[serde(default)]
+    docs: Vec<RawEditionHit>,
+}
+
+#[derive(Deserialize)]
+struct RawEditionHit {
+    key: String,
+    /// The 13 and 10 character forms in one array
+    #[serde(default)]
+    isbn: Vec<String>,
+    #[serde(default)]
+    publisher: Vec<String>,
+    /// An array here, unlike the single string an edition record carries
+    #[serde(default)]
+    publish_date: Vec<String>,
+}
+
+impl From<RawWorkHit> for WorkHit {
+    fn from(raw: RawWorkHit) -> WorkHit {
+        // A name without a key, or a key without a name, is no use to the entry page, so a
+        // mismatch in length truncates to the shorter.
+        let authors = raw
+            .author_key
+            .iter()
+            .zip(raw.author_name)
+            .map(|(key, name)| AuthorHit {
+                olid: olid(key),
+                name,
+            })
+            .collect();
+        WorkHit {
+            olid: olid(&raw.key),
+            title: raw.title,
+            subtitle: raw.subtitle,
+            authors,
+            first_publish_year: raw.first_publish_year,
+            cover_id: raw.cover_i.filter(|id| *id > 0),
+            edition: raw
+                .editions
+                .and_then(|editions| editions.docs.into_iter().next())
+                .map(EditionHit::from),
+        }
+    }
+}
+
+impl From<RawEditionHit> for EditionHit {
+    fn from(raw: RawEditionHit) -> EditionHit {
+        let (isbn_13, isbn_10) = raw.isbn.into_iter().partition(|isbn| isbn.len() == 13);
+        EditionHit {
+            olid: olid(&raw.key),
+            isbn_13,
+            isbn_10,
+            publishers: raw.publisher,
+            publish_date: raw.publish_date.into_iter().next(),
+        }
+    }
+}
+
 impl From<RawEdition> for Edition {
     fn from(raw: RawEdition) -> Edition {
         Edition {
@@ -203,6 +351,7 @@ mod tests {
 
     use http::StatusCode;
 
+    use super::AuthorHit;
     use crate::fake::FakeTransport;
     use crate::{Client, Outcome, Priority, UserAgent};
 
@@ -281,6 +430,58 @@ mod tests {
             .unwrap();
 
         assert_eq!(edition, None);
+    }
+
+    #[tokio::test]
+    async fn a_title_search_returns_candidates_with_their_authors_inline() {
+        let client = client();
+
+        let hits = client
+            .open_library()
+            .search_title("bagatelles rondos", 5, Priority::Interactive)
+            .await
+            .unwrap();
+
+        assert_eq!(hits.len(), 2);
+        let hit = hits
+            .iter()
+            .find(|hit| hit.olid == "OL1258206W")
+            .expect("the Dover printing's work");
+        assert_eq!(
+            hit.title,
+            "Bagatelles, Rondos and Other Shorter Works for Piano"
+        );
+        // The names come back with the search, so the typeahead needs no author lookup
+        assert_eq!(
+            hit.authors,
+            [AuthorHit {
+                olid: "OL127077A".to_string(),
+                name: "Ludwig van Beethoven".to_string(),
+            }]
+        );
+        assert_eq!(hit.first_publish_year, Some(1987));
+        assert_eq!(hit.cover_id, Some(310277));
+
+        // Enough of the matched edition to hand straight back to edition_by_isbn
+        let edition = hit.edition.as_ref().expect("a matched edition");
+        assert_eq!(edition.olid, "OL7636066M");
+        assert_eq!(edition.isbn_13, ["9780486253923"]);
+        assert_eq!(edition.isbn_10, ["0486253929"]);
+        assert_eq!(edition.publishers, ["Dover Publications"]);
+        assert_eq!(edition.publish_date.as_deref(), Some("July 1, 1987"));
+    }
+
+    #[tokio::test]
+    async fn a_title_search_that_matches_nothing_is_empty() {
+        let client = client();
+
+        let hits = client
+            .open_library()
+            .search_title("zzqx wobblegromp fnargle", 5, Priority::Interactive)
+            .await
+            .unwrap();
+
+        assert!(hits.is_empty(), "{hits:?}");
     }
 
     #[tokio::test]
