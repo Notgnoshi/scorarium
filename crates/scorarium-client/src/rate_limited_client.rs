@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
-use eyre::eyre;
-use http::HeaderMap;
+use eyre::{WrapErr, bail, eyre};
+use http::{HeaderMap, StatusCode};
+use serde::de::DeserializeOwned;
 use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -17,6 +18,8 @@ use crate::{Priority, Transport};
 pub(crate) struct Limits {
     /// The shortest time between two requests to this source.
     pub(crate) min_interval: Duration,
+    /// How long one request may take (excluding time spent queued)
+    pub(crate) timeout: Duration,
 }
 
 /// One request waiting its turn in the queue
@@ -95,6 +98,25 @@ impl RateLimitedClient {
         }
     }
 
+    pub(crate) async fn get_json<T: DeserializeOwned>(
+        &self,
+        url: Url,
+        headers: HeaderMap,
+        priority: Priority,
+    ) -> eyre::Result<Option<T>> {
+        let response = self.get(url.clone(), headers, priority).await?;
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            bail!("GET {url} responded {status}");
+        }
+        serde_json::from_slice(response.body())
+            .map(Some)
+            .wrap_err_with(|| format!("Failed to parse the response to GET {url}"))
+    }
+
     /// Queues the request and returns a future that waits for its response.
     pub(crate) fn get(
         &self,
@@ -146,7 +168,12 @@ async fn work(
         let job = deque.lock().unwrap().pop();
         let Some(job) = job else { continue };
 
-        let result = transport.get(job.url, job.headers).await;
+        let url = job.url.clone();
+        let attempt = tokio::time::timeout(limits.timeout, transport.get(job.url, job.headers));
+        let result = match attempt.await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(eyre!("GET {url} timed out after {:?}", limits.timeout)),
+        };
         next_allowed = Instant::now() + limits.min_interval;
         // A caller that dropped its future closed the channel, and there is nobody to answer
         let _eat_err = job.reply.send(result);
@@ -211,6 +238,7 @@ mod tests {
             transport.clone(),
             Limits {
                 min_interval: Duration::from_secs(1),
+                timeout: Duration::from_secs(30),
             },
         );
 

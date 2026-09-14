@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use eyre::{WrapErr, bail, eyre};
+use eyre::{WrapErr, eyre};
 use http::HeaderMap;
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::rate_limited_client::{Limits, RateLimitedClient};
@@ -20,7 +19,10 @@ pub(crate) fn limits(user_agent: &UserAgent) -> Limits {
     } else {
         Duration::from_secs(1)
     };
-    Limits { min_interval }
+    Limits {
+        min_interval,
+        timeout: Duration::from_secs(10),
+    }
 }
 
 /// The Open Library API.
@@ -46,38 +48,21 @@ impl<'a> OpenLibrary<'a> {
         priority: Priority,
     ) -> eyre::Result<Option<Edition>> {
         let url = url(["isbn", &format!("{isbn}.json")])?;
-        let raw: Option<RawEdition> = self.get(url, priority).await?;
+        let raw: Option<RawEdition> = self
+            .client
+            .get_json(url, HeaderMap::new(), priority)
+            .await?;
         Ok(raw.map(Edition::from))
     }
 
     /// Look up an author by an OLID like "OL127077A".
     pub async fn author(&self, olid: &str, priority: Priority) -> eyre::Result<Option<Author>> {
         let url = url(["authors", &format!("{olid}.json")])?;
-        let raw: Option<RawAuthor> = self.get(url, priority).await?;
-        Ok(raw.map(Author::from))
-    }
-
-    async fn get<T: DeserializeOwned>(
-        &self,
-        url: Url,
-        priority: Priority,
-    ) -> eyre::Result<Option<T>> {
-        let response = self
+        let raw: Option<RawAuthor> = self
             .client
-            .get(url.clone(), HeaderMap::new(), priority)
+            .get_json(url, HeaderMap::new(), priority)
             .await?;
-        let status = response.status();
-        // Open Library uses 404 for "no record" rather than a 200 with an empty response like
-        // others. This is how APIs *should* indicate no record, but ...
-        if status == http::StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-        if !status.is_success() {
-            bail!("GET {url} responded {status}");
-        }
-        let parsed = serde_json::from_slice(response.body())
-            .wrap_err_with(|| format!("Failed to parse the response to GET {url}"))?;
-        Ok(Some(parsed))
+        Ok(raw.map(Author::from))
     }
 }
 
