@@ -201,8 +201,10 @@ impl From<RawAuthor> for Author {
 mod tests {
     use std::sync::Arc;
 
+    use http::StatusCode;
+
     use crate::fake::FakeTransport;
-    use crate::{Client, Priority, UserAgent};
+    use crate::{Client, Outcome, Priority, UserAgent};
 
     fn client() -> Client {
         let user_agent = UserAgent {
@@ -212,6 +214,35 @@ mod tests {
         };
         let transport = FakeTransport::new(&user_agent).unwrap();
         Client::with_transport(user_agent, Arc::new(transport))
+    }
+
+    #[tokio::test]
+    async fn a_lookup_shows_up_in_the_status_and_the_call_log() {
+        let client = client();
+
+        client
+            .open_library()
+            .edition_by_isbn("9780486253923", Priority::Background)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let calls = client.call_history().calls;
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].source, "Open Library");
+        assert_eq!(
+            calls[0].url.as_str(),
+            "https://openlibrary.org/isbn/9780486253923.json"
+        );
+        assert_eq!(calls[0].attempt, 1);
+        assert_eq!(calls[0].outcome, Outcome::Status(StatusCode::OK));
+
+        let status = client.status();
+        assert_eq!(status.len(), 1);
+        assert_eq!(status[0].source, "Open Library");
+        assert_eq!(status[0].queued, 0);
+        assert!(!status[0].in_flight);
+        assert_eq!(status[0].paused_for, None);
     }
 
     #[tokio::test]

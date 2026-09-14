@@ -13,8 +13,9 @@ use tokio::time::Instant;
 use url::Url;
 
 use crate::cache::Cache;
+use crate::log::{CallLog, CallRecord, Outcome};
 use crate::transport::request_key;
-use crate::{Priority, Transport};
+use crate::{Priority, SourceStatus, Transport};
 
 /// Limits one API asks of the clients that use it.
 pub(crate) struct Limits {
@@ -55,18 +56,20 @@ enum Pending {
 
 #[derive(Default)]
 struct JobDeque {
-    // Use a deque so that we can insert higher priority jobs at the front
     jobs: VecDeque<Job>,
     paused_until: Option<Instant>,
+    paused_by: Option<StatusCode>,
     consecutive_failures: u8,
+    in_flight: bool,
 }
 
 impl JobDeque {
     /// Leaves the source alone for a while
-    fn pause(&mut self, duration: Duration) {
+    fn pause(&mut self, duration: Duration, by: StatusCode) {
         let until = Instant::now() + duration;
         if self.paused_until.is_none_or(|paused| until > paused) {
             self.paused_until = Some(until);
+            self.paused_by = Some(by);
         }
     }
 
@@ -114,6 +117,7 @@ impl JobDeque {
 /// to their developer documentation. Note that some APIs enforce different limits based on your
 /// User-Agent, particularly if you provide contact information in the User-Agent.
 pub(crate) struct RateLimitedClient {
+    name: &'static str,
     deque: Arc<Mutex<JobDeque>>,
     wake: Arc<Notify>,
     cache: Arc<Cache>,
@@ -122,24 +126,45 @@ pub(crate) struct RateLimitedClient {
 
 impl RateLimitedClient {
     pub(crate) fn spawn(
+        name: &'static str,
         transport: Arc<dyn Transport>,
         limits: Limits,
         cache: Arc<Cache>,
+        log: Arc<CallLog>,
     ) -> RateLimitedClient {
         let deque = Arc::new(Mutex::new(JobDeque::default()));
         let wake = Arc::new(Notify::new());
         let worker = tokio::spawn(work(
+            name,
             deque.clone(),
             wake.clone(),
             transport,
             limits,
             cache.clone(),
+            log,
         ));
         RateLimitedClient {
+            name,
             deque,
             wake,
             cache,
             worker,
+        }
+    }
+
+    pub(crate) fn status(&self) -> SourceStatus {
+        let deque = self.deque.lock().unwrap();
+        // A pause whose instant has passed is over, even if the instant is still recorded.
+        let paused_for = deque
+            .paused_until
+            .map(|until| until.saturating_duration_since(Instant::now()))
+            .filter(|remaining| !remaining.is_zero());
+        SourceStatus {
+            source: self.name,
+            queued: deque.jobs.len(),
+            in_flight: deque.in_flight,
+            paused_for,
+            paused_by: paused_for.and(deque.paused_by),
         }
     }
 
@@ -212,11 +237,13 @@ impl Drop for RateLimitedClient {
 /// it's easier to implement this way: the interval is measured from job end to the next job's start
 /// rather than from start to start.
 async fn work(
+    name: &'static str,
     deque: Arc<Mutex<JobDeque>>,
     wake: Arc<Notify>,
     transport: Arc<dyn Transport>,
     limits: Limits,
     cache: Arc<Cache>,
+    log: Arc<CallLog>,
 ) {
     let mut next_allowed = Instant::now();
     loop {
@@ -244,11 +271,35 @@ async fn work(
             limits.timeout,
             transport.get(job.url.clone(), job.headers.clone()),
         );
-        let result = match attempt.await {
-            Ok(result) => result,
-            Err(_elapsed) => Err(eyre!("GET {url} timed out after {:?}", limits.timeout)),
-        };
+        let at = SystemTime::now();
+        let started = Instant::now();
+        deque.lock().unwrap().in_flight = true;
+        let attempt = attempt.await;
+        deque.lock().unwrap().in_flight = false;
         next_allowed = Instant::now() + limits.min_interval;
+
+        let (result, outcome) = match attempt {
+            Ok(Ok(response)) => {
+                let outcome = Outcome::Status(response.status());
+                (Ok(response), outcome)
+            }
+            Ok(Err(error)) => {
+                let outcome = Outcome::Error(format!("{error:#}"));
+                (Err(error), outcome)
+            }
+            Err(_elapsed) => (
+                Err(eyre!("GET {url} timed out after {:?}", limits.timeout)),
+                Outcome::Timeout,
+            ),
+        };
+        log.record(CallRecord {
+            source: name,
+            url: url.clone(),
+            attempt: job.attempts,
+            outcome,
+            duration: started.elapsed(),
+            at,
+        });
 
         if let Ok(response) = &result
             && (response.status().is_success() || response.status() == StatusCode::NOT_FOUND)
@@ -264,7 +315,7 @@ async fn work(
                 deque
                     .lock()
                     .unwrap()
-                    .pause(asked_to_wait.unwrap_or(DEFAULT_RETRY_AFTER));
+                    .pause(asked_to_wait.unwrap_or(DEFAULT_RETRY_AFTER), status);
                 Some(status)
             }
             Ok(status) if is_gateway_failure(status) => {
@@ -273,7 +324,7 @@ async fn work(
                 let escalated =
                     PAUSES[usize::from(deque.consecutive_failures).min(PAUSES.len()) - 1];
                 // A gateway failure may carry Retry-After too, and we should follow it if it does
-                deque.pause(asked_to_wait.unwrap_or(escalated));
+                deque.pause(asked_to_wait.unwrap_or(escalated), status);
                 Some(status)
             }
             Ok(status) if status.is_success() || status == StatusCode::NOT_FOUND => {
@@ -381,13 +432,16 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn interactive_jobs_overtake_background_ones_and_dropped_callers_are_skipped() {
         let transport = Scripted::new([200, 200, 200]);
+        let log = Arc::new(CallLog::default());
         let client = RateLimitedClient::spawn(
+            "Test",
             transport.clone(),
             Limits {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            Arc::new(Cache::default()),
+            Arc::new(Cache::new(log.clone())),
+            log.clone(),
         );
 
         let a = client.get(url("/a"), HeaderMap::new(), Priority::Background);
@@ -401,18 +455,24 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(2)).await;
 
         assert_eq!(transport.requests(), ["/c", "/a"]);
+        // The skipped job leaves nothing behind it
+        assert_eq!(client.status().queued, 0);
+        assert!(!client.status().in_flight);
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_gateway_failure_pauses_the_source_and_the_job_is_retried() {
         let transport = Scripted::new([503, 200, 200]);
+        let log = Arc::new(CallLog::default());
         let client = RateLimitedClient::spawn(
+            "Test",
             transport.clone(),
             Limits {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            Arc::new(Cache::default()),
+            Arc::new(Cache::new(log.clone())),
+            log.clone(),
         );
         let start = Instant::now();
 
@@ -430,13 +490,17 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_repeated_request_never_reaches_the_transport() {
         let transport = Scripted::new([200]);
+        let log = Arc::new(CallLog::default());
+        let cache = Arc::new(Cache::new(log.clone()));
         let client = RateLimitedClient::spawn(
+            "Test",
             transport.clone(),
             Limits {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            Arc::new(Cache::default()),
+            cache.clone(),
+            log.clone(),
         );
 
         let first = client.get(url("/a"), HeaderMap::new(), Priority::Background);
@@ -445,6 +509,8 @@ mod tests {
         assert!(again.await.is_ok());
 
         assert_eq!(transport.requests(), ["/a"]);
+        assert_eq!(log.history().calls.len(), 1);
+        assert_eq!(log.history().cache_hits, 1);
     }
 
     #[test]

@@ -1,16 +1,20 @@
 mod cache;
 #[cfg(feature = "fake-transport")]
 pub mod fake;
+mod log;
 pub mod open_library;
 mod rate_limited_client;
 mod transport;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use eyre::WrapErr;
-use http::HeaderValue;
+use http::{HeaderValue, StatusCode};
 
 use crate::cache::Cache;
+use crate::log::CallLog;
+pub use crate::log::{CallHistory, CallRecord, Outcome};
 use crate::open_library::OpenLibrary;
 use crate::rate_limited_client::RateLimitedClient;
 pub use crate::transport::{BoxFuture, ReqwestTransport, Transport};
@@ -53,9 +57,23 @@ pub enum Priority {
     Background,
 }
 
+/// What one API source is doing right now
+#[derive(Clone, Debug)]
+pub struct SourceStatus {
+    /// The source's display name
+    pub source: &'static str,
+    pub queued: usize,
+    pub in_flight: bool,
+    /// If a source has been paused for rate limiting, how much longer it's been paused for
+    pub paused_for: Option<Duration>,
+    /// The status that caused the pause
+    pub paused_by: Option<StatusCode>,
+}
+
 /// The handle every source client is reached through.
 pub struct Client {
     cache: Arc<Cache>,
+    log: Arc<CallLog>,
     open_library: RateLimitedClient,
 }
 
@@ -69,15 +87,29 @@ impl Client {
     ///
     /// The UserAgent is still required because the API clients can base their rate limits on it.
     pub fn with_transport(user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
-        let cache = Arc::new(Cache::default());
+        let log = Arc::new(CallLog::default());
+        let cache = Arc::new(Cache::new(log.clone()));
         Client {
             open_library: RateLimitedClient::spawn(
+                "Open Library",
                 transport.clone(),
                 open_library::limits(&user_agent),
                 cache.clone(),
+                log.clone(),
             ),
             cache,
+            log,
         }
+    }
+
+    /// What each source is doing right now
+    pub fn status(&self) -> Vec<SourceStatus> {
+        vec![self.open_library.status()]
+    }
+
+    /// How well the sources have been doing
+    pub fn call_history(&self) -> CallHistory {
+        self.log.history()
     }
 
     /// Get an API client for [Open Library](https://openlibrary.org)
