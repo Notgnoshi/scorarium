@@ -40,6 +40,11 @@ impl UserAgent {
 pub enum Priority {
     /// Interactive requests are pushed to the front of the queue, and are never retried. They're
     /// meant for interactive use-cases.
+    ///
+    /// Any queued interactive requests that haven't been started yet will be canceled. The
+    /// assumption is that interactive requests are for progressive refinement of the same query,
+    /// and the caller only wants responses for an in-flight request, and the latest request, and no
+    /// requests in between.
     Interactive,
     /// Background requests are pushed to the back of the queue, and are retried with backoff if the
     /// request gets rate limited.

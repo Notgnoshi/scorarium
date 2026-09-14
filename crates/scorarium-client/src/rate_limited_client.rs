@@ -34,22 +34,31 @@ struct JobDeque {
 }
 
 impl JobDeque {
+    /// Queues a job, ahead of the background ones if it's interactive.
+    ///
+    /// Interactive jobs supersede each other. The assumption is that interactive jobs are
+    /// progressive refinement of a query, and the caller wants responses for jobs that have already
+    /// started, and the latest job, and no jobs in between.
     fn push(&mut self, job: Job) {
         match job.priority {
             Priority::Background => self.jobs.push_back(job),
-            // TODO: Should a burst of interactive requests cancel any pending interactive requests?
-            //
-            // In theory there should only ever be a single interactive operation the user is
-            // performing that requires an API call.
             Priority::Interactive => {
-                let first_background = self
-                    .jobs
-                    .iter()
-                    .position(|job| job.priority == Priority::Background)
-                    .unwrap_or(self.jobs.len());
-                self.jobs.insert(first_background, job);
+                if self.interactive_is_waiting() {
+                    let superseded = self.jobs.pop_front().expect("just checked");
+                    let _eat_err = superseded
+                        .reply
+                        .send(Err(eyre!("Superseded by a newer interactive request")));
+                }
+                self.jobs.push_front(job);
             }
         }
+    }
+
+    /// Whether an interactive job is waiting. At most one ever is, so it's at the front.
+    fn interactive_is_waiting(&self) -> bool {
+        self.jobs
+            .front()
+            .is_some_and(|job| job.priority == Priority::Interactive)
     }
 
     /// The next job anyone is still waiting on.
