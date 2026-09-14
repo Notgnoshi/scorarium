@@ -6,6 +6,7 @@ toolchain, and we aspire to keep all dependencies up-to-date.
 ## Crate layout
 
 * `scorarium-archive` provides the project's data model and data persistence
+* `scorarium-client` provides API clients for the external metadata sources
 * `scorarium` is the web server
 * `scorarium-tests` provides test fixtures for integration tests
 

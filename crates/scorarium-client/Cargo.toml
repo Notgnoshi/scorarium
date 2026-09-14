@@ -1,0 +1,13 @@
+[package]
+name = "scorarium-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Clients for the external metadata sources scorarium imports from"
+
+[dependencies]
+bytes.workspace = true
+eyre.workspace = true
+http.workspace = true
+reqwest.workspace = true
+url.workspace = true
