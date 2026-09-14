@@ -5,9 +5,18 @@ edition.workspace = true
 license.workspace = true
 description = "Clients for the external metadata sources scorarium imports from"
 
+[features]
+# Replays persisted API responses instead of making live requests
+fake-transport = ["dep:sha2"]
+
 [dependencies]
 bytes.workspace = true
 eyre.workspace = true
 http.workspace = true
 reqwest.workspace = true
+sha2 = { workspace = true, optional = true }
 url.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio.workspace = true

@@ -45,6 +45,19 @@ cargo sqlx prepare --workspace -- --all-targets --all-features
 While `DATABASE_URL` is exported, the macros check queries against that live database instead of
 `.sqlx/`, so schema mistakes surface immediately during development.
 
+## API fixtures
+
+The `scorarium-client` tests replay cached API responses from `fixtures/` instead of making live
+requests, so the test suite can run in parallel offline with no rate limiting.
+
+Re-record the fixtures against the live APIs when you add a request or want to check for drift:
+
+```sh
+SCORARIUM_TEST_RECORD_LIVE_API=1 cargo nextest run --all-features --test-threads 1
+```
+
+Review the diff carefully before checking it in.
+
 ## Identifiers
 
 ISBN validation and hyphenation need the ISBN agency's range table, which the `isbn` crate embeds at

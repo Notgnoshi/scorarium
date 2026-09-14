@@ -1,3 +1,5 @@
+#[cfg(feature = "fake-transport")]
+pub mod fake;
 mod transport;
 
 use std::sync::Arc;

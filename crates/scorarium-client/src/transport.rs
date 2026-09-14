@@ -25,6 +25,25 @@ pub trait Transport: Send + Sync {
     ) -> BoxFuture<'_, eyre::Result<http::Response<Bytes>>>;
 }
 
+/// Get a cache key for the given request.
+///
+/// If the implementation of this function changes, it will likely lead to stale files in
+/// `fixtures/` that will need to be manually cleaned up.
+pub(crate) fn request_key(url: &Url, headers: &HeaderMap) -> String {
+    let mut lines: Vec<String> = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {}", String::from_utf8_lossy(value.as_bytes())))
+        .collect();
+    lines.sort();
+
+    let mut key = url.to_string();
+    for line in lines {
+        key.push('\n');
+        key.push_str(&line);
+    }
+    key
+}
+
 /// A real HTTP client with the User-Agent applied to every request.
 pub struct ReqwestTransport {
     client: reqwest::Client,
