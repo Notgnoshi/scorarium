@@ -1,5 +1,6 @@
 #[cfg(feature = "fake-transport")]
 pub mod fake;
+pub mod open_library;
 mod transport;
 
 use std::sync::Arc;
@@ -9,6 +10,7 @@ use eyre::WrapErr;
 use http::{HeaderMap, HeaderValue};
 use url::Url;
 
+use crate::open_library::OpenLibrary;
 pub use crate::transport::{BoxFuture, ReqwestTransport, Transport};
 
 /// Identifies scorarium to the sources.
@@ -49,6 +51,11 @@ impl Client {
     /// The UserAgent is still required because the API clients can base their rate limits on it.
     pub fn with_transport(_user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
         Client { transport }
+    }
+
+    /// Get an API client for [Open Library](https://openlibrary.org)
+    pub fn open_library(&self) -> OpenLibrary<'_> {
+        OpenLibrary::new(self)
     }
 
     pub async fn get(&self, url: Url) -> eyre::Result<http::Response<Bytes>> {
