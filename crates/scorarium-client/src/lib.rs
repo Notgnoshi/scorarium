@@ -35,6 +35,17 @@ impl UserAgent {
     }
 }
 
+/// How a request is scheduled
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Priority {
+    /// Interactive requests are pushed to the front of the queue, and are never retried. They're
+    /// meant for interactive use-cases.
+    Interactive,
+    /// Background requests are pushed to the back of the queue, and are retried with backoff if the
+    /// request gets rate limited.
+    Background,
+}
+
 /// The handle every source client is reached through.
 pub struct Client {
     open_library: RateLimitedClient,

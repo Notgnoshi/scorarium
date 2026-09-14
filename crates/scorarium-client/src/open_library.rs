@@ -7,8 +7,8 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use url::Url;
 
-use crate::UserAgent;
 use crate::rate_limited_client::{Limits, RateLimitedClient};
+use crate::{Priority, UserAgent};
 
 const BASE: &str = "https://openlibrary.org/";
 
@@ -40,21 +40,32 @@ impl<'a> OpenLibrary<'a> {
     ///
     /// The caller is expected to normalize the ISBN. The response will contain OLIDs for the
     /// authors, so the caller will need to follow this call up with one to [OpenLibrary::author]
-    pub async fn edition_by_isbn(&self, isbn: &str) -> eyre::Result<Option<Edition>> {
+    pub async fn edition_by_isbn(
+        &self,
+        isbn: &str,
+        priority: Priority,
+    ) -> eyre::Result<Option<Edition>> {
         let url = url(["isbn", &format!("{isbn}.json")])?;
-        let raw: Option<RawEdition> = self.get(url).await?;
+        let raw: Option<RawEdition> = self.get(url, priority).await?;
         Ok(raw.map(Edition::from))
     }
 
     /// Look up an author by an OLID like "OL127077A".
-    pub async fn author(&self, olid: &str) -> eyre::Result<Option<Author>> {
+    pub async fn author(&self, olid: &str, priority: Priority) -> eyre::Result<Option<Author>> {
         let url = url(["authors", &format!("{olid}.json")])?;
-        let raw: Option<RawAuthor> = self.get(url).await?;
+        let raw: Option<RawAuthor> = self.get(url, priority).await?;
         Ok(raw.map(Author::from))
     }
 
-    async fn get<T: DeserializeOwned>(&self, url: Url) -> eyre::Result<Option<T>> {
-        let response = self.client.get(url.clone(), HeaderMap::new()).await?;
+    async fn get<T: DeserializeOwned>(
+        &self,
+        url: Url,
+        priority: Priority,
+    ) -> eyre::Result<Option<T>> {
+        let response = self
+            .client
+            .get(url.clone(), HeaderMap::new(), priority)
+            .await?;
         let status = response.status();
         // Open Library uses 404 for "no record" rather than a 200 with an empty response like
         // others. This is how APIs *should* indicate no record, but ...
@@ -206,7 +217,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::fake::FakeTransport;
-    use crate::{Client, UserAgent};
+    use crate::{Client, Priority, UserAgent};
 
     fn client() -> Client {
         let user_agent = UserAgent {
@@ -224,7 +235,7 @@ mod tests {
 
         let edition = client
             .open_library()
-            .edition_by_isbn("9780486253923")
+            .edition_by_isbn("9780486253923", Priority::Interactive)
             .await
             .unwrap()
             .unwrap();
@@ -249,7 +260,7 @@ mod tests {
 
         let edition = client
             .open_library()
-            .edition_by_isbn("9790201800011")
+            .edition_by_isbn("9790201800011", Priority::Interactive)
             .await
             .unwrap();
 
@@ -262,7 +273,7 @@ mod tests {
 
         let author = client
             .open_library()
-            .author("OL127077A")
+            .author("OL127077A", Priority::Background)
             .await
             .unwrap()
             .unwrap();

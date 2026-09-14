@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,7 +11,7 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use url::Url;
 
-use crate::Transport;
+use crate::{Priority, Transport};
 
 /// Limits one API asks of the clients that use it.
 pub(crate) struct Limits {
@@ -22,12 +23,44 @@ pub(crate) struct Limits {
 struct Job {
     url: Url,
     headers: HeaderMap,
+    priority: Priority,
     reply: oneshot::Sender<eyre::Result<http::Response<Bytes>>>,
 }
 
 #[derive(Default)]
 struct JobDeque {
+    // Use a deque so that we can insert higher priority jobs at the front
     jobs: VecDeque<Job>,
+}
+
+impl JobDeque {
+    fn push(&mut self, job: Job) {
+        match job.priority {
+            Priority::Background => self.jobs.push_back(job),
+            // TODO: Should a burst of interactive requests cancel any pending interactive requests?
+            //
+            // In theory there should only ever be a single interactive operation the user is
+            // performing that requires an API call.
+            Priority::Interactive => {
+                let first_background = self
+                    .jobs
+                    .iter()
+                    .position(|job| job.priority == Priority::Background)
+                    .unwrap_or(self.jobs.len());
+                self.jobs.insert(first_background, job);
+            }
+        }
+    }
+
+    /// The next job anyone is still waiting on.
+    fn pop(&mut self) -> Option<Job> {
+        loop {
+            match self.jobs.pop_front() {
+                Some(job) if job.reply.is_closed() => continue,
+                job => return job,
+            }
+        }
+    }
 }
 
 /// An HTTP client that respects API rate limits.
@@ -53,22 +86,26 @@ impl RateLimitedClient {
         }
     }
 
-    /// Waits the request's turn, performs it, and answers with whatever the transport said.
-    pub(crate) async fn get(
+    /// Queues the request and returns a future that waits for its response.
+    pub(crate) fn get(
         &self,
         url: Url,
         headers: HeaderMap,
-    ) -> eyre::Result<http::Response<Bytes>> {
+        priority: Priority,
+    ) -> impl Future<Output = eyre::Result<http::Response<Bytes>>> + use<> {
         let (reply, response) = oneshot::channel();
-        self.deque.lock().unwrap().jobs.push_back(Job {
+        self.deque.lock().unwrap().push(Job {
             url,
             headers,
+            priority,
             reply,
         });
         self.wake.notify_one();
-        response
-            .await
-            .map_err(|_| eyre!("The rate limited worker exited"))?
+        async move {
+            response
+                .await
+                .map_err(|_| eyre!("The rate limited worker exited"))?
+        }
     }
 }
 
@@ -97,12 +134,87 @@ async fn work(
         }
         tokio::time::sleep_until(next_allowed).await;
 
-        let job = deque.lock().unwrap().jobs.pop_front();
+        let job = deque.lock().unwrap().pop();
         let Some(job) = job else { continue };
 
         let result = transport.get(job.url, job.headers).await;
         next_allowed = Instant::now() + limits.min_interval;
         // A caller that dropped its future closed the channel, and there is nobody to answer
         let _eat_err = job.reply.send(result);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::BoxFuture;
+
+    /// Answers requests in order from a script, and remembers what it was asked.
+    struct Scripted {
+        responses: Mutex<VecDeque<http::Response<Bytes>>>,
+        requests: Mutex<Vec<String>>,
+    }
+
+    impl Scripted {
+        fn new(responses: usize) -> Arc<Scripted> {
+            let responses = (0..responses)
+                .map(|_| http::Response::new(Bytes::new()))
+                .collect();
+            Arc::new(Scripted {
+                responses: Mutex::new(responses),
+                requests: Mutex::new(Vec::new()),
+            })
+        }
+
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    impl Transport for Scripted {
+        fn get(
+            &self,
+            url: Url,
+            _headers: HeaderMap,
+        ) -> BoxFuture<'_, eyre::Result<http::Response<Bytes>>> {
+            self.requests.lock().unwrap().push(url.path().to_string());
+            let response = self
+                .responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("the script has a response for every request the worker makes");
+            Box::pin(async move { Ok(response) })
+        }
+    }
+
+    fn url(path: &str) -> Url {
+        Url::parse("https://example.com")
+            .unwrap()
+            .join(path)
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn interactive_jobs_overtake_background_ones_and_dropped_callers_are_skipped() {
+        let transport = Scripted::new(3);
+        let client = RateLimitedClient::spawn(
+            transport.clone(),
+            Limits {
+                min_interval: Duration::from_secs(1),
+            },
+        );
+
+        let a = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        let b = client.get(url("/b"), HeaderMap::new(), Priority::Background);
+        let c = client.get(url("/c"), HeaderMap::new(), Priority::Interactive);
+        drop(b); // dropping the future cancels the job if it hasn't already been started
+
+        assert!(a.await.is_ok());
+        assert!(c.await.is_ok());
+        // calm down, this is using tokio's start_paused feature to use simulated time
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        assert_eq!(transport.requests(), ["/c", "/a"]);
     }
 }
