@@ -1,0 +1,25 @@
+[package]
+name = "scorarium-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Clients for the external metadata sources scorarium imports from"
+
+[features]
+# Replays persisted API responses instead of making live requests
+fake-transport = ["dep:sha2"]
+
+[dependencies]
+bytes.workspace = true
+eyre.workspace = true
+http.workspace = true
+httpdate.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
