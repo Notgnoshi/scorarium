@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use bytes::Bytes;
 use eyre::{WrapErr, eyre};
@@ -60,9 +61,18 @@ impl Transport for FakeTransport {
                 return replay(&path);
             };
 
+            // Under nextest, each test executes in its own process, even with --test-threads 1.
+            //
+            // If we don't add a sleep here, then we're potentially hammering the server with
+            // requests as fast as possible (back-to-back tests with no pause interval). This sleep
+            // is the simplest way to be polite to the servers.
+            tokio::time::sleep(Duration::from_secs(1)).await;
             let response = live.get(url, headers).await?;
-            record(&path, &key, &response)
-                .wrap_err_with(|| format!("Failed to record {}", path.display()))?;
+            let status = response.status();
+            if status != StatusCode::TOO_MANY_REQUESTS && !status.is_server_error() {
+                record(&path, &key, &response)
+                    .wrap_err_with(|| format!("Failed to record {}", path.display()))?;
+            }
             Ok(response)
         };
         Box::pin(future)
