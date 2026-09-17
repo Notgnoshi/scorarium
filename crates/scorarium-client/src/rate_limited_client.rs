@@ -27,12 +27,15 @@ pub(crate) struct Limits {
 
 const MAX_ATTEMPTS: u8 = 4;
 
+/// The longest a source is left alone, no matter what its Retry-After asks for
+const MAX_PAUSE: Duration = Duration::from_secs(5 * 60);
+
 /// Progressive backoff for 5xx responses
 const PAUSES: [Duration; 4] = [
     Duration::from_secs(5),
     Duration::from_secs(30),
     Duration::from_secs(2 * 60),
-    Duration::from_secs(5 * 60),
+    MAX_PAUSE,
 ];
 
 /// How long to wait after a 429 that doesn't include a Retry-After header
@@ -66,7 +69,7 @@ struct JobDeque {
 impl JobDeque {
     /// Leaves the source alone for a while
     fn pause(&mut self, duration: Duration, by: StatusCode) {
-        let until = Instant::now() + duration;
+        let until = Instant::now() + duration.min(MAX_PAUSE);
         if self.paused_until.is_none_or(|paused| until > paused) {
             self.paused_until = Some(until);
             self.paused_by = Some(by);
