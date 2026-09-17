@@ -1,0 +1,12 @@
+https://openlibrary.org/search.json?title=bagatelles+rondos&limit=5&fields=key%2Ctitle%2Csubtitle%2Cauthor_name%2Cauthor_key%2Cfirst_publish_year%2Ccover_i%2Ceditions%2Ceditions.key%2Ceditions.isbn%2Ceditions.publisher%2Ceditions.publish_date
+
+200
+server: nginx/1.30.5
+date: Thu, 17 Sep 2026 23:34:55 GMT
+content-type: application/json
+content-length: 945
+connection: keep-alive
+x-served-by: FastAPI
+referrer-policy: no-referrer-when-downgrade
+
+{"numFound":2,"start":0,"numFoundExact":true,"num_found":2,"documentation_url":"https://openlibrary.org/dev/docs/api/search","q":"","offset":null,"docs":[{"author_key":["OL7705493A"],"author_name":["Ludwig van Beethoven"],"first_publish_year":2013,"key":"/works/OL27997815W","title":"Bagatelles, Rondos and Other Shorter Works for Piano","editions":{"numFound":1,"start":0,"numFoundExact":true,"docs":[{"key":"/books/OL38281852M","publisher":["Dover Publications, Incorporated"],"publish_date":["2013"],"isbn":["9781306324717","1306324718"]}]}},{"author_key":["OL127077A"],"author_name":["Ludwig van Beethoven"],"cover_i":310277,"first_publish_year":1987,"key":"/works/OL1258206W","title":"Bagatelles, Rondos and Other Shorter Works for Piano","editions":{"numFound":1,"start":0,"numFoundExact":true,"docs":[{"key":"/books/OL7636066M","publisher":["Dover Publications"],"publish_date":["July 1, 1987"],"isbn":["9780486253923","0486253929"]}]}}]}
