@@ -1,15 +1,15 @@
 https://openlibrary.org/isbn/9780486253923.json
 
 200
-server: nginx/1.30.4
-date: Mon, 14 Sep 2026 00:50:57 GMT
+server: nginx/1.30.5
+date: Thu, 17 Sep 2026 23:35:01 GMT
 content-type: application/json
 transfer-encoding: chunked
 connection: keep-alive
 access-control-allow-origin: *
 access-control-allow-method: GET, OPTIONS
 access-control-max-age: 86400
-x-ol-stats: "MC 2 0.002 TT 0 0.005"
+x-ol-stats: "MC 2 0.001 TT 0 0.006"
 referrer-policy: no-referrer-when-downgrade
 
 {"publishers": ["Dover Publications"], "identifiers": {"goodreads": ["254559"], "librarything": ["233615"]}, "weight": "1 pounds", "covers": [310277], "physical_format": "Paperback", "key": "/books/OL7636066M", "authors": [{"key": "/authors/OL127077A"}], "subjects": ["Music/Songbooks", "Music", "Genres & Styles - Classical", "Music / Classical", "Instruction & Study - Composition", "Musical Instruments - Piano"], "isbn_13": ["9780486253923"], "title": "Bagatelles, Rondos and Other Shorter Works for Piano", "number_of_pages": 128, "languages": [{"key": "/languages/eng"}], "isbn_10": ["0486253929"], "publish_date": "July 1, 1987", "works": [{"key": "/works/OL1258206W"}], "type": {"key": "/type/edition"}, "physical_dimensions": "12 x 9.3 x 0.4 inches", "source_records": ["bwb:9780486253923", "promise:bwb_daily_pallets_2021-05-14"], "local_id": ["urn:bwbsku:T1-AVQ-822"], "latest_revision": 8, "revision": 8, "created": {"type": "/type/datetime", "value": "2008-04-29T15:03:11.581851"}, "last_modified": {"type": "/type/datetime", "value": "2023-01-14T19:32:27.596004"}}

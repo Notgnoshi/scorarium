@@ -1,15 +1,15 @@
 https://openlibrary.org/authors/OL127077A.json
 
 200
-server: nginx/1.30.4
-date: Mon, 14 Sep 2026 00:51:00 GMT
+server: nginx/1.30.5
+date: Thu, 17 Sep 2026 23:35:03 GMT
 content-type: application/json
 transfer-encoding: chunked
 connection: keep-alive
 access-control-allow-origin: *
 access-control-allow-method: GET, OPTIONS
 access-control-max-age: 86400
-x-ol-stats: "MC 2 0.001 TT 0 0.005"
+x-ol-stats: "MC 2 0.005 TT 0 0.012"
 referrer-policy: no-referrer-when-downgrade
 
 {"name": "Ludwig van Beethoven", "personal_name": "Ludwig van Beethoven", "death_date": "1827", "alternate_names": ["Beethoven, Ludwig van, 1770-1827", "Beethoven Ludwig van", "Ludwig Van Beethoven", "Ludwig van Beethoven", "Beethoven", "Beethoven.", "Ludwig van 1770-1827 Beethoven", "Ludwig Beethoven", "Ludwig van xzo Beethoven", "LUDWIG VAN BEETHOVEN", "Ludwig Van BEETHOVEN", "Ludwig von Beethoven", "Ludwig V. Beethoven", "van Ludwig Beethoven", "Beethoven Ludwig van.", "Beethoven Ludwig Van", "Lugwig van Beethoven", "Ludwig Van xzo Beethoven", "BEETHOVEN, LUCWIG VAN, 1770-1827", "Beethoven*Ludwig van.", "Ludvig van Beethoven", "Ludwig van BEETHOVEN", "Beethoven, Ludwig van, 1770-1827.", "Ludwig van Bethoven", "Ludwig Von Beethoven"], "birth_date": "1770", "type": {"key": "/type/author"}, "remote_ids": {"viaf": "32182557", "wikidata": "Q255", "isni": "0000000121268987", "musicbrainz": "1f9df192-a621-4f54-8850-2c5373b7eac9", "imdb": "nm0002727", "lc_naf": "n79107741", "librarything": "beethovenludwigvan", "librivox": "4437", "project_gutenberg": "75", "opac_sbn": "CFIV005324", "youtube": "UCnsAooIr-Dsr8zJOCSadQcA"}, "photos": [14418181], "key": "/authors/OL127077A", "latest_revision": 14, "revision": 14, "created": {"type": "/type/datetime", "value": "2008-04-01T03:28:50.625462"}, "last_modified": {"type": "/type/datetime", "value": "2025-06-12T17:54:25.218319"}}
