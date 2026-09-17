@@ -183,6 +183,7 @@ impl RateLimitedClient {
         headers: HeaderMap,
         priority: Priority,
     ) -> eyre::Result<Option<T>> {
+        let key = request_key(&url, &headers);
         let response = self.get(url.clone(), headers, priority).await?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
@@ -191,15 +192,22 @@ impl RateLimitedClient {
         if !status.is_success() {
             bail!("GET {url} responded {status}");
         }
-        serde_json::from_slice(response.body())
-            .map(Some)
-            .wrap_err_with(|| format!("Failed to parse the response to GET {url}"))
+        match serde_json::from_slice(response.body()) {
+            Ok(parsed) => Ok(Some(parsed)),
+            Err(error) => {
+                // The worker caches every 2xx before anyone has looked at the body, so a 2xx that
+                // isn't what we asked for, like a maintenance page, would otherwise be served from
+                // the cache until the process exits.
+                self.cache.remove(&key);
+                Err(error).wrap_err_with(|| format!("Failed to parse the response to GET {url}"))
+            }
+        }
     }
 
     /// Queues the request and returns a future that waits for its response.
     ///
     /// A response already in the cache is returned without queuing the job.
-    pub(crate) fn get(
+    fn get(
         &self,
         url: Url,
         headers: HeaderMap,

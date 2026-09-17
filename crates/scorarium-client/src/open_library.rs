@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use eyre::{WrapErr, bail, eyre};
+use eyre::{WrapErr, eyre};
 use http::HeaderMap;
 use serde::Deserialize;
 use url::Url;
@@ -84,16 +84,11 @@ impl<'a> OpenLibrary<'a> {
             .append_pair("limit", &limit.to_string())
             .append_pair("fields", SEARCH_FIELDS);
 
-        let response = self
+        let results: RawSearch = self
             .client
-            .get(url.clone(), HeaderMap::new(), priority)
-            .await?;
-        let status = response.status();
-        if !status.is_success() {
-            bail!("GET {url} responded {status}");
-        }
-        let results: RawSearch = serde_json::from_slice(response.body())
-            .wrap_err_with(|| format!("Failed to parse the response to GET {url}"))?;
+            .get_json(url.clone(), HeaderMap::new(), priority)
+            .await?
+            .ok_or_else(|| eyre!("GET {url} responded 404"))?;
         Ok(results.docs.into_iter().map(WorkHit::from).collect())
     }
 }

@@ -46,6 +46,10 @@ impl Cache {
         self.entries.lock().unwrap().insert(key, entry);
     }
 
+    pub(crate) fn remove(&self, key: &str) {
+        self.entries.lock().unwrap().remove(key);
+    }
+
     pub(crate) fn clear(&self) {
         self.entries.lock().unwrap().clear();
     }
