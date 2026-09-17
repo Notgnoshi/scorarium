@@ -30,7 +30,7 @@ const MAX_ATTEMPTS: u8 = 4;
 /// The longest a source is left alone, no matter what its Retry-After asks for
 const MAX_PAUSE: Duration = Duration::from_secs(5 * 60);
 
-/// Progressive backoff for 5xx responses
+/// Progressive backoff while a source is unhealthy
 const PAUSES: [Duration; 4] = [
     Duration::from_secs(5),
     Duration::from_secs(30),
@@ -61,19 +61,25 @@ enum Pending {
 struct JobDeque {
     jobs: VecDeque<Job>,
     paused_until: Option<Instant>,
-    paused_by: Option<StatusCode>,
+    paused_by: Option<Outcome>,
     consecutive_failures: u8,
     in_flight: bool,
 }
 
 impl JobDeque {
     /// Leaves the source alone for a while
-    fn pause(&mut self, duration: Duration, by: StatusCode) {
+    fn pause(&mut self, duration: Duration, by: Outcome) {
         let until = Instant::now() + duration.min(MAX_PAUSE);
         if self.paused_until.is_none_or(|paused| until > paused) {
             self.paused_until = Some(until);
             self.paused_by = Some(by);
         }
+    }
+
+    /// How long to leave the source alone after one more failure in a row
+    fn escalate(&mut self) -> Duration {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        PAUSES[usize::from(self.consecutive_failures).min(PAUSES.len()) - 1]
     }
 
     /// Queues a job, ahead of the background ones if it's interactive.
@@ -167,7 +173,7 @@ impl RateLimitedClient {
             queued: deque.jobs.len(),
             in_flight: deque.in_flight,
             paused_for,
-            paused_by: paused_for.and(deque.paused_by),
+            paused_by: paused_for.and(deque.paused_by.clone()),
         }
     }
 
@@ -299,7 +305,7 @@ async fn work(
             source: name,
             url: url.clone(),
             attempt: job.attempts,
-            outcome,
+            outcome: outcome.clone(),
             duration: started.elapsed(),
             at,
         });
@@ -310,55 +316,48 @@ async fn work(
             cache.insert(job.cache_key.clone(), response);
         }
 
-        // A 429 and a gateway failure are both the source asking us (explicitly, or implicitly) to
-        // stop for a while.
+        // Anything other than an answer or a client error is the source asking us, explicitly or
+        // implicitly, to stop for a while.
         let asked_to_wait = result.as_ref().ok().and_then(|r| retry_after(r.headers()));
-        let backed_off = match result.as_ref().map(|response| response.status()) {
-            Ok(status) if status == StatusCode::TOO_MANY_REQUESTS => {
-                deque
-                    .lock()
-                    .unwrap()
-                    .pause(asked_to_wait.unwrap_or(DEFAULT_RETRY_AFTER), status);
-                Some(status)
-            }
-            Ok(status) if is_gateway_failure(status) => {
-                let mut deque = deque.lock().unwrap();
-                deque.consecutive_failures = deque.consecutive_failures.saturating_add(1);
-                let escalated =
-                    PAUSES[usize::from(deque.consecutive_failures).min(PAUSES.len()) - 1];
-                // A gateway failure may carry Retry-After too, and we should follow it if it does
-                deque.pause(asked_to_wait.unwrap_or(escalated), status);
-                Some(status)
-            }
-            Ok(status) if status.is_success() || status == StatusCode::NOT_FOUND => {
+        let pause = match &outcome {
+            Outcome::Status(status) if status.is_success() || *status == StatusCode::NOT_FOUND => {
                 deque.lock().unwrap().consecutive_failures = 0;
                 None
             }
-            _ => None,
+            Outcome::Status(status) if *status == StatusCode::TOO_MANY_REQUESTS => {
+                Some(asked_to_wait.unwrap_or(DEFAULT_RETRY_AFTER))
+            }
+            // Any other client error is our fault, and retrying won't fix it
+            Outcome::Status(status) if status.is_client_error() => None,
+            // A server error may carry Retry-After too, and we should follow it if it does
+            _ => {
+                let escalated = deque.lock().unwrap().escalate();
+                Some(asked_to_wait.unwrap_or(escalated))
+            }
         };
 
-        let Some(status) = backed_off else {
+        let Some(pause) = pause else {
             let _eat_err = job.reply.send(result);
             continue;
         };
+        deque.lock().unwrap().pause(pause, outcome);
         if job.retry && job.attempts < MAX_ATTEMPTS {
             deque.lock().unwrap().push(job);
             continue;
         }
-        let attempts = job.attempts;
+        let error = match result {
+            Ok(response) => eyre!("GET {url} responded {}", response.status()),
+            Err(error) => error,
+        };
         let _eat_err = job.reply.send(Err(if job.retry {
-            eyre!("Gave up on GET {url} after {attempts} attempts, last status {status}")
+            error.wrap_err(format!(
+                "Gave up on GET {url} after {} attempts",
+                job.attempts
+            ))
         } else {
-            eyre!("GET {url} responded {status}")
+            error
         }));
     }
-}
-
-fn is_gateway_failure(status: StatusCode) -> bool {
-    matches!(
-        status,
-        StatusCode::BAD_GATEWAY | StatusCode::SERVICE_UNAVAILABLE | StatusCode::GATEWAY_TIMEOUT
-    )
 }
 
 /// The `Retry-After` header could be a delay or a datetime

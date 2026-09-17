@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use eyre::WrapErr;
-use http::{HeaderValue, StatusCode};
+use http::HeaderValue;
 
 use crate::cache::Cache;
 use crate::log::CallLog;
@@ -53,7 +53,7 @@ pub enum Priority {
     /// requests in between.
     Interactive,
     /// Background requests are pushed to the back of the queue, and are retried with backoff if the
-    /// request gets rate limited.
+    /// source is rate limiting us or unhealthy.
     Background,
 }
 
@@ -66,8 +66,8 @@ pub struct SourceStatus {
     pub in_flight: bool,
     /// If a source has been paused for rate limiting, how much longer it's been paused for
     pub paused_for: Option<Duration>,
-    /// The status that caused the pause
-    pub paused_by: Option<StatusCode>,
+    /// What caused the pause
+    pub paused_by: Option<Outcome>,
 }
 
 /// The handle every source client is reached through.
