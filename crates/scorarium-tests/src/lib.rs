@@ -6,6 +6,17 @@ use scorarium_archive::Archive;
 use scorarium_client::fake::FakeTransport;
 use scorarium_client::{Client, UserAgent};
 
+#[ctor::ctor(unsafe)]
+fn setup_test_logging() {
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(tracing::Level::DEBUG.into())
+        .from_env_lossy();
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_test_writer()
+        .init();
+}
+
 /// Builds an [AppState] backed by a fresh in-memory database with the given contents.
 #[derive(Default)]
 pub struct TestDb {
