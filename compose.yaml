@@ -21,3 +21,4 @@ services:
         environment:
             - VIRTUAL_HOST=library.agill.xyz,library.agill.net
             - LETSENCRYPT_HOST=library.agill.xyz,library.agill.net
+            - SCORARIUM_CONTACT=${SCORARIUM_CONTACT:-notgnoshi@gmail.com}
