@@ -27,7 +27,7 @@ use std::time::Duration;
 
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Sqlite, SqlitePool, Transaction};
+use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
 pub use crate::catalog::CatalogNumber;
@@ -121,7 +121,9 @@ impl Archive {
             .create_if_missing(true)
             .foreign_keys(true)
             .journal_mode(SqliteJournalMode::Wal)
-            .busy_timeout(Duration::from_secs(5));
+            .busy_timeout(Duration::from_secs(5))
+            .log_statements(log::LevelFilter::Trace)
+            .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
         let pool = SqlitePool::connect_with(options).await?;
         MIGRATOR.run(&pool).await?;
         Ok(Archive::new(pool))
@@ -131,7 +133,9 @@ impl Archive {
     pub async fn in_memory() -> Result<Archive> {
         let options = SqliteConnectOptions::new()
             .in_memory(true)
-            .foreign_keys(true);
+            .foreign_keys(true)
+            .log_statements(log::LevelFilter::Trace)
+            .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
         let pool = SqlitePoolOptions::new()
             .max_connections(1) // sqlite creates a new in-memory database per-connection
             .idle_timeout(None)

@@ -12,6 +12,7 @@ deunicode.workspace = true
 eyre.workspace = true
 frizbee.workspace = true
 isbn.workspace = true
+log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
