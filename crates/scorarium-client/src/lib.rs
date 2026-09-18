@@ -31,6 +31,15 @@ pub struct UserAgent {
 }
 
 impl UserAgent {
+    /// Identify this build of scorarium, with an optional contact
+    pub fn new(contact: Option<&str>) -> Self {
+        Self {
+            app: "scorarium".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            contact: contact.map(str::to_string),
+        }
+    }
+
     /// `{app}/{version}` or `{app}/{version} ({contact})`
     pub fn header(&self) -> eyre::Result<HeaderValue> {
         let value = match &self.contact {

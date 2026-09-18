@@ -351,11 +351,7 @@ mod tests {
     use crate::{Client, Outcome, Priority, UserAgent};
 
     fn client() -> Client {
-        let user_agent = UserAgent {
-            app: env!("CARGO_PKG_NAME").to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            contact: Some("Notgnoshi@gmail.com".to_string()),
-        };
+        let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
         let transport = FakeTransport::new(&user_agent).unwrap();
         Client::with_transport(user_agent, Arc::new(transport))
     }

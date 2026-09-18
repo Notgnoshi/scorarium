@@ -4,12 +4,14 @@ pub mod router;
 pub mod session;
 
 use scorarium_archive::Archive;
+use scorarium_client::Client;
 
 pub use crate::router::router;
 
 /// Shared state for all request handlers.
 pub struct AppState {
     pub archive: Archive,
+    pub sources: Client,
     pub sessions: session::SessionStore,
     pub throttle: session::LoginThrottle,
     /// Whether the login cookie is marked Secure
@@ -18,9 +20,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(archive: Archive, secure_cookies: bool) -> Self {
+    pub fn new(archive: Archive, sources: Client, secure_cookies: bool) -> Self {
         Self {
             archive,
+            sources,
             sessions: session::SessionStore::default(),
             throttle: session::LoginThrottle::default(),
             secure_cookies,
@@ -28,10 +31,10 @@ impl AppState {
         }
     }
 
-    pub fn demo(archive: Archive) -> Self {
+    pub fn demo(archive: Archive, sources: Client) -> Self {
         Self {
             demo: true,
-            ..Self::new(archive, true)
+            ..Self::new(archive, sources, true)
         }
     }
 }

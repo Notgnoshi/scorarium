@@ -3,6 +3,8 @@ use std::sync::Arc;
 use axum_test::{TestResponse, TestServer};
 use scorarium::AppState;
 use scorarium_archive::Archive;
+use scorarium_client::fake::FakeTransport;
+use scorarium_client::{Client, UserAgent};
 
 /// Builds an [AppState] backed by a fresh in-memory database with the given contents.
 #[derive(Default)]
@@ -58,11 +60,16 @@ impl TestDb {
                 .await
                 .expect("failed to claim test password");
         }
+        // Replays the recorded API responses under fixtures/, so tests don't hit the APIs by default
+        let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
+        let transport = FakeTransport::new(&user_agent).expect("failed to open API fixtures");
+        let sources = Client::with_transport(user_agent, Arc::new(transport));
+
         if self.demo {
-            return Arc::new(AppState::demo(archive));
+            return Arc::new(AppState::demo(archive, sources));
         }
         // The test server speaks plain HTTP, so mirror a development run
-        Arc::new(AppState::new(archive, false))
+        Arc::new(AppState::new(archive, sources, false))
     }
 }
 

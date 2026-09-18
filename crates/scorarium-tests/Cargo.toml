@@ -9,3 +9,4 @@ description = "Test fixtures for scorarium"
 axum-test.workspace = true
 scorarium.workspace = true
 scorarium-archive.workspace = true
+scorarium-client = { workspace = true, features = ["fake-transport"] }
