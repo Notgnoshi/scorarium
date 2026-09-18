@@ -117,6 +117,13 @@ pub struct Edition {
     pub works: Vec<String>,
 }
 
+impl Edition {
+    /// The edition's page on Open Library, such as https://openlibrary.org/books/OL7636066M
+    pub fn url(&self) -> String {
+        format!("{BASE}books/{}", self.olid)
+    }
+}
+
 /// A person Open Library credits on an edition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Author {

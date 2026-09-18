@@ -1,3 +1,4 @@
+pub mod enrich;
 pub mod links;
 pub mod publication_post;
 pub mod router;
