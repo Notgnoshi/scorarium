@@ -1,7 +1,7 @@
 use scorarium_archive::identifier::{self, Kind};
 use scorarium_archive::{ContributorInput, IdentifierRawInput, Lookup, PublicationRawInput};
 use scorarium_client::Priority;
-use scorarium_client::open_library::{Author, Edition, OpenLibrary};
+use scorarium_client::open_library::{Author, Edition, OpenLibrary, WorkHit};
 use tokio::time::Instant;
 
 /// Everything Open Library says about an ISBN, within the deadline.
@@ -41,6 +41,20 @@ pub async fn lookup_isbn(
         (Some(publication), Lookup::Found)
     } else {
         (Some(publication), Lookup::Failed(problems.join("; ")))
+    }
+}
+
+/// Candidates for a title as typed, within the deadline.
+pub async fn search_titles(
+    client: &OpenLibrary<'_>,
+    title: &str,
+    deadline: Instant,
+) -> Vec<WorkHit> {
+    let num_candidates = 5;
+    let search = client.search_title(title, num_candidates, Priority::Interactive);
+    match tokio::time::timeout_at(deadline, search).await {
+        Ok(Ok(hits)) => hits,
+        Ok(Err(_)) | Err(_) => Vec::new(),
     }
 }
 
