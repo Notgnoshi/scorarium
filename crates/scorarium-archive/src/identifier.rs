@@ -179,6 +179,31 @@ pub fn normalize(kind: Kind, value: &str) -> Result<Normalized, Error> {
     }
 }
 
+/// Whether the text looks like it could be an ISBN or ISMN while it's being typed
+pub fn looks_like_identifier(query: &str) -> bool {
+    let query = query.trim().as_bytes();
+    if query.get(..4).is_some_and(|head| {
+        head.eq_ignore_ascii_case(b"isbn") || head.eq_ignore_ascii_case(b"ismn")
+    }) {
+        return true;
+    }
+    let compact: Vec<u8> = query
+        .iter()
+        .copied()
+        .filter(|byte| !matches!(byte, b'-' | b' '))
+        .collect();
+    // The pre-2008 ISMN form starts with M, and an ISBN-10 check digit can be X
+    let digits = compact
+        .strip_prefix(b"M")
+        .or_else(|| compact.strip_prefix(b"m"))
+        .unwrap_or(&compact);
+    let digits = digits
+        .strip_suffix(b"X")
+        .or_else(|| digits.strip_suffix(b"x"))
+        .unwrap_or(digits);
+    !digits.is_empty() && digits.iter().all(u8::is_ascii_digit)
+}
+
 /// Drop the label a number is printed with, so "ISBN 978-...", "ISBN-13: 978-...", "ISBN 10: 0-...",
 /// and "ISMN M-..." can be typed as they appear on the page.
 fn strip_label<'a>(value: &'a str, label: &str) -> &'a str {
@@ -342,5 +367,37 @@ mod tests {
             n(Kind::PublisherNumber, "   "),
             Err(Error::Invalid(Kind::PublisherNumber))
         );
+    }
+
+    #[test]
+    fn identifier_fragments_look_like_identifiers_and_titles_do_not() {
+        for input in [
+            "ISBN 978",
+            "ismn",
+            "978",
+            "978-0-48",
+            "978 0 486 23134 1",
+            "M-060-080",
+            "0-7935-7224-X",
+            // Complete forms the normalize tests accept
+            "ISBN 13: 9781495008719",
+            "isbn-13: 9781495008719",
+            "ISBN 10: 0-7935-7224-X",
+            "9781495008719",
+            "M-060-08002-9",
+            "979-0-060-08002-9",
+        ] {
+            assert!(looks_like_identifier(input), "{input:?}");
+        }
+        for input in [
+            "",
+            "Three Gymnopedies",
+            "Op. 9 No. 2",
+            "Symphony 40",
+            "1984 Orwell",
+            "The ISBN Handbook",
+        ] {
+            assert!(!looks_like_identifier(input), "{input:?}");
+        }
     }
 }
