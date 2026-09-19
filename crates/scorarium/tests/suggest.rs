@@ -62,7 +62,7 @@ async fn field_suggestions_are_formatted_and_capped() {
     assert_eq!(first["value"], "Sergei Rachmaninoff");
     assert_eq!(first["primary"], "Sergei Rachmaninoff");
     assert!(first["secondary"].as_str().unwrap().ends_with(" works"));
-    assert!(first["id"].is_number());
+    assert!(first["reference"]["id"].is_number());
     // Only a work number input asks about the scheme
     assert!(body.get("recognized").is_none());
 
@@ -102,6 +102,68 @@ async fn field_suggestions_are_formatted_and_capped() {
         .get(&format!("/library/{books}/suggest/colour?q=x"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn external_suggestions_are_gated_and_marked() {
+    let state = TestDb::new().demo().build().await;
+    let libraries = state.archive.libraries().await.unwrap();
+    let sheet_music = libraries
+        .iter()
+        .find(|l| l.name == "Sheet music")
+        .unwrap()
+        .id;
+    let server = browser(state.clone());
+    demo_login(&server).await;
+    let suggest = format!("/library/{sheet_music}/suggest/publication");
+
+    let body: Value = server
+        .get(&format!("{suggest}?q=bagatelles%20rondos&source=external"))
+        .await
+        .json();
+    let matches = body["matches"].as_array().unwrap();
+    assert_eq!(matches.len(), 2);
+    let hit = matches
+        .iter()
+        .find(|m| m["reference"]["source_id"] == "OL1258206W")
+        .expect("the Dover printing's work");
+    assert_eq!(hit["kind"], "publication");
+    assert_eq!(hit["reference"]["source"], "Open Library");
+    // The ISBN is the value so that submitting the pick seeds the review page
+    assert_eq!(hit["value"], "978-0-486-25392-3");
+    assert_eq!(
+        hit["primary"],
+        "Bagatelles, Rondos and Other Shorter Works for Piano"
+    );
+    assert_eq!(hit["secondary"], "Ludwig van Beethoven");
+    assert_eq!(hit["exact"], false);
+    assert!(hit["reference"]["id"].is_null());
+
+    // An identifier being typed and a short title both stay off the wire. Empty matches alone
+    // would also come from a swallowed error, so the call history is the assertion that matters.
+    for q in ["978-0-48", "bagat"] {
+        let body: Value = server
+            .get(&format!("{suggest}?q={q}&source=external"))
+            .await
+            .json();
+        assert_eq!(body["matches"].as_array().unwrap().len(), 0, "{q:?}");
+    }
+    assert_eq!(state.sources.call_history().calls.len(), 1);
+
+    // Only the publication input has an external source
+    server
+        .get(&format!(
+            "/library/{sheet_music}/suggest/person?q=rach&source=external"
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    // A library match's reference is a local id, not an external source
+    let body: Value = server
+        .get(&format!("{suggest}?q=isle&source=local"))
+        .await
+        .json();
+    assert!(body["matches"][0]["reference"]["id"].is_number());
 }
 
 #[tokio::test]

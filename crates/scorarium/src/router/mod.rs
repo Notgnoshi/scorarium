@@ -492,13 +492,19 @@ pub(crate) fn age(created_at: i64) -> String {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
+    // A typeahead asks for suggestions on every keystroke, which buries everything else in the
+    // request log, so these routes are merged in below the trace layer rather than under it.
+    let suggestions = Router::new()
+        .route("/suggest/title", get(suggest::title)) // suggestions for navbar search; not restricted to any given library
+        .route("/library/{id}/suggest/{kind}", get(suggest::field))
+        .with_state(state.clone());
+
     Router::new()
         .route("/", get(index::index))
         .route("/assets/{*name}", get(assets::asset))
         .route("/login", get(login::login_form).post(login::login))
         .route("/logout", post(login::logout))
         .route("/search", get(search::search))
-        .route("/suggest/title", get(suggest::title))
         .route("/settings", get(settings::settings_page))
         .route("/settings/password", post(settings::change_password))
         .route(
@@ -541,7 +547,6 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/library/{library_id}/publication/{id}/delete",
             post(publication::delete),
         )
-        .route("/library/{id}/suggest/{kind}", get(suggest::field))
         .route("/library/{id}/tags", get(tag::cloud))
         .route("/library/{library_id}/tags/{tag}", get(tag::tagged))
         .route("/library/{library_id}/work/{id}", get(work::work))
@@ -559,6 +564,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
         .layer(TraceLayer::new_for_http().on_request(()).on_eos(()))
+        .merge(suggestions)
 }
 
 /// The session token of a logged-in request.
