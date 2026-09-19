@@ -181,12 +181,7 @@ pub async fn start(
             enrich::merge(&mut draft, found);
         }
         import.save_draft(draft);
-        match &lookup {
-            Lookup::Found => tracing::info!(import = import.id, "Open Library seeded the draft"),
-            Lookup::Failed(why) => {
-                tracing::warn!(import = import.id, why, "Open Library lookup failed");
-            }
-        }
+        import.record_lookup(lookup);
     }
 
     let next = if more {
@@ -204,6 +199,7 @@ struct ReviewPage {
     library: Library,
     import: PendingImport,
     age: String,
+    lookup: Option<Lookup>,
     fields: FormFields,
 }
 
@@ -234,6 +230,7 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
+        lookup: draft.lookup,
         fields: FormFields::build(draft.input, errors).edit_works(WorkEdit::Draft),
         library,
         import,

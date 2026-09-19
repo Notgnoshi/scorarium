@@ -247,6 +247,7 @@ async fn isbn_import_is_seeded_from_open_library() {
     response.assert_text_contains("value=\"978-0-486-25392-3\"");
     response.assert_text_contains("value=\"Piano bench\"");
     response.assert_text_contains("value=\"https://openlibrary.org/books/OL7636066M\"");
+    response.assert_text_contains("Seeded from Open Library.");
 }
 
 #[tokio::test]
@@ -279,4 +280,5 @@ async fn unknown_isbn_falls_back_to_the_typed_identifier() {
     response.assert_text_contains("value=\"978-0-486-99999-9\"");
     response.assert_text_contains("value=\"Piano bench\"");
     response.assert_text_contains("A title is required.");
+    response.assert_text_contains("Open Library lookup failed: no record for 978-0-486-99999-9");
 }

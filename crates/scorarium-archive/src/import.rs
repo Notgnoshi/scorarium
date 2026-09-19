@@ -36,6 +36,8 @@ pub struct Draft {
     pub input: PublicationRawInput,
     /// False when nothing has been saved and the input was seeded just now
     pub saved: bool,
+    /// The API lookup outcome, if there was one
+    pub lookup: Option<Lookup>,
 }
 
 /// A draft as the archive keeps it, alongside what it needs to name the next work.
@@ -45,6 +47,7 @@ pub(crate) struct SavedDraft {
     // Never reused, so a work id left over from an earlier view of the page cannot attach itself
     // to a work added since
     next_work_id: i64,
+    lookup: Option<Lookup>,
 }
 
 impl PendingImport {
@@ -54,10 +57,12 @@ impl PendingImport {
             Some(saved) => Draft {
                 input: saved.input.clone(),
                 saved: true,
+                lookup: saved.lookup.clone(),
             },
             None => Draft {
                 input: self.initial_draft_contents(),
                 saved: false,
+                lookup: None,
             },
         }
     }
@@ -68,6 +73,7 @@ impl PendingImport {
         let saved = drafts.entry(self.id).or_insert_with(|| SavedDraft {
             input: PublicationRawInput::default(),
             next_work_id: 1,
+            lookup: None,
         });
         for work in &mut input.contents {
             if work.id.is_none() {
@@ -76,7 +82,22 @@ impl PendingImport {
             }
         }
         saved.input = input.clone();
-        Draft { input, saved: true }
+        Draft {
+            input,
+            saved: true,
+            lookup: saved.lookup.clone(),
+        }
+    }
+
+    /// Note what a source lookup produced, so the review page can say so.
+    ///
+    /// A lookup only ever follows a save, so an unsaved draft here is a caller bug.
+    pub fn record_lookup(&self, lookup: Lookup) {
+        let mut drafts = self.saved_drafts();
+        let saved = drafts
+            .get_mut(&self.id)
+            .expect("a lookup is recorded on a saved draft");
+        saved.lookup = Some(lookup);
     }
 
     /// Create the publication this import became, and delete the import, in one transaction.
