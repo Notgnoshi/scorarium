@@ -23,6 +23,13 @@ pub struct PendingImport {
     archive: Arc<ArchiveInner>,
 }
 
+/// How a source lookup ended, for the review page.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Lookup {
+    Found,
+    Failed(String),
+}
+
 /// The review page's edits for one pending import
 #[derive(Clone, Debug)]
 pub struct Draft {

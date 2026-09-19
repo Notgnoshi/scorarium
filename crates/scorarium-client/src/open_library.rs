@@ -41,10 +41,10 @@ impl<'a> OpenLibrary<'a> {
         OpenLibrary { client }
     }
 
-    /// Look up the edition a bare ISBN names.
+    /// Look up the edition an ISBN names.
     ///
-    /// The caller is expected to normalize the ISBN. The response will contain OLIDs for the
-    /// authors, so the caller will need to follow this call up with one to [OpenLibrary::author]
+    /// The response will contain OLIDs for the authors, so the caller will need to follow this call
+    /// up with one to [OpenLibrary::author]
     pub async fn edition_by_isbn(
         &self,
         isbn: &str,
@@ -369,7 +369,7 @@ mod tests {
 
         client
             .open_library()
-            .edition_by_isbn("9780486253923", Priority::Background)
+            .edition_by_isbn("978-0-486-25392-3", Priority::Background)
             .await
             .unwrap()
             .unwrap();
@@ -379,7 +379,7 @@ mod tests {
         assert_eq!(calls[0].source, "Open Library");
         assert_eq!(
             calls[0].url.as_str(),
-            "https://openlibrary.org/isbn/9780486253923.json"
+            "https://openlibrary.org/isbn/978-0-486-25392-3.json"
         );
         assert_eq!(calls[0].attempt, 1);
         assert_eq!(calls[0].outcome, Outcome::Status(StatusCode::OK));
@@ -398,7 +398,7 @@ mod tests {
 
         let edition = client
             .open_library()
-            .edition_by_isbn("9780486253923", Priority::Interactive)
+            .edition_by_isbn("978-0-486-25392-3", Priority::Interactive)
             .await
             .unwrap()
             .unwrap();

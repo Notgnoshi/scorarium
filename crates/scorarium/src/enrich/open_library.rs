@@ -1,6 +1,48 @@
 use scorarium_archive::identifier::{self, Kind};
-use scorarium_archive::{ContributorInput, IdentifierRawInput, PublicationRawInput};
-use scorarium_client::open_library::{Author, Edition};
+use scorarium_archive::{ContributorInput, IdentifierRawInput, Lookup, PublicationRawInput};
+use scorarium_client::Priority;
+use scorarium_client::open_library::{Author, Edition, OpenLibrary};
+use tokio::time::Instant;
+
+/// Everything Open Library says about an ISBN, within the deadline.
+pub async fn lookup_isbn(
+    client: &OpenLibrary<'_>,
+    isbn: &str,
+    deadline: Instant,
+) -> (Option<PublicationRawInput>, Lookup) {
+    let lookup = client.edition_by_isbn(isbn, Priority::Interactive);
+    let edition = match tokio::time::timeout_at(deadline, lookup).await {
+        Ok(Ok(Some(edition))) => edition,
+        Ok(Ok(None)) => return (None, Lookup::Failed(format!("no record for {isbn}"))),
+        Ok(Err(error)) => return (None, Lookup::Failed(format!("edition {isbn}: {error:#}"))),
+        Err(_) => return (None, Lookup::Failed(format!("edition {isbn}: timed out"))),
+    };
+
+    let mut authors = Vec::new();
+    let mut problems = Vec::new();
+    for olid in &edition.authors {
+        let lookup = client.author(olid, Priority::Interactive);
+        match tokio::time::timeout_at(deadline, lookup).await {
+            Ok(Ok(Some(author))) => authors.push(author),
+            Ok(Ok(None)) => problems.push(format!("author {olid} not found")),
+            Ok(Err(error)) => {
+                problems.push(format!("author {olid}: {error:#}"));
+                break;
+            }
+            Err(_) => {
+                problems.push(format!("author {olid} timed out"));
+                break;
+            }
+        }
+    }
+
+    let publication = to_publication(&edition, &authors);
+    if problems.is_empty() {
+        (Some(publication), Lookup::Found)
+    } else {
+        (Some(publication), Lookup::Failed(problems.join("; ")))
+    }
+}
 
 /// Convert an Open Library [Edition] to scorarium's [PublicationRawInput]
 pub fn to_publication(edition: &Edition, authors: &[Author]) -> PublicationRawInput {

@@ -1,7 +1,12 @@
 pub mod open_library;
 
+use std::time::Duration;
+
 use scorarium_archive::identifier::{self, Kind};
 use scorarium_archive::{IdentifierRawInput, PublicationRawInput};
+
+/// How long Start waits for a source before moving on with whatever arrived
+pub const BUDGET: Duration = Duration::from_secs(5);
 
 /// Fill a draft with what a source found, without disturbing what is already there.
 pub fn merge(draft: &mut PublicationRawInput, found: PublicationRawInput) {
