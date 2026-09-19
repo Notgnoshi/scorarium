@@ -178,11 +178,7 @@ mod tests {
     use super::*;
 
     fn fake() -> FakeTransport {
-        let user_agent = UserAgent {
-            app: env!("CARGO_PKG_NAME").to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            contact: Some("Notgnoshi@gmail.com".to_string()),
-        };
+        let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
         FakeTransport::new(&user_agent).unwrap()
     }
 

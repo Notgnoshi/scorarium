@@ -558,7 +558,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/library/{id}/authors", get(person::authors))
         .with_state(state)
         // Applies only to the routes added above it, so keep this last.
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http().on_request(()).on_eos(()))
 }
 
 /// The session token of a logged-in request.

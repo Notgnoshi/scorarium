@@ -135,7 +135,7 @@ async fn manual_import_flow() {
     let response = server
         .post(&entry)
         .form(&[
-            ("query", "0486231348"),
+            ("query", "0486999998"),
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Piano bench"),
             ("holding_file_0", ""),
@@ -143,8 +143,9 @@ async fn manual_import_flow() {
         .await;
     let seeded = response.header("location").to_str().unwrap().to_string();
     let response = server.get(&seeded).await;
-    response.assert_text_contains("value=\"978-0-486-23134-1\"");
+    response.assert_text_contains("value=\"978-0-486-99999-9\"");
     response.assert_text_contains("value=\"Piano bench\"");
+    response.assert_text_contains("no record for 978-0-486-99999-9");
     server
         .post(&format!("{seeded}/delete"))
         .await
@@ -210,4 +211,74 @@ async fn manual_import_flow() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
     assert!(!server.get("/").await.text().contains("rounded-pill"));
+}
+
+#[tokio::test]
+async fn isbn_import_is_seeded_from_open_library() {
+    let state = TestDb::new()
+        .library("Scores")
+        .password("hunter2")
+        .build()
+        .await;
+    let server = browser(state.clone());
+    let library_id = state.archive.libraries().await.unwrap()[0].id;
+    let entry = format!("/library/{library_id}/import");
+    server.post("/login").form(&[("password", "hunter2")]).await;
+
+    let response = server
+        .post(&entry)
+        .form(&[
+            ("query", "9780486253923"),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let review = response.header("location").to_str().unwrap().to_string();
+
+    let response = server.get(&review).await;
+    response.assert_status_ok();
+    response.assert_text_contains("value=\"Bagatelles, Rondos and Other Shorter Works for Piano\"");
+    response.assert_text_contains("value=\"Ludwig van Beethoven\"");
+    response.assert_text_contains("value=\"author\"");
+    response.assert_text_contains("value=\"Dover Publications\"");
+    response.assert_text_contains("value=\"1987\"");
+    response.assert_text_contains("value=\"978-0-486-25392-3\"");
+    response.assert_text_contains("value=\"Piano bench\"");
+    response.assert_text_contains("value=\"https://openlibrary.org/books/OL7636066M\"");
+    response.assert_text_contains("Seeded from Open Library.");
+}
+
+#[tokio::test]
+async fn unknown_isbn_falls_back_to_the_typed_identifier() {
+    let state = TestDb::new()
+        .library("Scores")
+        .password("hunter2")
+        .build()
+        .await;
+    let server = browser(state.clone());
+    let library_id = state.archive.libraries().await.unwrap()[0].id;
+    let entry = format!("/library/{library_id}/import");
+    server.post("/login").form(&[("password", "hunter2")]).await;
+
+    let response = server
+        .post(&entry)
+        .form(&[
+            ("query", "9780486999999"),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
+        ])
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let review = response.header("location").to_str().unwrap().to_string();
+
+    // The identifier-only draft was saved, so the page validates it on first view
+    let response = server.get(&review).await;
+    response.assert_status_ok();
+    response.assert_text_contains("value=\"978-0-486-99999-9\"");
+    response.assert_text_contains("value=\"Piano bench\"");
+    response.assert_text_contains("A title is required.");
+    response.assert_text_contains("Open Library lookup failed: no record for 978-0-486-99999-9");
 }

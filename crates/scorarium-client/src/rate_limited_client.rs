@@ -215,8 +215,12 @@ impl RateLimitedClient {
     ) -> impl Future<Output = eyre::Result<http::Response<Bytes>>> + use<> {
         let key = request_key(&url, &headers);
         let pending = match self.cache.get(&key) {
-            Some(cached) => Pending::Cached(cached),
+            Some(cached) => {
+                tracing::debug!(source = self.name, %url, "Cached response");
+                Pending::Cached(cached)
+            }
             None => {
+                tracing::debug!(source = self.name, %url, ?priority, "Queued request");
                 let (reply, response) = oneshot::channel();
                 self.deque.lock().unwrap().push(Job {
                     url,
@@ -278,6 +282,7 @@ async fn work(
         // We check the cache again when we start a job so that if there were duplicate requests
         // queued together, only one of them hits the API.
         if let Some(cached) = cache.get(&job.cache_key) {
+            tracing::debug!(source = name, url = %job.url, "Cached response while queued");
             let _eat_err = job.reply.send(Ok(cached));
             continue;
         }
@@ -309,12 +314,36 @@ async fn work(
                 Outcome::Timeout,
             ),
         };
+        let duration = started.elapsed();
+        match &outcome {
+            // An answer, even a 404, is the source working as intended
+            Outcome::Status(status) if status.is_success() || *status == StatusCode::NOT_FOUND => {
+                tracing::info!(
+                    source = name,
+                    %url,
+                    attempt = job.attempts,
+                    ?outcome,
+                    duration_ms = duration.as_millis(),
+                    "API request"
+                );
+            }
+            _ => {
+                tracing::error!(
+                    source = name,
+                    %url,
+                    attempt = job.attempts,
+                    ?outcome,
+                    duration_ms = duration.as_millis(),
+                    "API request failed"
+                );
+            }
+        }
         log.record(CallRecord {
             source: name,
             url: url.clone(),
             attempt: job.attempts,
             outcome: outcome.clone(),
-            duration: started.elapsed(),
+            duration,
             at,
         });
 

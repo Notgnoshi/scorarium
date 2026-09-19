@@ -7,6 +7,12 @@
             {{ age }}
         </dd>
     </dl>
+    {% if let Some(Lookup::Found) = lookup %}
+        <div class="alert alert-info" role="alert">Seeded from Open Library. Check the fields before submitting.</div>
+    {% endif %}
+    {% if let Some(Lookup::Failed(why)) = lookup %}
+        <div class="alert alert-warning" role="alert">Open Library lookup failed: {{ why }}</div>
+    {% endif %}
     <form method="post"
           action="/library/{{ library.id }}/import/{{ import.id }}/save"
           data-library-id="{{ library.id }}">

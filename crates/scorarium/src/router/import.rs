@@ -5,10 +5,11 @@ use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{
-    Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, PendingImport, PublicationErrors,
-    PublicationRawInput, ValidationError, WorkRawInput, parse_holdings,
+    Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup, PendingImport,
+    PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, parse_holdings,
 };
 use serde::Deserialize;
+use tokio::time::Instant;
 
 use super::work::WorkPost;
 use super::{
@@ -16,6 +17,7 @@ use super::{
     WorkFields, age,
 };
 use crate::AppState;
+use crate::enrich::{self, open_library};
 use crate::publication_post::{self, PublicationPost};
 
 const UNTITLED: &str = "Untitled import";
@@ -159,6 +161,29 @@ pub async fn start(
         Err(errors) => return render_entry(&library, base, form.query, more, raw, errors).await,
     };
     let import = library.start_import(&form.query, &holdings).await?;
+
+    // An ISBN is looked up before the redirect, so the review page opens seeded. Saving even a
+    // failed lookup's identifier-only draft is what makes the page validate it on first view.
+    //
+    // This is a blocking request for now until I learn more.
+    if let Some(isbn) = import
+        .draft()
+        .input
+        .identifiers
+        .iter()
+        .find(|i| i.kind == "isbn")
+    {
+        let deadline = Instant::now() + enrich::BUDGET;
+        let (found, lookup) =
+            open_library::lookup_isbn(&state.sources.open_library(), &isbn.value, deadline).await;
+        let mut draft = import.draft().input;
+        if let Some(found) = found {
+            enrich::merge(&mut draft, found);
+        }
+        import.save_draft(draft);
+        import.record_lookup(lookup);
+    }
+
     let next = if more {
         format!("/library/{id}/import?more=1")
     } else {
@@ -174,6 +199,7 @@ struct ReviewPage {
     library: Library,
     import: PendingImport,
     age: String,
+    lookup: Option<Lookup>,
     fields: FormFields,
 }
 
@@ -204,6 +230,7 @@ pub async fn review(
             ],
         ),
         age: age(import.created_at),
+        lookup: draft.lookup,
         fields: FormFields::build(draft.input, errors).edit_works(WorkEdit::Draft),
         library,
         import,
