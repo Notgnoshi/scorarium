@@ -43,6 +43,12 @@ function openMenu(input, matches) {
             secondary.textContent = match.secondary;
             item.appendChild(secondary);
         }
+        if (match.reference?.source) {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-secondary";
+            badge.textContent = match.reference.source;
+            item.appendChild(badge);
+        }
         item.match = match;
         // Ahead of the input losing focus, so the click is not lost to the menu closing
         item.addEventListener("mousedown", (e) => {
@@ -59,13 +65,24 @@ async function request(input) {
     const q = input.value.trim();
     const params = new URLSearchParams({ q });
     input.dispatchEvent(new CustomEvent("suggest:query", { bubbles: true, detail: { params } }));
-    const response = await fetch(`${url(input)}?${params}`);
-    if (!response.ok) return;
-    const suggestions = await response.json();
-    // A slow early response must not overwrite what a later keystroke asked for
-    if (input.value.trim() !== q || document.activeElement !== input) return;
-    input.dispatchEvent(new CustomEvent("suggest:matches", { bubbles: true, detail: suggestions }));
-    openMenu(input, suggestions.matches);
+    const sources = "suggestExternal" in input.dataset ? ["local", "external"] : ["local"];
+    const results = new Map();
+    for (const source of sources) {
+        const query = new URLSearchParams(params);
+        query.set("source", source);
+        fetch(`${url(input)}?${query}`).then(async (response) => {
+            if (!response.ok) return;
+            const suggestions = await response.json();
+            // A slow early response must not overwrite what a later keystroke asked for
+            if (input.value.trim() !== q || document.activeElement !== input) return;
+            results.set(source, suggestions);
+            input.dispatchEvent(new CustomEvent("suggest:matches", { bubbles: true, detail: suggestions }));
+            openMenu(
+                input,
+                sources.flatMap((s) => results.get(s)?.matches ?? []),
+            );
+        });
+    }
 }
 
 document.addEventListener("input", (e) => {
