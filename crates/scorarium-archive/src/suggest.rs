@@ -268,7 +268,7 @@ fn ranked<T>(
         rank(typed, &values)
     };
     let mut items: Vec<Option<T>> = items.into_iter().map(Some).collect();
-    order
+    let suggestions = order
         .into_iter()
         .map(|i| {
             let item = items[i].take().expect("each index is ranked once");
@@ -277,7 +277,8 @@ fn ranked<T>(
                 item: wrap(item),
             }
         })
-        .collect()
+        .collect();
+    exact_first(suggestions)
 }
 
 /// Rank entities by the text their dropdown item shows, best first.
@@ -290,7 +291,7 @@ fn ranked_entities<T>(
 ) -> Vec<Suggestion> {
     let texts: Vec<String> = entities.iter().map(text).collect();
     let mut entities: Vec<Option<T>> = entities.into_iter().map(Some).collect();
-    rank(typed, &texts)
+    let suggestions = rank(typed, &texts)
         .into_iter()
         .map(|i| {
             let entity = entities[i].take().expect("each index is ranked once");
@@ -299,11 +300,17 @@ fn ranked_entities<T>(
                 item: wrap(entity),
             }
         })
-        .collect()
+        .collect();
+    exact_first(suggestions)
 }
 
 fn is_exact(typed: &str, name: &str) -> bool {
     normalize(name) == normalize(typed)
+}
+
+fn exact_first(mut suggestions: Vec<Suggestion>) -> Vec<Suggestion> {
+    suggestions.sort_by_key(|suggestion| !suggestion.exact);
+    suggestions
 }
 
 /// Every catalog number that fits what was typed, best first.
