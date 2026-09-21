@@ -77,7 +77,7 @@ pub(crate) async fn suggest(
     }
     Ok(match field {
         SuggestField::Person => {
-            let persons = summary::persons(conn, Some(library_id), false)
+            let persons = summary::persons(conn, Some(library_id), false, None)
                 .await?
                 .into_iter()
                 .map(|found| found.summary)
@@ -117,7 +117,7 @@ pub(crate) async fn suggest(
             // The composer is matched by an exact name and never fuzzily; guessing wrong would
             // silently offer one composer's numbers while the user reads another's name.
             let credited_to = match &composer {
-                Some(name) => summary::persons(conn, Some(library_id), false)
+                Some(name) => summary::persons(conn, Some(library_id), false, None)
                     .await?
                     .into_iter()
                     .find(|person| is_exact(name, &person.summary.name))

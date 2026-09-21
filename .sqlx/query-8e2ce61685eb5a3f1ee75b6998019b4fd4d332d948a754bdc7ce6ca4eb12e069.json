@@ -1,0 +1,105 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT per.id AS \"person_id!\", per.name AS \"name!\",\n                  l.id AS \"library_id!\", l.name AS \"library_name!\",\n                  credit.kind AS \"kind!\", credit.entity_id AS \"entity_id!\",\n                  credit.role AS \"role!\", credit.title AS \"title!\"\n           FROM (SELECT c.person_id, 'publication' AS kind, p.id AS entity_id, c.role, p.title\n                 FROM publication_contributor c JOIN publication p ON p.id = c.publication_id\n                 UNION ALL\n                 SELECT c.person_id, 'work' AS kind, w.id AS entity_id, c.role, w.title\n                 FROM work_contributor c JOIN work w ON w.id = c.work_id) credit\n           JOIN person per ON per.id = credit.person_id JOIN library l ON l.id = per.library_id\n           WHERE (?1 IS NULL OR per.library_id = ?1) AND (NOT ?2 OR l.private = 0)\n             AND (?3 IS NULL\n                  OR per.id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)\n                  OR per.id IN (SELECT person_id FROM work_contributor WHERE role = ?3))\n           ORDER BY l.name, per.sort_name, per.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "person_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "library_id!",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_name!",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "kind!",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "entity_id!",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "role!",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "name": "title!",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8e2ce61685eb5a3f1ee75b6998019b4fd4d332d948a754bdc7ce6ca4eb12e069"
+}

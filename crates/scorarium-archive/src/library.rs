@@ -8,6 +8,7 @@ use crate::import::{self, PendingImport};
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
+use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
 use crate::work::{self, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
@@ -240,6 +241,13 @@ impl Library {
     pub async fn persons_with_role(&self, role: &str) -> Result<Vec<Person>> {
         let mut conn = self.archive.acquire_read().await?;
         person::load_persons(&self.archive, &mut conn, self.id, None, Some(role)).await
+    }
+
+    /// Everyone credited here, or with `role` when given, by sort name
+    pub async fn person_summaries(&self, role: Option<&str>) -> Result<Vec<PersonSummary>> {
+        let mut conn = self.archive.acquire_read().await?;
+        let persons = summary::persons(&mut conn, Some(self.id), false, role).await?;
+        Ok(persons.into_iter().map(|found| found.summary).collect())
     }
 
     /// The distinct roles credited anywhere in the library, sorted, for input suggestions

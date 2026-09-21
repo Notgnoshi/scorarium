@@ -210,10 +210,11 @@ async fn entities_are_one_suggestion_each() {
         .suggest(SuggestField::Person, "bierce", false)
         .await
         .unwrap();
-    // A book with no works counts as one work
-    assert!(
-        matches!(&persons[0].item, Suggested::Person(p) if p.name == "Ambrose Bierce" && p.works == 1)
-    );
+    assert!(matches!(
+        &persons[0].item,
+        Suggested::Person(p)
+            if p.name == "Ambrose Bierce" && p.title == "The Devil's Dictionary" && p.others == 0
+    ));
 
     assert!(
         library

@@ -61,7 +61,12 @@ async fn field_suggestions_are_formatted_and_capped() {
     assert_eq!(first["kind"], "person");
     assert_eq!(first["value"], "Sergei Rachmaninoff");
     assert_eq!(first["primary"], "Sergei Rachmaninoff");
-    assert!(first["secondary"].as_str().unwrap().ends_with(" works"));
+    assert!(
+        first["secondary"]
+            .as_str()
+            .unwrap()
+            .starts_with("Rachmaninoff masterpieces for solo piano +")
+    );
     assert!(first["reference"]["id"].is_number());
     // Only a work number input asks about the scheme
     assert!(body.get("recognized").is_none());

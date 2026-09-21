@@ -3,8 +3,9 @@
     <h1>{{ base.title }}</h1>
     <ul class="list-group">
         {% for p in persons %}
-            <li class="list-group-item list-group-item-action">
-                <a href="/library/{{ p.library_id }}/person/{{ p.id }}">{{ p.name }}</a>
+            <li class="list-group-item list-group-item-action d-flex gap-3">
+                <a href="/library/{{ library_id }}/person/{{ p.id }}">{{ p.name }}</a>
+                <span class="text-body-secondary ms-auto text-truncate">{{ p.credit }}</span>
             </li>
         {% endfor %}
     </ul>

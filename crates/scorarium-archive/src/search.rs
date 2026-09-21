@@ -67,7 +67,7 @@ pub(crate) async fn search(
             text,
         ));
     }
-    for found in summary::persons(conn, None, public_only).await? {
+    for found in summary::persons(conn, None, public_only, None).await? {
         let text = found.summary.name.clone();
         candidates.push((
             hit(

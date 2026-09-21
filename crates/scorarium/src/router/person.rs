@@ -6,7 +6,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{Library, Person, PersonErrors, PersonRawInput, Publication, Work};
 use serde::Deserialize;
 
-use super::{AppError, BaseContext, Crumb, OrNotFound, Session, pair_messages};
+use super::{AppError, BaseContext, Crumb, OrNotFound, Session, pair_messages, search};
 use crate::{AppState, publication_post};
 
 #[derive(Template)]
@@ -155,11 +155,20 @@ fn render_edit(
     Ok(Html(page.render()?).into_response())
 }
 
+struct ShownPerson {
+    id: i64,
+    name: String,
+    /// The title of a work the person is credited on, as a cheap way of disambiguating two
+    /// contributors with the same name.
+    credit: String,
+}
+
 #[derive(Template)]
 #[template(path = "persons.html")]
 struct PersonsPage {
     base: BaseContext,
-    persons: Vec<Person>,
+    library_id: i64,
+    persons: Vec<ShownPerson>,
 }
 
 /// GET /library/{id}/composers
@@ -188,9 +197,20 @@ async fn listing(
     title: &str,
 ) -> Result<Response, AppError> {
     let library = base.visible_library(&state.archive, library_id).await?;
+    let persons = library
+        .person_summaries(Some(role))
+        .await?
+        .into_iter()
+        .map(|person| ShownPerson {
+            id: person.id,
+            name: person.name.clone(),
+            credit: search::person_credit(&person),
+        })
+        .collect();
     let page = PersonsPage {
         base: base.page(title, vec![Crumb::home(), Crumb::library(&library)]),
-        persons: library.persons_with_role(role).await?,
+        library_id: library.id,
+        persons,
     };
     Ok(Html(page.render()?).into_response())
 }

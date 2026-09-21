@@ -79,7 +79,6 @@ enum Data {
     Person {
         reference: Reference,
         name: String,
-        works: i64,
     },
     Work {
         reference: Reference,
@@ -241,7 +240,6 @@ fn item(entity: Entity, exact: bool) -> FieldMatch {
             Data::Person {
                 reference: Reference::Local { id: person.id },
                 name: person.name,
-                works: person.works,
             },
         ),
         Entity::Publication(publication) => (

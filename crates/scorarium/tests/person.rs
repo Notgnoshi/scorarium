@@ -203,6 +203,8 @@ async fn composers_and_authors_pages() {
             person.id
         ));
     }
+    // Satie is credited on the publication and each of its three works
+    response.assert_text_contains("Three gymnopedies for the piano +3");
     assert!(!response.text().contains("Ambrose Bierce"));
 
     let response = server.get(&format!("/library/{books}/authors")).await;
