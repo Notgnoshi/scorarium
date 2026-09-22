@@ -31,7 +31,7 @@ pub struct PublicationRawInput {
 }
 
 /// A publication's validated fields for use in database updates
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicationInput {
     pub(crate) title: String,
     pub(crate) publisher: Option<String>,
@@ -165,6 +165,16 @@ impl PublicationRawInput {
             links,
             contents,
         })
+    }
+}
+
+impl PublicationInput {
+    pub(crate) fn contributors_mut(&mut self) -> impl Iterator<Item = &mut ContributorInput> {
+        self.contributors.iter_mut().chain(
+            self.contents
+                .iter_mut()
+                .flat_map(|work| work.contributors.iter_mut()),
+        )
     }
 }
 
@@ -314,8 +324,10 @@ impl Publication {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        let mut input = input.clone();
+        person::create_new_persons(&mut audited, self.library_id, input.contributors_mut()).await?;
         let contents_before = contained_work_ids(&mut audited, self.id).await?;
-        write_publication_children(&mut audited, self.library_id, self.id, input).await?;
+        write_publication_children(&mut audited, self.library_id, self.id, &input).await?;
         work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
             .await?;
         let contents_after = contained_work_ids(&mut audited, self.id).await?;
@@ -598,6 +610,8 @@ pub(crate) async fn create_publication(
     library_id: i64,
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
+    let mut input = input.clone();
+    person::create_new_persons(audited, library_id, input.contributors_mut()).await?;
     let created = sqlx::query!(
         "INSERT INTO publication (library_id, title, publisher, year, stars, note)
          VALUES (?, ?, ?, ?, ?, ?)",
@@ -611,7 +625,7 @@ pub(crate) async fn create_publication(
     .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
-    write_publication_children(audited, library_id, id, input).await?;
+    write_publication_children(audited, library_id, id, &input).await?;
     for content in &input.contents {
         work::create_work_in_publication(audited, library_id, id, content).await?;
     }

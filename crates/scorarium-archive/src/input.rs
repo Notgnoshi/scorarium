@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 use crate::catalog::CatalogNumber;
+use crate::fuzzy::normalize;
 use crate::identifier;
 
 /// Why a field was refused. The [Display] is the message the page shows.
@@ -50,6 +51,8 @@ impl Display for ValidationError {
 pub enum PersonRef {
     /// An existing person, whose stored name the posted name never changes
     Linked(i64),
+    /// A person to create with the typed name, even when a namesake exists
+    New,
     /// Nobody chosen; the name finds or creates a person when the credit is written
     #[default]
     Unresolved,
@@ -74,6 +77,7 @@ pub(crate) fn parse_contributors(
     let mut contributors = Vec::new();
     let mut seen_persons = BTreeSet::new();
     let mut seen_names = BTreeSet::new();
+    let mut seen_new = BTreeSet::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
         .map(|contributor| {
@@ -92,6 +96,7 @@ pub(crate) fn parse_contributors(
             let name_seen = !seen_names.insert((name.to_string(), role.to_string()));
             let person_seen = match contributor.person {
                 PersonRef::Linked(id) => !seen_persons.insert((id, role.to_string())),
+                PersonRef::New => !seen_new.insert((normalize(name), role.to_string())),
                 PersonRef::Unresolved => false,
             };
             if name_seen || person_seen {

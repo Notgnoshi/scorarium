@@ -251,3 +251,51 @@ async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
         .count();
     assert_eq!(saties, 2, "no third Satie was created");
 }
+
+#[tokio::test]
+async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0)
+        .id;
+    let new = |name: &str, role: &str| {
+        let mut credit = contributor(name, role);
+        credit.person = PersonRef::New;
+        credit
+    };
+    let stored = library
+        .create_publication(
+            &publication(
+                "Sports et divertissements",
+                vec![new("Erik Satie", "composer")],
+                vec![
+                    work("Choral inappetissant", vec![new("erik satie", "composer")]),
+                    work("La balancoire", vec![new("erik satie", "composer")]),
+                ],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // One person for the publication and both works, deliberately a namesake of the fixture's
+    let created = stored.contributors[0].person_id;
+    assert_ne!(created, satie);
+    let works = stored.works().await.unwrap();
+    assert_eq!(works[0].contributors[0].person_id, created);
+    assert_eq!(works[1].contributors[0].person_id, created);
+    // The first spelling seen names the person
+    assert_eq!(works[1].contributors[0].name, "Erik Satie");
+    let saties = library
+        .person_names()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|name| name == "Erik Satie")
+        .count();
+    assert_eq!(saties, 2);
+}

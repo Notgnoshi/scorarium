@@ -318,15 +318,18 @@ struct Posted<'a> {
 }
 
 pub fn person_ref(field: &str) -> PersonRef {
-    field
-        .trim()
-        .parse()
-        .map_or(PersonRef::Unresolved, PersonRef::Linked)
+    match field.trim() {
+        "new" => PersonRef::New,
+        field => field
+            .parse()
+            .map_or(PersonRef::Unresolved, PersonRef::Linked),
+    }
 }
 
 pub fn person_field(person: PersonRef) -> String {
     match person {
         PersonRef::Linked(id) => id.to_string(),
+        PersonRef::New => "new".to_string(),
         PersonRef::Unresolved => String::new(),
     }
 }

@@ -48,7 +48,7 @@ pub struct HoldingRawInput {
 }
 
 /// One holding's validated fields
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HoldingInput {
     pub(crate) id: Option<i64>,
     pub(crate) kind: HoldingKind,

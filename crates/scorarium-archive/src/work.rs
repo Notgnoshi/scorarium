@@ -31,7 +31,7 @@ pub struct WorkRawInput {
 }
 
 /// A work's parsed and validated fields
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkInput {
     pub(crate) id: Option<i64>,
     pub(crate) title: String,
@@ -286,6 +286,9 @@ impl Work {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        let mut input = input.clone();
+        person::create_new_persons(&mut audited, self.library_id, input.contributors.iter_mut())
+            .await?;
         write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
             .await?;
         write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
