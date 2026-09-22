@@ -46,6 +46,15 @@ impl Display for ValidationError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PersonRef {
+    /// An existing person, whose stored name the posted name never changes
+    Linked(i64),
+    /// Nobody chosen; the name finds or creates a person when the credit is written
+    #[default]
+    Unresolved,
+}
+
 /// A contributor and their role
 ///
 /// This type is shared between the raw input from the web form and the "validated" contributor type
@@ -53,6 +62,7 @@ impl Display for ValidationError {
 pub struct ContributorInput {
     pub name: String,
     pub role: String,
+    pub person: PersonRef,
 }
 
 /// Check credits, one slot per input
@@ -62,7 +72,8 @@ pub(crate) fn parse_contributors(
     raw: &[ContributorInput],
 ) -> Result<Vec<ContributorInput>, Vec<Option<ValidationError>>> {
     let mut contributors = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen_persons = BTreeSet::new();
+    let mut seen_names = BTreeSet::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
         .map(|contributor| {
@@ -78,12 +89,18 @@ pub(crate) fn parse_contributors(
             if role.is_empty() {
                 return Some(ValidationError::RoleRequired);
             }
-            if !seen.insert((name.to_string(), role.to_string())) {
+            let name_seen = !seen_names.insert((name.to_string(), role.to_string()));
+            let person_seen = match contributor.person {
+                PersonRef::Linked(id) => !seen_persons.insert((id, role.to_string())),
+                PersonRef::Unresolved => false,
+            };
+            if name_seen || person_seen {
                 return Some(ValidationError::AlreadyListed);
             }
             contributors.push(ContributorInput {
                 name: name.to_string(),
                 role: role.to_string(),
+                person: contributor.person,
             });
             None
         })

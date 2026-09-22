@@ -1,6 +1,6 @@
 use scorarium_archive::{
     Action, Archive, ContributorInput, EntityKind, Field, HoldingKind, HoldingRawInput,
-    IdentifierRawInput, PublicationInput, PublicationRawInput, Source, WorkRawInput,
+    IdentifierRawInput, PersonRef, PublicationInput, PublicationRawInput, Source, WorkRawInput,
 };
 
 /// A publication with a copy and an identifier, containing one work whose only composer is "Bach"
@@ -21,6 +21,7 @@ fn goldberg() -> PublicationInput {
             contributors: vec![ContributorInput {
                 name: "Bach".into(),
                 role: "composer".into(),
+                person: PersonRef::Unresolved,
             }],
             ..WorkRawInput::default()
         }],

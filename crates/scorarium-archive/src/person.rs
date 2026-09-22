@@ -4,7 +4,7 @@ use std::sync::Arc;
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
-use crate::input::{self, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
@@ -264,6 +264,26 @@ async fn write_person_links(
         .await?;
     }
     Ok(())
+}
+
+pub(crate) async fn credited_person(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    contributor: &ContributorInput,
+) -> Result<i64> {
+    if let PersonRef::Linked(id) = contributor.person {
+        let found = sqlx::query_scalar!(
+            "SELECT id FROM person WHERE library_id = ? AND id = ?",
+            library_id,
+            id
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        if let Some(id) = found {
+            return Ok(id);
+        }
+    }
+    find_or_create_person(conn, library_id, &contributor.name).await
 }
 
 /// The person with this exact name, created if the library has none

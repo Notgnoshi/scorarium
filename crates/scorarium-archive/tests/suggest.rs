@@ -1,12 +1,13 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, SuggestField,
-    Suggested, Suggestion, WorkRawInput, WorkSummary,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
+    SuggestField, Suggested, Suggestion, WorkRawInput, WorkSummary,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::Unresolved,
     }
 }
 

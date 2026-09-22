@@ -262,6 +262,14 @@ pub struct ShownHolding {
     pub message: String,
 }
 
+pub struct ShownContributor {
+    pub name: String,
+    pub role: String,
+    /// The hidden field's value: the linked person's id, or empty when nobody is linked
+    pub person: String,
+    pub message: String,
+}
+
 /// One work as the publication form shows it: its title, and the one catalog number and the one
 /// contributor the page picks.
 pub struct ShownWork {
@@ -274,6 +282,8 @@ pub struct ShownWork {
     pub more_numbers: String,
     pub name: String,
     pub role: String,
+    /// The hidden field's value: the linked person's id, or empty when nobody is linked
+    pub person: String,
     /// How many contributors the form does not show, empty when it shows them all
     pub more: String,
     pub message: String,
@@ -288,7 +298,7 @@ pub struct FormFields {
     /// The message for having no copies at all, empty when there is one
     pub no_holdings: String,
     pub identifiers: Vec<(IdentifierRawInput, String)>,
-    pub contributors: Vec<(ContributorInput, String)>,
+    pub contributors: Vec<ShownContributor>,
     pub links: Vec<(String, String)>,
     pub works: Vec<ShownWork>,
     pub no_copies_warning: String,
@@ -302,7 +312,7 @@ impl FormFields {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
-            contributors: pair_messages(&input.contributors, &errors.contributors),
+            contributors: shown_contributors(&input.contributors, &errors.contributors),
             links: pair_messages(&input.links, &errors.links),
             works: shown_works(&input.contents, &errors.contents),
             no_copies_warning: String::new(),
@@ -337,7 +347,7 @@ pub struct ShownCatalogNumber {
 pub struct WorkFields {
     pub input: WorkRawInput,
     pub errors: WorkErrors,
-    pub contributors: Vec<(ContributorInput, String)>,
+    pub contributors: Vec<ShownContributor>,
     pub catalog_numbers: Vec<ShownCatalogNumber>,
     pub links: Vec<(String, String)>,
 }
@@ -346,7 +356,7 @@ impl WorkFields {
     /// Everything here comes from the input and its errors, so building a form reads no data
     pub fn build(input: WorkRawInput, errors: WorkErrors) -> Self {
         Self {
-            contributors: pair_messages(&input.contributors, &errors.contributors),
+            contributors: shown_contributors(&input.contributors, &errors.contributors),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             links: pair_messages(&input.links, &errors.links),
             input,
@@ -365,6 +375,22 @@ fn shown_catalog_numbers(
         .map(|(i, value)| ShownCatalogNumber {
             value: value.clone(),
             recognized: CatalogNumber::parse(value).is_recognized(),
+            message: message(errors.get(i).unwrap_or(&None)),
+        })
+        .collect()
+}
+
+fn shown_contributors(
+    contributors: &[ContributorInput],
+    errors: &[Option<ValidationError>],
+) -> Vec<ShownContributor> {
+    contributors
+        .iter()
+        .enumerate()
+        .map(|(i, contributor)| ShownContributor {
+            name: contributor.name.clone(),
+            role: contributor.role.clone(),
+            person: publication_post::person_field(contributor.person),
             message: message(errors.get(i).unwrap_or(&None)),
         })
         .collect()
@@ -413,6 +439,7 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
                 },
                 name: shown.name,
                 role: shown.role,
+                person: publication_post::person_field(shown.person),
                 // A work may credit nobody at all, so say how many are hidden only when any are
                 more: match work.contributors.len() {
                     0 | 1 => String::new(),

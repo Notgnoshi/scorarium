@@ -1,6 +1,6 @@
 use scorarium_archive::{
-    Archive, ContributorInput, Entity, HoldingKind, HoldingRawInput, PublicationRawInput,
-    SearchHit, WorkRawInput,
+    Archive, ContributorInput, Entity, HoldingKind, HoldingRawInput, PersonRef,
+    PublicationRawInput, SearchHit, WorkRawInput,
 };
 
 fn holding(kind: HoldingKind, location: &str) -> HoldingRawInput {
@@ -38,6 +38,7 @@ async fn search_sees_what_the_viewer_sees() {
             contributors: vec![ContributorInput {
                 name: "Frederic Chopin".into(),
                 role: "composer".into(),
+                person: PersonRef::Unresolved,
             }],
             catalog_numbers: vec!["Op. 9 No. 2".into()],
             ..WorkRawInput::default()

@@ -1,7 +1,7 @@
 use crate::catalog::CatalogNumber;
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::identifier::{self, Kind, Normalized};
-use crate::input::ContributorInput;
+use crate::input::{ContributorInput, PersonRef};
 use crate::library::Library;
 use crate::person::PersonRawInput;
 use crate::publication::PublicationInput;
@@ -267,6 +267,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::Unresolved,
     }
 }
 

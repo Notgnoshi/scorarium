@@ -1,5 +1,7 @@
 use scorarium_archive::identifier::{self, Kind};
-use scorarium_archive::{ContributorInput, IdentifierRawInput, Lookup, PublicationRawInput};
+use scorarium_archive::{
+    ContributorInput, IdentifierRawInput, Lookup, PersonRef, PublicationRawInput,
+};
 use scorarium_client::Priority;
 use scorarium_client::open_library::{Author, Edition, OpenLibrary, WorkHit};
 use tokio::time::Instant;
@@ -94,6 +96,7 @@ pub fn to_publication(edition: &Edition, authors: &[Author]) -> PublicationRawIn
             .map(|author| ContributorInput {
                 name: author.name.clone(),
                 role: "author".to_string(),
+                person: PersonRef::Unresolved,
             })
             .collect(),
         links: vec![edition.url()],
@@ -163,10 +166,12 @@ mod tests {
                     ContributorInput {
                         name: "Ludwig van Beethoven".to_string(),
                         role: "author".to_string(),
+                        person: PersonRef::Unresolved,
                     },
                     ContributorInput {
                         name: "Somebody".to_string(),
                         role: "author".to_string(),
+                        person: PersonRef::Unresolved,
                     },
                 ],
                 links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],

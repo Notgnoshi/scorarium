@@ -1,12 +1,13 @@
 use scorarium_archive::{
     Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, NotFound,
-    PublicationRawInput, WorkRawInput, identifier,
+    PersonRef, PublicationRawInput, WorkRawInput, identifier,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::Unresolved,
     }
 }
 
@@ -181,6 +182,21 @@ async fn raw_input_shows_what_was_stored() {
     expected.identifiers[0].value = "978-0-486-23134-1".into();
     expected.identifiers[1].value = "UT 50061".into();
     expected.contents[0].id = Some(contents[0].id);
+    // A stored credit loads linked to whichever person it was written against
+    for (input, stored) in expected
+        .contributors
+        .iter_mut()
+        .zip(&publication.contributors)
+    {
+        input.person = PersonRef::Linked(stored.person_id);
+    }
+    for (input, stored) in expected.contents[0]
+        .contributors
+        .iter_mut()
+        .zip(&contents[0].contributors)
+    {
+        input.person = PersonRef::Linked(stored.person_id);
+    }
 
     assert_eq!(publication.raw_input(&contents), expected);
     assert_eq!(contents[0].raw_input(), expected.contents[0]);

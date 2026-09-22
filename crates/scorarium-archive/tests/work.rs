@@ -1,11 +1,13 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
+    WorkRawInput,
 };
 
 fn composer(name: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: "composer".into(),
+        person: PersonRef::Unresolved,
     }
 }
 
@@ -85,6 +87,7 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
     anthology.contents[0].contributors.push(ContributorInput {
         name: "Sue".into(),
         role: "editor".into(),
+        person: PersonRef::Unresolved,
     });
     let anthology = library
         .create_publication(&anthology.parse().unwrap())

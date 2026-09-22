@@ -26,7 +26,7 @@
         {% if !error.is_empty() %}<div class="invalid-feedback">{{ error }}</div>{% endif %}
     </div>
 {% endmacro %}
-{% macro contributor_row(name, role, error) %}
+{% macro contributor_row(name, role, reference, error) %}
     {# The message names the field at fault, so both inputs share the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -44,6 +44,7 @@
                autocomplete="off"
                placeholder="Role"
                aria-label="Role" />
+        <input type="hidden" name="contributor_person" value="{{ reference }}" />
         <button type="button"
                 class="btn btn-outline-secondary"
                 data-rows-remove
@@ -115,7 +116,7 @@
         </button>
     </fieldset>
 {% endmacro %}
-{% macro work_row(library_id, id, title, catalog_number, recognized, more_numbers, name, role, more, error, edit) %}
+{% macro work_row(library_id, id, title, catalog_number, recognized, more_numbers, name, role, reference, more, error, edit) %}
     {# The message names the field at fault, so every input shares the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
@@ -155,6 +156,7 @@
                autocomplete="off"
                placeholder="Role"
                aria-label="Work contributor role" />
+        <input type="hidden" name="work_contributor_person" value="{{ reference }}" />
         {# The row edits one contributor, so say when the work credits others it leaves alone #}
         {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
         {% if edit.is_draft() %}

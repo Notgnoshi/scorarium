@@ -36,7 +36,7 @@ pub use crate::holding::{
 };
 pub use crate::identifier::{Identifier, IdentifierRawInput};
 pub use crate::import::{Draft, Lookup, PendingImport};
-pub use crate::input::{ContributorInput, ValidationError};
+pub use crate::input::{ContributorInput, PersonRef, ValidationError};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
 pub use crate::person::{

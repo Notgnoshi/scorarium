@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
-use crate::input::{self, ContributorInput, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
@@ -223,6 +223,7 @@ impl Work {
                 .map(|contributor| ContributorInput {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
+                    person: PersonRef::Linked(contributor.person_id),
                 })
                 .collect(),
             catalog_numbers: self
@@ -845,8 +846,7 @@ pub(crate) async fn write_work_contributors(
         .execute(&mut *conn)
         .await?;
     for contributor in contributors {
-        let person_id =
-            person::find_or_create_person(&mut *conn, library_id, &contributor.name).await?;
+        let person_id = person::credited_person(&mut *conn, library_id, contributor).await?;
         sqlx::query!(
             "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
             library_id,
@@ -868,6 +868,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
+            person: PersonRef::Unresolved,
         }
     }
 

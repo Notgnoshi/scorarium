@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, Library, PublicationRawInput, WorkRawInput,
+    ContributorInput, HoldingKind, HoldingRawInput, Library, PersonRef, PublicationRawInput,
+    WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};
 use serde_json::Value;
@@ -21,6 +22,7 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
                 contributors: vec![ContributorInput {
                     name: composer.into(),
                     role: "composer".into(),
+                    person: PersonRef::Unresolved,
                 }],
                 catalog_numbers: vec![(*number).into()],
                 ..WorkRawInput::default()

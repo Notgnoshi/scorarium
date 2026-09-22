@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PublicationRawInput,
-    WorkRawInput,
+    ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef,
+    PublicationRawInput, WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};
 
@@ -253,6 +253,7 @@ async fn publication_edit_flow() {
     let author = ContributorInput {
         name: "Drew Neil".into(),
         role: "author".into(),
+        person: PersonRef::Unresolved,
     };
     let input = PublicationRawInput {
         title: "Practial Vim".into(),
@@ -275,6 +276,7 @@ async fn publication_edit_flow() {
                     ContributorInput {
                         name: "Marion Wenz".into(),
                         role: "translator".into(),
+                        person: PersonRef::Unresolved,
                     },
                 ],
                 ..WorkRawInput::default()
@@ -325,6 +327,8 @@ async fn publication_edit_flow() {
     response.assert_text_contains(format!("name=\"work_id\" value=\"{one}\""));
     response.assert_text_contains("and 1 more");
     response.assert_text_contains("name=\"work_catalog_number\"");
+    response.assert_text_contains(format!("name=\"contributor_person\" value=\"{solo}\""));
+    response.assert_text_contains(format!("name=\"work_contributor_person\" value=\"{solo}\""));
 
     // A rejected submission comes back with its message, having changed nothing
     let response = server
@@ -377,10 +381,12 @@ async fn publication_edit_flow() {
             ("work_title", "Appendix"),
             ("work_catalog_number", ""),
             ("work_catalog_number", "Op. 1"),
-            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_name", "D. Neil"),
             ("work_contributor_name", "Tim Pope"),
             ("work_contributor_role", "author"),
             ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
+            ("work_contributor_person", ""),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -432,7 +438,7 @@ async fn publication_edit_flow() {
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>(),
         ["Drew Neil", "Marion Wenz"],
-        "the contributor the row does not show is left alone"
+        "the linked credit keeps its person and name; the hidden contributor is left alone"
     );
     // Dropped from the publication's contributors but still the author of Chapter 1, so a work
     // credit is enough to keep a person

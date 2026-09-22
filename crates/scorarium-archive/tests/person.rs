@@ -1,12 +1,13 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PublicationRawInput,
-    WorkRawInput,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PersonRef,
+    PublicationRawInput, WorkRawInput,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::Unresolved,
     }
 }
 
@@ -198,4 +199,55 @@ async fn a_role_spans_publications_and_works() {
         names(other.persons_with_role("editor").await.unwrap()),
         ["Drew Neil"]
     );
+}
+
+#[tokio::test]
+async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+    let mut bob = library
+        .persons_with_role("arranger")
+        .await
+        .unwrap()
+        .remove(0);
+    bob.update(
+        &PersonRawInput {
+            name: "Erik Satie".into(),
+            links: Vec::new(),
+        }
+        .parse()
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let mut credit = contributor("E. Satie", "composer");
+    credit.person = PersonRef::Linked(bob.id);
+    let stored = library
+        .create_publication(
+            &publication("Sports et divertissements", vec![credit], Vec::new())
+                .parse()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stored.contributors[0].person_id, bob.id);
+    // The credit shows the stored name: a contributor never renames anyone
+    assert_eq!(stored.contributors[0].name, "Erik Satie");
+    assert_eq!(
+        library.person(satie.id).await.unwrap().unwrap().name,
+        "Erik Satie"
+    );
+    let saties = library
+        .person_names()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|name| name == "Erik Satie")
+        .count();
+    assert_eq!(saties, 2, "no third Satie was created");
 }
