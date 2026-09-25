@@ -330,6 +330,7 @@ async fn publication_edit_flow() {
     response.assert_text_contains(format!("name=\"contributor_person\" value=\"{solo}\""));
     response.assert_text_contains(format!("name=\"work_contributor_person\" value=\"{solo}\""));
     response.assert_text_contains("Practial Vim +2");
+    response.assert_text_contains("data-range-composer-person");
 
     // A rejected submission comes back with its message, having changed nothing
     let response = server

@@ -123,8 +123,12 @@
                        placeholder="Composer"
                        aria-label="Composer"
                        data-suggest="person"
+                       data-suggest-highlight
                        autocomplete="off"
                        data-range-composer />
+                <input type="hidden" value="" data-person-ref data-range-composer-person />
+                {% call person_ref::indicator(crate::router::PersonState::Unresolved) %}
+                {% endcall %}
                 <input class="form-control"
                        placeholder="Op. 28 No."
                        aria-label="Catalog prefix"
@@ -183,6 +187,13 @@
     const range = document.querySelector("[data-range]");
     const field = (name) => range.querySelector(`[data-range-${name}]`);
 
+    const copyPerson = (from, to) => {
+        to.querySelector("[data-person-ref]").value = from.querySelector("[data-person-ref]").value;
+        to.querySelector("[data-person-indicator]").innerHTML =
+            from.querySelector("[data-person-indicator]").innerHTML;
+    };
+    const composerGroup = field("composer").closest(".input-group");
+
     // Only when the publication names one composer, and never over what was typed
     const seedComposer = () => {
         if (field("composer").value.trim()) return;
@@ -191,6 +202,7 @@
         if (composers.length !== 1) return;
         const name = composers[0].closest("[data-row]").querySelector("[name=contributor_name]");
         field("composer").value = name.value.trim();
+        copyPerson(name.closest("[data-row]"), composerGroup);
     };
     seedComposer();
     range.addEventListener("shown.bs.collapse", seedComposer);
@@ -234,9 +246,12 @@
             if (composer) {
                 row.querySelector("[name=work_contributor_name]").value = composer;
                 row.querySelector("[name=work_contributor_role]").value = "composer";
+                copyPerson(composerGroup, row);
             }
         }
         for (const name of ["title", "composer", "prefix", "from", "to"]) field(name).value = "";
+        field("composer-person").value = "";
+        showPerson(field("composer"), "unresolved", "");
         bootstrap.Collapse.getOrCreateInstance(range).hide();
     });
 </script>
