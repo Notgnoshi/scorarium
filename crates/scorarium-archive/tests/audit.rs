@@ -21,7 +21,7 @@ fn goldberg() -> PublicationInput {
             contributors: vec![ContributorInput {
                 name: "Bach".into(),
                 role: "composer".into(),
-                person: PersonRef::Unresolved,
+                person: PersonRef::New,
             }],
             ..WorkRawInput::default()
         }],

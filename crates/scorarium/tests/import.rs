@@ -90,6 +90,8 @@ async fn manual_import_flow() {
             ("identifier_value", ""),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", ""),
+            ("contributor_name", "Erik Satie"),
+            ("contributor_role", "composer"),
         ])
         .await;
     let response = server.get(&review).await;
@@ -100,6 +102,8 @@ async fn manual_import_flow() {
     response.assert_text_contains("invalid ISBN");
     response.assert_text_contains("Fill this in or remove it.");
     response.assert_text_contains("A role is required.");
+    // A credit that names nobody in particular is refused rather than matched by name
+    response.assert_text_contains("Pick a person or create one.");
 
     // Save a draft; the review page and the lists pick up its title
     let response = server
@@ -115,6 +119,7 @@ async fn manual_import_flow() {
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", "composer"),
+            ("contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -187,9 +192,11 @@ async fn manual_import_flow() {
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", "composer"),
+            ("contributor_person", "new"),
             ("work_title", "Gymnopedie No. 1"),
             ("work_contributor_name", "Erik Satie"),
             ("work_contributor_role", "composer"),
+            ("work_contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -204,7 +211,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("Erik Satie");
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
-    // The contributor row creates Satie and the work row finds them again in the same transaction
+    // The publication and its work both ask for a new Satie, and one submission creates one person
     assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
     server
         .get(&review)

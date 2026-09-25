@@ -7,7 +7,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
-        person: PersonRef::Unresolved,
+        person: PersonRef::New,
     }
 }
 

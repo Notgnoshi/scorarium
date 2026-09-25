@@ -871,7 +871,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
-            person: PersonRef::Unresolved,
+            person: PersonRef::New,
         }
     }
 

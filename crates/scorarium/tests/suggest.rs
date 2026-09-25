@@ -22,7 +22,7 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
                 contributors: vec![ContributorInput {
                     name: composer.into(),
                     role: "composer".into(),
-                    person: PersonRef::Unresolved,
+                    person: PersonRef::New,
                 }],
                 catalog_numbers: vec![(*number).into()],
                 ..WorkRawInput::default()

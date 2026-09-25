@@ -718,7 +718,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
-            person: PersonRef::Unresolved,
+            person: PersonRef::New,
         }
     }
 
@@ -759,6 +759,11 @@ mod tests {
                 contributor("Erik Satie", "composer"),
                 contributor("Erik Satie", "composer"),
                 contributor("", ""),
+                ContributorInput {
+                    name: "Erik Satie".into(),
+                    role: "editor".into(),
+                    person: PersonRef::Unresolved,
+                },
             ],
             links: vec!["imslp.org".into()],
             contents: vec![
@@ -800,6 +805,7 @@ mod tests {
                     None,
                     Some(ValidationError::AlreadyListed),
                     Some(ValidationError::FillOrRemove),
+                    Some(ValidationError::PersonRequired),
                 ],
                 links: vec![Some(ValidationError::InvalidUrl)],
                 contents: vec![

@@ -7,7 +7,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
-        person: PersonRef::Unresolved,
+        person: PersonRef::New,
     }
 }
 
@@ -42,35 +42,47 @@ fn publication(
 async fn library() -> (Archive, scorarium_archive::Library) {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Sheet music", false).await.unwrap();
-    for input in [
-        publication(
-            "Three gymnopedies",
-            vec![contributor("Erik Satie", "composer")],
-            vec![work(
-                "Gymnopedie No. 1",
-                vec![
-                    contributor("Erik Satie", "composer"),
-                    contributor("Sue", "editor"),
-                ],
-            )],
-        ),
-        publication(
-            "Gnossiennes",
-            vec![contributor("Bob", "arranger")],
-            vec![work(
-                "Gnossienne No. 1",
-                vec![
-                    contributor("Erik Satie", "composer"),
-                    contributor("Ann", "editor"),
-                ],
-            )],
-        ),
-    ] {
-        library
-            .create_publication(&input.parse().unwrap())
-            .await
-            .unwrap();
-    }
+    library
+        .create_publication(
+            &publication(
+                "Three gymnopedies",
+                vec![contributor("Erik Satie", "composer")],
+                vec![work(
+                    "Gymnopedie No. 1",
+                    vec![
+                        contributor("Erik Satie", "composer"),
+                        contributor("Sue", "editor"),
+                    ],
+                )],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    // The second publication credits the Satie the first one created, so it links him by id
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+    let mut credit = contributor("Erik Satie", "composer");
+    credit.person = PersonRef::Linked(satie.id);
+    library
+        .create_publication(
+            &publication(
+                "Gnossiennes",
+                vec![contributor("Bob", "arranger")],
+                vec![work(
+                    "Gnossienne No. 1",
+                    vec![credit, contributor("Ann", "editor")],
+                )],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
     (archive, library)
 }
 
@@ -285,19 +297,17 @@ async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
         .unwrap()
         .remove(0)
         .id;
-    let new = |name: &str, role: &str| {
-        let mut credit = contributor(name, role);
-        credit.person = PersonRef::New;
-        credit
-    };
     let stored = library
         .create_publication(
             &publication(
                 "Sports et divertissements",
-                vec![new("Erik Satie", "composer")],
+                vec![contributor("Erik Satie", "composer")],
                 vec![
-                    work("Choral inappetissant", vec![new("erik satie", "composer")]),
-                    work("La balancoire", vec![new("erik satie", "composer")]),
+                    work(
+                        "Choral inappetissant",
+                        vec![contributor("erik satie", "composer")],
+                    ),
+                    work("La balancoire", vec![contributor("erik satie", "composer")]),
                 ],
             )
             .parse()

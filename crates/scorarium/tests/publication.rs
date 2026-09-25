@@ -253,7 +253,7 @@ async fn publication_edit_flow() {
     let author = ContributorInput {
         name: "Drew Neil".into(),
         role: "author".into(),
-        person: PersonRef::Unresolved,
+        person: PersonRef::New,
     };
     let input = PublicationRawInput {
         title: "Practial Vim".into(),
@@ -276,7 +276,7 @@ async fn publication_edit_flow() {
                     ContributorInput {
                         name: "Marion Wenz".into(),
                         role: "translator".into(),
-                        person: PersonRef::Unresolved,
+                        person: PersonRef::New,
                     },
                 ],
                 ..WorkRawInput::default()
@@ -376,6 +376,7 @@ async fn publication_edit_flow() {
             ("identifier_value", "978-1-68050-127-8"),
             ("contributor_name", "Tim Pope"),
             ("contributor_role", "editor"),
+            ("contributor_person", "new"),
             // Retitle one chapter, drop the other, and add a work
             ("work_id", &one.to_string()),
             ("work_id", ""),
@@ -388,7 +389,7 @@ async fn publication_edit_flow() {
             ("work_contributor_role", "author"),
             ("work_contributor_role", "author"),
             ("work_contributor_person", &solo.to_string()),
-            ("work_contributor_person", ""),
+            ("work_contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);

@@ -12,6 +12,7 @@ pub enum ValidationError {
     TitleRequired,
     NameRequired,
     RoleRequired,
+    PersonRequired,
     FillOrRemove,
     AlreadyListed,
     YearNotANumber,
@@ -30,6 +31,7 @@ impl Display for ValidationError {
             ValidationError::TitleRequired => write!(f, "A title is required."),
             ValidationError::NameRequired => write!(f, "A name is required."),
             ValidationError::RoleRequired => write!(f, "A role is required."),
+            ValidationError::PersonRequired => write!(f, "Pick a person or create one."),
             ValidationError::FillOrRemove => write!(f, "Fill this in or remove it."),
             ValidationError::AlreadyListed => write!(f, "Already listed."),
             ValidationError::YearNotANumber => write!(f, "The year must be a number."),
@@ -54,7 +56,7 @@ pub enum PersonRef {
     Linked(i64),
     /// A person to create with the typed name, even when a namesake exists
     New,
-    /// Nobody chosen; the name finds or creates a person when the credit is written
+    /// Nobody chosen yet; refused when submitted
     #[default]
     Unresolved,
 }
@@ -93,7 +95,6 @@ pub(crate) fn parse_contributors(
 ) -> Result<Vec<ContributorInput>, Vec<Option<ValidationError>>> {
     let mut contributors = Vec::new();
     let mut seen_persons = BTreeSet::new();
-    let mut seen_names = BTreeSet::new();
     let mut seen_new = BTreeSet::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
@@ -110,13 +111,14 @@ pub(crate) fn parse_contributors(
             if role.is_empty() {
                 return Some(ValidationError::RoleRequired);
             }
-            let name_seen = !seen_names.insert((name.to_string(), role.to_string()));
             let person_seen = match contributor.person {
                 PersonRef::Linked(id) => !seen_persons.insert((id, role.to_string())),
                 PersonRef::New => !seen_new.insert((normalize(name), role.to_string())),
-                PersonRef::Unresolved => false,
+                // Which namesake a bare name means is the user's choice, not the parser's
+                PersonRef::Unresolved => return Some(ValidationError::PersonRequired),
             };
-            if name_seen || person_seen {
+            // A credit repeats another only when it names the same person in the same role.
+            if person_seen {
                 return Some(ValidationError::AlreadyListed);
             }
             contributors.push(ContributorInput {

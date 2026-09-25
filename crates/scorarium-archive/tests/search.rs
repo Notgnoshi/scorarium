@@ -38,7 +38,7 @@ async fn search_sees_what_the_viewer_sees() {
             contributors: vec![ContributorInput {
                 name: "Frederic Chopin".into(),
                 role: "composer".into(),
-                person: PersonRef::Unresolved,
+                person: PersonRef::New,
             }],
             catalog_numbers: vec!["Op. 9 No. 2".into()],
             ..WorkRawInput::default()
