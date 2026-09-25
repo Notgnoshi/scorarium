@@ -85,6 +85,7 @@ enum Data {
         title: String,
         contributor: Option<String>,
         role: Option<String>,
+        contributor_id: Option<i64>,
         numbers: Vec<String>,
         /// Whether the number a pick puts in the catalog input uses a known scheme
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -257,6 +258,7 @@ fn item(entity: Entity, exact: bool) -> FieldMatch {
                 reference: Reference::Local { id: work.id },
                 title: work.title,
                 contributor: work.contributor.as_ref().map(|person| person.name.clone()),
+                contributor_id: work.contributor.as_ref().map(|person| person.person_id),
                 role: work.contributor.map(|person| person.role),
                 // A title pick puts the work's first number in the catalog input
                 recognized: work

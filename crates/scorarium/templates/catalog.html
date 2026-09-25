@@ -15,6 +15,13 @@
     <script>
         // Glue between the generic suggestion component and the special cases for catalog numbers.
 
+        // The person glue's link needs a match; a work pick has only the id, and shows no credit
+        function creditPerson(input, id) {
+            if (id === null) return;
+            referenceOf(input).value = id;
+            showPerson(input, "linked", "");
+        }
+
         function composerOf(input) {
             const row = input.closest("[data-row]");
             const own = row?.querySelector("[name=work_contributor_name]");
@@ -40,7 +47,7 @@
                 "bi bi-question-circle text-body-secondary";
         }
 
-        function creditContributor(input, name, role) {
+        function creditContributor(input, name, role, id) {
             const row = input.closest("[data-row]");
             const own = row?.querySelector("[name=work_contributor_name]");
             if (own) {
@@ -48,6 +55,7 @@
                 own.value = name;
                 const field = row.querySelector("[name=work_contributor_role]");
                 if (field && !field.value.trim()) field.value = role;
+                creditPerson(own, id);
                 return;
             }
             const credits = input.form.querySelector("[data-contributors]");
@@ -61,6 +69,7 @@
                 credits.querySelector("[data-rows-list] [data-row]:last-child"));
             target.querySelector("[name=contributor_name]").value = name;
             target.querySelector("[name=contributor_role]").value = role;
+            creditPerson(target.querySelector("[name=contributor_name]"), id);
         }
 
         function takeTitle(input, title) {
@@ -93,7 +102,7 @@
             const match = e.detail;
             if (!e.target.matches("[data-suggest]") || match.kind !== "work") return;
             takeTitle(e.target, match.title);
-            if (match.contributor) creditContributor(e.target, match.contributor, match.role);
+            if (match.contributor) creditContributor(e.target, match.contributor, match.role, match.contributor_id);
             const number = numberInputOf(e.target);
             if (number && !number.value.trim() && match.numbers.length) number.value = match.numbers[0];
             if (number && match.recognized !== undefined) showRecognized(number, match.recognized);

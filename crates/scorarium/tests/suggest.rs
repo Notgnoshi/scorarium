@@ -214,6 +214,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
     assert_eq!(first["title"], "Nocturne in E-flat major");
     assert_eq!(first["contributor"], "Frederic Chopin");
     assert_eq!(first["role"], "composer");
+    assert!(first["contributor_id"].is_number());
 
     // A title is not a number, but it still finds the numbers of the works carrying it
     let body: Value = server.get(&route("q=nocturne")).await.json();
