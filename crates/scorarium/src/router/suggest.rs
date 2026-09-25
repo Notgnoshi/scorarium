@@ -18,9 +18,9 @@ use crate::enrich::open_library;
 pub struct FieldQuery {
     #[serde(default)]
     q: String,
-    /// work-number only: the composer input of the same work, resolved by the archive
+    /// for work-number only: the person id the work's contributor is linked to
     composer: Option<String>,
-    /// tag only: comma-separated tags already picked
+    /// for tag only: comma-separated tags already picked
     exclude: Option<String>,
     #[serde(default)]
     source: Source,
@@ -120,9 +120,7 @@ pub async fn field(
     let composer = query
         .composer
         .as_deref()
-        .map(str::trim)
-        .filter(|composer| !composer.is_empty())
-        .map(str::to_string);
+        .and_then(|composer| composer.trim().parse().ok());
     let field = match kind.as_str() {
         "person" => SuggestField::Person,
         "work" => SuggestField::Work,

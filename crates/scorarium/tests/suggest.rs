@@ -6,8 +6,10 @@ use scorarium_archive::{
 use scorarium_tests::{TestDb, browser, demo_login};
 use serde_json::Value;
 
-/// A publication whose works are all credited to one composer, as (title, catalog number)
-async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str, &str)]) {
+/// A publication whose works are all credited to one composer, as (title, catalog number).
+///
+/// Returns the composer's person id.
+async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str, &str)]) -> i64 {
     let input = PublicationRawInput {
         title: title.into(),
         holdings: vec![HoldingRawInput {
@@ -30,10 +32,17 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
             .collect(),
         ..PublicationRawInput::default()
     };
+    // Every work above is credited to the same composer, so whichever work comes back first,
+    // its contributor is the id to return; the publication itself has no credits of its own.
     library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .works()
+        .await
+        .unwrap()[0]
+        .contributors[0]
+        .person_id
 }
 
 #[tokio::test]
@@ -188,7 +197,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
         &[("Nocturne in E-flat major", "Op. 9 No. 2")],
     )
     .await;
-    publish(
+    let beethoven = publish(
         &library,
         "Sonatas",
         "Ludwig van Beethoven",
@@ -223,7 +232,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
 
     // The neighbouring composer input narrows the numbers to that composer's works
     let body: Value = server
-        .get(&route("q=no%202&composer=Ludwig%20van%20Beethoven"))
+        .get(&route(&format!("q=no%202&composer={beethoven}")))
         .await
         .json();
     let values: Vec<&str> = body["matches"]

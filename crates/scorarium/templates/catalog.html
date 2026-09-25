@@ -24,12 +24,14 @@
 
         function composerOf(input) {
             const row = input.closest("[data-row]");
-            const own = row?.querySelector("[name=work_contributor_name]");
-            if (own) return own.value.trim();
-            const role = [...input.form.querySelectorAll("[name=contributor_role]")]
-                .find((role) => role.value.trim().toLowerCase() === "composer");
-            const name = role?.closest("[data-row]").querySelector("[name=contributor_name]");
-            return name ? name.value.trim() : "";
+            let name = row?.querySelector("[name=work_contributor_name]");
+            if (!name) {
+                const role = [...input.form.querySelectorAll("[name=contributor_role]")]
+                    .find((role) => role.value.trim().toLowerCase() === "composer");
+                name = role?.closest("[data-row]").querySelector("[name=contributor_name]");
+            }
+            const reference = name && referenceOf(name)?.value;
+            return /^\d+$/.test(reference ?? "") ? reference : "";
         }
 
         function showRecognized(input, recognized) {

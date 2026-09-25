@@ -13,7 +13,7 @@ use crate::{Result, person, tag};
 pub enum SuggestField {
     Person,
     Work,
-    WorkNumber { composer: Option<String> },
+    WorkNumber { composer: Option<i64> },
     Publication,
     Role,
     Publisher,
@@ -114,17 +114,7 @@ pub(crate) async fn suggest(
             )
         }
         SuggestField::WorkNumber { composer } => {
-            // The composer is matched by an exact name and never fuzzily; guessing wrong would
-            // silently offer one composer's numbers while the user reads another's name.
-            let credited_to = match &composer {
-                Some(name) => summary::persons(conn, Some(library_id), false, None, None)
-                    .await?
-                    .into_iter()
-                    .find(|person| is_exact(name, &person.summary.name))
-                    .map(|person| person.summary.id),
-                None => None,
-            };
-            let works = summary::works(conn, Some(library_id), false, credited_to)
+            let works = summary::works(conn, Some(library_id), false, composer)
                 .await?
                 .into_iter()
                 .map(|found| found.summary)

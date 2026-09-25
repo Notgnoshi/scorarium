@@ -277,10 +277,18 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
         ],
         ..PublicationRawInput::default()
     };
-    library
+    // Every work above is credited to Rachmaninoff, so whichever work comes back first, its
+    // contributor is the id the filter should narrow to; the publication itself has no credits
+    // of its own to read the id from.
+    let rachmaninoff = library
         .create_publication(&rachmaninoff.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .works()
+        .await
+        .unwrap()[0]
+        .contributors[0]
+        .person_id;
 
     let numbers = |suggestions: &[Suggestion]| -> Vec<(bool, String, String)> {
         suggestions
@@ -294,15 +302,9 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
             })
             .collect()
     };
-    let suggest = async |typed: &str, composer: Option<&str>| {
+    let suggest = async |typed: &str, composer: Option<i64>| {
         library
-            .suggest(
-                SuggestField::WorkNumber {
-                    composer: composer.map(str::to_string),
-                },
-                typed,
-                false,
-            )
+            .suggest(SuggestField::WorkNumber { composer }, typed, false)
             .await
             .unwrap()
     };
@@ -341,12 +343,9 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
         .collect();
     seconds.sort();
     assert_eq!(seconds, ["Op. 27 No. 2", "Op. 3 No. 2", "Op. 9 No. 2"]);
-    // A composer nobody answers to narrows nothing
-    assert_eq!(
-        numbers(&suggest("no 2", Some("rachmaninof")).await).len(),
-        3
-    );
-    let narrowed: Vec<String> = numbers(&suggest("no 2", Some("sergei rachmaninoff")).await)
+    // A composer nobody answers to has no numbers to offer
+    assert!(numbers(&suggest("no 2", Some(-1)).await).is_empty());
+    let narrowed: Vec<String> = numbers(&suggest("no 2", Some(rachmaninoff)).await)
         .into_iter()
         .map(|(_, number, _)| number)
         .collect();
