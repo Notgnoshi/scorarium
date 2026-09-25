@@ -14,7 +14,7 @@ use tokio::time::Instant;
 use super::work::WorkPost;
 use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
-    WorkFields, age,
+    WorkFields, age, linked_summaries,
 };
 use crate::AppState;
 use crate::enrich::{self, open_library};
@@ -220,6 +220,15 @@ pub async fn review(
     } else {
         PublicationErrors::default()
     };
+    let credited = draft.input.contributors.iter().chain(
+        draft
+            .input
+            .contents
+            .iter()
+            .flat_map(|work| &work.contributors),
+    );
+    let persons = linked_summaries(&library, credited.map(|c| c.person)).await?;
+    let names = library.person_names().await?;
     let page = ReviewPage {
         base: base.page(
             title,
@@ -231,7 +240,8 @@ pub async fn review(
         ),
         age: age(import.created_at),
         lookup: draft.lookup,
-        fields: FormFields::build(draft.input, errors).edit_works(WorkEdit::Draft),
+        fields: FormFields::build(draft.input, errors, &persons, &names)
+            .edit_works(WorkEdit::Draft),
         library,
         import,
     };
@@ -323,6 +333,8 @@ pub async fn work(
     } else {
         input.title.clone()
     };
+    let persons = linked_summaries(&library, input.contributors.iter().map(|c| c.person)).await?;
+    let names = library.person_names().await?;
     let page = ImportWorkPage {
         base: base.page(
             title,
@@ -333,7 +345,7 @@ pub async fn work(
                 Crumb::import_review(&import, &label(&import, &draft.input)),
             ],
         ),
-        fields: WorkFields::build(input, errors),
+        fields: WorkFields::build(input, errors, &persons, &names),
         work_id,
         library,
         import,

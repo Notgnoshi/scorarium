@@ -6,7 +6,9 @@ use axum::extract::{Path, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{Library, Publication, PublicationErrors, PublicationRawInput, Work};
 
-use super::{AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit};
+use super::{
+    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit, linked_summaries,
+};
 use crate::AppState;
 use crate::publication_post::PublicationPost;
 
@@ -136,7 +138,13 @@ async fn render_edit(
     input: PublicationRawInput,
     errors: PublicationErrors,
 ) -> Result<Response, AppError> {
-    let fields = FormFields::build(input, errors)
+    let credited = input
+        .contributors
+        .iter()
+        .chain(input.contents.iter().flat_map(|work| &work.contributors));
+    let persons = linked_summaries(&library, credited.map(|c| c.person)).await?;
+    let names = library.person_names().await?;
+    let fields = FormFields::build(input, errors, &persons, &names)
         .warn_when_empty(NO_COPIES)
         // A work's edit button opens the work, which comes back here when it is done
         .edit_works(WorkEdit::Stored {

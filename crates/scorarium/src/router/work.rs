@@ -6,7 +6,10 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
-use super::{AppError, BackQuery, BaseContext, Crumb, OrNotFound, Session, WorkFields, back_or};
+use super::{
+    AppError, BackQuery, BaseContext, Crumb, OrNotFound, Session, WorkFields, back_or,
+    linked_summaries,
+};
 use crate::{AppState, publication_post};
 
 #[derive(Template)]
@@ -172,7 +175,9 @@ async fn render_edit(
     input: WorkRawInput,
     errors: WorkErrors,
 ) -> Result<Response, AppError> {
-    let fields = WorkFields::build(input, errors);
+    let persons = linked_summaries(&library, input.contributors.iter().map(|c| c.person)).await?;
+    let names = library.person_names().await?;
+    let fields = WorkFields::build(input, errors, &persons, &names);
     let page = EditPage {
         base: base.page(
             work.title.clone(),

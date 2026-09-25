@@ -109,6 +109,30 @@ async fn publications_union_direct_and_work_credits() {
 }
 
 #[tokio::test]
+async fn a_summary_describes_the_person_asked_for() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+
+    // He is credited on both publications and on a work of each, and the direct credit leads
+    let summary = library.person_summary(satie.id).await.unwrap().unwrap();
+    assert_eq!(
+        (summary.id, summary.name, summary.title, summary.others),
+        (
+            satie.id,
+            "Erik Satie".to_string(),
+            "Three gymnopedies".to_string(),
+            2
+        )
+    );
+
+    assert!(library.person_summary(9999).await.unwrap().is_none());
+}
+
+#[tokio::test]
 async fn an_edit_renames_and_relinks() {
     let (_archive, library) = library().await;
     let mut satie = library

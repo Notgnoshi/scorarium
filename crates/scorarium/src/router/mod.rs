@@ -11,6 +11,7 @@ mod suggest;
 mod tag;
 mod work;
 
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,8 +25,8 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Person, Publication, PublicationErrors, PublicationRawInput,
-    ValidationError, Work, WorkErrors, WorkRawInput,
+    NotFound, PendingImport, Person, PersonRef, PersonSummary, Publication, PublicationErrors,
+    PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput, same_name,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -267,7 +268,17 @@ pub struct ShownContributor {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    pub state: PersonState,
     pub message: String,
+}
+
+pub enum PersonState {
+    /// The person is linked to an existing person in the database, and one of that person's works
+    Linked(String),
+    New,
+    /// New, and a person by this name already exists
+    Namesake,
+    Unresolved,
 }
 
 /// One work as the publication form shows it: its title, and the one catalog number and the one
@@ -284,6 +295,7 @@ pub struct ShownWork {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    pub state: PersonState,
     /// How many contributors the form does not show, empty when it shows them all
     pub more: String,
     pub message: String,
@@ -306,15 +318,24 @@ pub struct FormFields {
 }
 
 impl FormFields {
-    /// Everything here comes from the input and its errors, so building a form reads no data
-    pub fn build(input: PublicationRawInput, errors: PublicationErrors) -> Self {
+    pub fn build(
+        input: PublicationRawInput,
+        errors: PublicationErrors,
+        persons: &[PersonSummary],
+        names: &[String],
+    ) -> Self {
         Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
             no_holdings: message(&errors.holdings.none),
             identifiers: pair_messages(&input.identifiers, &errors.identifiers),
-            contributors: shown_contributors(&input.contributors, &errors.contributors),
+            contributors: shown_contributors(
+                &input.contributors,
+                &errors.contributors,
+                persons,
+                names,
+            ),
             links: pair_messages(&input.links, &errors.links),
-            works: shown_works(&input.contents, &errors.contents),
+            works: shown_works(&input.contents, &errors.contents, persons, names),
             no_copies_warning: String::new(),
             work_edit: WorkEdit::default(),
             input,
@@ -353,10 +374,19 @@ pub struct WorkFields {
 }
 
 impl WorkFields {
-    /// Everything here comes from the input and its errors, so building a form reads no data
-    pub fn build(input: WorkRawInput, errors: WorkErrors) -> Self {
+    pub fn build(
+        input: WorkRawInput,
+        errors: WorkErrors,
+        persons: &[PersonSummary],
+        names: &[String],
+    ) -> Self {
         Self {
-            contributors: shown_contributors(&input.contributors, &errors.contributors),
+            contributors: shown_contributors(
+                &input.contributors,
+                &errors.contributors,
+                persons,
+                names,
+            ),
             catalog_numbers: shown_catalog_numbers(&input.catalog_numbers, &errors.catalog_numbers),
             links: pair_messages(&input.links, &errors.links),
             input,
@@ -383,17 +413,78 @@ fn shown_catalog_numbers(
 fn shown_contributors(
     contributors: &[ContributorInput],
     errors: &[Option<ValidationError>],
+    persons: &[PersonSummary],
+    names: &[String],
 ) -> Vec<ShownContributor> {
     contributors
         .iter()
         .enumerate()
-        .map(|(i, contributor)| ShownContributor {
-            name: contributor.name.clone(),
-            role: contributor.role.clone(),
-            person: publication_post::person_field(contributor.person),
-            message: message(errors.get(i).unwrap_or(&None)),
+        .map(|(i, contributor)| {
+            shown_contributor(
+                contributor,
+                persons,
+                names,
+                message(errors.get(i).unwrap_or(&None)),
+            )
         })
         .collect()
+}
+
+fn shown_contributor(
+    contributor: &ContributorInput,
+    persons: &[PersonSummary],
+    names: &[String],
+    message: String,
+) -> ShownContributor {
+    let linked = match contributor.person {
+        PersonRef::Linked(id) => persons.iter().find(|person| person.id == id),
+        _ => None,
+    };
+    let (person, name, state) = match (contributor.person, linked) {
+        (PersonRef::Linked(_), Some(found)) => (
+            contributor.person,
+            found.name.clone(),
+            PersonState::Linked(search::person_credit(found)),
+        ),
+        (PersonRef::New, _) => (
+            PersonRef::New,
+            contributor.name.clone(),
+            if names.iter().any(|name| same_name(name, &contributor.name)) {
+                PersonState::Namesake
+            } else {
+                PersonState::New
+            },
+        ),
+        _ => (
+            PersonRef::Unresolved,
+            contributor.name.clone(),
+            PersonState::Unresolved,
+        ),
+    };
+    ShownContributor {
+        name,
+        role: contributor.role.clone(),
+        person: publication_post::person_field(person),
+        state,
+        message,
+    }
+}
+
+async fn linked_summaries(
+    library: &Library,
+    contributors: impl Iterator<Item = PersonRef>,
+) -> Result<Vec<PersonSummary>, AppError> {
+    let ids: BTreeSet<i64> = contributors
+        .filter_map(|person| match person {
+            PersonRef::Linked(id) => Some(id),
+            _ => None,
+        })
+        .collect();
+    let mut persons = Vec::with_capacity(ids.len());
+    for id in ids {
+        persons.extend(library.person_summary(id).await?);
+    }
+    Ok(persons)
 }
 
 fn shown_holdings(
@@ -412,7 +503,12 @@ fn shown_holdings(
         .collect()
 }
 
-fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWork> {
+fn shown_works(
+    contents: &[WorkRawInput],
+    errors: &[WorkErrors],
+    persons: &[PersonSummary],
+    names: &[String],
+) -> Vec<ShownWork> {
     let no_errors = WorkErrors::default();
     contents
         .iter()
@@ -427,6 +523,7 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
             let number = lead_number
                 .map(|i| work.catalog_numbers[i].clone())
                 .unwrap_or_default();
+            let credit = shown_contributor(&shown, persons, names, String::new());
             ShownWork {
                 id: work.id.map(|id| id.to_string()).unwrap_or_default(),
                 title: work.title.clone(),
@@ -437,9 +534,10 @@ fn shown_works(contents: &[WorkRawInput], errors: &[WorkErrors]) -> Vec<ShownWor
                     0 | 1 => String::new(),
                     numbered => (numbered - 1).to_string(),
                 },
-                name: shown.name,
-                role: shown.role,
-                person: publication_post::person_field(shown.person),
+                name: credit.name,
+                role: credit.role,
+                person: credit.person,
+                state: credit.state,
                 // A work may credit nobody at all, so say how many are hidden only when any are
                 more: match work.contributors.len() {
                     0 | 1 => String::new(),

@@ -1,5 +1,6 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
+{% import "person_ref.html" as person_ref %}
 {% import "stars.html" as stars %}
 {% import "tags.html" as tags %}
 {% call stars::style() %}
@@ -80,12 +81,12 @@
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
             {% for row in fields.contributors %}
-                {% call rows::contributor_row(row.name, row.role, row.person, row.message) %}
+                {% call rows::contributor_row(row.name, row.role, row.person, row.state, row.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::contributor_row("", "", "", "") %}
+            {% call rows::contributor_row("", "", "", crate::router::PersonState::Unresolved, "") %}
             {% endcall %}
         </template>
         <button type="button"
@@ -99,6 +100,8 @@
 {% call rows::script() %}
 {% endcall %}
 {% call catalog::script() %}
+{% endcall %}
+{% call person_ref::script() %}
 {% endcall %}
 {% call stars::script() %}
 {% endcall %}

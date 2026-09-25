@@ -1,0 +1,88 @@
+{% macro indicator(state) %}
+    <span class="input-group-text" data-person-indicator>
+        {% match state %}
+        {% when crate::router::PersonState::Linked(credit) %}
+        <i class="bi bi-person" aria-hidden="true"></i>
+        <span class="text-truncate">{{ credit }}</span>
+        {% when crate::router::PersonState::New %}
+        <span>New</span>
+        {% when crate::router::PersonState::Namesake %}
+        <span class="text-warning">New</span>
+        {% when crate::router::PersonState::Unresolved %}
+        <i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>
+{% endmatch %}
+</span>
+{% endmacro %}
+{% macro script() %}
+    <script>
+        // Glue between the generic suggestion component and a contributor's person reference.
+
+        // The hidden reference field of a person input, or null for a name input that has none
+        function referenceOf(input) {
+            return input.closest(".input-group")?.querySelector("[data-person-ref]");
+        }
+
+        function showPerson(input, state, text) {
+            const span = input.closest(".input-group").querySelector("[data-person-indicator]");
+            if (state === "linked") {
+                span.innerHTML = '<i class="bi bi-person" aria-hidden="true"></i> <span class="text-truncate"></span>';
+                span.lastElementChild.textContent = text;
+            } else if (state === "new") {
+                span.innerHTML = "<span>New</span>";
+                span.firstElementChild.className = text ? "text-warning" : "";
+            } else {
+                span.innerHTML = '<i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>';
+            }
+        }
+
+        function link(input, match) {
+            referenceOf(input).value = match.reference.id;
+            showPerson(input, "linked", match.secondary);
+        }
+
+        document.addEventListener("suggest:matches", (e) => {
+            if (!e.target.matches('[data-suggest="person"]') || !referenceOf(e.target)) return;
+            const q = e.target.value.trim();
+            const exact = e.detail.matches.filter((match) => match.exact);
+            e.target.exactMatches = {
+                q,
+                matches: exact
+            };
+            if (!q) return;
+            e.detail.matches.push({
+                kind: "create",
+                value: q,
+                primary: `Create new person '${q}'`,
+                secondary: exact.length ? `another ${exact[0].primary} already exists` : "",
+            });
+        });
+
+        document.addEventListener("suggest:pick", (e) => {
+            if (!e.target.matches('[data-suggest="person"]') || !referenceOf(e.target)) return;
+            const match = e.detail;
+            if (match.kind === "person") {
+                link(e.target, match);
+            } else if (match.kind === "create") {
+                referenceOf(e.target).value = "new";
+                showPerson(e.target, "new", match.secondary);
+            }
+        });
+
+        document.addEventListener("input", (e) => {
+            if (!e.isTrusted || !e.target.matches('[data-suggest="person"]') || !referenceOf(e.target)) return;
+            referenceOf(e.target).value = "";
+            showPerson(e.target, "unresolved", "");
+        });
+
+        document.addEventListener("focusout", (e) => {
+            const input = e.target;
+            if (!input.matches('[data-suggest="person"]') || !referenceOf(input)) return;
+            const remembered = input.exactMatches;
+            if (referenceOf(input).value || !remembered || remembered.q !== input.value.trim()) return;
+            if (remembered.matches.length === 1) {
+                input.value = remembered.matches[0].value;
+                link(input, remembered.matches[0]);
+            }
+        });
+    </script>
+{% endmacro %}

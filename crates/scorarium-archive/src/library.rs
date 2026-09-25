@@ -246,8 +246,15 @@ impl Library {
     /// Everyone credited here, or with `role` when given, by sort name
     pub async fn person_summaries(&self, role: Option<&str>) -> Result<Vec<PersonSummary>> {
         let mut conn = self.archive.acquire_read().await?;
-        let persons = summary::persons(&mut conn, Some(self.id), false, role).await?;
+        let persons = summary::persons(&mut conn, Some(self.id), false, role, None).await?;
         Ok(persons.into_iter().map(|found| found.summary).collect())
+    }
+
+    /// The summary of one person here, or nothing when no such person is in this library
+    pub async fn person_summary(&self, id: i64) -> Result<Option<PersonSummary>> {
+        let mut conn = self.archive.acquire_read().await?;
+        let persons = summary::persons(&mut conn, Some(self.id), false, None, Some(id)).await?;
+        Ok(persons.into_iter().next().map(|found| found.summary))
     }
 
     /// The distinct roles credited anywhere in the library, sorted, for input suggestions

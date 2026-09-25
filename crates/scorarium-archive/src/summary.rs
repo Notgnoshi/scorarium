@@ -4,6 +4,7 @@ use sqlx::SqliteConnection;
 
 use crate::Result;
 use crate::catalog::CatalogNumber;
+use crate::fuzzy::normalize;
 use crate::holding::HoldingKind;
 use crate::person::{Contributor, credit_priority};
 
@@ -36,6 +37,11 @@ pub struct PersonSummary {
     pub title: String,
     /// The number of other publications and works credited, in any role
     pub others: i64,
+}
+
+/// Whether two names are the same, up to normalization
+pub fn same_name(one: &str, other: &str) -> bool {
+    normalize(one) == normalize(other)
 }
 
 /// Where a summary came from, since search spans libraries
@@ -206,6 +212,7 @@ pub(crate) async fn persons(
     library: Option<i64>,
     public_only: bool,
     role: Option<&str>,
+    person: Option<i64>,
 ) -> Result<Vec<InLibrary<PersonSummary>>> {
     let credits = sqlx::query!(
         r#"SELECT per.id AS "person_id!", per.name AS "name!",
@@ -222,10 +229,12 @@ pub(crate) async fn persons(
              AND (?3 IS NULL
                   OR per.id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)
                   OR per.id IN (SELECT person_id FROM work_contributor WHERE role = ?3))
+             AND (?4 IS NULL OR per.id = ?4)
            ORDER BY l.name, per.sort_name, per.id"#,
         library,
         public_only,
-        role
+        role,
+        person
     )
     .fetch_all(conn)
     .await?;
