@@ -37,6 +37,7 @@ function openMenu(input, matches) {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "dropdown-item";
+        item.title = match.secondary ? `${match.primary}\n${match.secondary}` : match.primary;
         // The badge shares the name's line so a long name truncates around it rather than displacing it
         const named = document.createElement("div");
         named.className = "d-flex gap-2 align-items-center";
