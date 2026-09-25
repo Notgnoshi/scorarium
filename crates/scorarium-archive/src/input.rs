@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 use crate::catalog::CatalogNumber;
 use crate::fuzzy::normalize;
 use crate::identifier;
+use crate::summary::{PersonSummary, same_name};
 
 /// Why a field was refused. The [Display] is the message the page shows.
 #[derive(Debug, PartialEq, Eq)]
@@ -66,6 +67,22 @@ pub struct ContributorInput {
     pub name: String,
     pub role: String,
     pub person: PersonRef,
+}
+
+impl ContributorInput {
+    pub fn resolve_by_name(&mut self, persons: &[PersonSummary]) {
+        if self.person != PersonRef::Unresolved {
+            return;
+        }
+        let mut namesakes = persons
+            .iter()
+            .filter(|person| same_name(&person.name, &self.name));
+        self.person = match (namesakes.next(), namesakes.next()) {
+            (None, _) => PersonRef::New,
+            (Some(person), None) => PersonRef::Linked(person.id),
+            (Some(_), Some(_)) => PersonRef::Unresolved,
+        };
+    }
 }
 
 /// Check credits, one slot per input
@@ -192,6 +209,43 @@ pub(crate) fn trimmed_or_none(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::summary::PersonSummary;
+
+    #[test]
+    fn a_name_resolves_only_when_it_matches_one_person() {
+        let person = |id: i64, name: &str| PersonSummary {
+            id,
+            name: name.into(),
+            title: String::new(),
+            others: 0,
+        };
+        let persons = [person(1, "Erik Satie"), person(2, "Sue"), person(3, "Sue")];
+        let contributor = |name: &str, person: PersonRef| ContributorInput {
+            name: name.into(),
+            role: "composer".into(),
+            person,
+        };
+        let mut contributors = [
+            contributor("erik satie", PersonRef::Unresolved),
+            contributor("Sue", PersonRef::Unresolved),
+            contributor("Nobody", PersonRef::Unresolved),
+            // Already resolved: left alone, even though a namesake exists
+            contributor("Erik Satie", PersonRef::New),
+        ];
+        for contributor in &mut contributors {
+            contributor.resolve_by_name(&persons);
+        }
+        let resolved: Vec<PersonRef> = contributors.iter().map(|c| c.person).collect();
+        assert_eq!(
+            resolved,
+            [
+                PersonRef::Linked(1),
+                PersonRef::Unresolved,
+                PersonRef::New,
+                PersonRef::New,
+            ]
+        );
+    }
 
     #[test]
     fn links_are_normalized_and_checked() {

@@ -180,6 +180,11 @@ pub async fn start(
         if let Some(found) = found {
             enrich::merge(&mut draft, found);
         }
+        // Resolved once, here, so the review page opens with its authors already picked
+        let persons = library.person_summaries(None).await?;
+        for contributor in &mut draft.contributors {
+            contributor.resolve_by_name(&persons);
+        }
         import.save_draft(draft);
         import.record_lookup(lookup);
     }
