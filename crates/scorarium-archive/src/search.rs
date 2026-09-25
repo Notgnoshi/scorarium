@@ -33,6 +33,17 @@ pub(crate) async fn search(
     let publication_text = texts_of_publications(conn, public_only).await?;
     let work_text = texts_of_works(conn, public_only).await?;
     let mut candidates: Vec<(SearchHit, String)> = Vec::new();
+    for found in summary::persons(conn, None, public_only, None, None).await? {
+        let text = found.summary.name.clone();
+        candidates.push((
+            hit(
+                found.library_id,
+                found.library_name,
+                Entity::Person(found.summary),
+            ),
+            text,
+        ));
+    }
     for found in summary::publications(conn, None, public_only).await? {
         let text = publication_text
             .get(&found.summary.id)
@@ -63,17 +74,6 @@ pub(crate) async fn search(
                 found.library_id,
                 found.library_name,
                 Entity::Work(found.summary),
-            ),
-            text,
-        ));
-    }
-    for found in summary::persons(conn, None, public_only, None, None).await? {
-        let text = found.summary.name.clone();
-        candidates.push((
-            hit(
-                found.library_id,
-                found.library_name,
-                Entity::Person(found.summary),
             ),
             text,
         ));

@@ -88,8 +88,8 @@ async fn search_sees_what_the_viewer_sees() {
     assert_eq!(
         shown(&archive.search("chopin", false).await.unwrap()),
         [
-            ("Sheet music", "work", "Nocturne"),
-            ("Sheet music", "person", "Frederic Chopin")
+            ("Sheet music", "person", "Frederic Chopin"),
+            ("Sheet music", "work", "Nocturne")
         ]
     );
     // The typeahead reads titles alone, so a composer's name finds nothing there
