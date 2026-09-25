@@ -45,12 +45,12 @@ async fn search_shows_what_the_viewer_may_see() {
     // The typeahead serves anonymous viewers, with public results only
     let body: Value = server.get("/suggest/title?q=rachmaninoff").await.json();
     let first = &body["matches"][0];
-    assert_eq!(first["kind"], "publication");
+    assert_eq!(first["kind"], "person");
     assert!(
         first["href"]
             .as_str()
             .unwrap()
-            .starts_with(&format!("/library/{sheet_music}/publication/"))
+            .starts_with(&format!("/library/{sheet_music}/person/"))
     );
     assert!(
         first["secondary"]

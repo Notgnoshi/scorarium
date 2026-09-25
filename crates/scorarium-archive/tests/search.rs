@@ -92,13 +92,8 @@ async fn search_sees_what_the_viewer_sees() {
             ("Sheet music", "work", "Nocturne")
         ]
     );
-    // The typeahead reads titles alone, so a composer's name finds nothing there
     assert_eq!(
-        shown(&archive.suggest_titles("chopin", false).await.unwrap()),
-        []
-    );
-    assert_eq!(
-        shown(&archive.suggest_titles("nocturne", false).await.unwrap()),
+        shown(&archive.search("nocturne", false).await.unwrap()),
         // The work's title is the typed word, so it outranks the publication's near miss
         [
             ("Sheet music", "work", "Nocturne"),

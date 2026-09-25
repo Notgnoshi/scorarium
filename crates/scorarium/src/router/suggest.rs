@@ -343,10 +343,7 @@ pub async fn title(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TitleQuery>,
 ) -> Result<Json<FieldSuggestions>, AppError> {
-    let hits = state
-        .archive
-        .suggest_titles(&query.q, session.is_none())
-        .await?;
+    let hits = state.archive.search(&query.q, session.is_none()).await?;
     let matches = hits
         .into_iter()
         .take(ENTITY_LIMIT)
