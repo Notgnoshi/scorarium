@@ -77,7 +77,7 @@
                                        type="search"
                                        name="q"
                                        value="{{ base.search_query }}"
-                                       data-suggest="title"
+                                       data-suggest="search"
                                        autocomplete="off"
                                        placeholder="Search"
                                        aria-label="Search" />
@@ -150,7 +150,7 @@
             // Picking a title in the navbar box goes straight to that page; submitting the form
             // is still how a full search is run
             document.addEventListener("suggest:pick", (e) => {
-                if (e.target.matches('[data-suggest="title"]') && e.detail.href) {
+                if (e.target.matches('[data-suggest="search"]') && e.detail.href) {
                     window.location.assign(e.detail.href);
                 }
             });

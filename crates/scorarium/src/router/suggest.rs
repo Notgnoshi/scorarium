@@ -332,16 +332,16 @@ fn shown(suggestion: Suggestion) -> FieldMatch {
 }
 
 #[derive(Deserialize)]
-pub struct TitleQuery {
+pub struct SearchQuery {
     #[serde(default)]
     q: String,
 }
 
-/// GET /suggest/title
-pub async fn title(
+/// GET /suggest/search
+pub async fn search(
     session: Option<Session>,
     State(state): State<Arc<AppState>>,
-    Query(query): Query<TitleQuery>,
+    Query(query): Query<SearchQuery>,
 ) -> Result<Json<FieldSuggestions>, AppError> {
     let hits = state.archive.search(&query.q, session.is_none()).await?;
     let matches = hits
