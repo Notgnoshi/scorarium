@@ -258,10 +258,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
 
 /// Create a publication, crediting the persons the library already has by name
 async fn create(library: &Library, mut input: PublicationInput) -> Result<Publication> {
-    let persons = library.person_summaries(None).await?;
-    for contributor in input.contributors_mut() {
-        contributor.resolve_by_name(&persons);
-    }
+    library
+        .resolve_contributors(input.contributors_mut())
+        .await?;
     library.create_publication(&input).await
 }
 

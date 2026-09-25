@@ -331,7 +331,8 @@ async fn publication_edit_flow() {
     response.assert_text_contains(format!("name=\"work_contributor_person\" value=\"{solo}\""));
     response.assert_text_contains("data-range-composer-person");
 
-    // A rejected submission comes back with its message, having changed nothing
+    // A rejected submission comes back with its message, having changed nothing. A name typed
+    // without a pick is linked to the one person by that name before the form comes back.
     let response = server
         .post(&edit)
         .form(&[
@@ -342,10 +343,15 @@ async fn publication_edit_flow() {
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Desk"),
             ("holding_file_0", ""),
+            ("contributor_name", "drew neil"),
+            ("contributor_role", "author"),
+            ("contributor_person", ""),
         ])
         .await;
     response.assert_status_ok();
     response.assert_text_contains("The year must be a number.");
+    response.assert_text_contains("value=\"Drew Neil\"");
+    response.assert_text_contains(format!("name=\"contributor_person\" value=\"{solo}\""));
     let stored = library.publication(publication).await.unwrap().unwrap();
     assert_eq!(stored.title, "Practial Vim");
 
@@ -471,12 +477,48 @@ async fn publication_edit_flow() {
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Piano bench"),
             ("holding_file_0", ""),
+            // A second Drew Neil, asked for by name, beside the first one's chapter
+            ("contributor_name", "Drew Neil"),
+            ("contributor_role", "editor"),
+            ("contributor_person", "new"),
+            ("work_id", &one.to_string()),
+            ("work_title", "Chapter 1"),
+            ("work_catalog_number", ""),
+            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let stored = library.publication(publication).await.unwrap().unwrap();
     assert_eq!(stored.stars, None);
     assert_eq!(stored.note, None, "a note of only whitespace is no note");
+    assert_ne!(stored.contributors[0].person_id, solo);
+
+    // Now the name alone names nobody in particular, so it has to be picked
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Practical Vim"),
+            ("publisher", "Pragmatic Bookshelf"),
+            ("year", "2015"),
+            ("holding_id_0", &shelf.to_string()),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
+            ("contributor_name", "Drew Neil"),
+            ("contributor_role", "editor"),
+            ("contributor_person", ""),
+            ("work_id", &one.to_string()),
+            ("work_title", "Chapter 1"),
+            ("work_catalog_number", ""),
+            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
+        ])
+        .await;
+    response.assert_status_ok();
+    response.assert_text_contains("Several people have this name. Pick one, or create another.");
 
     // Removing the last copy is what the delete dialog warns about, so the form says so up front
     let response = server.get(&edit).await;

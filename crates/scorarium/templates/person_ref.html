@@ -19,10 +19,16 @@
           title="A new person will be created, although one by this name already exists">
         <span class="text-warning">New</span>
     </span>
+    {% when crate::router::PersonState::Ambiguous %}
+    <span class="input-group-text"
+          data-person-indicator
+          title="Several people have this name. Pick one, or create another.">
+        <i class="bi bi-question-circle text-warning" aria-hidden="true"></i>
+    </span>
     {% when crate::router::PersonState::Unresolved %}
     <span class="input-group-text"
           data-person-indicator
-          title="Pick a person from the suggestions, or create one">
+          title="Will link to the person by this name, or create one">
         <i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>
     </span>
 {% endmatch %}
@@ -61,9 +67,12 @@
                 span.title = namesake ?
                     "A new person will be created, although one by this name already exists" :
                     "A new person will be created";
+            } else if (state === "ambiguous") {
+                span.innerHTML = '<i class="bi bi-question-circle text-warning" aria-hidden="true"></i>';
+                span.title = "Several people have this name. Pick one, or create another.";
             } else {
                 span.innerHTML = '<i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>';
-                span.title = "Pick a person from the suggestions, or create one";
+                span.title = "Will link to the person by this name, or create one";
             }
         }
 
@@ -110,10 +119,15 @@
             const input = e.target;
             if (!input.matches('[data-suggest="person"]') || !referenceOf(input)) return;
             const remembered = input.exactMatches;
-            if (referenceOf(input).value || !remembered || remembered.q !== input.value.trim()) return;
+            const q = input.value.trim();
+            if (!q || referenceOf(input).value || !remembered || remembered.q !== q) return;
             if (remembered.matches.length === 1) {
                 input.value = remembered.matches[0].value;
                 link(input, remembered.matches[0]);
+            } else if (remembered.matches.length === 0) {
+                showPerson(input, "new");
+            } else {
+                showPerson(input, "ambiguous");
             }
         });
     </script>

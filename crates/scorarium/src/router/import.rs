@@ -181,10 +181,9 @@ pub async fn start(
             enrich::merge(&mut draft, found);
         }
         // Resolved once, here, so the review page opens with its authors already picked
-        let persons = library.person_summaries(None).await?;
-        for contributor in &mut draft.contributors {
-            contributor.resolve_by_name(&persons);
-        }
+        library
+            .resolve_contributors(draft.contributors_mut())
+            .await?;
         import.save_draft(draft);
         import.record_lookup(lookup);
     }
@@ -287,7 +286,10 @@ pub async fn submit(
     let post = PublicationPost::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let input = post.merge(import.draft().input.contents);
+    let mut input = post.merge(import.draft().input.contents);
+    library
+        .resolve_contributors(input.contributors_mut())
+        .await?;
     match input.parse() {
         Ok(parsed) => {
             let publication = import.accept_into_publication(&parsed).await?;
@@ -372,11 +374,14 @@ pub async fn save_work(
     if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let edited = WorkRawInput {
+    let mut edited = WorkRawInput {
         // The page names the work it edits, so what it posts need not
         id: Some(work_id),
         ..WorkRawInput::from(post)
     };
+    library
+        .resolve_contributors(edited.contributors.iter_mut())
+        .await?;
     for work in &mut draft.input.contents {
         if work.id == Some(work_id) {
             *work = edited;

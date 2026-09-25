@@ -277,6 +277,9 @@ pub enum PersonState {
     New,
     /// New, and a person by this name already exists
     Namesake,
+    /// Several people have this name, so the user has to pick one
+    Ambiguous,
+    /// Nobody picked yet; saving links the one person by this name, or creates one
     Unresolved,
 }
 
@@ -452,11 +455,21 @@ fn shown_contributor(
                 PersonState::New
             },
         ),
-        _ => (
-            PersonRef::Unresolved,
-            contributor.name.clone(),
-            PersonState::Unresolved,
-        ),
+        _ => {
+            let namesakes = names
+                .iter()
+                .filter(|name| same_name(name, &contributor.name))
+                .count();
+            (
+                PersonRef::Unresolved,
+                contributor.name.clone(),
+                if namesakes > 1 {
+                    PersonState::Ambiguous
+                } else {
+                    PersonState::Unresolved
+                },
+            )
+        }
     };
     ShownContributor {
         name,

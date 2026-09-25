@@ -78,6 +78,15 @@ impl PublicationErrors {
 }
 
 impl PublicationRawInput {
+    /// The publication's own credits and then those of each work it contains
+    pub fn contributors_mut(&mut self) -> impl Iterator<Item = &mut ContributorInput> {
+        self.contributors.iter_mut().chain(
+            self.contents
+                .iter_mut()
+                .flat_map(|work| work.contributors.iter_mut()),
+        )
+    }
+
     /// Parse, validate, and convert the input
     pub fn parse(&self) -> Result<PublicationInput, Box<PublicationErrors>> {
         let mut errors = PublicationErrors::default();
@@ -805,7 +814,7 @@ mod tests {
                     None,
                     Some(ValidationError::AlreadyListed),
                     Some(ValidationError::FillOrRemove),
-                    Some(ValidationError::PersonRequired),
+                    Some(ValidationError::NameShared),
                 ],
                 links: vec![Some(ValidationError::InvalidUrl)],
                 contents: vec![

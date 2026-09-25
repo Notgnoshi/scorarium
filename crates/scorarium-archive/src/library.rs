@@ -5,6 +5,7 @@ use sqlx::SqliteConnection;
 use crate::audit::Audited;
 use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
+use crate::input::ContributorInput;
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
@@ -248,6 +249,18 @@ impl Library {
         let mut conn = self.archive.acquire_read().await?;
         let persons = summary::persons(&mut conn, Some(self.id), false, role, None).await?;
         Ok(persons.into_iter().map(|found| found.summary).collect())
+    }
+
+    /// Decide whom each contributor named without an explicit user choice resolves to
+    pub async fn resolve_contributors(
+        &self,
+        contributors: impl Iterator<Item = &mut ContributorInput>,
+    ) -> Result<()> {
+        let persons = self.person_summaries(None).await?;
+        for contributor in contributors {
+            contributor.resolve_by_name(&persons);
+        }
+        Ok(())
     }
 
     /// The summary of one person here, or nothing when no such person is in this library

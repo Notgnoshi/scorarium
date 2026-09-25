@@ -150,7 +150,10 @@ pub async fn save(
     let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut work = library.work(id).await?.or_not_found()?;
-    let input = WorkRawInput::from(post);
+    let mut input = WorkRawInput::from(post);
+    library
+        .resolve_contributors(input.contributors.iter_mut())
+        .await?;
     match input.parse() {
         Ok(parsed) => {
             work.update(&parsed).await?;

@@ -102,8 +102,8 @@ async fn manual_import_flow() {
     response.assert_text_contains("invalid ISBN");
     response.assert_text_contains("Fill this in or remove it.");
     response.assert_text_contains("A role is required.");
-    // A credit that names nobody in particular is refused rather than matched by name
-    response.assert_text_contains("Pick a person or create one.");
+    // A name nobody here has is taken as a new person rather than refused
+    response.assert_text_contains("A new person will be created");
 
     // Save a draft; the review page and the lists pick up its title
     let response = server
