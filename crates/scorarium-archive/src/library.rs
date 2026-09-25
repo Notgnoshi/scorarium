@@ -5,9 +5,11 @@ use sqlx::SqliteConnection;
 use crate::audit::Audited;
 use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
+use crate::input::ContributorInput;
 use crate::person::{self, Person};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
+use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
 use crate::work::{self, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
@@ -240,6 +242,32 @@ impl Library {
     pub async fn persons_with_role(&self, role: &str) -> Result<Vec<Person>> {
         let mut conn = self.archive.acquire_read().await?;
         person::load_persons(&self.archive, &mut conn, self.id, None, Some(role)).await
+    }
+
+    /// Everyone credited here, or with `role` when given, by sort name
+    pub async fn person_summaries(&self, role: Option<&str>) -> Result<Vec<PersonSummary>> {
+        let mut conn = self.archive.acquire_read().await?;
+        let persons = summary::persons(&mut conn, Some(self.id), false, role, None).await?;
+        Ok(persons.into_iter().map(|found| found.summary).collect())
+    }
+
+    /// Decide whom each contributor named without an explicit user choice resolves to
+    pub async fn resolve_contributors(
+        &self,
+        contributors: impl Iterator<Item = &mut ContributorInput>,
+    ) -> Result<()> {
+        let persons = self.person_summaries(None).await?;
+        for contributor in contributors {
+            contributor.resolve_by_name(&persons);
+        }
+        Ok(())
+    }
+
+    /// The summary of one person here, or nothing when no such person is in this library
+    pub async fn person_summary(&self, id: i64) -> Result<Option<PersonSummary>> {
+        let mut conn = self.archive.acquire_read().await?;
+        let persons = summary::persons(&mut conn, Some(self.id), false, None, Some(id)).await?;
+        Ok(persons.into_iter().next().map(|found| found.summary))
     }
 
     /// The distinct roles credited anywhere in the library, sorted, for input suggestions

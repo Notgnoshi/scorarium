@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PublicationRawInput,
-    WorkRawInput,
+    ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef,
+    PublicationRawInput, WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};
 
@@ -253,6 +253,7 @@ async fn publication_edit_flow() {
     let author = ContributorInput {
         name: "Drew Neil".into(),
         role: "author".into(),
+        person: PersonRef::New,
     };
     let input = PublicationRawInput {
         title: "Practial Vim".into(),
@@ -275,6 +276,7 @@ async fn publication_edit_flow() {
                     ContributorInput {
                         name: "Marion Wenz".into(),
                         role: "translator".into(),
+                        person: PersonRef::New,
                     },
                 ],
                 ..WorkRawInput::default()
@@ -325,8 +327,12 @@ async fn publication_edit_flow() {
     response.assert_text_contains(format!("name=\"work_id\" value=\"{one}\""));
     response.assert_text_contains("and 1 more");
     response.assert_text_contains("name=\"work_catalog_number\"");
+    response.assert_text_contains(format!("name=\"contributor_person\" value=\"{solo}\""));
+    response.assert_text_contains(format!("name=\"work_contributor_person\" value=\"{solo}\""));
+    response.assert_text_contains("data-range-composer-person");
 
-    // A rejected submission comes back with its message, having changed nothing
+    // A rejected submission comes back with its message, having changed nothing. A name typed
+    // without a pick is linked to the one person by that name before the form comes back.
     let response = server
         .post(&edit)
         .form(&[
@@ -337,10 +343,15 @@ async fn publication_edit_flow() {
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Desk"),
             ("holding_file_0", ""),
+            ("contributor_name", "drew neil"),
+            ("contributor_role", "author"),
+            ("contributor_person", ""),
         ])
         .await;
     response.assert_status_ok();
     response.assert_text_contains("The year must be a number.");
+    response.assert_text_contains("value=\"Drew Neil\"");
+    response.assert_text_contains(format!("name=\"contributor_person\" value=\"{solo}\""));
     let stored = library.publication(publication).await.unwrap().unwrap();
     assert_eq!(stored.title, "Practial Vim");
 
@@ -370,6 +381,7 @@ async fn publication_edit_flow() {
             ("identifier_value", "978-1-68050-127-8"),
             ("contributor_name", "Tim Pope"),
             ("contributor_role", "editor"),
+            ("contributor_person", "new"),
             // Retitle one chapter, drop the other, and add a work
             ("work_id", &one.to_string()),
             ("work_id", ""),
@@ -377,10 +389,12 @@ async fn publication_edit_flow() {
             ("work_title", "Appendix"),
             ("work_catalog_number", ""),
             ("work_catalog_number", "Op. 1"),
-            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_name", "D. Neil"),
             ("work_contributor_name", "Tim Pope"),
             ("work_contributor_role", "author"),
             ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
+            ("work_contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -432,7 +446,7 @@ async fn publication_edit_flow() {
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>(),
         ["Drew Neil", "Marion Wenz"],
-        "the contributor the row does not show is left alone"
+        "the linked credit keeps its person and name; the hidden contributor is left alone"
     );
     // Dropped from the publication's contributors but still the author of Chapter 1, so a work
     // credit is enough to keep a person
@@ -463,12 +477,48 @@ async fn publication_edit_flow() {
             ("holding_kind_0", "physical"),
             ("holding_location_0", "Piano bench"),
             ("holding_file_0", ""),
+            // A second Drew Neil, asked for by name, beside the first one's chapter
+            ("contributor_name", "Drew Neil"),
+            ("contributor_role", "editor"),
+            ("contributor_person", "new"),
+            ("work_id", &one.to_string()),
+            ("work_title", "Chapter 1"),
+            ("work_catalog_number", ""),
+            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     let stored = library.publication(publication).await.unwrap().unwrap();
     assert_eq!(stored.stars, None);
     assert_eq!(stored.note, None, "a note of only whitespace is no note");
+    assert_ne!(stored.contributors[0].person_id, solo);
+
+    // Now the name alone names nobody in particular, so it has to be picked
+    let response = server
+        .post(&edit)
+        .form(&[
+            ("title", "Practical Vim"),
+            ("publisher", "Pragmatic Bookshelf"),
+            ("year", "2015"),
+            ("holding_id_0", &shelf.to_string()),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Piano bench"),
+            ("holding_file_0", ""),
+            ("contributor_name", "Drew Neil"),
+            ("contributor_role", "editor"),
+            ("contributor_person", ""),
+            ("work_id", &one.to_string()),
+            ("work_title", "Chapter 1"),
+            ("work_catalog_number", ""),
+            ("work_contributor_name", "Drew Neil"),
+            ("work_contributor_role", "author"),
+            ("work_contributor_person", &solo.to_string()),
+        ])
+        .await;
+    response.assert_status_ok();
+    response.assert_text_contains("Several people have this name. Pick one, or create another.");
 
     // Removing the last copy is what the delete dialog warns about, so the form says so up front
     let response = server.get(&edit).await;

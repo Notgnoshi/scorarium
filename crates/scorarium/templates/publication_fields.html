@@ -1,9 +1,12 @@
 {% import "rows.html" as rows %}
 {% import "catalog.html" as catalog %}
+{% import "person_ref.html" as person_ref %}
 {% import "toggle.html" as toggle %}
 {% import "stars.html" as stars %}
 {% import "tags.html" as tags %}
 {% call rows::style() %}
+{% endcall %}
+{% call person_ref::style() %}
 {% endcall %}
 {% call toggle::style() %}
 {% endcall %}
@@ -72,13 +75,13 @@
     <fieldset class="border rounded p-3 mb-3" data-rows>
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
-            {% for (row, error) in fields.contributors %}
-                {% call rows::contributor_row(row.name, row.role, error) %}
+            {% for row in fields.contributors %}
+                {% call rows::contributor_row(row.name, row.role, row.person, row.state, row.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::contributor_row("", "", "") %}
+            {% call rows::contributor_row("", "", "", crate::router::PersonState::Unresolved, "") %}
             {% endcall %}
         </template>
         <button type="button"
@@ -92,12 +95,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for w in fields.works %}
-                {% call rows::work_row(library.id, w.id, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.more, w.message, fields.work_edit) %}
+                {% call rows::work_row(library.id, w.id, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.person, w.state, w.more, w.message, fields.work_edit) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", false, "", "", "", "", "", fields.work_edit) %}
+            {% call rows::work_row(library.id, "", "", "", false, "", "", "", "", crate::router::PersonState::Unresolved, "", "", fields.work_edit) %}
             {% endcall %}
         </template>
         <button type="button"
@@ -122,8 +125,12 @@
                        placeholder="Composer"
                        aria-label="Composer"
                        data-suggest="person"
+                       data-suggest-highlight
                        autocomplete="off"
                        data-range-composer />
+                <input type="hidden" value="" data-person-ref data-range-composer-person />
+                {% call person_ref::indicator(crate::router::PersonState::Unresolved) %}
+                {% endcall %}
                 <input class="form-control"
                        placeholder="Op. 28 No."
                        aria-label="Catalog prefix"
@@ -158,6 +165,8 @@
 {% endcall %}
 {% call catalog::script() %}
 {% endcall %}
+{% call person_ref::script() %}
+{% endcall %}
 {% call stars::script() %}
 {% endcall %}
 {% call tags::script() %}
@@ -180,6 +189,15 @@
     const range = document.querySelector("[data-range]");
     const field = (name) => range.querySelector(`[data-range-${name}]`);
 
+    const copyPerson = (from, to) => {
+        to.querySelector("[data-person-ref]").value = from.querySelector("[data-person-ref]").value;
+        const indicator = from.querySelector("[data-person-indicator]");
+        const target = to.querySelector("[data-person-indicator]");
+        target.innerHTML = indicator.innerHTML;
+        target.title = indicator.title;
+    };
+    const composerGroup = field("composer").closest(".input-group");
+
     // Only when the publication names one composer, and never over what was typed
     const seedComposer = () => {
         if (field("composer").value.trim()) return;
@@ -188,6 +206,7 @@
         if (composers.length !== 1) return;
         const name = composers[0].closest("[data-row]").querySelector("[name=contributor_name]");
         field("composer").value = name.value.trim();
+        copyPerson(name.closest("[data-row]"), composerGroup);
     };
     seedComposer();
     range.addEventListener("shown.bs.collapse", seedComposer);
@@ -231,9 +250,12 @@
             if (composer) {
                 row.querySelector("[name=work_contributor_name]").value = composer;
                 row.querySelector("[name=work_contributor_role]").value = "composer";
+                copyPerson(composerGroup, row);
             }
         }
         for (const name of ["title", "composer", "prefix", "from", "to"]) field(name).value = "";
+        field("composer-person").value = "";
+        showPerson(field("composer"), "unresolved");
         bootstrap.Collapse.getOrCreateInstance(range).hide();
     });
 </script>

@@ -95,6 +95,7 @@ async fn work_edit_saves_catalog_numbers() {
     server.post("/login").form(&[("password", "hunter2")]).await;
     let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
     let edit = format!("{view}/edit");
+    let composer = prelude.contributors[0].person_id.to_string();
 
     // The stored number opens in the form, marked recognized
     let response = server.get(&edit).await;
@@ -113,6 +114,7 @@ async fn work_edit_saves_catalog_numbers() {
             ("catalog_number", "Morceaux de fantaisie II"),
             ("contributor_name", "Sergei Rachmaninoff"),
             ("contributor_role", "composer"),
+            ("contributor_person", &composer),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -154,6 +156,7 @@ async fn editing_a_work_onto_another_number_merges_them() {
         .into_iter()
         .find(|w| w.title == "Polichinelle")
         .unwrap();
+    let composer = prelude.contributors[0].person_id.to_string();
     let server = browser(state.clone());
     demo_login(&server).await;
 
@@ -171,6 +174,7 @@ async fn editing_a_work_onto_another_number_merges_them() {
             ("catalog_number", "Op. 3 No. 2"),
             ("contributor_name", "Sergei Rachmaninoff"),
             ("contributor_role", "composer"),
+            ("contributor_person", &composer),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);

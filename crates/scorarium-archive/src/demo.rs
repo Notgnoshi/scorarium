@@ -1,10 +1,10 @@
 use crate::catalog::CatalogNumber;
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::identifier::{self, Kind, Normalized};
-use crate::input::ContributorInput;
+use crate::input::{ContributorInput, PersonRef};
 use crate::library::Library;
 use crate::person::PersonRawInput;
-use crate::publication::PublicationInput;
+use crate::publication::{Publication, PublicationInput};
 use crate::work::{self, WorkInput};
 use crate::{Action, Archive, Event, Field, Result, Source};
 
@@ -17,8 +17,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     let books = archive.create_library("Books", true).await?;
     let sheet_music = archive.create_library("Sheet music", false).await?;
 
-    books
-        .create_publication(&PublicationInput {
+    create(
+        &books,
+        PublicationInput {
             title: "Practical Vim".into(),
             publisher: Some("Pragmatic Bookshelf".into()),
             year: Some(2015),
@@ -35,11 +36,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 "https://www.goodreads.com/book/show/42854052-practical-vim",
             ]),
             contents: Vec::new(),
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    books
-        .create_publication(&PublicationInput {
+    create(
+        &books,
+        PublicationInput {
             title: "Pro Git".into(),
             publisher: Some("Apress".into()),
             year: Some(2014),
@@ -58,14 +61,16 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 "https://git-scm.com/book/en/v2",
             ]),
             contents: Vec::new(),
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     // A book with works, so pages show works without any music-specific fields
     let mut dictionary = writing("The Devil's Dictionary");
     dictionary.links = links(&["https://www.gutenberg.org/ebooks/972"]);
-    books
-        .create_publication(&PublicationInput {
+    create(
+        &books,
+        PublicationInput {
             title: "The Collected Writings of Ambrose Bierce".into(),
             publisher: Some("Citadel Press".into()),
             year: Some(1979),
@@ -82,8 +87,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 dictionary,
                 writing("The Parenticide Club"),
             ],
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     // An anthology: every composer is credited on the publication, but only Rachmaninoff's pieces
     // are entered as works.
@@ -108,8 +114,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     prelude.note = Some("The big chords at the end need the whole arm, not the fingers.".into());
     // Shared with its publication below, so browsing a tag has a case that spans both kinds
     prelude.tags = vec!["learning".into(), "russian".into()];
-    let russian_album = sheet_music
-        .create_publication(&PublicationInput {
+    let russian_album = create(
+        &sheet_music,
+        PublicationInput {
             title: "Russian piano album".into(),
             publisher: Some("Schirmer".into()),
             year: None,
@@ -127,11 +134,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 prelude,
                 piano_piece("Etude-Tableau", "A minor", None, &["Op. 39 No. 2"]),
             ],
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    let masterpieces = sheet_music
-        .create_publication(&PublicationInput {
+    let masterpieces = create(
+        &sheet_music,
+        PublicationInput {
             title: "Rachmaninoff masterpieces for solo piano".into(),
             publisher: Some("Dover".into()),
             year: None,
@@ -148,8 +157,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 None,
                 &["Op. 3 No. 4"],
             )],
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     // A transcription published on its own, one work with two contributors, identified by a plate number
     let mut tone_poem = piano_piece("The Isle of the Dead", "A minor", Some("5/8"), &["Op. 29"]);
@@ -164,8 +174,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
         "https://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)",
         "https://www.wikidata.org/wiki/Q629711",
     ]);
-    sheet_music
-        .create_publication(&PublicationInput {
+    create(
+        &sheet_music,
+        PublicationInput {
             title: "The Isle of the Dead".into(),
             publisher: Some("State Music Publishers".into()),
             year: None,
@@ -180,11 +191,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             ],
             links: Vec::new(),
             contents: vec![tone_poem],
-        })
-        .await?;
+        },
+    )
+    .await?;
 
-    sheet_music
-        .create_publication(&PublicationInput {
+    create(
+        &sheet_music,
+        PublicationInput {
             title: "Three gymnopedies for the piano".into(),
             publisher: Some("Schirmer".into()),
             year: None,
@@ -203,8 +216,9 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 .enumerate()
                 .map(|(i, key)| gymnopedie(i + 1, key))
                 .collect(),
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     link_person(
         &sheet_music,
@@ -242,6 +256,14 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     Ok(())
 }
 
+/// Create a publication, crediting the persons the library already has by name
+async fn create(library: &Library, mut input: PublicationInput) -> Result<Publication> {
+    library
+        .resolve_contributors(input.contributors_mut())
+        .await?;
+    library.create_publication(&input).await
+}
+
 /// Give a credited person their links, leaving their name as it is.
 async fn link_person(library: &Library, role: &str, name: &str, urls: &[&str]) -> Result<()> {
     let mut person = library
@@ -267,6 +289,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::Unresolved,
     }
 }
 

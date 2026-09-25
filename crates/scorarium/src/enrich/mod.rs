@@ -50,7 +50,7 @@ fn normalized(raw: &IdentifierRawInput) -> Option<(Kind, identifier::Normalized)
 
 #[cfg(test)]
 mod tests {
-    use scorarium_archive::{ContributorInput, HoldingKind, HoldingRawInput};
+    use scorarium_archive::{ContributorInput, HoldingKind, HoldingRawInput, PersonRef};
 
     use super::*;
 
@@ -83,6 +83,7 @@ mod tests {
             contributors: vec![ContributorInput {
                 name: "Ludwig van Beethoven".to_string(),
                 role: "author".to_string(),
+                person: PersonRef::Unresolved,
             }],
             links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],
             ..Default::default()
@@ -101,6 +102,7 @@ mod tests {
                 contributors: vec![ContributorInput {
                     name: "Ludwig van Beethoven".to_string(),
                     role: "author".to_string(),
+                    person: PersonRef::Unresolved,
                 }],
                 links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],
                 ..Default::default()

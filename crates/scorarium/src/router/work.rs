@@ -6,7 +6,10 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
-use super::{AppError, BackQuery, BaseContext, Crumb, OrNotFound, Session, WorkFields, back_or};
+use super::{
+    AppError, BackQuery, BaseContext, Crumb, OrNotFound, Session, WorkFields, back_or,
+    linked_summaries,
+};
 use crate::{AppState, publication_post};
 
 #[derive(Template)]
@@ -47,6 +50,8 @@ pub struct WorkPost {
     #[serde(default)]
     contributor_role: Vec<String>,
     #[serde(default)]
+    contributor_person: Vec<String>,
+    #[serde(default)]
     catalog_number: Vec<String>,
     #[serde(default)]
     link: Vec<String>,
@@ -67,6 +72,7 @@ impl From<WorkPost> for WorkRawInput {
             contributors: publication_post::contributors(
                 post.contributor_name,
                 post.contributor_role,
+                &post.contributor_person,
             ),
             catalog_numbers: post
                 .catalog_number
@@ -144,7 +150,10 @@ pub async fn save(
     let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut work = library.work(id).await?.or_not_found()?;
-    let input = WorkRawInput::from(post);
+    let mut input = WorkRawInput::from(post);
+    library
+        .resolve_contributors(input.contributors.iter_mut())
+        .await?;
     match input.parse() {
         Ok(parsed) => {
             work.update(&parsed).await?;
@@ -169,7 +178,9 @@ async fn render_edit(
     input: WorkRawInput,
     errors: WorkErrors,
 ) -> Result<Response, AppError> {
-    let fields = WorkFields::build(input, errors);
+    let persons = linked_summaries(&library, input.contributors.iter().map(|c| c.person)).await?;
+    let names = library.person_names().await?;
+    let fields = WorkFields::build(input, errors, &persons, &names);
     let page = EditPage {
         base: base.page(
             work.title.clone(),

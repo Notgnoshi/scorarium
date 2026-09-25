@@ -1,12 +1,13 @@
 use scorarium_archive::{
     Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, NotFound,
-    PublicationRawInput, WorkRawInput, identifier,
+    PersonRef, PublicationRawInput, WorkRawInput, identifier,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::New,
     }
 }
 
@@ -181,6 +182,21 @@ async fn raw_input_shows_what_was_stored() {
     expected.identifiers[0].value = "978-0-486-23134-1".into();
     expected.identifiers[1].value = "UT 50061".into();
     expected.contents[0].id = Some(contents[0].id);
+    // A stored credit loads linked to whichever person it was written against
+    for (input, stored) in expected
+        .contributors
+        .iter_mut()
+        .zip(&publication.contributors)
+    {
+        input.person = PersonRef::Linked(stored.person_id);
+    }
+    for (input, stored) in expected.contents[0]
+        .contributors
+        .iter_mut()
+        .zip(&contents[0].contributors)
+    {
+        input.person = PersonRef::Linked(stored.person_id);
+    }
 
     assert_eq!(publication.raw_input(&contents), expected);
     assert_eq!(contents[0].raw_input(), expected.contents[0]);
@@ -206,10 +222,17 @@ async fn suggestions_span_publications_and_their_contents() {
         ["Bob", "Erik Satie", "Sue"]
     );
 
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+    let mut credit = contributor("Erik Satie", "composer");
+    credit.person = PersonRef::Linked(satie.id);
     let gnossiennes = PublicationRawInput {
         title: "Gnossiennes".into(),
         holdings: vec![holding(HoldingKind::Physical, "")],
-        contributors: vec![contributor("Erik Satie", "composer")],
+        contributors: vec![credit],
         ..PublicationRawInput::default()
     };
     library
@@ -217,7 +240,7 @@ async fn suggestions_span_publications_and_their_contents() {
         .await
         .unwrap();
 
-    // A name the library already has is the same person, credited twice
+    // A credit linked to someone the library already has adds nobody
     assert_eq!(
         library.person_names().await.unwrap(),
         ["Bob", "Erik Satie", "Sue"]
@@ -242,10 +265,19 @@ async fn update_reconciles_every_child() {
         .await
         .unwrap();
     // Bob is credited elsewhere too, so dropping his credit here must not collect him
+    let mut elsewhere = contributor("Bob", "arranger");
+    elsewhere.person = PersonRef::Linked(
+        publication
+            .contributors
+            .iter()
+            .find(|credit| credit.name == "Bob")
+            .unwrap()
+            .person_id,
+    );
     let gnossiennes = PublicationRawInput {
         title: "Gnossiennes".into(),
         holdings: vec![holding(HoldingKind::Physical, "")],
-        contributors: vec![contributor("Bob", "arranger")],
+        contributors: vec![elsewhere],
         ..PublicationRawInput::default()
     };
     library
@@ -270,7 +302,8 @@ async fn update_reconciles_every_child() {
         value: "M-060-08002-9".into(),
     }];
     // Bob survives elsewhere; Cid is credited nowhere else
-    edit.contributors = vec![contributor("Erik Satie", "composer")];
+    edit.contributors
+        .retain(|credit| credit.name == "Erik Satie");
     // The kept work takes a new field and a new credit; the other is no longer listed
     edit.contents[0].time_signature = "3/4".into();
     edit.contents[0]
@@ -403,10 +436,9 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
     edit.title = "Gymnopedie No. 1 (revised)".into();
     edit.time_signature = "3/4".into();
     // Sue goes, Satie stays but is no longer first
-    edit.contributors = vec![
-        contributor("Ann", "arranger"),
-        contributor("Erik Satie", "composer"),
-    ];
+    let mut composer = contributor("Erik Satie", "composer");
+    composer.person = PersonRef::Linked(satie);
+    edit.contributors = vec![contributor("Ann", "arranger"), composer];
     work.update(&edit.parse().unwrap()).await.unwrap();
 
     assert_eq!(work.title, "Gymnopedie No. 1 (revised)");
@@ -417,7 +449,7 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
         .map(|c| (c.name.as_str(), c.role.as_str()))
         .collect();
     assert_eq!(credits, [("Ann", "arranger"), ("Erik Satie", "composer")]);
-    // A name the library already has is the same person, not a second one
+    // The linked credit keeps its person rather than creating a second one
     assert_eq!(work.contributors[1].person_id, satie);
     // Sue was credited only here
     assert_eq!(

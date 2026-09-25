@@ -1,5 +1,5 @@
 use scorarium_archive::{
-    CatalogNumber, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput,
+    CatalogNumber, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef,
     PublicationRawInput, WorkRawInput, credit_priority,
 };
 use serde::Deserialize;
@@ -48,6 +48,8 @@ struct Fields {
     #[serde(default)]
     contributor_role: Vec<String>,
     #[serde(default)]
+    contributor_person: Vec<String>,
+    #[serde(default)]
     link: Vec<String>,
     #[serde(default)]
     work_id: Vec<String>,
@@ -59,6 +61,8 @@ struct Fields {
     work_contributor_name: Vec<String>,
     #[serde(default)]
     work_contributor_role: Vec<String>,
+    #[serde(default)]
+    work_contributor_person: Vec<String>,
     /// The index of the work whose edit button was clicked; absent on a plain submit
     edit_work: Option<String>,
 }
@@ -111,12 +115,14 @@ impl PublicationPost {
             identifier_value,
             contributor_name,
             contributor_role,
+            contributor_person,
             link,
             work_id,
             work_title,
             work_catalog_number,
             work_contributor_name,
             work_contributor_role,
+            work_contributor_person,
             edit_work: _,
         } = fields;
 
@@ -127,6 +133,7 @@ impl PublicationPost {
             work_catalog_number,
             work_contributor_name,
             work_contributor_role,
+            &work_contributor_person,
         ) {
             // An id no shown work has names nothing this form may edit
             let existing = posted
@@ -144,7 +151,9 @@ impl PublicationPost {
                     id: None,
                     title: posted.title,
                     contributors: match posted.contributor {
-                        ContributorInput { name, role } if name.is_empty() && role.is_empty() => {
+                        ContributorInput { name, role, .. }
+                            if name.is_empty() && role.is_empty() =>
+                        {
                             Vec::new()
                         }
                         contributor => vec![contributor],
@@ -167,7 +176,7 @@ impl PublicationPost {
             tags: tags.trim().to_string(),
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
-            contributors: contributors(contributor_name, contributor_role),
+            contributors: contributors(contributor_name, contributor_role, &contributor_person),
             links: link.iter().map(|link| link.trim().to_string()).collect(),
             contents,
         }
@@ -308,13 +317,39 @@ struct Posted<'a> {
     file: &'a str,
 }
 
+pub fn person_ref(field: &str) -> PersonRef {
+    match field.trim() {
+        "new" => PersonRef::New,
+        field => field
+            .parse()
+            .map_or(PersonRef::Unresolved, PersonRef::Linked),
+    }
+}
+
+pub fn person_field(person: PersonRef) -> String {
+    match person {
+        PersonRef::Linked(id) => id.to_string(),
+        PersonRef::New => "new".to_string(),
+        PersonRef::Unresolved => String::new(),
+    }
+}
+
 /// Credits from the parallel keys; the work form decodes the same
-pub fn contributors(name: Vec<String>, role: Vec<String>) -> Vec<ContributorInput> {
+pub fn contributors(
+    name: Vec<String>,
+    role: Vec<String>,
+    person: &[String],
+) -> Vec<ContributorInput> {
     name.into_iter()
         .zip(role)
-        .map(|(name, role)| ContributorInput {
+        .enumerate()
+        .map(|(i, (name, role))| ContributorInput {
             name: name.trim().to_string(),
             role: role.trim().to_string(),
+            person: person
+                .get(i)
+                .map(|field| person_ref(field))
+                .unwrap_or_default(),
         })
         .collect()
 }
@@ -336,6 +371,7 @@ fn works(
     catalog_number: Vec<String>,
     name: Vec<String>,
     role: Vec<String>,
+    person: &[String],
 ) -> Vec<PartialWorkPost> {
     title
         .into_iter()
@@ -354,6 +390,10 @@ fn works(
             contributor: ContributorInput {
                 name: name.trim().to_string(),
                 role: role.trim().to_string(),
+                person: person
+                    .get(i)
+                    .map(|field| person_ref(field))
+                    .unwrap_or_default(),
             },
         })
         .collect()
@@ -367,6 +407,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
+            person: PersonRef::Unresolved,
         }
     }
 
@@ -390,6 +431,7 @@ mod tests {
                 identifier_value: Vec::new(),
                 contributor_name: Vec::new(),
                 contributor_role: Vec::new(),
+                contributor_person: Vec::new(),
                 link: Vec::new(),
                 work_id: works
                     .iter()
@@ -408,6 +450,7 @@ mod tests {
                     .map(|(_, _, _, name, _)| name.to_string())
                     .collect(),
                 work_contributor_role: works.iter().map(|(.., role)| role.to_string()).collect(),
+                work_contributor_person: Vec::new(),
                 edit_work: None,
             },
         }

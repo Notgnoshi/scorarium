@@ -1,12 +1,13 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PublicationRawInput,
-    WorkRawInput,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PersonRef,
+    PublicationRawInput, WorkRawInput,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: role.into(),
+        person: PersonRef::New,
     }
 }
 
@@ -41,35 +42,47 @@ fn publication(
 async fn library() -> (Archive, scorarium_archive::Library) {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Sheet music", false).await.unwrap();
-    for input in [
-        publication(
-            "Three gymnopedies",
-            vec![contributor("Erik Satie", "composer")],
-            vec![work(
-                "Gymnopedie No. 1",
-                vec![
-                    contributor("Erik Satie", "composer"),
-                    contributor("Sue", "editor"),
-                ],
-            )],
-        ),
-        publication(
-            "Gnossiennes",
-            vec![contributor("Bob", "arranger")],
-            vec![work(
-                "Gnossienne No. 1",
-                vec![
-                    contributor("Erik Satie", "composer"),
-                    contributor("Ann", "editor"),
-                ],
-            )],
-        ),
-    ] {
-        library
-            .create_publication(&input.parse().unwrap())
-            .await
-            .unwrap();
-    }
+    library
+        .create_publication(
+            &publication(
+                "Three gymnopedies",
+                vec![contributor("Erik Satie", "composer")],
+                vec![work(
+                    "Gymnopedie No. 1",
+                    vec![
+                        contributor("Erik Satie", "composer"),
+                        contributor("Sue", "editor"),
+                    ],
+                )],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    // The second publication credits the Satie the first one created, so it links him by id
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+    let mut credit = contributor("Erik Satie", "composer");
+    credit.person = PersonRef::Linked(satie.id);
+    library
+        .create_publication(
+            &publication(
+                "Gnossiennes",
+                vec![contributor("Bob", "arranger")],
+                vec![work(
+                    "Gnossienne No. 1",
+                    vec![credit, contributor("Ann", "editor")],
+                )],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
     (archive, library)
 }
 
@@ -105,6 +118,30 @@ async fn publications_union_direct_and_work_credits() {
     let books = archive.create_library("Books", false).await.unwrap();
     assert!(library.person(satie.id).await.unwrap().is_some());
     assert!(books.person(satie.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn a_summary_describes_the_person_asked_for() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+
+    // He is credited on both publications and on a work of each, and the direct credit leads
+    let summary = library.person_summary(satie.id).await.unwrap().unwrap();
+    assert_eq!(
+        (summary.id, summary.name, summary.title, summary.others),
+        (
+            satie.id,
+            "Erik Satie".to_string(),
+            "Three gymnopedies".to_string(),
+            2
+        )
+    );
+
+    assert!(library.person_summary(9999).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -198,4 +235,101 @@ async fn a_role_spans_publications_and_works() {
         names(other.persons_with_role("editor").await.unwrap()),
         ["Drew Neil"]
     );
+}
+
+#[tokio::test]
+async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0);
+    let mut bob = library
+        .persons_with_role("arranger")
+        .await
+        .unwrap()
+        .remove(0);
+    bob.update(
+        &PersonRawInput {
+            name: "Erik Satie".into(),
+            links: Vec::new(),
+        }
+        .parse()
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let mut credit = contributor("E. Satie", "composer");
+    credit.person = PersonRef::Linked(bob.id);
+    let stored = library
+        .create_publication(
+            &publication("Sports et divertissements", vec![credit], Vec::new())
+                .parse()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stored.contributors[0].person_id, bob.id);
+    // The credit shows the stored name: a contributor never renames anyone
+    assert_eq!(stored.contributors[0].name, "Erik Satie");
+    assert_eq!(
+        library.person(satie.id).await.unwrap().unwrap().name,
+        "Erik Satie"
+    );
+    let saties = library
+        .person_names()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|name| name == "Erik Satie")
+        .count();
+    assert_eq!(saties, 2, "no third Satie was created");
+}
+
+#[tokio::test]
+async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
+    let (_archive, library) = library().await;
+    let satie = library
+        .persons_with_role("composer")
+        .await
+        .unwrap()
+        .remove(0)
+        .id;
+    let stored = library
+        .create_publication(
+            &publication(
+                "Sports et divertissements",
+                vec![contributor("Erik Satie", "composer")],
+                vec![
+                    work(
+                        "Choral inappetissant",
+                        vec![contributor("erik satie", "composer")],
+                    ),
+                    work("La balancoire", vec![contributor("erik satie", "composer")]),
+                ],
+            )
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // One person for the publication and both works, deliberately a namesake of the fixture's
+    let created = stored.contributors[0].person_id;
+    assert_ne!(created, satie);
+    let works = stored.works().await.unwrap();
+    assert_eq!(works[0].contributors[0].person_id, created);
+    assert_eq!(works[1].contributors[0].person_id, created);
+    // The first spelling seen names the person
+    assert_eq!(works[1].contributors[0].name, "Erik Satie");
+    let saties = library
+        .person_names()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|name| name == "Erik Satie")
+        .count();
+    assert_eq!(saties, 2);
 }

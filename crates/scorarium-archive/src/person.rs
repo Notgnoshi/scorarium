@@ -4,7 +4,8 @@ use std::sync::Arc;
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
-use crate::input::{self, ValidationError};
+use crate::fuzzy::normalize;
+use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
@@ -266,25 +267,65 @@ async fn write_person_links(
     Ok(())
 }
 
-/// The person with this exact name, created if the library has none
-///
-/// A person created for an earlier contributor of the same publication is found by a later one,
-/// because they share the caller's transaction.
-pub(crate) async fn find_or_create_person(
+/// Create the persons a submission asks for, one per distinct normalized name, and link each
+/// contributor asking for one to it.
+pub(crate) async fn create_new_persons<'a>(
     conn: &mut SqliteConnection,
     library_id: i64,
-    name: &str,
-) -> Result<i64> {
-    let found = sqlx::query_scalar!(
-        "SELECT id FROM person WHERE library_id = ? AND name = ?",
-        library_id,
-        name
-    )
-    .fetch_optional(&mut *conn)
-    .await?;
-    if let Some(id) = found {
-        return Ok(id);
+    contributors: impl Iterator<Item = &'a mut ContributorInput>,
+) -> Result<()> {
+    let mut created: HashMap<String, i64> = HashMap::new();
+    for contributor in contributors {
+        if contributor.person != PersonRef::New {
+            continue;
+        }
+        let id = match created.get(&normalize(&contributor.name)) {
+            Some(id) => *id,
+            None => {
+                let id = create_person(&mut *conn, library_id, &contributor.name).await?;
+                created.insert(normalize(&contributor.name), id);
+                id
+            }
+        };
+        contributor.person = PersonRef::Linked(id);
     }
+    Ok(())
+}
+
+/// The person a contributor credits
+///
+/// A linked person can be collected between the page loading and its submit, in which case the
+/// typed name becomes a new person rather than losing the credit.
+pub(crate) async fn credited_person(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    contributor: &ContributorInput,
+) -> Result<i64> {
+    match contributor.person {
+        PersonRef::Linked(id) => {
+            let found = sqlx::query_scalar!(
+                "SELECT id FROM person WHERE library_id = ? AND id = ?",
+                library_id,
+                id
+            )
+            .fetch_optional(&mut *conn)
+            .await?;
+            match found {
+                Some(id) => Ok(id),
+                None => create_person(conn, library_id, &contributor.name).await,
+            }
+        }
+        PersonRef::New => create_person(conn, library_id, &contributor.name).await,
+        // The parser refuses these, and the demo resolves its own, so one here is a bug
+        PersonRef::Unresolved => Err(eyre::eyre!(
+            "an unresolved contributor reached the write path: {:?}",
+            contributor.name
+        )),
+    }
+}
+
+/// Create a person, whether or not the library has one by that name
+async fn create_person(conn: &mut SqliteConnection, library_id: i64, name: &str) -> Result<i64> {
     let sort_name = sort_name(name);
     let created = sqlx::query!(
         "INSERT INTO person (library_id, name, sort_name) VALUES (?, ?, ?)",

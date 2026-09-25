@@ -1,11 +1,13 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
+    WorkRawInput,
 };
 
 fn composer(name: &str) -> ContributorInput {
     ContributorInput {
         name: name.into(),
         role: "composer".into(),
+        person: PersonRef::New,
     }
 }
 
@@ -82,9 +84,12 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
 
     // Same composer, same number in a different spelling, a blank key, and an extra credit
     let mut anthology = album("Anthology", "Prelude in D-flat", &["Op. 28/15", "B. 107"]);
+    anthology.contents[0].contributors[0].person =
+        PersonRef::Linked(raindrop.contributors[0].person_id);
     anthology.contents[0].contributors.push(ContributorInput {
         name: "Sue".into(),
         role: "editor".into(),
+        person: PersonRef::New,
     });
     let anthology = library
         .create_publication(&anthology.parse().unwrap())
@@ -142,12 +147,12 @@ async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
         .await
         .unwrap();
     let older = preludes.works().await.unwrap().remove(0);
+    // Works merge on a shared composer, so the second album credits the same Chopin
+    let mut anthology = album("Anthology", "Prelude in D-flat", &["B. 107"]);
+    anthology.contents[0].contributors[0].person =
+        PersonRef::Linked(older.contributors[0].person_id);
     let anthology = library
-        .create_publication(
-            &album("Anthology", "Prelude in D-flat", &["B. 107"])
-                .parse()
-                .unwrap(),
-        )
+        .create_publication(&anthology.parse().unwrap())
         .await
         .unwrap();
     let mut newer = anthology.works().await.unwrap().remove(0);

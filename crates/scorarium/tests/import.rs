@@ -90,6 +90,8 @@ async fn manual_import_flow() {
             ("identifier_value", ""),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", ""),
+            ("contributor_name", "Erik Satie"),
+            ("contributor_role", "composer"),
         ])
         .await;
     let response = server.get(&review).await;
@@ -100,6 +102,8 @@ async fn manual_import_flow() {
     response.assert_text_contains("invalid ISBN");
     response.assert_text_contains("Fill this in or remove it.");
     response.assert_text_contains("A role is required.");
+    // A name nobody here has is taken as a new person rather than refused
+    response.assert_text_contains("A new person will be created");
 
     // Save a draft; the review page and the lists pick up its title
     let response = server
@@ -115,6 +119,7 @@ async fn manual_import_flow() {
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", "composer"),
+            ("contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -187,9 +192,11 @@ async fn manual_import_flow() {
             ("identifier_value", "0-486-23134-8"),
             ("contributor_name", "Erik Satie"),
             ("contributor_role", "composer"),
+            ("contributor_person", "new"),
             ("work_title", "Gymnopedie No. 1"),
             ("work_contributor_name", "Erik Satie"),
             ("work_contributor_role", "composer"),
+            ("work_contributor_person", "new"),
         ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -204,7 +211,7 @@ async fn manual_import_flow() {
     response.assert_text_contains("Erik Satie");
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
-    // The contributor row creates Satie and the work row finds them again in the same transaction
+    // The publication and its work both ask for a new Satie, and one submission creates one person
     assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
     server
         .get(&review)
@@ -242,6 +249,7 @@ async fn isbn_import_is_seeded_from_open_library() {
     response.assert_text_contains("value=\"Bagatelles, Rondos and Other Shorter Works for Piano\"");
     response.assert_text_contains("value=\"Ludwig van Beethoven\"");
     response.assert_text_contains("value=\"author\"");
+    response.assert_text_contains("name=\"contributor_person\" value=\"new\"");
     response.assert_text_contains("value=\"Dover Publications\"");
     response.assert_text_contains("value=\"1987\"");
     response.assert_text_contains("value=\"978-0-486-25392-3\"");

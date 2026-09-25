@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput,
+    ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput, WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};
 
@@ -165,6 +165,7 @@ async fn the_audit_page_shows_an_edit_and_its_consequences() {
                     contributors: vec![ContributorInput {
                         name: "Bach".into(),
                         role: "composer".into(),
+                        person: PersonRef::New,
                     }],
                     ..WorkRawInput::default()
                 }],

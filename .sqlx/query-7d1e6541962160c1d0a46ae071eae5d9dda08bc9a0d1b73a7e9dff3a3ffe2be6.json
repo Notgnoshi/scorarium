@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id FROM person WHERE library_id = ? AND name = ?",
+  "query": "SELECT id FROM person WHERE library_id = ? AND id = ?",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "7d6203cc553dc111078092e3332ea54b0f8e5bd414a715db0a54173ad40e4a0c"
+  "hash": "7d1e6541962160c1d0a46ae071eae5d9dda08bc9a0d1b73a7e9dff3a3ffe2be6"
 }

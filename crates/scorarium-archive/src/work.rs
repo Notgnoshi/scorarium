@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
-use crate::input::{self, ContributorInput, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
@@ -31,7 +31,7 @@ pub struct WorkRawInput {
 }
 
 /// A work's parsed and validated fields
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkInput {
     pub(crate) id: Option<i64>,
     pub(crate) title: String,
@@ -223,6 +223,7 @@ impl Work {
                 .map(|contributor| ContributorInput {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
+                    person: PersonRef::Linked(contributor.person_id),
                 })
                 .collect(),
             catalog_numbers: self
@@ -285,6 +286,9 @@ impl Work {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        let mut input = input.clone();
+        person::create_new_persons(&mut audited, self.library_id, input.contributors.iter_mut())
+            .await?;
         write_work_contributors(&mut audited, self.library_id, self.id, &input.contributors)
             .await?;
         write_work_catalog_numbers(&mut audited, self.id, &input.catalog_numbers).await?;
@@ -845,8 +849,7 @@ pub(crate) async fn write_work_contributors(
         .execute(&mut *conn)
         .await?;
     for contributor in contributors {
-        let person_id =
-            person::find_or_create_person(&mut *conn, library_id, &contributor.name).await?;
+        let person_id = person::credited_person(&mut *conn, library_id, contributor).await?;
         sqlx::query!(
             "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
             library_id,
@@ -868,6 +871,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
+            person: PersonRef::New,
         }
     }
 

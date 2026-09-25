@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::SqliteConnection;
 
 use crate::Result;
 use crate::catalog::CatalogNumber;
+use crate::fuzzy::normalize;
 use crate::holding::HoldingKind;
 use crate::person::{Contributor, credit_priority};
 
@@ -31,8 +32,16 @@ pub struct WorkSummary {
 pub struct PersonSummary {
     pub id: i64,
     pub name: String,
-    /// Distinct works credited in any role. A publication with no works counts as a work
-    pub works: i64,
+    /// The title of a work this person is credited on for disambiguation from other persons with
+    /// the same name.
+    pub title: String,
+    /// The number of other publications and works credited, in any role
+    pub others: i64,
+}
+
+/// Whether two names are the same, up to normalization
+pub fn same_name(one: &str, other: &str) -> bool {
+    normalize(one) == normalize(other)
 }
 
 /// Where a summary came from, since search spans libraries
@@ -202,35 +211,57 @@ pub(crate) async fn persons(
     conn: &mut SqliteConnection,
     library: Option<i64>,
     public_only: bool,
+    role: Option<&str>,
+    person: Option<i64>,
 ) -> Result<Vec<InLibrary<PersonSummary>>> {
-    let persons = sqlx::query!(
-        r#"SELECT per.id AS "id!", per.name, l.id AS "library_id!", l.name AS library_name,
-                  (SELECT COUNT(DISTINCT work_id) FROM work_contributor WHERE person_id = per.id)
-                + (SELECT COUNT(*) FROM publication_contributor pc
-                   WHERE pc.person_id = per.id
-                     AND NOT EXISTS (SELECT 1 FROM publication_work pw
-                                     WHERE pw.publication_id = pc.publication_id))
-                  AS "works!: i64"
-           FROM person per JOIN library l ON l.id = per.library_id
+    let credits = sqlx::query!(
+        r#"SELECT per.id AS "person_id!", per.name AS "name!",
+                  l.id AS "library_id!", l.name AS "library_name!",
+                  credit.kind AS "kind!", credit.entity_id AS "entity_id!",
+                  credit.role AS "role!", credit.title AS "title!"
+           FROM (SELECT c.person_id, 'publication' AS kind, p.id AS entity_id, c.role, p.title
+                 FROM publication_contributor c JOIN publication p ON p.id = c.publication_id
+                 UNION ALL
+                 SELECT c.person_id, 'work' AS kind, w.id AS entity_id, c.role, w.title
+                 FROM work_contributor c JOIN work w ON w.id = c.work_id) credit
+           JOIN person per ON per.id = credit.person_id JOIN library l ON l.id = per.library_id
            WHERE (?1 IS NULL OR per.library_id = ?1) AND (NOT ?2 OR l.private = 0)
-           ORDER BY l.name, per.sort_name"#,
+             AND (?3 IS NULL
+                  OR per.id IN (SELECT person_id FROM publication_contributor WHERE role = ?3)
+                  OR per.id IN (SELECT person_id FROM work_contributor WHERE role = ?3))
+             AND (?4 IS NULL OR per.id = ?4)
+           ORDER BY l.name, per.sort_name, per.id"#,
         library,
-        public_only
+        public_only,
+        role,
+        person
     )
     .fetch_all(conn)
     .await?;
-    Ok(persons
-        .into_iter()
-        .map(|row| InLibrary {
-            library_id: row.library_id,
-            library_name: row.library_name,
-            summary: PersonSummary {
-                id: row.id,
-                name: row.name,
-                works: row.works,
-            },
+    let persons = credits
+        .chunk_by(|a, b| a.person_id == b.person_id)
+        .map(|rows| {
+            let lead = rows
+                .iter()
+                .min_by_key(|row| (credit_priority(&row.role), row.kind == "work", &row.title))
+                .expect("a chunk is never empty");
+            let entities: HashSet<(&str, i64)> = rows
+                .iter()
+                .map(|row| (row.kind.as_str(), row.entity_id))
+                .collect();
+            InLibrary {
+                library_id: lead.library_id,
+                library_name: lead.library_name.clone(),
+                summary: PersonSummary {
+                    id: lead.person_id,
+                    name: lead.name.clone(),
+                    title: lead.title.clone(),
+                    others: entities.len() as i64 - 1,
+                },
+            }
         })
-        .collect())
+        .collect();
+    Ok(persons)
 }
 
 fn index_of<T>(loaded: &[InLibrary<T>], id: fn(&T) -> i64) -> HashMap<i64, usize> {

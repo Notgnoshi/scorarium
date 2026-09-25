@@ -57,6 +57,7 @@ function openMenu(input, matches) {
         });
         menu.appendChild(item);
     }
+    if ("suggestHighlight" in input.dataset) menu.firstElementChild.classList.add("active");
     input.parentElement.classList.add("position-relative");
     input.parentElement.appendChild(menu);
 }
@@ -76,6 +77,7 @@ async function request(input) {
             // A slow early response must not overwrite what a later keystroke asked for
             if (input.value.trim() !== q || document.activeElement !== input) return;
             results.set(source, suggestions);
+            // Listeners may append to the matches before the menu is rendered from them
             input.dispatchEvent(new CustomEvent("suggest:matches", { bubbles: true, detail: suggestions }));
             openMenu(
                 input,

@@ -7,7 +7,7 @@ use sqlx::SqliteConnection;
 use crate::audit::Audited;
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
-use crate::input::{self, ContributorInput, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
 use crate::{
@@ -31,7 +31,7 @@ pub struct PublicationRawInput {
 }
 
 /// A publication's validated fields for use in database updates
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicationInput {
     pub(crate) title: String,
     pub(crate) publisher: Option<String>,
@@ -78,6 +78,15 @@ impl PublicationErrors {
 }
 
 impl PublicationRawInput {
+    /// The publication's own credits and then those of each work it contains
+    pub fn contributors_mut(&mut self) -> impl Iterator<Item = &mut ContributorInput> {
+        self.contributors.iter_mut().chain(
+            self.contents
+                .iter_mut()
+                .flat_map(|work| work.contributors.iter_mut()),
+        )
+    }
+
     /// Parse, validate, and convert the input
     pub fn parse(&self) -> Result<PublicationInput, Box<PublicationErrors>> {
         let mut errors = PublicationErrors::default();
@@ -165,6 +174,16 @@ impl PublicationRawInput {
             links,
             contents,
         })
+    }
+}
+
+impl PublicationInput {
+    pub(crate) fn contributors_mut(&mut self) -> impl Iterator<Item = &mut ContributorInput> {
+        self.contributors.iter_mut().chain(
+            self.contents
+                .iter_mut()
+                .flat_map(|work| work.contributors.iter_mut()),
+        )
     }
 }
 
@@ -269,6 +288,7 @@ impl Publication {
                 .map(|contributor| ContributorInput {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
+                    person: PersonRef::Linked(contributor.person_id),
                 })
                 .collect(),
             links: self.links.clone(),
@@ -313,8 +333,10 @@ impl Publication {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        let mut input = input.clone();
+        person::create_new_persons(&mut audited, self.library_id, input.contributors_mut()).await?;
         let contents_before = contained_work_ids(&mut audited, self.id).await?;
-        write_publication_children(&mut audited, self.library_id, self.id, input).await?;
+        write_publication_children(&mut audited, self.library_id, self.id, &input).await?;
         work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
             .await?;
         let contents_after = contained_work_ids(&mut audited, self.id).await?;
@@ -597,6 +619,8 @@ pub(crate) async fn create_publication(
     library_id: i64,
     input: &PublicationInput,
 ) -> crate::Result<Publication> {
+    let mut input = input.clone();
+    person::create_new_persons(audited, library_id, input.contributors_mut()).await?;
     let created = sqlx::query!(
         "INSERT INTO publication (library_id, title, publisher, year, stars, note)
          VALUES (?, ?, ?, ?, ?, ?)",
@@ -610,7 +634,7 @@ pub(crate) async fn create_publication(
     .execute(&mut **audited)
     .await?;
     let id = created.last_insert_rowid();
-    write_publication_children(audited, library_id, id, input).await?;
+    write_publication_children(audited, library_id, id, &input).await?;
     for content in &input.contents {
         work::create_work_in_publication(audited, library_id, id, content).await?;
     }
@@ -679,8 +703,7 @@ async fn write_publication_contributors(
     .execute(&mut *conn)
     .await?;
     for contributor in contributors {
-        let person_id =
-            person::find_or_create_person(&mut *conn, library_id, &contributor.name).await?;
+        let person_id = person::credited_person(&mut *conn, library_id, contributor).await?;
         sqlx::query!(
             "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)
              VALUES (?, ?, ?, ?)",
@@ -704,6 +727,7 @@ mod tests {
         ContributorInput {
             name: name.into(),
             role: role.into(),
+            person: PersonRef::New,
         }
     }
 
@@ -744,6 +768,11 @@ mod tests {
                 contributor("Erik Satie", "composer"),
                 contributor("Erik Satie", "composer"),
                 contributor("", ""),
+                ContributorInput {
+                    name: "Erik Satie".into(),
+                    role: "editor".into(),
+                    person: PersonRef::Unresolved,
+                },
             ],
             links: vec!["imslp.org".into()],
             contents: vec![
@@ -785,6 +814,7 @@ mod tests {
                     None,
                     Some(ValidationError::AlreadyListed),
                     Some(ValidationError::FillOrRemove),
+                    Some(ValidationError::NameShared),
                 ],
                 links: vec![Some(ValidationError::InvalidUrl)],
                 contents: vec![

@@ -18,9 +18,9 @@ use crate::enrich::open_library;
 pub struct FieldQuery {
     #[serde(default)]
     q: String,
-    /// work-number only: the composer input of the same work, resolved by the archive
+    /// for work-number only: the person id the work's contributor is linked to
     composer: Option<String>,
-    /// tag only: comma-separated tags already picked
+    /// for tag only: comma-separated tags already picked
     exclude: Option<String>,
     #[serde(default)]
     source: Source,
@@ -79,13 +79,13 @@ enum Data {
     Person {
         reference: Reference,
         name: String,
-        works: i64,
     },
     Work {
         reference: Reference,
         title: String,
         contributor: Option<String>,
         role: Option<String>,
+        contributor_id: Option<i64>,
         numbers: Vec<String>,
         /// Whether the number a pick puts in the catalog input uses a known scheme
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,9 +120,7 @@ pub async fn field(
     let composer = query
         .composer
         .as_deref()
-        .map(str::trim)
-        .filter(|composer| !composer.is_empty())
-        .map(str::to_string);
+        .and_then(|composer| composer.trim().parse().ok());
     let field = match kind.as_str() {
         "person" => SuggestField::Person,
         "work" => SuggestField::Work,
@@ -241,7 +239,6 @@ fn item(entity: Entity, exact: bool) -> FieldMatch {
             Data::Person {
                 reference: Reference::Local { id: person.id },
                 name: person.name,
-                works: person.works,
             },
         ),
         Entity::Publication(publication) => (
@@ -259,6 +256,7 @@ fn item(entity: Entity, exact: bool) -> FieldMatch {
                 reference: Reference::Local { id: work.id },
                 title: work.title,
                 contributor: work.contributor.as_ref().map(|person| person.name.clone()),
+                contributor_id: work.contributor.as_ref().map(|person| person.person_id),
                 role: work.contributor.map(|person| person.role),
                 // A title pick puts the work's first number in the catalog input
                 recognized: work

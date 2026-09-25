@@ -2,7 +2,9 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 use crate::catalog::CatalogNumber;
+use crate::fuzzy::normalize;
 use crate::identifier;
+use crate::summary::{PersonSummary, same_name};
 
 /// Why a field was refused. The [Display] is the message the page shows.
 #[derive(Debug, PartialEq, Eq)]
@@ -10,6 +12,7 @@ pub enum ValidationError {
     TitleRequired,
     NameRequired,
     RoleRequired,
+    NameShared,
     FillOrRemove,
     AlreadyListed,
     YearNotANumber,
@@ -28,6 +31,12 @@ impl Display for ValidationError {
             ValidationError::TitleRequired => write!(f, "A title is required."),
             ValidationError::NameRequired => write!(f, "A name is required."),
             ValidationError::RoleRequired => write!(f, "A role is required."),
+            ValidationError::NameShared => {
+                write!(
+                    f,
+                    "Several people have this name. Pick one, or create another."
+                )
+            }
             ValidationError::FillOrRemove => write!(f, "Fill this in or remove it."),
             ValidationError::AlreadyListed => write!(f, "Already listed."),
             ValidationError::YearNotANumber => write!(f, "The year must be a number."),
@@ -46,6 +55,17 @@ impl Display for ValidationError {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PersonRef {
+    /// An existing person, whose stored name the posted name never changes
+    Linked(i64),
+    /// A person to create with the typed name, even when a namesake exists
+    New,
+    /// Nobody chosen yet; refused when submitted
+    #[default]
+    Unresolved,
+}
+
 /// A contributor and their role
 ///
 /// This type is shared between the raw input from the web form and the "validated" contributor type
@@ -53,6 +73,23 @@ impl Display for ValidationError {
 pub struct ContributorInput {
     pub name: String,
     pub role: String,
+    pub person: PersonRef,
+}
+
+impl ContributorInput {
+    pub(crate) fn resolve_by_name(&mut self, persons: &[PersonSummary]) {
+        if self.person != PersonRef::Unresolved {
+            return;
+        }
+        let mut namesakes = persons
+            .iter()
+            .filter(|person| same_name(&person.name, &self.name));
+        self.person = match (namesakes.next(), namesakes.next()) {
+            (None, _) => PersonRef::New,
+            (Some(person), None) => PersonRef::Linked(person.id),
+            (Some(_), Some(_)) => PersonRef::Unresolved,
+        };
+    }
 }
 
 /// Check credits, one slot per input
@@ -62,7 +99,8 @@ pub(crate) fn parse_contributors(
     raw: &[ContributorInput],
 ) -> Result<Vec<ContributorInput>, Vec<Option<ValidationError>>> {
     let mut contributors = Vec::new();
-    let mut seen = BTreeSet::new();
+    let mut seen_persons = BTreeSet::new();
+    let mut seen_new = BTreeSet::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
         .map(|contributor| {
@@ -78,12 +116,21 @@ pub(crate) fn parse_contributors(
             if role.is_empty() {
                 return Some(ValidationError::RoleRequired);
             }
-            if !seen.insert((name.to_string(), role.to_string())) {
+            let person_seen = match contributor.person {
+                PersonRef::Linked(id) => !seen_persons.insert((id, role.to_string())),
+                PersonRef::New => !seen_new.insert((normalize(name), role.to_string())),
+                // Names are resolved before parsing, so one still unresolved is shared by several
+                // people, and which of them is meant is the user's choice
+                PersonRef::Unresolved => return Some(ValidationError::NameShared),
+            };
+            // A credit repeats another only when it names the same person in the same role.
+            if person_seen {
                 return Some(ValidationError::AlreadyListed);
             }
             contributors.push(ContributorInput {
                 name: name.to_string(),
                 role: role.to_string(),
+                person: contributor.person,
             });
             None
         })
@@ -170,6 +217,43 @@ pub(crate) fn trimmed_or_none(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::summary::PersonSummary;
+
+    #[test]
+    fn a_name_resolves_only_when_it_matches_one_person() {
+        let person = |id: i64, name: &str| PersonSummary {
+            id,
+            name: name.into(),
+            title: String::new(),
+            others: 0,
+        };
+        let persons = [person(1, "Erik Satie"), person(2, "Sue"), person(3, "Sue")];
+        let contributor = |name: &str, person: PersonRef| ContributorInput {
+            name: name.into(),
+            role: "composer".into(),
+            person,
+        };
+        let mut contributors = [
+            contributor("erik satie", PersonRef::Unresolved),
+            contributor("Sue", PersonRef::Unresolved),
+            contributor("Nobody", PersonRef::Unresolved),
+            // Already resolved: left alone, even though a namesake exists
+            contributor("Erik Satie", PersonRef::New),
+        ];
+        for contributor in &mut contributors {
+            contributor.resolve_by_name(&persons);
+        }
+        let resolved: Vec<PersonRef> = contributors.iter().map(|c| c.person).collect();
+        assert_eq!(
+            resolved,
+            [
+                PersonRef::Linked(1),
+                PersonRef::Unresolved,
+                PersonRef::New,
+                PersonRef::New,
+            ]
+        );
+    }
 
     #[test]
     fn links_are_normalized_and_checked() {

@@ -1,12 +1,15 @@
 use axum::http::StatusCode;
 use scorarium_archive::{
-    ContributorInput, HoldingKind, HoldingRawInput, Library, PublicationRawInput, WorkRawInput,
+    ContributorInput, HoldingKind, HoldingRawInput, Library, PersonRef, PublicationRawInput,
+    WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};
 use serde_json::Value;
 
-/// A publication whose works are all credited to one composer, as (title, catalog number)
-async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str, &str)]) {
+/// A publication whose works are all credited to one composer, as (title, catalog number).
+///
+/// Returns the composer's person id.
+async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str, &str)]) -> i64 {
     let input = PublicationRawInput {
         title: title.into(),
         holdings: vec![HoldingRawInput {
@@ -21,6 +24,7 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
                 contributors: vec![ContributorInput {
                     name: composer.into(),
                     role: "composer".into(),
+                    person: PersonRef::New,
                 }],
                 catalog_numbers: vec![(*number).into()],
                 ..WorkRawInput::default()
@@ -28,10 +32,17 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
             .collect(),
         ..PublicationRawInput::default()
     };
+    // Every work above is credited to the same composer, so whichever work comes back first,
+    // its contributor is the id to return; the publication itself has no credits of its own.
     library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .works()
+        .await
+        .unwrap()[0]
+        .contributors[0]
+        .person_id
 }
 
 #[tokio::test]
@@ -61,7 +72,12 @@ async fn field_suggestions_are_formatted_and_capped() {
     assert_eq!(first["kind"], "person");
     assert_eq!(first["value"], "Sergei Rachmaninoff");
     assert_eq!(first["primary"], "Sergei Rachmaninoff");
-    assert!(first["secondary"].as_str().unwrap().ends_with(" works"));
+    assert!(
+        first["secondary"]
+            .as_str()
+            .unwrap()
+            .starts_with("Rachmaninoff masterpieces for solo piano +")
+    );
     assert!(first["reference"]["id"].is_number());
     // Only a work number input asks about the scheme
     assert!(body.get("recognized").is_none());
@@ -181,7 +197,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
         &[("Nocturne in E-flat major", "Op. 9 No. 2")],
     )
     .await;
-    publish(
+    let beethoven = publish(
         &library,
         "Sonatas",
         "Ludwig van Beethoven",
@@ -207,6 +223,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
     assert_eq!(first["title"], "Nocturne in E-flat major");
     assert_eq!(first["contributor"], "Frederic Chopin");
     assert_eq!(first["role"], "composer");
+    assert!(first["contributor_id"].is_number());
 
     // A title is not a number, but it still finds the numbers of the works carrying it
     let body: Value = server.get(&route("q=nocturne")).await.json();
@@ -215,7 +232,7 @@ async fn work_number_suggestions_carry_the_indicator_and_contributor() {
 
     // The neighbouring composer input narrows the numbers to that composer's works
     let body: Value = server
-        .get(&route("q=no%202&composer=Ludwig%20van%20Beethoven"))
+        .get(&route(&format!("q=no%202&composer={beethoven}")))
         .await
         .json();
     let values: Vec<&str> = body["matches"]

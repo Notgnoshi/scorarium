@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Response};
-use scorarium_archive::{Entity, WorkSummary};
+use scorarium_archive::{Entity, PersonSummary, WorkSummary};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb};
@@ -35,14 +35,7 @@ struct SearchPage {
 /// suggestion handlers, so a search hit and a dropdown item read the same.
 pub(crate) fn describe(entity: &Entity) -> (&'static str, String, String) {
     match entity {
-        Entity::Person(person) => (
-            "person",
-            person.name.clone(),
-            match person.works {
-                1 => "1 work".to_string(),
-                works => format!("{works} works"),
-            },
-        ),
+        Entity::Person(person) => ("person", person.name.clone(), person_credit(person)),
         Entity::Work(work) => (
             "work",
             work.title.clone(),
@@ -72,6 +65,13 @@ fn credit(what: Option<&String>, work: &WorkSummary) -> String {
         (Some(what), None) => what.clone(),
         (None, Some(by)) => by,
         (None, None) => String::new(),
+    }
+}
+
+pub(crate) fn person_credit(person: &PersonSummary) -> String {
+    match person.others {
+        0 => person.title.clone(),
+        others => format!("{} +{others}", person.title),
     }
 }
 
