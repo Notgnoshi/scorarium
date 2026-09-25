@@ -11,6 +11,12 @@
                 opacity: 0.5;
             }
 
+            @media (min-width: 768px) {
+                .global-search {
+                    width: 24rem;
+                }
+            }
+
             /* The link icons sit on one baseline, the way Bootstrap Icons do. Some are square
                marks and some are wordmarks */
             .link-svg {
@@ -62,7 +68,7 @@
                 </button>
                 <div class="collapse navbar-collapse" id="navbar">
                     {% if base.path != "/login" %}
-                        <form class="ms-auto me-md-3 my-2 my-md-0"
+                        <form class="global-search ms-auto me-md-3 my-2 my-md-0"
                               role="search"
                               method="get"
                               action="/search">
