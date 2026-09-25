@@ -15,11 +15,11 @@
     <script>
         // Glue between the generic suggestion component and the special cases for catalog numbers.
 
-        // The person glue's link needs a match; a work pick has only the id, and shows no credit
+        // The person glue's link needs a match; a work pick has only the id
         function creditPerson(input, id) {
             if (id === null) return;
             referenceOf(input).value = id;
-            showPerson(input, "linked", "");
+            showPerson(input, "linked");
         }
 
         function composerOf(input) {

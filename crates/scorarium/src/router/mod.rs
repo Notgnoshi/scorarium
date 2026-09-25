@@ -273,8 +273,7 @@ pub struct ShownContributor {
 }
 
 pub enum PersonState {
-    /// The person is linked to an existing person in the database, and one of that person's works
-    Linked(String),
+    Linked,
     New,
     /// New, and a person by this name already exists
     Namesake,
@@ -441,11 +440,9 @@ fn shown_contributor(
         _ => None,
     };
     let (person, name, state) = match (contributor.person, linked) {
-        (PersonRef::Linked(_), Some(found)) => (
-            contributor.person,
-            found.name.clone(),
-            PersonState::Linked(search::person_credit(found)),
-        ),
+        (PersonRef::Linked(_), Some(found)) => {
+            (contributor.person, found.name.clone(), PersonState::Linked)
+        }
         (PersonRef::New, _) => (
             PersonRef::New,
             contributor.name.clone(),

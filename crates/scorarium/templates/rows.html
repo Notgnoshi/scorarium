@@ -41,7 +41,7 @@
                aria-label="Name" />
         {% call person_ref::indicator(state) %}
         {% endcall %}
-        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+        <input class="form-control person-role{% if !error.is_empty() %} is-invalid{% endif %}"
                name="contributor_role"
                value="{{ role }}"
                data-suggest="role"
@@ -159,7 +159,7 @@
                aria-label="Work contributor name" />
         {% call person_ref::indicator(state) %}
         {% endcall %}
-        <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
+        <input class="form-control person-role{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_contributor_role"
                value="{{ role }}"
                data-suggest="role"

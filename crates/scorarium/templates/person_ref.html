@@ -1,17 +1,44 @@
 {% macro indicator(state) %}
-    <span class="input-group-text" data-person-indicator>
-        {% match state %}
-        {% when crate::router::PersonState::Linked(credit) %}
+    {# The titles are repeated in the script below, which sets them as the state changes #}
+    {% match state %}
+    {% when crate::router::PersonState::Linked %}
+    <span class="input-group-text"
+          data-person-indicator
+          title="Linked to an existing person">
         <i class="bi bi-person" aria-hidden="true"></i>
-        <span class="text-truncate">{{ credit }}</span>
-        {% when crate::router::PersonState::New %}
+    </span>
+    {% when crate::router::PersonState::New %}
+    <span class="input-group-text"
+          data-person-indicator
+          title="A new person will be created">
         <span>New</span>
-        {% when crate::router::PersonState::Namesake %}
+    </span>
+    {% when crate::router::PersonState::Namesake %}
+    <span class="input-group-text"
+          data-person-indicator
+          title="A new person will be created, although one by this name already exists">
         <span class="text-warning">New</span>
-        {% when crate::router::PersonState::Unresolved %}
+    </span>
+    {% when crate::router::PersonState::Unresolved %}
+    <span class="input-group-text"
+          data-person-indicator
+          title="Pick a person from the suggestions, or create one">
         <i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>
+    </span>
 {% endmatch %}
-</span>
+{% endmacro %}
+{% macro style() %}
+    <style>
+        /* Only the name input flexes, so the indicator changing state never nudges the role */
+        [data-person-indicator] {
+            width: 3.25rem;
+            justify-content: center;
+        }
+
+        .person-role {
+            flex: 0 0 9rem;
+        }
+    </style>
 {% endmacro %}
 {% macro script() %}
     <script>
@@ -22,22 +49,27 @@
             return input.closest(".input-group")?.querySelector("[data-person-ref]");
         }
 
-        function showPerson(input, state, text) {
+        // `namesake` is the warning text for a new person whose name is already taken, if any
+        function showPerson(input, state, namesake) {
             const span = input.closest(".input-group").querySelector("[data-person-indicator]");
             if (state === "linked") {
-                span.innerHTML = '<i class="bi bi-person" aria-hidden="true"></i> <span class="text-truncate"></span>';
-                span.lastElementChild.textContent = text;
+                span.innerHTML = '<i class="bi bi-person" aria-hidden="true"></i>';
+                span.title = "Linked to an existing person";
             } else if (state === "new") {
                 span.innerHTML = "<span>New</span>";
-                span.firstElementChild.className = text ? "text-warning" : "";
+                span.firstElementChild.className = namesake ? "text-warning" : "";
+                span.title = namesake ?
+                    "A new person will be created, although one by this name already exists" :
+                    "A new person will be created";
             } else {
                 span.innerHTML = '<i class="bi bi-question-circle text-body-secondary" aria-hidden="true"></i>';
+                span.title = "Pick a person from the suggestions, or create one";
             }
         }
 
         function link(input, match) {
             referenceOf(input).value = match.reference.id;
-            showPerson(input, "linked", match.secondary);
+            showPerson(input, "linked");
         }
 
         document.addEventListener("suggest:matches", (e) => {
@@ -71,7 +103,7 @@
         document.addEventListener("input", (e) => {
             if (!e.isTrusted || !e.target.matches('[data-suggest="person"]') || !referenceOf(e.target)) return;
             referenceOf(e.target).value = "";
-            showPerson(e.target, "unresolved", "");
+            showPerson(e.target, "unresolved");
         });
 
         document.addEventListener("focusout", (e) => {

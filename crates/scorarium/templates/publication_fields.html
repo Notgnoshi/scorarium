@@ -6,6 +6,8 @@
 {% import "tags.html" as tags %}
 {% call rows::style() %}
 {% endcall %}
+{% call person_ref::style() %}
+{% endcall %}
 {% call toggle::style() %}
 {% endcall %}
 {% call stars::style() %}
@@ -189,8 +191,10 @@
 
     const copyPerson = (from, to) => {
         to.querySelector("[data-person-ref]").value = from.querySelector("[data-person-ref]").value;
-        to.querySelector("[data-person-indicator]").innerHTML =
-            from.querySelector("[data-person-indicator]").innerHTML;
+        const indicator = from.querySelector("[data-person-indicator]");
+        const target = to.querySelector("[data-person-indicator]");
+        target.innerHTML = indicator.innerHTML;
+        target.title = indicator.title;
     };
     const composerGroup = field("composer").closest(".input-group");
 
@@ -251,7 +255,7 @@
         }
         for (const name of ["title", "composer", "prefix", "from", "to"]) field(name).value = "";
         field("composer-person").value = "";
-        showPerson(field("composer"), "unresolved", "");
+        showPerson(field("composer"), "unresolved");
         bootstrap.Collapse.getOrCreateInstance(range).hide();
     });
 </script>
