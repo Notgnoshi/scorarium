@@ -28,33 +28,39 @@ function openMenu(input, matches) {
     menu.className = "dropdown-menu show";
     menu.dataset.suggestMenu = "";
     // Spans the positioned parent: the input group when there is one, else the input's wrapper
-    menu.style.cssText = "position: absolute; top: 100%; left: 0; right: 0; z-index: 1000";
+    menu.style.cssText =
+        "position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 60vh; overflow-y: auto";
+    // Ahead of the input losing focus, so neither a pick nor a drag of the scrollbar is lost to the
+    // menu closing
+    menu.addEventListener("mousedown", (e) => e.preventDefault());
     for (const match of matches) {
         const item = document.createElement("button");
         item.type = "button";
-        item.className = "dropdown-item d-flex gap-3";
+        item.className = "dropdown-item";
+        item.title = match.secondary ? `${match.primary}\n${match.secondary}` : match.primary;
+        // The badge shares the name's line so a long name truncates around it rather than displacing it
+        const named = document.createElement("div");
+        named.className = "d-flex gap-2 align-items-center";
         const primary = document.createElement("span");
+        // Truncation makes the span a scroll container, which is what lets it shrink below its text
+        primary.className = match.exact ? "text-truncate fw-bold" : "text-truncate";
         primary.textContent = match.primary;
-        if (match.exact) primary.className = "fw-bold";
-        item.appendChild(primary);
+        named.appendChild(primary);
+        if (match.reference?.source) {
+            const badge = document.createElement("span");
+            badge.className = "badge text-bg-secondary ms-auto flex-shrink-0";
+            badge.textContent = match.reference.source;
+            named.appendChild(badge);
+        }
+        item.appendChild(named);
         if (match.secondary) {
-            const secondary = document.createElement("span");
-            secondary.className = "text-body-secondary ms-auto text-truncate";
+            const secondary = document.createElement("div");
+            secondary.className = "small text-body-secondary text-truncate";
             secondary.textContent = match.secondary;
             item.appendChild(secondary);
         }
-        if (match.reference?.source) {
-            const badge = document.createElement("span");
-            badge.className = "badge text-bg-secondary";
-            badge.textContent = match.reference.source;
-            item.appendChild(badge);
-        }
         item.match = match;
-        // Ahead of the input losing focus, so the click is not lost to the menu closing
-        item.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            pick(input, match);
-        });
+        item.addEventListener("mousedown", () => pick(input, match));
         menu.appendChild(item);
     }
     if ("suggestHighlight" in input.dataset) menu.firstElementChild.classList.add("active");
@@ -119,6 +125,7 @@ document.addEventListener(
             const next = Math.min(Math.max(items.indexOf(active) + step, 0), items.length - 1);
             active?.classList.remove("active");
             items[next].classList.add("active");
+            items[next].scrollIntoView({ block: "nearest" });
         } else if (e.key === "Enter" && active) {
             // The form would otherwise submit on the way past
             e.preventDefault();

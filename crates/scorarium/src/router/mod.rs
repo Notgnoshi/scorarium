@@ -630,7 +630,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     // A typeahead asks for suggestions on every keystroke, which buries everything else in the
     // request log, so these routes are merged in below the trace layer rather than under it.
     let suggestions = Router::new()
-        .route("/suggest/title", get(suggest::title)) // suggestions for navbar search; not restricted to any given library
+        .route("/suggest/search", get(suggest::search)) // suggestions for navbar search; not restricted to any given library
         .route("/library/{id}/suggest/{kind}", get(suggest::field))
         .with_state(state.clone());
 

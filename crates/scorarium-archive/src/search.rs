@@ -33,6 +33,17 @@ pub(crate) async fn search(
     let publication_text = texts_of_publications(conn, public_only).await?;
     let work_text = texts_of_works(conn, public_only).await?;
     let mut candidates: Vec<(SearchHit, String)> = Vec::new();
+    for found in summary::persons(conn, None, public_only, None, None).await? {
+        let text = found.summary.name.clone();
+        candidates.push((
+            hit(
+                found.library_id,
+                found.library_name,
+                Entity::Person(found.summary),
+            ),
+            text,
+        ));
+    }
     for found in summary::publications(conn, None, public_only).await? {
         let text = publication_text
             .get(&found.summary.id)
@@ -65,52 +76,6 @@ pub(crate) async fn search(
                 Entity::Work(found.summary),
             ),
             text,
-        ));
-    }
-    for found in summary::persons(conn, None, public_only, None, None).await? {
-        let text = found.summary.name.clone();
-        candidates.push((
-            hit(
-                found.library_id,
-                found.library_name,
-                Entity::Person(found.summary),
-            ),
-            text,
-        ));
-    }
-    Ok(ranked(typed, candidates))
-}
-
-/// Publications and works whose title matches, for the navbar typeahead
-pub(crate) async fn suggest_titles(
-    conn: &mut SqliteConnection,
-    typed: &str,
-    public_only: bool,
-) -> Result<Vec<SearchHit>> {
-    if normalize(typed).is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut candidates: Vec<(SearchHit, String)> = Vec::new();
-    for found in summary::publications(conn, None, public_only).await? {
-        let title = found.summary.title.clone();
-        candidates.push((
-            hit(
-                found.library_id,
-                found.library_name,
-                Entity::Publication(found.summary),
-            ),
-            title,
-        ));
-    }
-    for found in summary::works(conn, None, public_only, None).await? {
-        let title = found.summary.title.clone();
-        candidates.push((
-            hit(
-                found.library_id,
-                found.library_name,
-                Entity::Work(found.summary),
-            ),
-            title,
         ));
     }
     Ok(ranked(typed, candidates))

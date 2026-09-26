@@ -43,14 +43,14 @@ async fn search_shows_what_the_viewer_may_see() {
     );
 
     // The typeahead serves anonymous viewers, with public results only
-    let body: Value = server.get("/suggest/title?q=rachmaninoff").await.json();
+    let body: Value = server.get("/suggest/search?q=rachmaninoff").await.json();
     let first = &body["matches"][0];
-    assert_eq!(first["kind"], "publication");
+    assert_eq!(first["kind"], "person");
     assert!(
         first["href"]
             .as_str()
             .unwrap()
-            .starts_with(&format!("/library/{sheet_music}/publication/"))
+            .starts_with(&format!("/library/{sheet_music}/person/"))
     );
     assert!(
         first["secondary"]
@@ -58,7 +58,7 @@ async fn search_shows_what_the_viewer_may_see() {
             .unwrap()
             .ends_with(" in Sheet music")
     );
-    let body: Value = server.get("/suggest/title?q=vim").await.json();
+    let body: Value = server.get("/suggest/search?q=vim").await.json();
     assert_eq!(body["matches"].as_array().unwrap().len(), 0);
 
     demo_login(&server).await;
@@ -71,7 +71,7 @@ async fn search_shows_what_the_viewer_may_see() {
     response.assert_text_contains("Sheet music");
 
     // Logging in opens the private library to the typeahead as well
-    let body: Value = server.get("/suggest/title?q=vim").await.json();
+    let body: Value = server.get("/suggest/search?q=vim").await.json();
     assert_eq!(body["matches"][0]["value"], "Practical Vim");
     assert!(
         body["matches"][0]["href"]
