@@ -103,9 +103,19 @@ pub async fn save(
     let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut publication = library.publication(id).await?.or_not_found()?;
-    // The page showed one contributor per work; the stored works are what the rest comes from
-    let shown = publication.raw_input(&publication.works().await?).contents;
-    let mut input = form.into_post().merge(shown);
+    let post = form.into_post();
+    // The page showed one contributor per work; the stored works are where the rest comes from. A
+    // work picked from autocomplete is not among them, so it is fetched to be edited whole.
+    let mut shown = publication.raw_input(&publication.works().await?).contents;
+    for id in post.contents.iter().filter_map(|work| work.id) {
+        if shown.iter().any(|work| work.id == Some(id)) {
+            continue;
+        }
+        if let Some(work) = library.work(id).await? {
+            shown.push(work.raw_input());
+        }
+    }
+    let mut input = post.merge(shown);
     library
         .resolve_contributors(input.contributors_mut())
         .await?;

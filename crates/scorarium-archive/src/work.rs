@@ -602,8 +602,8 @@ pub(crate) async fn load_catalog_numbers(
 
 /// Create a work and put it in a publication, on the caller's transaction.
 ///
-/// The input's id is ignored: a publication creates every work it names, since linking an existing
-/// work into another publication is not something the input can ask for yet.
+/// The input's id is ignored: it is either an import draft's id, which means nothing to the
+/// catalog, or a work that no longer exists.
 pub(crate) async fn create_work_in_publication(
     audited: &mut Audited<'_>,
     library_id: i64,
@@ -641,10 +641,11 @@ pub(crate) async fn create_work_in_publication(
 
 /// Reconcile a publication's contents against the works its input names.
 ///
-/// An input whose id the publication already contains edits that work in place, fields and credits
-/// alike; any other input creates a work. Works the input no longer names are unlinked rather than
-/// deleted; cleanup is handled by orphan cleanup on the library. Existing links keep their
-/// position, so reordering the input does not reorder the contents.
+/// An input naming a work the library has edits that work in place, fields and credits alike,
+/// linking it into the publication first when it is not yet contained; any other input creates a
+/// work. Works the input no longer names are unlinked rather than deleted; cleanup is handled by
+/// orphan cleanup on the library. Existing links keep their position, so reordering the input does
+/// not reorder the contents.
 pub(crate) async fn write_publication_works(
     audited: &mut Audited<'_>,
     library_id: i64,
@@ -668,11 +669,24 @@ pub(crate) async fn write_publication_works(
         .await?;
     }
     for input in contents {
-        // An id the publication does not contain names nothing this input may edit
-        let Some(work_id) = input.id.filter(|id| stored.contains(id)) else {
+        let Some(work_id) = input.id else {
             create_work_in_publication(audited, library_id, publication_id, input).await?;
             continue;
         };
+        if !stored.contains(&work_id) {
+            let exists = sqlx::query_scalar!(
+                "SELECT id FROM work WHERE library_id = ? AND id = ?",
+                library_id,
+                work_id
+            )
+            .fetch_optional(&mut **audited)
+            .await?;
+            if exists.is_none() {
+                create_work_in_publication(audited, library_id, publication_id, input).await?;
+                continue;
+            }
+            link_work_to_publication(audited, library_id, publication_id, work_id).await?;
+        }
         sqlx::query!(
             "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
                  stars = ?, note = ?
