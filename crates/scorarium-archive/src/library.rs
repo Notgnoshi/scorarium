@@ -72,8 +72,6 @@ impl Library {
                 Event::about(Action::Deleted, self.entity_ref()),
             )
             .await?;
-        // The pending imports cascade away with the library, but their drafts are in memory.
-        let drafted = import::pending_import_ids(&mut audited, self.id).await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
             .execute(&mut *audited)
             .await?;
@@ -82,10 +80,8 @@ impl Library {
             return Err(NotFound.into());
         }
         audited.commit().await?;
-        let mut drafts = self.archive.drafts.lock().expect("draft lock poisoned");
-        for id in drafted {
-            drafts.remove(&id);
-        }
+        // The pending imports cascade away with the library, but their drafts are in memory
+        self.archive.drafts().drop_library(self.id);
         Ok(())
     }
 

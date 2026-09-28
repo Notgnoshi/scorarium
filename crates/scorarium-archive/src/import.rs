@@ -5,7 +5,6 @@ use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
-use crate::input::WorkRef;
 use crate::publication::{self, Publication, PublicationInput, PublicationRawInput};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source};
 
@@ -41,20 +40,10 @@ pub struct Draft {
     pub lookup: Option<Lookup>,
 }
 
-/// A draft as the archive keeps it, alongside what it needs to name the next work.
-#[derive(Debug)]
-pub(crate) struct SavedDraft {
-    input: PublicationRawInput,
-    // Never reused, so a work id left over from an earlier view of the page cannot attach itself
-    // to a work added since
-    next_work_id: i64,
-    lookup: Option<Lookup>,
-}
-
 impl PendingImport {
     /// The saved draft, or one seeded from the entry page when nothing has been saved.
     pub fn draft(&self) -> Draft {
-        match self.saved_drafts().get(&self.id) {
+        match self.archive.drafts().get(self.library_id, self.id) {
             Some(saved) => Draft {
                 input: saved.input.clone(),
                 saved: true,
@@ -69,36 +58,21 @@ impl PendingImport {
     }
 
     /// Store the review page's edits, and return what was stored.
-    pub fn save_draft(&self, mut input: PublicationRawInput) -> Draft {
-        let mut drafts = self.saved_drafts();
-        let saved = drafts.entry(self.id).or_insert_with(|| SavedDraft {
-            input: PublicationRawInput::default(),
-            next_work_id: 1,
-            lookup: None,
-        });
-        for work in &mut input.contents {
-            if work.id.is_none() {
-                work.id = Some(WorkRef::Draft(saved.next_work_id));
-                saved.next_work_id += 1;
-            }
-        }
-        saved.input = input.clone();
+    pub fn save_draft(&self, input: PublicationRawInput) -> Draft {
+        let mut drafts = self.archive.drafts();
+        let saved = drafts.save(self.library_id, self.id, input);
         Draft {
-            input,
+            input: saved.input.clone(),
             saved: true,
             lookup: saved.lookup.clone(),
         }
     }
 
     /// Note what a source lookup produced, so the review page can say so.
-    ///
-    /// A lookup only ever follows a save, so an unsaved draft here is a caller bug.
     pub fn record_lookup(&self, lookup: Lookup) {
-        let mut drafts = self.saved_drafts();
-        let saved = drafts
-            .get_mut(&self.id)
-            .expect("a lookup is recorded on a saved draft");
-        saved.lookup = Some(lookup);
+        self.archive
+            .drafts()
+            .record_lookup(self.library_id, self.id, lookup);
     }
 
     /// Create the publication this import became, and delete the import, in one transaction.
@@ -170,7 +144,7 @@ impl PendingImport {
     }
 
     fn forget_draft(&self) {
-        self.saved_drafts().remove(&self.id);
+        self.archive.drafts().forget(self.library_id, self.id);
     }
 
     /// What the review page opens with before anything is saved: the copies as they were entered,
@@ -202,10 +176,6 @@ impl PendingImport {
         }
         input.title = query.to_string();
         input
-    }
-
-    fn saved_drafts(&self) -> std::sync::MutexGuard<'_, HashMap<i64, SavedDraft>> {
-        self.archive.drafts.lock().expect("draft lock poisoned")
     }
 }
 
@@ -300,18 +270,4 @@ pub(crate) async fn load_pending_imports(
             });
     }
     Ok(imports)
-}
-
-/// The ids of a library's pending imports, so that deleting the library can drop their drafts.
-pub(crate) async fn pending_import_ids(
-    conn: &mut SqliteConnection,
-    library_id: i64,
-) -> crate::Result<Vec<i64>> {
-    let ids = sqlx::query_scalar!(
-        "SELECT id FROM pending_import WHERE library_id = ?",
-        library_id
-    )
-    .fetch_all(conn)
-    .await?;
-    Ok(ids)
 }

@@ -5,6 +5,7 @@
 mod audit;
 mod catalog;
 mod demo;
+mod draft;
 mod fuzzy;
 mod holding;
 pub mod identifier;
@@ -20,7 +21,6 @@ mod summary;
 mod tag;
 mod work;
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -80,7 +80,14 @@ pub struct Archive {
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
     pool: SqlitePool,
-    pub drafts: Mutex<HashMap<i64, import::SavedDraft>>,
+    drafts: Mutex<draft::DraftStore>,
+}
+
+impl ArchiveInner {
+    /// The drafts, behind their lock
+    pub(crate) fn drafts(&self) -> std::sync::MutexGuard<'_, draft::DraftStore> {
+        self.drafts.lock().expect("draft lock poisoned")
+    }
 }
 
 // database access
