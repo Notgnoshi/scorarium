@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{
     Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup, PendingImport,
-    PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, parse_holdings,
+    PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef, parse_holdings,
 };
 use serde::Deserialize;
 use tokio::time::Instant;
@@ -268,7 +268,9 @@ pub async fn save(
     let draft = import.save_draft(form.into_post().merge(import.draft().input.contents));
     let next = match edit_work.and_then(|i| draft.input.contents.get(i)) {
         Some(work) => {
-            let work_id = work.id.expect("saving a draft names every work it holds");
+            let Some(WorkRef::Draft(work_id)) = work.id else {
+                unreachable!("saving a draft names every work it holds by a draft id")
+            };
             format!("/library/{library_id}/import/{id}/work/{work_id}")
         }
         None => format!("/library/{library_id}/import/{id}"),
@@ -376,14 +378,14 @@ pub async fn save_work(
     }
     let mut edited = WorkRawInput {
         // The page names the work it edits, so what it posts need not
-        id: Some(work_id),
+        id: Some(WorkRef::Draft(work_id)),
         ..WorkRawInput::from(post)
     };
     library
         .resolve_contributors(edited.contributors.iter_mut())
         .await?;
     for work in &mut draft.input.contents {
-        if work.id == Some(work_id) {
+        if work.id == Some(WorkRef::Draft(work_id)) {
             *work = edited;
             break;
         }
@@ -402,7 +404,7 @@ fn draft_work(draft: &Draft, work_id: i64) -> Option<&WorkRawInput> {
                 .input
                 .contents
                 .iter()
-                .find(|work| work.id == Some(work_id))
+                .find(|work| work.id == Some(WorkRef::Draft(work_id)))
         })
         .flatten()
 }

@@ -5,6 +5,7 @@ use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
+use crate::input::WorkRef;
 use crate::publication::{self, Publication, PublicationInput, PublicationRawInput};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source};
 
@@ -77,7 +78,7 @@ impl PendingImport {
         });
         for work in &mut input.contents {
             if work.id.is_none() {
-                work.id = Some(saved.next_work_id);
+                work.id = Some(WorkRef::Draft(saved.next_work_id));
                 saved.next_work_id += 1;
             }
         }

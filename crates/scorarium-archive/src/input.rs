@@ -66,6 +66,15 @@ pub enum PersonRef {
     Unresolved,
 }
 
+/// Which work a work input edits
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkRef {
+    /// A work in the catalog
+    Stored(i64),
+    /// A work that exists only in an import's draft
+    Draft(i64),
+}
+
 /// A contributor and their role
 ///
 /// This type is shared between the raw input from the web form and the "validated" contributor type

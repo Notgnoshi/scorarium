@@ -1,6 +1,6 @@
 use scorarium_archive::{
     ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef, PublicationPost,
-    WorkPost,
+    WorkPost, WorkRef,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -212,6 +212,25 @@ pub fn person_field(person: PersonRef) -> String {
     }
 }
 
+/// The prefix that tells a draft work's id from a stored one in the hidden field
+const DRAFT_PREFIX: &str = "draft:";
+
+pub fn work_ref(field: &str) -> Option<WorkRef> {
+    let field = field.trim();
+    match field.strip_prefix(DRAFT_PREFIX) {
+        Some(id) => id.parse().ok().map(WorkRef::Draft),
+        None => field.parse().ok().map(WorkRef::Stored),
+    }
+}
+
+pub fn work_field(id: Option<WorkRef>) -> String {
+    match id {
+        Some(WorkRef::Stored(id)) => id.to_string(),
+        Some(WorkRef::Draft(id)) => format!("{DRAFT_PREFIX}{id}"),
+        None => String::new(),
+    }
+}
+
 /// Credits from the parallel keys; the work form decodes the same
 pub fn contributors(
     name: Vec<String>,
@@ -257,7 +276,7 @@ fn works(
         .zip(role)
         .enumerate()
         .map(|(i, ((title, name), role))| WorkPost {
-            id: id.get(i).and_then(|id| id.trim().parse().ok()),
+            id: id.get(i).and_then(|id| work_ref(id)),
             title: title.trim().to_string(),
             // Read by position, like the id: zipping it in would drop every work when a
             // submission carries no catalog number key at all
@@ -280,6 +299,15 @@ fn works(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_work_reference_round_trips_through_the_hidden_field() {
+        for id in [None, Some(WorkRef::Stored(5)), Some(WorkRef::Draft(3))] {
+            assert_eq!(work_ref(&work_field(id)), id);
+        }
+        assert_eq!(work_ref(" 5 "), Some(WorkRef::Stored(5)));
+        assert_eq!(work_ref("draft:x"), None);
+    }
 
     /// Each copy posts its fields under a suffix of its own, and the copies come back in the
     /// order the page listed them, not in whatever order the suffixes happen to sort.

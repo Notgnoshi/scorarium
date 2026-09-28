@@ -286,7 +286,7 @@ pub enum PersonState {
 /// One work as the publication form shows it: its title, and the one catalog number and the one
 /// contributor the page picks.
 pub struct ShownWork {
-    /// The hidden field's value: the work's id, empty for one being added
+    /// The hidden field's value: the work's reference, empty for one being added
     pub id: String,
     pub title: String,
     pub catalog_number: String,
@@ -535,7 +535,7 @@ fn shown_works(
                 .unwrap_or_default();
             let credit = shown_contributor(&shown, persons, names, String::new());
             ShownWork {
-                id: work.id.map(|id| id.to_string()).unwrap_or_default(),
+                id: publication_post::work_field(work.id),
                 title: work.title.clone(),
                 recognized: CatalogNumber::parse(&number).is_recognized(),
                 catalog_number: number,

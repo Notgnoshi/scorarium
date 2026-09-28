@@ -1,9 +1,9 @@
 use scorarium_archive::{
     Archive, Draft, HoldingKind, HoldingRawInput, Library, NotFound, PublicationRawInput,
-    WorkRawInput, parse_holdings,
+    WorkRawInput, WorkRef, parse_holdings,
 };
 
-fn work_ids(draft: &Draft) -> Vec<Option<i64>> {
+fn work_ids(draft: &Draft) -> Vec<Option<WorkRef>> {
     draft.input.contents.iter().map(|work| work.id).collect()
 }
 
@@ -100,13 +100,19 @@ async fn saving_names_every_work_the_page_did_not() {
 
     let saved = import.save_draft(input);
 
-    assert_eq!(work_ids(&saved), [Some(1), Some(2)]);
+    assert_eq!(
+        work_ids(&saved),
+        [Some(WorkRef::Draft(1)), Some(WorkRef::Draft(2))]
+    );
     assert!(saved.saved);
     // What comes back next is what was stored, not a fresh seed
     let reopened = import.draft();
     assert!(reopened.saved);
     assert_eq!(reopened.input.title, "Three gymnopedies");
-    assert_eq!(work_ids(&reopened), [Some(1), Some(2)]);
+    assert_eq!(
+        work_ids(&reopened),
+        [Some(WorkRef::Draft(1)), Some(WorkRef::Draft(2))]
+    );
 
     // Dropping a work does not hand its id to the next one added
     let mut input = reopened.input;
@@ -116,7 +122,10 @@ async fn saving_names_every_work_the_page_did_not() {
         ..WorkRawInput::default()
     });
     let saved = import.save_draft(input);
-    assert_eq!(work_ids(&saved), [Some(2), Some(3)]);
+    assert_eq!(
+        work_ids(&saved),
+        [Some(WorkRef::Draft(2)), Some(WorkRef::Draft(3))]
+    );
 }
 
 #[tokio::test]
@@ -128,7 +137,7 @@ async fn accepting_creates_the_publication_once() {
         title: "Three gymnopedies".into(),
         contents: vec![WorkRawInput {
             // A draft's work ids mean nothing to the database and are ignored
-            id: Some(7),
+            id: Some(WorkRef::Draft(7)),
             title: "Gymnopedie No. 1".into(),
             ..WorkRawInput::default()
         }],

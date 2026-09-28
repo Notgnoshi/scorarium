@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
-use crate::input::{self, ContributorInput, PersonRef, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
@@ -16,8 +16,8 @@ use crate::{
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkRawInput {
-    /// The work this edits, or a draft work's id; None for one being added
-    pub id: Option<i64>,
+    /// The work this edits; None for one being added
+    pub id: Option<WorkRef>,
     pub title: String,
     pub key: String,
     pub time_signature: String,
@@ -33,7 +33,7 @@ pub struct WorkRawInput {
 /// A work posted from the publication form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkPost {
-    pub id: Option<i64>,
+    pub id: Option<WorkRef>,
     pub title: String,
     pub catalog_number: String,
     pub contributor: ContributorInput,
@@ -135,7 +135,7 @@ impl From<WorkPost> for WorkRawInput {
 /// A work's parsed and validated fields
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkInput {
-    pub(crate) id: Option<i64>,
+    pub(crate) id: Option<WorkRef>,
     pub(crate) title: String,
     pub(crate) key: Option<String>,
     pub(crate) time_signature: Option<String>,
@@ -308,7 +308,7 @@ impl Work {
     /// What the work's edit page opens with
     pub fn raw_input(&self) -> WorkRawInput {
         WorkRawInput {
-            id: Some(self.id),
+            id: Some(WorkRef::Stored(self.id)),
             title: self.title.clone(),
             key: self.key.clone().unwrap_or_default(),
             time_signature: self.time_signature.clone().unwrap_or_default(),
@@ -658,7 +658,13 @@ pub(crate) async fn write_publication_works(
     )
     .fetch_all(&mut **audited)
     .await?;
-    let named: Vec<i64> = contents.iter().filter_map(|work| work.id).collect();
+    let named: Vec<i64> = contents
+        .iter()
+        .filter_map(|work| match work.id {
+            Some(WorkRef::Stored(id)) => Some(id),
+            _ => None,
+        })
+        .collect();
     for work_id in stored.iter().filter(|id| !named.contains(id)) {
         sqlx::query!(
             "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
@@ -669,7 +675,7 @@ pub(crate) async fn write_publication_works(
         .await?;
     }
     for input in contents {
-        let Some(work_id) = input.id else {
+        let Some(WorkRef::Stored(work_id)) = input.id else {
             create_work_in_publication(audited, library_id, publication_id, input).await?;
             continue;
         };
@@ -1031,7 +1037,7 @@ mod tests {
     #[test]
     fn parse_takes_what_was_typed() {
         let raw = WorkRawInput {
-            id: Some(7),
+            id: Some(WorkRef::Stored(7)),
             title: "  Gnossienne No. 1  ".into(),
             key: String::new(),
             time_signature: "3/4".into(),
@@ -1049,7 +1055,7 @@ mod tests {
         assert_eq!(
             parsed,
             WorkInput {
-                id: Some(7),
+                id: Some(WorkRef::Stored(7)),
                 title: "Gnossienne No. 1".into(),
                 // A field left blank is no value at all, not an empty one
                 key: None,

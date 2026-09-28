@@ -4,7 +4,9 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_archive::{Library, Publication, PublicationErrors, PublicationRawInput, Work};
+use scorarium_archive::{
+    Library, Publication, PublicationErrors, PublicationRawInput, Work, WorkRef,
+};
 
 use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit, linked_summaries,
@@ -107,8 +109,14 @@ pub async fn save(
     // The page showed one contributor per work; the stored works are where the rest comes from. A
     // work picked from autocomplete is not among them, so it is fetched to be edited whole.
     let mut shown = publication.raw_input(&publication.works().await?).contents;
-    for id in post.contents.iter().filter_map(|work| work.id) {
-        if shown.iter().any(|work| work.id == Some(id)) {
+    for id in post.contents.iter().filter_map(|work| match work.id {
+        Some(WorkRef::Stored(id)) => Some(id),
+        _ => None,
+    }) {
+        if shown
+            .iter()
+            .any(|work| work.id == Some(WorkRef::Stored(id)))
+        {
             continue;
         }
         if let Some(work) = library.work(id).await? {

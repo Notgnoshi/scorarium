@@ -774,6 +774,7 @@ async fn write_publication_contributors(
 mod tests {
     use super::*;
     use crate::holding::HoldingKind;
+    use crate::input::WorkRef;
 
     fn contributor(name: &str, role: &str) -> ContributorInput {
         ContributorInput {
@@ -954,7 +955,7 @@ mod tests {
         }
     }
 
-    fn posted(works: &[(Option<i64>, &str, &str, &str, &str)]) -> PublicationPost {
+    fn posted(works: &[(Option<WorkRef>, &str, &str, &str, &str)]) -> PublicationPost {
         PublicationPost {
             title: "Album".into(),
             holdings: vec![holding(HoldingKind::Physical, "")],
@@ -972,7 +973,7 @@ mod tests {
     }
 
     /// A merged work as (id, title, key, [(contributor name, role)])
-    type WorkView<'a> = (Option<i64>, &'a str, &'a str, Vec<(&'a str, &'a str)>);
+    type WorkView<'a> = (Option<WorkRef>, &'a str, &'a str, Vec<(&'a str, &'a str)>);
 
     fn view(contents: &[WorkRawInput]) -> Vec<WorkView<'_>> {
         contents
@@ -997,7 +998,7 @@ mod tests {
     #[test]
     fn merge_keeps_what_the_page_does_not_show() {
         let shown = vec![WorkRawInput {
-            id: Some(1),
+            id: Some(WorkRef::Stored(1)),
             title: "Prelude".into(),
             key: "E minor".into(),
             contributors: vec![
@@ -1007,32 +1008,56 @@ mod tests {
             ..WorkRawInput::default()
         }];
 
-        let merged = posted(&[(Some(1), "Prelude in E minor", "", "Chopin", "composer")])
-            .merge(shown.clone());
+        let merged = posted(&[(
+            Some(WorkRef::Stored(1)),
+            "Prelude in E minor",
+            "",
+            "Chopin",
+            "composer",
+        )])
+        .merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
             [(
-                Some(1),
+                Some(WorkRef::Stored(1)),
                 "Prelude in E minor",
                 "E minor",
                 vec![("Chopin", "composer"), ("Liszt", "arranger")]
             )]
         );
 
-        let merged = posted(&[(Some(1), "Prelude", "", "Liszt", "arranger")]).merge(shown.clone());
+        let merged = posted(&[(Some(WorkRef::Stored(1)), "Prelude", "", "Liszt", "arranger")])
+            .merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
-            [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])]
+            [(
+                Some(WorkRef::Stored(1)),
+                "Prelude",
+                "E minor",
+                vec![("Liszt", "arranger")]
+            )]
         );
 
-        let merged = posted(&[(Some(1), "Prelude", "", "", "")]).merge(shown.clone());
+        let merged =
+            posted(&[(Some(WorkRef::Stored(1)), "Prelude", "", "", "")]).merge(shown.clone());
         assert_eq!(
             view(&merged.contents),
-            [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])]
+            [(
+                Some(WorkRef::Stored(1)),
+                "Prelude",
+                "E minor",
+                vec![("Liszt", "arranger")]
+            )]
         );
 
         let merged = posted(&[
-            (Some(1), "Prelude", "", "Chopin", "composer"),
+            (
+                Some(WorkRef::Stored(1)),
+                "Prelude",
+                "",
+                "Chopin",
+                "composer",
+            ),
             (None, "Nocturne", "", "Field", "composer"),
         ])
         .merge(shown.clone());
@@ -1042,9 +1067,15 @@ mod tests {
         );
 
         let merged = posted(&[
-            (Some(1), "Prelude", "", "Chopin", "composer"),
-            (Some(1), "Prelude again", "", "", ""),
-            (Some(9), "Etude", "", "", ""),
+            (
+                Some(WorkRef::Stored(1)),
+                "Prelude",
+                "",
+                "Chopin",
+                "composer",
+            ),
+            (Some(WorkRef::Stored(1)), "Prelude again", "", "", ""),
+            (Some(WorkRef::Stored(9)), "Etude", "", "", ""),
         ])
         .merge(shown.clone());
         assert_eq!(
@@ -1053,7 +1084,7 @@ mod tests {
                 .map(|(id, title, ..)| (*id, *title))
                 .collect::<Vec<_>>(),
             [
-                (Some(1), "Prelude"),
+                (Some(WorkRef::Stored(1)), "Prelude"),
                 (None, "Prelude again"),
                 (None, "Etude"),
             ]
@@ -1066,7 +1097,7 @@ mod tests {
     #[test]
     fn merge_edits_the_lead_catalog_number_and_keeps_the_rest() {
         let shown = vec![WorkRawInput {
-            id: Some(1),
+            id: Some(WorkRef::Stored(1)),
             title: "Raindrop".into(),
             catalog_numbers: vec!["B. 107".into(), "Op. 28 No. 15".into()],
             ..WorkRawInput::default()
@@ -1074,16 +1105,26 @@ mod tests {
         let numbers = |merged: &PublicationRawInput| merged.contents[0].catalog_numbers.clone();
 
         // Op. has priority over B., so Op. 28 No. 15 is the lead even though B. 107 was entered first
-        let merged = posted(&[(Some(1), "Raindrop", "Op. 28 No. 15", "", "")]).merge(shown.clone());
+        let merged = posted(&[(
+            Some(WorkRef::Stored(1)),
+            "Raindrop",
+            "Op. 28 No. 15",
+            "",
+            "",
+        )])
+        .merge(shown.clone());
         assert_eq!(numbers(&merged), ["B. 107", "Op. 28 No. 15"]);
 
-        let merged = posted(&[(Some(1), "Raindrop", "op. 28/15", "", "")]).merge(shown.clone());
+        let merged = posted(&[(Some(WorkRef::Stored(1)), "Raindrop", "op. 28/15", "", "")])
+            .merge(shown.clone());
         assert_eq!(numbers(&merged), ["B. 107", "op. 28/15"]);
 
-        let merged = posted(&[(Some(1), "Raindrop", "B 107", "", "")]).merge(shown.clone());
+        let merged =
+            posted(&[(Some(WorkRef::Stored(1)), "Raindrop", "B 107", "", "")]).merge(shown.clone());
         assert_eq!(numbers(&merged), ["B 107"]);
 
-        let merged = posted(&[(Some(1), "Raindrop", "", "", "")]).merge(shown.clone());
+        let merged =
+            posted(&[(Some(WorkRef::Stored(1)), "Raindrop", "", "", "")]).merge(shown.clone());
         assert_eq!(numbers(&merged), ["B. 107"]);
 
         let merged = posted(&[(None, "Mazurka", "Op. 7 No. 1", "", "")]).merge(shown);

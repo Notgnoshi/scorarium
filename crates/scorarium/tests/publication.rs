@@ -639,4 +639,18 @@ async fn a_picked_work_is_linked_and_edited_in_place() {
         ["B. 107", "Op. 28 No. 15"]
     );
     assert_eq!(works[0].publications().await.unwrap().len(), 2);
+
+    // A draft reference isn't in the catalog, so the work gets created here too
+    let response = server.post(&edit).form(&form(&shelf, "draft:3")).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let works = library
+        .publication(anthology.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .works()
+        .await
+        .unwrap();
+    assert_eq!(works.len(), 1);
+    assert_ne!(works[0].id, raindrop);
 }
