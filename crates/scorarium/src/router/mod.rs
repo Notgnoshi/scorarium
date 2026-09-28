@@ -525,11 +525,11 @@ fn shown_works(
         .enumerate()
         .map(|(i, work)| {
             let errors = errors.get(i).unwrap_or(&no_errors);
-            let lead = publication_post::lead_contributor(&work.contributors);
+            let lead = work.lead_contributor();
             let shown = lead
                 .map(|i| work.contributors[i].clone())
                 .unwrap_or_default();
-            let lead_number = publication_post::lead_catalog_number(&work.catalog_numbers);
+            let lead_number = work.lead_catalog_number();
             let number = lead_number
                 .map(|i| work.catalog_numbers[i].clone())
                 .unwrap_or_default();

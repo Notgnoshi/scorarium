@@ -30,6 +30,108 @@ pub struct WorkRawInput {
     pub links: Vec<String>,
 }
 
+/// A work posted from the publication form
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkPost {
+    pub id: Option<i64>,
+    pub title: String,
+    pub catalog_number: String,
+    pub contributor: ContributorInput,
+}
+
+impl WorkRawInput {
+    /// The lead contributor a work shows on the publication pages
+    pub fn lead_contributor(&self) -> Option<usize> {
+        self.contributors
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, contributor)| person::credit_priority(&contributor.role))
+            .map(|(i, _)| i)
+    }
+
+    /// The lead catalog number a work shows on the publication pages
+    pub fn lead_catalog_number(&self) -> Option<usize> {
+        self.catalog_numbers
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, number)| {
+                CatalogNumber::parse(number)
+                    .scheme_priority()
+                    .unwrap_or(usize::MAX)
+            })
+            .map(|(i, _)| i)
+    }
+
+    /// Apply a posted work edit from the publication page
+    pub(crate) fn apply(&mut self, posted: WorkPost) {
+        self.title = posted.title;
+        self.set_lead_contributor(posted.contributor);
+        self.set_lead_catalog_number(posted.catalog_number);
+    }
+
+    fn set_lead_contributor(&mut self, posted: ContributorInput) {
+        let empty = posted.name.is_empty() && posted.role.is_empty();
+        match self.lead_contributor() {
+            Some(i) if self.contributors[i] == posted => {}
+            Some(i) if !empty => {
+                self.contributors[i] = posted.clone();
+                let mut index = 0;
+                self.contributors.retain(|contributor| {
+                    let keep = index == i || *contributor != posted;
+                    index += 1;
+                    keep
+                });
+            }
+            Some(i) => {
+                self.contributors.remove(i);
+            }
+            None if !empty => self.contributors.push(posted),
+            None => {}
+        }
+    }
+
+    fn set_lead_catalog_number(&mut self, posted: String) {
+        let parsed = CatalogNumber::parse(&posted);
+        match self.lead_catalog_number() {
+            Some(i) if self.catalog_numbers[i] == posted => {}
+            Some(i) if !posted.is_empty() => {
+                self.catalog_numbers[i] = posted;
+                let mut index = 0;
+                self.catalog_numbers.retain(|number| {
+                    let keep = index == i || !CatalogNumber::parse(number).matches(&parsed);
+                    index += 1;
+                    keep
+                });
+            }
+            Some(i) => {
+                self.catalog_numbers.remove(i);
+            }
+            None if !posted.is_empty() => self.catalog_numbers.push(posted),
+            None => {}
+        }
+    }
+}
+
+impl From<WorkPost> for WorkRawInput {
+    fn from(posted: WorkPost) -> Self {
+        WorkRawInput {
+            id: None,
+            title: posted.title,
+            contributors: match posted.contributor {
+                ContributorInput { name, role, .. } if name.is_empty() && role.is_empty() => {
+                    Vec::new()
+                }
+                contributor => vec![contributor],
+            },
+            catalog_numbers: match posted.catalog_number {
+                number if number.is_empty() => Vec::new(),
+                number => vec![number],
+            },
+            ..WorkRawInput::default()
+        }
+    }
+}
+
 /// A work's parsed and validated fields
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkInput {
@@ -947,5 +1049,39 @@ mod tests {
                 links: vec!["https://imslp.org/wiki/Main_Page".into()],
             }
         );
+    }
+
+    #[test]
+    fn lead_catalog_number_prefers_the_highest_priority_scheme_then_input_order() {
+        let lead = |numbers: &[&str]| {
+            WorkRawInput {
+                catalog_numbers: numbers.iter().map(|n| n.to_string()).collect(),
+                ..WorkRawInput::default()
+            }
+            .lead_catalog_number()
+        };
+        assert_eq!(lead(&["D 899 No. 3", "Op. 90 No. 3"]), Some(1));
+        assert_eq!(lead(&["Op. 28", "Op. 28 No. 15"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "KK IVa/16"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "BWV 988"]), Some(1));
+        assert_eq!(lead(&[]), None);
+    }
+
+    #[test]
+    fn lead_contributor_prefers_composer_then_author() {
+        let lead = |credits: &[(&str, &str)]| {
+            WorkRawInput {
+                contributors: credits
+                    .iter()
+                    .map(|(name, role)| contributor(name, role))
+                    .collect(),
+                ..WorkRawInput::default()
+            }
+            .lead_contributor()
+        };
+        assert_eq!(lead(&[("A", "arranger"), ("B", "composer")]), Some(1));
+        assert_eq!(lead(&[("A", "editor"), ("B", "author")]), Some(1));
+        assert_eq!(lead(&[("A", "editor"), ("B", "arranger")]), Some(0));
+        assert_eq!(lead(&[]), None);
     }
 }

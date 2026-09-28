@@ -18,7 +18,7 @@ use super::{
 };
 use crate::AppState;
 use crate::enrich::{self, open_library};
-use crate::publication_post::{self, PublicationPost};
+use crate::publication_post::{self, PublicationForm};
 
 const UNTITLED: &str = "Untitled import";
 const UNTITLED_WORK: &str = "Untitled work";
@@ -259,13 +259,13 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let post = PublicationPost::decode(&body)?;
+    let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
     // Read before the submission is consumed. It names a work by position, since a work added just
     // now has no draft id to name it by.
-    let edit_work = post.edit_work();
-    let draft = import.save_draft(post.merge(import.draft().input.contents));
+    let edit_work = form.edit_work();
+    let draft = import.save_draft(form.into_post().merge(import.draft().input.contents));
     let next = match edit_work.and_then(|i| draft.input.contents.get(i)) {
         Some(work) => {
             let work_id = work.id.expect("saving a draft names every work it holds");
@@ -283,10 +283,10 @@ pub async fn submit(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let post = PublicationPost::decode(&body)?;
+    let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let mut input = post.merge(import.draft().input.contents);
+    let mut input = form.into_post().merge(import.draft().input.contents);
     library
         .resolve_contributors(input.contributors_mut())
         .await?;

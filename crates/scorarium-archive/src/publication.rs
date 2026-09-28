@@ -9,7 +9,7 @@ use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
-use crate::work::{self, Work, WorkErrors, WorkInput, WorkRawInput};
+use crate::work::{self, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
 use crate::{
     Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
@@ -28,6 +28,58 @@ pub struct PublicationRawInput {
     pub contributors: Vec<ContributorInput>,
     pub links: Vec<String>,
     pub contents: Vec<WorkRawInput>,
+}
+
+/// A publication posted from the web form, before works are merged into it.
+///
+/// The page shows one contributor and one catalog number per work, so a posted work is partial
+/// and cannot stand in for a whole [WorkRawInput].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PublicationPost {
+    pub title: String,
+    pub publisher: String,
+    pub year: String,
+    pub stars: String,
+    pub note: String,
+    pub tags: String,
+    pub holdings: Vec<HoldingRawInput>,
+    pub identifiers: Vec<IdentifierRawInput>,
+    pub contributors: Vec<ContributorInput>,
+    pub links: Vec<String>,
+    pub contents: Vec<WorkPost>,
+}
+
+impl PublicationPost {
+    /// Merge the given works into this publication
+    pub fn merge(self, mut shown: Vec<WorkRawInput>) -> PublicationRawInput {
+        let mut contents = Vec::new();
+        for posted in self.contents {
+            let existing = posted
+                .id
+                .and_then(|id| shown.iter().position(|work| work.id == Some(id)))
+                .map(|i| shown.remove(i));
+            match existing {
+                Some(mut work) => {
+                    work.apply(posted);
+                    contents.push(work);
+                }
+                None => contents.push(WorkRawInput::from(posted)),
+            }
+        }
+        PublicationRawInput {
+            title: self.title,
+            publisher: self.publisher,
+            year: self.year,
+            stars: self.stars,
+            note: self.note,
+            tags: self.tags,
+            holdings: self.holdings,
+            identifiers: self.identifiers,
+            contributors: self.contributors,
+            links: self.links,
+            contents,
+        }
+    }
 }
 
 /// A publication's validated fields for use in database updates
@@ -892,5 +944,149 @@ mod tests {
         assert_eq!(input.links, ["https://imslp.org/wiki/Main_Page"]);
         assert_eq!(input.contents.len(), 1);
         assert_eq!(input.contents[0].title, "Gymnopedie No. 1");
+    }
+
+    fn unresolved(name: &str, role: &str) -> ContributorInput {
+        ContributorInput {
+            name: name.into(),
+            role: role.into(),
+            person: PersonRef::Unresolved,
+        }
+    }
+
+    fn posted(works: &[(Option<i64>, &str, &str, &str, &str)]) -> PublicationPost {
+        PublicationPost {
+            title: "Album".into(),
+            holdings: vec![holding(HoldingKind::Physical, "")],
+            contents: works
+                .iter()
+                .map(|(id, title, number, name, role)| WorkPost {
+                    id: *id,
+                    title: (*title).into(),
+                    catalog_number: (*number).into(),
+                    contributor: unresolved(name, role),
+                })
+                .collect(),
+            ..PublicationPost::default()
+        }
+    }
+
+    /// A merged work as (id, title, key, [(contributor name, role)])
+    type WorkView<'a> = (Option<i64>, &'a str, &'a str, Vec<(&'a str, &'a str)>);
+
+    fn view(contents: &[WorkRawInput]) -> Vec<WorkView<'_>> {
+        contents
+            .iter()
+            .map(|work| {
+                let contributors = work
+                    .contributors
+                    .iter()
+                    .map(|c| (c.name.as_str(), c.role.as_str()))
+                    .collect();
+                (
+                    work.id,
+                    work.title.as_str(),
+                    work.key.as_str(),
+                    contributors,
+                )
+            })
+            .collect()
+    }
+
+    /// A publication shows one contributor per work, so merging has to leave everything else alone.
+    #[test]
+    fn merge_keeps_what_the_page_does_not_show() {
+        let shown = vec![WorkRawInput {
+            id: Some(1),
+            title: "Prelude".into(),
+            key: "E minor".into(),
+            contributors: vec![
+                unresolved("Chopin", "composer"),
+                unresolved("Liszt", "arranger"),
+            ],
+            ..WorkRawInput::default()
+        }];
+
+        let merged = posted(&[(Some(1), "Prelude in E minor", "", "Chopin", "composer")])
+            .merge(shown.clone());
+        assert_eq!(
+            view(&merged.contents),
+            [(
+                Some(1),
+                "Prelude in E minor",
+                "E minor",
+                vec![("Chopin", "composer"), ("Liszt", "arranger")]
+            )]
+        );
+
+        let merged = posted(&[(Some(1), "Prelude", "", "Liszt", "arranger")]).merge(shown.clone());
+        assert_eq!(
+            view(&merged.contents),
+            [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])]
+        );
+
+        let merged = posted(&[(Some(1), "Prelude", "", "", "")]).merge(shown.clone());
+        assert_eq!(
+            view(&merged.contents),
+            [(Some(1), "Prelude", "E minor", vec![("Liszt", "arranger")])]
+        );
+
+        let merged = posted(&[
+            (Some(1), "Prelude", "", "Chopin", "composer"),
+            (None, "Nocturne", "", "Field", "composer"),
+        ])
+        .merge(shown.clone());
+        assert_eq!(
+            view(&merged.contents)[1],
+            (None, "Nocturne", "", vec![("Field", "composer")])
+        );
+
+        let merged = posted(&[
+            (Some(1), "Prelude", "", "Chopin", "composer"),
+            (Some(1), "Prelude again", "", "", ""),
+            (Some(9), "Etude", "", "", ""),
+        ])
+        .merge(shown.clone());
+        assert_eq!(
+            view(&merged.contents)
+                .iter()
+                .map(|(id, title, ..)| (*id, *title))
+                .collect::<Vec<_>>(),
+            [
+                (Some(1), "Prelude"),
+                (None, "Prelude again"),
+                (None, "Etude"),
+            ]
+        );
+
+        let merged = posted(&[(None, "Mazurka", "", "", "")]).merge(shown);
+        assert_eq!(view(&merged.contents), [(None, "Mazurka", "", vec![])]);
+    }
+
+    #[test]
+    fn merge_edits_the_lead_catalog_number_and_keeps_the_rest() {
+        let shown = vec![WorkRawInput {
+            id: Some(1),
+            title: "Raindrop".into(),
+            catalog_numbers: vec!["B. 107".into(), "Op. 28 No. 15".into()],
+            ..WorkRawInput::default()
+        }];
+        let numbers = |merged: &PublicationRawInput| merged.contents[0].catalog_numbers.clone();
+
+        // Op. has priority over B., so Op. 28 No. 15 is the lead even though B. 107 was entered first
+        let merged = posted(&[(Some(1), "Raindrop", "Op. 28 No. 15", "", "")]).merge(shown.clone());
+        assert_eq!(numbers(&merged), ["B. 107", "Op. 28 No. 15"]);
+
+        let merged = posted(&[(Some(1), "Raindrop", "op. 28/15", "", "")]).merge(shown.clone());
+        assert_eq!(numbers(&merged), ["B. 107", "op. 28/15"]);
+
+        let merged = posted(&[(Some(1), "Raindrop", "B 107", "", "")]).merge(shown.clone());
+        assert_eq!(numbers(&merged), ["B 107"]);
+
+        let merged = posted(&[(Some(1), "Raindrop", "", "", "")]).merge(shown.clone());
+        assert_eq!(numbers(&merged), ["B. 107"]);
+
+        let merged = posted(&[(None, "Mazurka", "Op. 7 No. 1", "", "")]).merge(shown);
+        assert_eq!(numbers(&merged), ["Op. 7 No. 1"]);
     }
 }

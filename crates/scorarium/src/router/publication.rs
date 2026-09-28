@@ -10,7 +10,7 @@ use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit, linked_summaries,
 };
 use crate::AppState;
-use crate::publication_post::PublicationPost;
+use crate::publication_post::PublicationForm;
 
 #[derive(Template)]
 #[template(path = "publication.html")]
@@ -100,12 +100,12 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let post = PublicationPost::decode(&body)?;
+    let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut publication = library.publication(id).await?.or_not_found()?;
     // The page showed one contributor per work; the stored works are what the rest comes from
     let shown = publication.raw_input(&publication.works().await?).contents;
-    let mut input = post.merge(shown);
+    let mut input = form.into_post().merge(shown);
     library
         .resolve_contributors(input.contributors_mut())
         .await?;

@@ -43,13 +43,13 @@ pub use crate::person::{
     Contributor, Person, PersonErrors, PersonInput, PersonRawInput, credit_priority,
 };
 pub use crate::publication::{
-    Publication, PublicationErrors, PublicationInput, PublicationRawInput,
+    Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 pub use crate::search::{Entity, SearchHit};
 pub use crate::suggest::{SuggestField, Suggested, Suggestion};
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
 pub use crate::tag::TagCount;
-pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
+pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 
