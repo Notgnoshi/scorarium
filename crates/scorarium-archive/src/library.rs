@@ -252,11 +252,8 @@ impl Library {
         &self,
         contributors: impl Iterator<Item = &mut ContributorInput>,
     ) -> Result<()> {
-        let persons = self.person_summaries(None).await?;
-        for contributor in contributors {
-            contributor.resolve_by_name(&persons);
-        }
-        Ok(())
+        let mut conn = self.archive.acquire_read().await?;
+        person::resolve_contributors(&mut conn, self.id, contributors).await
     }
 
     /// The summary of one person here, or nothing when no such person is in this library

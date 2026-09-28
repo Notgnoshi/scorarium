@@ -5,8 +5,10 @@ use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
-use crate::publication::{self, Publication, PublicationInput, PublicationRawInput};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source};
+use crate::publication::{
+    self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
+};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, person};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -38,6 +40,14 @@ pub struct Draft {
     pub saved: bool,
     /// The API lookup outcome, if there was one
     pub lookup: Option<Lookup>,
+}
+
+/// What accepting a draft publication resulted in
+#[derive(Debug)]
+pub enum Accepted {
+    Published(Box<Publication>),
+    /// The draft was not valid and stays saved with the posted edits, for the review page
+    Refused(Box<PublicationErrors>),
 }
 
 impl PendingImport {
@@ -75,13 +85,28 @@ impl PendingImport {
             .record_lookup(self.library_id, self.id, lookup);
     }
 
-    /// Create the publication this import became, and delete the import, in one transaction.
+    /// Merge the posted form into the draft and accept it into a publication if it is valid.
     ///
     /// Returns a [NotFound] error when the import was already accepted or discarded.
-    pub async fn accept_into_publication(
-        self,
-        input: &PublicationInput,
-    ) -> crate::Result<Publication> {
+    pub async fn accept(self, post: PublicationPost) -> crate::Result<Accepted> {
+        let mut input = post.merge(self.draft().input.contents);
+        {
+            let mut conn = self.archive.acquire_read().await?;
+            person::resolve_contributors(&mut conn, self.library_id, input.contributors_mut())
+                .await?;
+        }
+        let parsed = match input.parse() {
+            Ok(parsed) => parsed,
+            Err(errors) => {
+                self.save_draft(input);
+                return Ok(Accepted::Refused(errors));
+            }
+        };
+        let publication = self.accept_into_publication(&parsed).await?;
+        Ok(Accepted::Published(Box::new(publication)))
+    }
+
+    async fn accept_into_publication(self, input: &PublicationInput) -> crate::Result<Publication> {
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::ImportAccepted))

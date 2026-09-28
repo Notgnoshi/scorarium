@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{
-    Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup, PendingImport,
+    Accepted, Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup, PendingImport,
     PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef, parse_holdings,
 };
 use serde::Deserialize;
@@ -288,25 +288,13 @@ pub async fn submit(
     let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let mut input = form.into_post().merge(import.draft().input.contents);
-    library
-        .resolve_contributors(input.contributors_mut())
-        .await?;
-    match input.parse() {
-        Ok(parsed) => {
-            let publication = import.accept_into_publication(&parsed).await?;
-            Ok(Redirect::to(&format!(
-                "/library/{library_id}/publication/{}",
-                publication.id
-            ))
-            .into_response())
+    let next = match import.accept(form.into_post()).await? {
+        Accepted::Published(publication) => {
+            format!("/library/{library_id}/publication/{}", publication.id)
         }
-        // Keep the edits, so the review page can show what is wrong with them
-        Err(_) => {
-            import.save_draft(input);
-            Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
-        }
-    }
+        Accepted::Refused(_) => format!("/library/{library_id}/import/{id}"),
+    };
+    Ok(Redirect::to(&next).into_response())
 }
 
 #[derive(Template)]

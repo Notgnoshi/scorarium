@@ -7,6 +7,7 @@ use sqlx::SqliteConnection;
 use crate::fuzzy::normalize;
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
+use crate::summary::{self, PersonSummary};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
 
 /// A person who contributed to a publication or work
@@ -288,6 +289,23 @@ pub(crate) async fn create_new_persons<'a>(
             }
         };
         contributor.person = PersonRef::Linked(id);
+    }
+    Ok(())
+}
+
+/// Decide whom each contributor named without an explicit user choice resolves to
+pub(crate) async fn resolve_contributors<'a>(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    contributors: impl Iterator<Item = &'a mut ContributorInput>,
+) -> Result<()> {
+    let persons: Vec<PersonSummary> = summary::persons(conn, Some(library_id), false, None, None)
+        .await?
+        .into_iter()
+        .map(|found| found.summary)
+        .collect();
+    for contributor in contributors {
+        contributor.resolve_by_name(&persons);
     }
     Ok(())
 }

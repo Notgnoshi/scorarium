@@ -1,6 +1,6 @@
 use scorarium_archive::{
-    Archive, Draft, HoldingKind, HoldingRawInput, Library, NotFound, PublicationRawInput,
-    WorkRawInput, WorkRef, parse_holdings,
+    Accepted, Archive, Draft, HoldingKind, HoldingRawInput, Library, NotFound, PublicationPost,
+    ValidationError, WorkPost, WorkRawInput, WorkRef, parse_holdings,
 };
 
 fn work_ids(draft: &Draft) -> Vec<Option<WorkRef>> {
@@ -133,23 +133,45 @@ async fn accepting_creates_the_publication_once() {
     let (archive, library) = library().await;
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "Piano bench")).unwrap();
     let import = library.start_import("", &copies).await.unwrap();
-    let input = PublicationRawInput {
+    let post = PublicationPost {
         title: "Three gymnopedies".into(),
-        contents: vec![WorkRawInput {
+        holdings: import.draft().input.holdings,
+        contents: vec![WorkPost {
             // A draft's work ids mean nothing to the database and are ignored
             id: Some(WorkRef::Draft(7)),
             title: "Gymnopedie No. 1".into(),
-            ..WorkRawInput::default()
+            ..WorkPost::default()
         }],
-        ..import.draft().input
-    }
-    .parse()
-    .unwrap();
+        ..PublicationPost::default()
+    };
     // A second tab, holding the same import
     let stale = library.pending_import(import.id).await.unwrap().unwrap();
 
-    let publication = import.accept_into_publication(&input).await.unwrap();
+    // A draft that is not ready is kept, with the edits, for the review page to explain
+    let untitled = PublicationPost {
+        title: String::new(),
+        ..post.clone()
+    };
+    let refused = library
+        .pending_import(import.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .accept(untitled)
+        .await
+        .unwrap();
+    let Accepted::Refused(errors) = refused else {
+        panic!("an untitled draft was accepted");
+    };
+    assert_eq!(errors.title, Some(ValidationError::TitleRequired));
+    let kept = import.draft();
+    assert!(kept.saved);
+    assert_eq!(kept.input.contents[0].title, "Gymnopedie No. 1");
+    assert!(library.publications().await.unwrap().is_empty());
 
+    let Accepted::Published(publication) = import.accept(post.clone()).await.unwrap() else {
+        panic!("a valid draft was refused");
+    };
     assert_eq!(publication.title, "Three gymnopedies");
     assert_eq!(publication.holdings.len(), 1);
     let works = publication.works().await.unwrap();
@@ -159,7 +181,7 @@ async fn accepting_creates_the_publication_once() {
     assert_eq!(archive.pending_import_count().await.unwrap(), 0);
 
     // The second tab must not create a second publication
-    let err = stale.accept_into_publication(&input).await.unwrap_err();
+    let err = stale.accept(post).await.unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());
     assert_eq!(library.publications().await.unwrap().len(), 1);
 }
