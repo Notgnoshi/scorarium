@@ -39,7 +39,10 @@ pub(crate) fn describe(entity: &Entity) -> (&'static str, String, String) {
         Entity::Work(work) => (
             "work",
             work.title.clone(),
-            credit(work.numbers.first(), work),
+            credit(
+                work.numbers.first().map(String::as_str),
+                contributor_name(work),
+            ),
         ),
         Entity::Publication(publication) => (
             "publication",
@@ -51,19 +54,22 @@ pub(crate) fn describe(entity: &Entity) -> (&'static str, String, String) {
 
 /// Get the primary and secondary descriptions for a catalog number
 pub(crate) fn describe_number(work: &WorkSummary, number: &str) -> (String, String) {
-    (number.to_string(), credit(Some(&work.title), work))
+    (
+        number.to_string(),
+        credit(Some(&work.title), contributor_name(work)),
+    )
+}
+
+fn contributor_name(work: &WorkSummary) -> Option<&str> {
+    work.contributor.as_ref().map(|person| person.name.as_str())
 }
 
 /// "Op. 9 No. 2 by Frederic Chopin", or whichever half exists
-fn credit(what: Option<&String>, work: &WorkSummary) -> String {
-    let by = work
-        .contributor
-        .as_ref()
-        .map(|person| format!("by {}", person.name));
+pub(crate) fn credit(what: Option<&str>, by: Option<&str>) -> String {
     match (what, by) {
-        (Some(what), Some(by)) => format!("{what} {by}"),
-        (Some(what), None) => what.clone(),
-        (None, Some(by)) => by,
+        (Some(what), Some(by)) => format!("{what} by {by}"),
+        (Some(what), None) => what.to_string(),
+        (None, Some(by)) => format!("by {by}"),
         (None, None) => String::new(),
     }
 }

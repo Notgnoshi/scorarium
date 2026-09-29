@@ -84,7 +84,7 @@
 
         function linkWork(input, id) {
             const field = input.closest("[data-row]")?.querySelector("[name=work_id]");
-            if (field && input.form?.matches("[data-publication-edit]")) field.value = id;
+            if (field) field.value = id;
         }
 
         document.addEventListener("suggest:query", (e) => {

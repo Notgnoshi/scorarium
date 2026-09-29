@@ -349,6 +349,16 @@ async fn imports_sharing_a_draft_work_produce_one_work() {
         .await;
     let draft = first_work_reference(&server.get(&nocturnes).await.text());
     assert!(draft.starts_with("draft:"));
+
+    let suggest = format!("/library/{}/suggest/work?q=nocturne", library.id);
+    let body: serde_json::Value = server.get(&format!("{suggest}&drafts=1")).await.json();
+    let item = &body["matches"][0];
+    assert_eq!(item["reference"]["id"], draft);
+    assert_eq!(item["reference"]["source"], "Draft");
+    assert_eq!(item["title"], "Nocturne in E-flat");
+    let body: serde_json::Value = server.get(&suggest).await.json();
+    assert_eq!(body["matches"].as_array().unwrap().len(), 0);
+
     server
         .post(&format!("{anthology}/save"))
         .form(&form("Anthology", &draft, "Nocturne in E-flat"))

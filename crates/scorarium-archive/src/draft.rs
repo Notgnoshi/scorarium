@@ -72,6 +72,13 @@ impl DraftStore {
         self.libraries.get(&library_id)?.works.get(&id).cloned()
     }
 
+    pub(crate) fn works(&self, library_id: i64) -> Vec<WorkRawInput> {
+        self.libraries
+            .get(&library_id)
+            .map(|library| library.works.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Store a draft publication with its works whole.
     pub(crate) fn save(
         &mut self,

@@ -46,7 +46,7 @@ pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 pub use crate::search::{Entity, SearchHit};
-pub use crate::suggest::{SuggestField, Suggested, Suggestion};
+pub use crate::suggest::{DraftWorkSummary, SuggestField, Suggested, Suggestion};
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
 pub use crate::tag::TagCount;
 pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};

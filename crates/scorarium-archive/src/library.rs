@@ -311,12 +311,18 @@ impl Library {
         field: SuggestField,
         typed: &str,
         public_only: bool,
+        include_drafts: bool,
     ) -> Result<Vec<Suggestion>> {
         if public_only && self.private {
             return Ok(Vec::new());
         }
+        let draft_works = if include_drafts {
+            self.archive.drafts().works(self.id)
+        } else {
+            Vec::new()
+        };
         let mut conn = self.archive.acquire_read().await?;
-        suggest::suggest(&mut conn, self.id, field, typed, public_only).await
+        suggest::suggest(&mut conn, self.id, field, typed, public_only, &draft_works).await
     }
 }
 

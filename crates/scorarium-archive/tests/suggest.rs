@@ -58,7 +58,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
 
     let plain = |exact: bool, item: Suggested| Suggestion { exact, item };
     let roles = library
-        .suggest(SuggestField::Role, "", false)
+        .suggest(SuggestField::Role, "", false, false)
         .await
         .unwrap();
     assert_eq!(
@@ -68,21 +68,21 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
     );
     assert_eq!(
         library
-            .suggest(SuggestField::Publisher, "dovr", false)
+            .suggest(SuggestField::Publisher, "dovr", false, false)
             .await
             .unwrap(),
         [plain(false, Suggested::Publisher("Dover".into()))]
     );
     assert_eq!(
         library
-            .suggest(SuggestField::Publisher, "dover", false)
+            .suggest(SuggestField::Publisher, "dover", false, false)
             .await
             .unwrap(),
         [plain(true, Suggested::Publisher("Dover".into()))]
     );
     assert_eq!(
         library
-            .suggest(SuggestField::Tag, "chr", false)
+            .suggest(SuggestField::Tag, "chr", false, false)
             .await
             .unwrap(),
         [plain(
@@ -95,7 +95,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
     );
     assert_eq!(
         library
-            .suggest(SuggestField::Location, "", false)
+            .suggest(SuggestField::Location, "", false, false)
             .await
             .unwrap(),
         [plain(false, Suggested::Location("Piano bench".into()))]
@@ -103,7 +103,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
     // One letter has no typo budget
     assert!(
         library
-            .suggest(SuggestField::Key, "F", false)
+            .suggest(SuggestField::Key, "F", false, false)
             .await
             .unwrap()
             .is_empty()
@@ -112,7 +112,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
     let private = archive.create_library("Books", true).await.unwrap();
     assert!(
         private
-            .suggest(SuggestField::Publisher, "", true)
+            .suggest(SuggestField::Publisher, "", true, false)
             .await
             .unwrap()
             .is_empty()
@@ -173,7 +173,7 @@ async fn entities_are_one_suggestion_each() {
         .unwrap();
 
     let works = library
-        .suggest(SuggestField::Work, "nocturne", false)
+        .suggest(SuggestField::Work, "nocturne", false, false)
         .await
         .unwrap();
     // Both nocturnes match exactly, in load order; Op. outranks B. so it leads the numbers
@@ -192,7 +192,7 @@ async fn entities_are_one_suggestion_each() {
 
     // A work in a book is credited to its author, not to a composer
     let essay = library
-        .suggest(SuggestField::Work, "self reliance", false)
+        .suggest(SuggestField::Work, "self reliance", false, false)
         .await
         .unwrap();
     assert_eq!(
@@ -201,14 +201,14 @@ async fn entities_are_one_suggestion_each() {
     );
 
     let faure = library
-        .suggest(SuggestField::Work, "nocturne faure", false)
+        .suggest(SuggestField::Work, "nocturne faure", false, false)
         .await
         .unwrap();
     assert_eq!(faure.len(), 1);
     assert!(!faure[0].exact);
 
     let persons = library
-        .suggest(SuggestField::Person, "bierce", false)
+        .suggest(SuggestField::Person, "bierce", false, false)
         .await
         .unwrap();
     assert!(matches!(
@@ -219,13 +219,13 @@ async fn entities_are_one_suggestion_each() {
 
     assert!(
         library
-            .suggest(SuggestField::Publication, "", false)
+            .suggest(SuggestField::Publication, "", false, false)
             .await
             .unwrap()
             .is_empty()
     );
     let dictionary = library
-        .suggest(SuggestField::Publication, "devil", false)
+        .suggest(SuggestField::Publication, "devil", false, false)
         .await
         .unwrap();
     assert!(
@@ -304,7 +304,7 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
     };
     let suggest = async |typed: &str, composer: Option<i64>| {
         library
-            .suggest(SuggestField::WorkNumber { composer }, typed, false)
+            .suggest(SuggestField::WorkNumber { composer }, typed, false, false)
             .await
             .unwrap()
     };
