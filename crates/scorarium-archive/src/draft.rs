@@ -131,12 +131,13 @@ impl DraftStore {
 
     /// Note what a source API lookup produced
     pub(crate) fn record_lookup(&mut self, library_id: i64, import_id: i64, lookup: Lookup) {
-        let saved = self
+        if let Some(saved) = self
             .libraries
             .get_mut(&library_id)
             .and_then(|library| library.publications.get_mut(&import_id))
-            .expect("a lookup is recorded on a saved draft");
-        saved.lookup = Some(lookup);
+        {
+            saved.lookup = Some(lookup);
+        }
     }
 
     /// Move drafts' references from each absorbed work to its survivor
