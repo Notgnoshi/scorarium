@@ -87,8 +87,10 @@ pub struct ContributorInput {
 
 impl ContributorInput {
     pub(crate) fn resolve_by_name(&mut self, persons: &[PersonSummary]) {
-        if self.person != PersonRef::Unresolved {
-            return;
+        match self.person {
+            PersonRef::New => return,
+            PersonRef::Linked(id) if persons.iter().any(|person| person.id == id) => return,
+            PersonRef::Linked(_) | PersonRef::Unresolved => {}
         }
         let mut namesakes = persons
             .iter()
@@ -248,6 +250,8 @@ mod tests {
             contributor("Nobody", PersonRef::Unresolved),
             // Already resolved: left alone, even though a namesake exists
             contributor("Erik Satie", PersonRef::New),
+            contributor("Sue", PersonRef::Linked(2)),
+            contributor("Erik Satie", PersonRef::Linked(99)),
         ];
         for contributor in &mut contributors {
             contributor.resolve_by_name(&persons);
@@ -260,6 +264,8 @@ mod tests {
                 PersonRef::Unresolved,
                 PersonRef::New,
                 PersonRef::New,
+                PersonRef::Linked(2),
+                PersonRef::Linked(1),
             ]
         );
     }
