@@ -5,10 +5,12 @@ use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
+use crate::input::WorkRef;
 use crate::publication::{
     self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, person};
+use crate::work::{self, Work};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, draft, person};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -32,9 +34,9 @@ pub enum Lookup {
     Failed(String),
 }
 
-/// The review page's edits for one pending import
+/// The review page's edits for one pending import, with every work it contains filled in
 #[derive(Clone, Debug)]
-pub struct Draft {
+pub struct DraftPublication {
     pub input: PublicationRawInput,
     /// False when nothing has been saved and the input was seeded just now
     pub saved: bool,
@@ -52,30 +54,94 @@ pub enum Accepted {
 
 impl PendingImport {
     /// The saved draft, or one seeded from the entry page when nothing has been saved.
-    pub fn draft(&self) -> Draft {
-        match self.archive.drafts().get(self.library_id, self.id) {
-            Some(saved) => Draft {
-                input: saved.input.clone(),
-                saved: true,
-                lookup: saved.lookup.clone(),
-            },
-            None => Draft {
+    pub async fn draft(&self) -> crate::Result<DraftPublication> {
+        let snapshot = self.archive.drafts().snapshot(self.library_id, self.id);
+        let Some(snapshot) = snapshot else {
+            return Ok(DraftPublication {
                 input: self.initial_draft_contents(),
                 saved: false,
                 lookup: None,
-            },
+            });
+        };
+        let mut input = snapshot.fields;
+        let mut tx = self.archive.begin_read().await?;
+        for content in snapshot.contents {
+            match content {
+                draft::Content::Draft(work) => input.contents.push(*work),
+                draft::Content::Stored(id) => {
+                    let stored = work::load_works(
+                        &self.archive,
+                        &mut tx,
+                        self.library_id,
+                        Some(id),
+                        None,
+                        None,
+                    )
+                    .await?
+                    .pop();
+                    input.contents.extend(stored.as_ref().map(Work::raw_input));
+                }
+            }
         }
+        tx.commit().await?;
+        Ok(DraftPublication {
+            input,
+            saved: true,
+            lookup: snapshot.lookup,
+        })
     }
 
     /// Store the review page's edits, and return what was stored.
-    pub fn save_draft(&self, input: PublicationRawInput) -> Draft {
-        let mut drafts = self.archive.drafts();
-        let saved = drafts.save(self.library_id, self.id, input);
-        Draft {
-            input: saved.input.clone(),
-            saved: true,
-            lookup: saved.lookup.clone(),
+    pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
+        // The catalog can have collected a stored work since the page was opened
+        let mut vanished = Vec::new();
+        {
+            let mut conn = self.archive.acquire_read().await?;
+            for work in &input.contents {
+                if let Some(WorkRef::Stored(id)) = work.id
+                    && !work::work_exists(&mut conn, self.library_id, id).await?
+                {
+                    vanished.push(id);
+                }
+            }
         }
+        self.archive
+            .drafts()
+            .save(self.library_id, self.id, input, &vanished);
+        self.draft().await
+    }
+
+    /// Merge the review page's post into the draft and store it.
+    pub async fn save(&self, post: PublicationPost) -> crate::Result<DraftPublication> {
+        let input = self.merge(post).await?;
+        self.save_draft(input).await
+    }
+
+    async fn merge(&self, post: PublicationPost) -> crate::Result<PublicationRawInput> {
+        let mut shown = self.draft().await?.input.contents;
+        let mut tx = self.archive.begin_read().await?;
+        for id in post.contents.iter().filter_map(|work| work.id) {
+            if shown.iter().any(|work| work.id == Some(id)) {
+                continue;
+            }
+            let picked = match id {
+                WorkRef::Stored(id) => work::load_works(
+                    &self.archive,
+                    &mut tx,
+                    self.library_id,
+                    Some(id),
+                    None,
+                    None,
+                )
+                .await?
+                .pop()
+                .map(|work| work.raw_input()),
+                WorkRef::Draft(id) => self.archive.drafts().work(self.library_id, id),
+            };
+            shown.extend(picked);
+        }
+        tx.commit().await?;
+        Ok(post.merge(shown))
     }
 
     /// Note what a source lookup produced, so the review page can say so.
@@ -89,7 +155,7 @@ impl PendingImport {
     ///
     /// Returns a [NotFound] error when the import was already accepted or discarded.
     pub async fn accept(self, post: PublicationPost) -> crate::Result<Accepted> {
-        let mut input = post.merge(self.draft().input.contents);
+        let mut input = self.merge(post).await?;
         {
             let mut conn = self.archive.acquire_read().await?;
             person::resolve_contributors(&mut conn, self.library_id, input.contributors_mut())
@@ -98,7 +164,7 @@ impl PendingImport {
         let parsed = match input.parse() {
             Ok(parsed) => parsed,
             Err(errors) => {
-                self.save_draft(input);
+                self.save_draft(input).await?;
                 return Ok(Accepted::Refused(errors));
             }
         };
@@ -111,7 +177,7 @@ impl PendingImport {
             .archive
             .begin_audit(Source::User, Event::new(Action::ImportAccepted))
             .await?;
-        let publication =
+        let (publication, work_ids) =
             publication::create_publication(&self.archive, &mut audited, self.library_id, input)
                 .await?;
         let result = sqlx::query!(
@@ -128,7 +194,19 @@ impl PendingImport {
         }
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
-        self.forget_draft();
+        // Only after the commit, so a rolled-back accept leaves every draft as it was
+        let published: Vec<(i64, i64)> = input
+            .contents
+            .iter()
+            .zip(work_ids)
+            .filter_map(|(work, stored)| match work.id {
+                Some(WorkRef::Draft(draft)) => Some((draft, stored)),
+                _ => None,
+            })
+            .collect();
+        self.archive
+            .drafts()
+            .accept(self.library_id, self.id, &published);
         Ok(publication)
     }
 

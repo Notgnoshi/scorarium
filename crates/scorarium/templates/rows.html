@@ -123,16 +123,17 @@
         </button>
     </fieldset>
 {% endmacro %}
-{% macro work_row(library_id, id, title, catalog_number, recognized, more_numbers, name, role, reference, state, more, error, edit) %}
+{% macro work_row(library_id, id, stored, title, catalog_number, recognized, more_numbers, name, role, reference, state, more, error, back, review) %}
     {# The message names the field at fault, so every input shares the outline #}
     <div class="input-group mb-2{% if !error.is_empty() %} has-validation{% endif %}"
          data-row>
-        {# Identifies the stored work this row edits, so it keeps its identity; empty when adding one #}
+        {# Identifies the work this edits or links, so it keeps its identity; empty when adding one #}
         <input type="hidden" name="work_id" value="{{ id }}" />
+        {# The publication edit page writes the catalog anyway, so only the review page holds a stored work read-only #}
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_title"
                value="{{ title }}"
-               data-suggest="work"
+               {% if stored && review %}readonly{% else %}data-suggest="work"{% endif %}
                autocomplete="off"
                placeholder="Title"
                aria-label="Work title" />
@@ -141,7 +142,7 @@
                value="{{ catalog_number }}"
                placeholder="Op. 27 No. 2"
                aria-label="Work catalog number"
-               data-suggest="work-number"
+               {% if stored && review %}readonly{% else %}data-suggest="work-number"{% endif %}
                autocomplete="off" />
         <span class="input-group-text">
             {% call catalog::indicator(recognized) %}
@@ -152,8 +153,7 @@
         <input class="form-control{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_contributor_name"
                value="{{ name }}"
-               data-suggest="person"
-               data-suggest-highlight
+               {% if stored && review %}readonly{% else %}data-suggest="person" data-suggest-highlight{% endif %}
                autocomplete="off"
                placeholder="Name"
                aria-label="Work contributor name" />
@@ -162,7 +162,7 @@
         <input class="form-control person-role{% if !error.is_empty() %} is-invalid{% endif %}"
                name="work_contributor_role"
                value="{{ role }}"
-               data-suggest="role"
+               {% if stored && review %}readonly{% else %}data-suggest="role"{% endif %}
                autocomplete="off"
                placeholder="Role"
                aria-label="Work contributor role" />
@@ -172,20 +172,21 @@
         {# djlint:on #}
         {# The row edits one contributor, so say when the work credits others it leaves alone #}
         {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
-        {% if edit.is_draft() %}
+        {% if stored %}
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ back|urlencode }}"
+               aria-label="Edit work"
+               title="Edit the stored work">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+            </a>
+        {% else if review %}
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-edit-work
-                    aria-label="Edit work">
+                    aria-label="Edit work"
+                    title="Save the draft and edit the work">
                 <i class="bi bi-pencil" aria-hidden="true"></i>
             </button>
-        {% else if !id.is_empty() %}
-            {# A row being added names no stored work yet, so there is nothing to link to #}
-            <a class="btn btn-outline-secondary"
-               href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ edit.back() |urlencode }}"
-               aria-label="Edit work">
-                <i class="bi bi-pencil" aria-hidden="true"></i>
-            </a>
         {% endif %}
         <button type="button"
                 class="btn btn-outline-secondary"

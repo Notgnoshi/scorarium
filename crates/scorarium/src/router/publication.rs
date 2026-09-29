@@ -8,9 +8,7 @@ use scorarium_archive::{
     Library, Publication, PublicationErrors, PublicationRawInput, Work, WorkRef,
 };
 
-use super::{
-    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit, linked_summaries,
-};
+use super::{AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, linked_summaries};
 use crate::AppState;
 use crate::publication_post::PublicationForm;
 
@@ -168,12 +166,13 @@ async fn render_edit(
     let fields = FormFields::build(input, errors, &persons, &names)
         .warn_when_empty(NO_COPIES)
         // A work's edit button opens the work, which comes back here when it is done
-        .edit_works(WorkEdit::Stored {
-            back: format!(
+        .work_edit(
+            &format!(
                 "/library/{}/publication/{}/edit",
                 library.id, publication.id
             ),
-        });
+            false,
+        );
     let page = EditPage {
         base: base.page(
             publication.title.clone(),

@@ -679,32 +679,31 @@ pub(crate) async fn write_publication_works(
             Some(WorkRef::Stored(work_id)) if stored.contains(&work_id) => {
                 write_linked_work(audited, library_id, work_id, input).await?;
             }
-            _ => link_or_create_work(audited, library_id, publication_id, input).await?,
+            _ => {
+                link_or_create_work(audited, library_id, publication_id, input).await?;
+            }
         }
     }
     Ok(())
 }
 
-/// Add work into a publication that does not contain it yet.
+/// Add work into a publication that does not contain it yet, returning the surviving work's id.
 pub(crate) async fn link_or_create_work(
     audited: &mut Audited<'_>,
     library_id: i64,
     publication_id: i64,
     input: &WorkInput,
-) -> crate::Result<()> {
+) -> crate::Result<i64> {
     match input.id {
         Some(WorkRef::Stored(work_id)) if work_exists(audited, library_id, work_id).await? => {
             link_work_to_publication(audited, library_id, publication_id, work_id).await?;
             write_linked_work(audited, library_id, work_id, input).await
         }
-        _ => {
-            create_work_in_publication(audited, library_id, publication_id, input).await?;
-            Ok(())
-        }
+        _ => create_work_in_publication(audited, library_id, publication_id, input).await,
     }
 }
 
-async fn work_exists(
+pub(crate) async fn work_exists(
     conn: &mut SqliteConnection,
     library_id: i64,
     work_id: i64,
@@ -719,13 +718,13 @@ async fn work_exists(
     Ok(found.is_some())
 }
 
-/// Apply an input to a work a publication contains
+/// Apply an input to a work a publication contains, returning the surviving work's id
 async fn write_linked_work(
     audited: &mut Audited<'_>,
     library_id: i64,
     work_id: i64,
     input: &WorkInput,
-) -> crate::Result<()> {
+) -> crate::Result<i64> {
     sqlx::query!(
         "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
                  stars = ?, note = ?
@@ -745,8 +744,7 @@ async fn write_linked_work(
     write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
     write_work_links(audited, work_id, &input.links).await?;
     tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
-    absorb_into_duplicate(audited, library_id, work_id).await?;
-    Ok(())
+    absorb_into_duplicate(audited, library_id, work_id).await
 }
 
 /// Put an existing work into another publication.

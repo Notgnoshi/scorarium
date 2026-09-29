@@ -670,7 +670,7 @@ pub(crate) async fn create_publication(
     audited: &mut Audited<'_>,
     library_id: i64,
     input: &PublicationInput,
-) -> crate::Result<Publication> {
+) -> crate::Result<(Publication, Vec<i64>)> {
     let mut input = input.clone();
     person::create_new_persons(audited, library_id, input.contributors_mut()).await?;
     let created = sqlx::query!(
@@ -687,14 +687,15 @@ pub(crate) async fn create_publication(
     .await?;
     let id = created.last_insert_rowid();
     write_publication_children(audited, library_id, id, &input).await?;
+    let mut work_ids = Vec::with_capacity(input.contents.len());
     for content in &input.contents {
-        work::link_or_create_work(audited, library_id, id, content).await?;
+        work_ids.push(work::link_or_create_work(audited, library_id, id, content).await?);
     }
     let publication = load_publications(shared, audited, library_id, Some(id), None, None, None)
         .await?
         .pop()
         .expect("the publication was just created on this transaction");
-    Ok(publication)
+    Ok((publication, work_ids))
 }
 
 /// Write a publication's identifiers, links, contributor links and holdings, but not its contents.

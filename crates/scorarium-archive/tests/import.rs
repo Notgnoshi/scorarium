@@ -1,9 +1,10 @@
 use scorarium_archive::{
-    Accepted, Archive, Draft, HoldingKind, HoldingRawInput, Library, NotFound, PublicationPost,
-    ValidationError, WorkPost, WorkRawInput, WorkRef, parse_holdings,
+    Accepted, Archive, DraftPublication, HoldingKind, HoldingRawInput, Library, NotFound,
+    PublicationPost, PublicationRawInput, ValidationError, WorkPost, WorkRawInput, WorkRef,
+    parse_holdings,
 };
 
-fn work_ids(draft: &Draft) -> Vec<Option<WorkRef>> {
+fn work_ids(draft: &DraftPublication) -> Vec<Option<WorkRef>> {
     draft.input.contents.iter().map(|work| work.id).collect()
 }
 
@@ -58,7 +59,9 @@ async fn a_fresh_draft_is_seeded_from_the_entry_page() {
         .start_import("0-486-23134-8", &copies)
         .await
         .unwrap()
-        .draft();
+        .draft()
+        .await
+        .unwrap();
 
     assert!(!identified.saved);
     assert_eq!(identified.input.title, "");
@@ -73,7 +76,9 @@ async fn a_fresh_draft_is_seeded_from_the_entry_page() {
         .start_import("Three gymnopedies", &copies)
         .await
         .unwrap()
-        .draft();
+        .draft()
+        .await
+        .unwrap();
 
     assert_eq!(titled.input.title, "Three gymnopedies");
     assert!(titled.input.identifiers.is_empty());
@@ -85,7 +90,7 @@ async fn saving_names_every_work_the_page_did_not() {
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
     let import = library.start_import("", &copies).await.unwrap();
 
-    let mut input = import.draft().input;
+    let mut input = import.draft().await.unwrap().input;
     input.title = "Three gymnopedies".into();
     input.contents = vec![
         WorkRawInput {
@@ -98,7 +103,7 @@ async fn saving_names_every_work_the_page_did_not() {
         },
     ];
 
-    let saved = import.save_draft(input);
+    let saved = import.save_draft(input).await.unwrap();
 
     assert_eq!(
         work_ids(&saved),
@@ -106,7 +111,7 @@ async fn saving_names_every_work_the_page_did_not() {
     );
     assert!(saved.saved);
     // What comes back next is what was stored, not a fresh seed
-    let reopened = import.draft();
+    let reopened = import.draft().await.unwrap();
     assert!(reopened.saved);
     assert_eq!(reopened.input.title, "Three gymnopedies");
     assert_eq!(
@@ -121,11 +126,58 @@ async fn saving_names_every_work_the_page_did_not() {
         title: "Gymnopedie No. 3".into(),
         ..WorkRawInput::default()
     });
-    let saved = import.save_draft(input);
+    let saved = import.save_draft(input).await.unwrap();
     assert_eq!(
         work_ids(&saved),
         [Some(WorkRef::Draft(2)), Some(WorkRef::Draft(3))]
     );
+}
+
+#[tokio::test]
+async fn accepting_a_picked_stored_work_links_it_whole() {
+    let (_archive, library) = library().await;
+    let preludes = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Preludes".into(),
+                holdings: holdings(HoldingKind::Physical, ""),
+                contents: vec![WorkRawInput {
+                    title: "Raindrop".into(),
+                    key: "D-flat major".into(),
+                    ..WorkRawInput::default()
+                }],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let raindrop = preludes.works().await.unwrap().remove(0).id;
+    let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
+    let import = library.start_import("", &copies).await.unwrap();
+
+    // The review form carries no key, so a key that survives means the work was not rewritten
+    let Accepted::Published(publication) = import
+        .accept(PublicationPost {
+            title: "Nocturnes".into(),
+            holdings: holdings(HoldingKind::Physical, ""),
+            contents: vec![WorkPost {
+                id: Some(WorkRef::Stored(raindrop)),
+                title: "Raindrop".into(),
+                ..WorkPost::default()
+            }],
+            ..PublicationPost::default()
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("a valid draft was refused");
+    };
+    let works = publication.works().await.unwrap();
+    assert_eq!(works.len(), 1);
+    assert_eq!(works[0].id, raindrop);
+    assert_eq!(works[0].key.as_deref(), Some("D-flat major"));
 }
 
 #[tokio::test]
@@ -135,7 +187,7 @@ async fn accepting_creates_the_publication_once() {
     let import = library.start_import("", &copies).await.unwrap();
     let post = PublicationPost {
         title: "Three gymnopedies".into(),
-        holdings: import.draft().input.holdings,
+        holdings: import.draft().await.unwrap().input.holdings,
         contents: vec![WorkPost {
             // A draft's work ids mean nothing to the database and are ignored
             id: Some(WorkRef::Draft(7)),
@@ -164,7 +216,7 @@ async fn accepting_creates_the_publication_once() {
         panic!("an untitled draft was accepted");
     };
     assert_eq!(errors.title, Some(ValidationError::TitleRequired));
-    let kept = import.draft();
+    let kept = import.draft().await.unwrap();
     assert!(kept.saved);
     assert_eq!(kept.input.contents[0].title, "Gymnopedie No. 1");
     assert!(library.publications().await.unwrap().is_empty());

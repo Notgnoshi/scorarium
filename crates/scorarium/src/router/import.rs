@@ -5,16 +5,17 @@ use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{
-    Accepted, Draft, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup, PendingImport,
-    PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef, parse_holdings,
+    Accepted, DraftPublication, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup,
+    PendingImport, PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef,
+    parse_holdings,
 };
 use serde::Deserialize;
 use tokio::time::Instant;
 
 use super::work::WorkPost;
 use super::{
-    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkEdit,
-    WorkFields, age, linked_summaries,
+    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkFields, age,
+    linked_summaries,
 };
 use crate::AppState;
 use crate::enrich::{self, open_library};
@@ -32,14 +33,14 @@ pub struct ShownImport {
     pub age: String,
 }
 
-fn shown(import: PendingImport) -> ShownImport {
-    let draft = import.draft();
-    ShownImport {
+async fn shown(import: PendingImport) -> Result<ShownImport, AppError> {
+    let draft = import.draft().await?;
+    Ok(ShownImport {
         title: label(&import, &draft.input),
         holdings: draft.input.holdings,
         age: age(import.created_at),
         import,
-    }
+    })
 }
 
 /// What to call a pending import: its draft's title, else what was typed, else a placeholder.
@@ -115,14 +116,13 @@ async fn render_entry(
             message: message(errors.each.get(i).and_then(Option::as_ref)),
         })
         .collect();
+    let mut pending = Vec::new();
+    for import in library.pending_imports().await? {
+        pending.push(shown(import).await?);
+    }
     let page = EntryPage {
         base: base.page("Import", vec![Crumb::home(), Crumb::library(library)]),
-        pending: library
-            .pending_imports()
-            .await?
-            .into_iter()
-            .map(shown)
-            .collect(),
+        pending,
         show_library: false,
         no_holdings: message(errors.none.as_ref()),
         library: library.clone(),
@@ -166,17 +166,12 @@ pub async fn start(
     // failed lookup's identifier-only draft is what makes the page validate it on first view.
     //
     // This is a blocking request for now until I learn more.
-    if let Some(isbn) = import
-        .draft()
-        .input
-        .identifiers
-        .iter()
-        .find(|i| i.kind == "isbn")
-    {
+    let seeded = import.draft().await?;
+    if let Some(isbn) = seeded.input.identifiers.iter().find(|i| i.kind == "isbn") {
         let deadline = Instant::now() + enrich::BUDGET;
         let (found, lookup) =
             open_library::lookup_isbn(&state.sources.open_library(), &isbn.value, deadline).await;
-        let mut draft = import.draft().input;
+        let mut draft = seeded.input.clone();
         if let Some(found) = found {
             enrich::merge(&mut draft, found);
         }
@@ -184,7 +179,7 @@ pub async fn start(
         library
             .resolve_contributors(draft.contributors_mut())
             .await?;
-        import.save_draft(draft);
+        import.save_draft(draft).await?;
         import.record_lookup(lookup);
     }
 
@@ -216,7 +211,7 @@ pub async fn review(
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let draft = import.draft();
+    let draft = import.draft().await?;
     let title = label(&import, &draft.input);
     // Errors show for saved drafts only; a fresh import should not open covered in warnings
     let errors = if draft.saved {
@@ -245,7 +240,7 @@ pub async fn review(
         age: age(import.created_at),
         lookup: draft.lookup,
         fields: FormFields::build(draft.input, errors, &persons, &names)
-            .edit_works(WorkEdit::Draft),
+            .work_edit(&format!("/library/{library_id}/import/{id}"), true),
         library,
         import,
     };
@@ -265,15 +260,15 @@ pub async fn save(
     // Read before the submission is consumed. It names a work by position, since a work added just
     // now has no draft id to name it by.
     let edit_work = form.edit_work();
-    let draft = import.save_draft(form.into_post().merge(import.draft().input.contents));
-    let next = match edit_work.and_then(|i| draft.input.contents.get(i)) {
-        Some(work) => {
-            let Some(WorkRef::Draft(work_id)) = work.id else {
-                unreachable!("saving a draft names every work it holds by a draft id")
-            };
-            format!("/library/{library_id}/import/{id}/work/{work_id}")
+    let draft = import.save(form.into_post()).await?;
+    let review = format!("/library/{library_id}/import/{id}");
+    let next = match edit_work.and_then(|i| draft.input.contents.get(i)?.id) {
+        Some(WorkRef::Draft(work_id)) => format!("{review}/work/{work_id}"),
+        Some(WorkRef::Stored(work_id)) => {
+            let Ok(back) = askama::filters::urlencode(&review);
+            format!("/library/{library_id}/work/{work_id}/edit?back={back}")
         }
-        None => format!("/library/{library_id}/import/{id}"),
+        None => review,
     };
     Ok(Redirect::to(&next).into_response())
 }
@@ -319,7 +314,7 @@ pub async fn work(
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let draft = import.draft();
+    let draft = import.draft().await?;
     let Some(input) = draft_work(&draft, work_id).cloned() else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
@@ -360,7 +355,7 @@ pub async fn save_work(
     let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let import = library.pending_import(id).await?.or_not_found()?;
-    let mut draft = import.draft();
+    let mut draft = import.draft().await?;
     if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
@@ -378,13 +373,13 @@ pub async fn save_work(
             break;
         }
     }
-    import.save_draft(draft.input);
+    import.save_draft(draft.input).await?;
     Ok(Redirect::to(&format!("/library/{library_id}/import/{id}")).into_response())
 }
 
 /// The work a saved draft holds under this id. An unsaved draft holds none: a draft work comes
 /// into being only when the review page is saved.
-fn draft_work(draft: &Draft, work_id: i64) -> Option<&WorkRawInput> {
+fn draft_work(draft: &DraftPublication, work_id: i64) -> Option<&WorkRawInput> {
     draft
         .saved
         .then(|| {
@@ -411,15 +406,13 @@ pub async fn queue(
     State(state): State<Arc<AppState>>,
     base: BaseContext,
 ) -> Result<Response, AppError> {
+    let mut pending = Vec::new();
+    for import in state.archive.pending_imports().await? {
+        pending.push(shown(import).await?);
+    }
     let page = QueuePage {
         base: base.page("Review queue", vec![Crumb::home()]),
-        pending: state
-            .archive
-            .pending_imports()
-            .await?
-            .into_iter()
-            .map(shown)
-            .collect(),
+        pending,
         show_library: true,
     };
     Ok(Html(page.render()?).into_response())

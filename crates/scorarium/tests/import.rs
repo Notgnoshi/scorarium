@@ -290,3 +290,109 @@ async fn unknown_isbn_falls_back_to_the_typed_identifier() {
     response.assert_text_contains("A title is required.");
     response.assert_text_contains("Open Library lookup failed: no record for 978-0-486-99999-9");
 }
+
+fn first_work_reference(html: &str) -> String {
+    let start =
+        html.find("name=\"work_id\" value=\"").expect("a work") + "name=\"work_id\" value=\"".len();
+    let end = start + html[start..].find('"').unwrap();
+    html[start..end].to_string()
+}
+
+#[tokio::test]
+async fn imports_sharing_a_draft_work_produce_one_work() {
+    let state = TestDb::new()
+        .library("Scores")
+        .password("hunter2")
+        .build()
+        .await;
+    let server = browser(state.clone());
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let entry = format!("/library/{}/import", library.id);
+    server.post("/login").form(&[("password", "hunter2")]).await;
+
+    let start = async |query: &str| {
+        let response = server
+            .post(&entry)
+            .form(&[
+                ("query", query),
+                ("holding_kind_0", "physical"),
+                ("holding_location_0", "Shelf"),
+                ("holding_file_0", ""),
+            ])
+            .await;
+        response.header("location").to_str().unwrap().to_string()
+    };
+    let nocturnes = start("Nocturnes").await;
+    let anthology = start("Anthology").await;
+
+    let form = |title: &str, work_id: &str, work_title: &str| {
+        vec![
+            ("title", title.to_string()),
+            ("publisher", String::new()),
+            ("year", String::new()),
+            ("holding_kind_0", "physical".to_string()),
+            ("holding_location_0", "Shelf".to_string()),
+            ("holding_file_0", String::new()),
+            ("work_id", work_id.to_string()),
+            ("work_title", work_title.to_string()),
+            ("work_catalog_number", String::new()),
+            ("work_contributor_name", String::new()),
+            ("work_contributor_role", String::new()),
+            ("work_contributor_person", String::new()),
+        ]
+    };
+
+    // The first import creates a draft work; the second links it by reference
+    server
+        .post(&format!("{nocturnes}/save"))
+        .form(&form("Nocturnes", "", "Nocturne in E-flat"))
+        .await;
+    let draft = first_work_reference(&server.get(&nocturnes).await.text());
+    assert!(draft.starts_with("draft:"));
+    server
+        .post(&format!("{anthology}/save"))
+        .form(&form("Anthology", &draft, "Nocturne in E-flat"))
+        .await;
+    let response = server.get(&anthology).await;
+    response.assert_text_contains(format!("name=\"work_id\" value=\"{draft}\""));
+
+    // One edit, seen from both imports
+    server
+        .post(&format!("{nocturnes}/save"))
+        .form(&form("Nocturnes", &draft, "Nocturne No. 2"))
+        .await;
+    server
+        .get(&anthology)
+        .await
+        .assert_text_contains("value=\"Nocturne No. 2\"");
+
+    // Accepting the first turns the second's reference into the stored work, shown read-only
+    let response = server
+        .post(&format!("{nocturnes}/submit"))
+        .form(&form("Nocturnes", &draft, "Nocturne No. 2"))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let published = library.publications().await.unwrap().remove(0);
+    let nocturne = published.works().await.unwrap().remove(0).id;
+    let response = server.get(&anthology).await;
+    response.assert_text_contains(format!("name=\"work_id\" value=\"{nocturne}\""));
+    response.assert_text_contains("readonly");
+    response.assert_text_contains(format!(
+        "/library/{}/work/{nocturne}/edit?back=",
+        library.id
+    ));
+
+    // Accepting the second links the stored work rather than copying it
+    let response = server
+        .post(&format!("{anthology}/submit"))
+        .form(&form("Anthology", &nocturne.to_string(), "Nocturne No. 2"))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let work = library.work(nocturne).await.unwrap().unwrap();
+    assert_eq!(work.publications().await.unwrap().len(), 2);
+    for publication in library.publications().await.unwrap() {
+        let works = publication.works().await.unwrap();
+        assert_eq!(works.len(), 1);
+        assert_eq!(works[0].id, nocturne);
+    }
+}

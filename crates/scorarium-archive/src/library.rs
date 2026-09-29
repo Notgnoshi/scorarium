@@ -132,7 +132,7 @@ impl Library {
             .archive
             .begin_audit(Source::User, Event::new(Action::Created))
             .await?;
-        let publication =
+        let (publication, _) =
             publication::create_publication(&self.archive, &mut audited, self.id, input).await?;
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;

@@ -95,12 +95,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for w in fields.works %}
-                {% call rows::work_row(library.id, w.id, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.person, w.state, w.more, w.message, fields.work_edit) %}
+                {% call rows::work_row(library.id, w.id, w.stored, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.person, w.state, w.more, w.message, fields.work_back, fields.review) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", "", "", false, "", "", "", "", crate::router::PersonState::Unresolved, "", "", fields.work_edit) %}
+            {% call rows::work_row(library.id, "", false, "", "", false, "", "", "", "", crate::router::PersonState::Unresolved, "", "", fields.work_back, fields.review) %}
             {% endcall %}
         </template>
         <button type="button"
@@ -153,7 +153,7 @@
                 <div class="invalid-feedback" data-range-error></div>
             </div>
         </div>
-        {% if fields.work_edit.is_draft() %}
+        {% if fields.review %}
             {# Which row's work to open once the draft is saved; empty means none #}
             <input type="hidden" name="edit_work" value="" data-edit-work-row />
         {% endif %}
@@ -259,7 +259,7 @@
         bootstrap.Collapse.getOrCreateInstance(range).hide();
     });
 </script>
-{% if fields.work_edit.is_draft() %}
+{% if fields.review %}
     <script>
         // A draft work is only reachable through the draft it belongs to, so opening one saves the
         // form first and lets the server redirect
