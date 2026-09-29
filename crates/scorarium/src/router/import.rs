@@ -175,10 +175,6 @@ pub async fn start(
         if let Some(found) = found {
             enrich::merge(&mut draft, found);
         }
-        // Resolved once, here, so the review page opens with its authors already picked
-        library
-            .resolve_contributors(draft.contributors_mut())
-            .await?;
         import.save_draft(draft).await?;
         import.record_lookup(lookup);
     }
@@ -359,14 +355,11 @@ pub async fn save_work(
     if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
     }
-    let mut edited = WorkRawInput {
+    let edited = WorkRawInput {
         // The page names the work it edits, so what it posts need not
         id: Some(WorkRef::Draft(work_id)),
         ..WorkRawInput::from(post)
     };
-    library
-        .resolve_contributors(edited.contributors.iter_mut())
-        .await?;
     for work in &mut draft.input.contents {
         if work.id == Some(WorkRef::Draft(work_id)) {
             *work = edited;

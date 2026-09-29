@@ -1,7 +1,7 @@
 use scorarium_archive::{
-    Accepted, Archive, DraftPublication, HoldingKind, HoldingRawInput, Library, NotFound,
-    PublicationPost, PublicationRawInput, ValidationError, WorkPost, WorkRawInput, WorkRef,
-    parse_holdings,
+    Accepted, Archive, ContributorInput, DraftPublication, HoldingKind, HoldingRawInput, Library,
+    NotFound, PersonRef, PublicationPost, PublicationRawInput, ValidationError, WorkPost,
+    WorkRawInput, WorkRef, parse_holdings,
 };
 
 fn work_ids(draft: &DraftPublication) -> Vec<Option<WorkRef>> {
@@ -188,6 +188,11 @@ async fn accepting_creates_the_publication_once() {
     let post = PublicationPost {
         title: "Three gymnopedies".into(),
         holdings: import.draft().await.unwrap().input.holdings,
+        contributors: vec![ContributorInput {
+            name: "Erik Satie".into(),
+            role: "composer".into(),
+            person: PersonRef::Unresolved,
+        }],
         contents: vec![WorkPost {
             // A draft's work ids mean nothing to the database and are ignored
             id: Some(WorkRef::Draft(7)),
@@ -226,6 +231,8 @@ async fn accepting_creates_the_publication_once() {
     };
     assert_eq!(publication.title, "Three gymnopedies");
     assert_eq!(publication.holdings.len(), 1);
+    assert_eq!(publication.contributors.len(), 1);
+    assert_eq!(publication.contributors[0].name, "Erik Satie");
     let works = publication.works().await.unwrap();
     assert_eq!(works.len(), 1);
     assert_ne!(works[0].id, 7);

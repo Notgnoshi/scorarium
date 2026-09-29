@@ -91,12 +91,16 @@ impl PendingImport {
         })
     }
 
-    /// Store the review page's edits, and return what was stored.
-    pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
+    pub async fn save_draft(
+        &self,
+        mut input: PublicationRawInput,
+    ) -> crate::Result<DraftPublication> {
         // The catalog can have collected a stored work since the page was opened
         let mut vanished = Vec::new();
         {
             let mut conn = self.archive.acquire_read().await?;
+            person::resolve_contributors(&mut conn, self.library_id, input.contributors_mut())
+                .await?;
             for work in &input.contents {
                 if let Some(WorkRef::Stored(id)) = work.id
                     && !work::work_exists(&mut conn, self.library_id, id).await?
@@ -155,18 +159,11 @@ impl PendingImport {
     ///
     /// Returns a [NotFound] error when the import was already accepted or discarded.
     pub async fn accept(self, post: PublicationPost) -> crate::Result<Accepted> {
-        let mut input = self.merge(post).await?;
-        {
-            let mut conn = self.archive.acquire_read().await?;
-            person::resolve_contributors(&mut conn, self.library_id, input.contributors_mut())
-                .await?;
-        }
-        let parsed = match input.parse() {
+        let saved = self.save(post).await?;
+        // A draft that is not ready remains saved with validation errors explaining why it was rejected
+        let parsed = match saved.input.parse() {
             Ok(parsed) => parsed,
-            Err(errors) => {
-                self.save_draft(input).await?;
-                return Ok(Accepted::Refused(errors));
-            }
+            Err(errors) => return Ok(Accepted::Refused(errors)),
         };
         let publication = self.accept_into_publication(&parsed).await?;
         Ok(Accepted::Published(Box::new(publication)))
