@@ -316,13 +316,23 @@ impl Library {
         if public_only && self.private {
             return Ok(Vec::new());
         }
-        let draft_works = if include_drafts {
-            self.archive.drafts().works(self.id)
+        let (draft_works, draft_persons) = if include_drafts {
+            let drafts = self.archive.drafts();
+            (drafts.works(self.id), drafts.person_summaries(self.id))
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         let mut conn = self.archive.acquire_read().await?;
-        suggest::suggest(&mut conn, self.id, field, typed, public_only, &draft_works).await
+        suggest::suggest(
+            &mut conn,
+            self.id,
+            field,
+            typed,
+            public_only,
+            &draft_works,
+            draft_persons,
+        )
+        .await
     }
 }
 

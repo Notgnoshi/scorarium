@@ -21,7 +21,7 @@ use crate::{AppState, publication_post};
 pub struct FieldQuery {
     #[serde(default)]
     q: String,
-    /// for work-number only: the person id the work's contributor is linked to
+    /// for work-number only: the neighbouring contributor's hidden field
     composer: Option<String>,
     /// for tag only: comma-separated tags already picked
     exclude: Option<String>,
@@ -128,7 +128,8 @@ pub async fn field(
     let composer = query
         .composer
         .as_deref()
-        .and_then(|composer| composer.trim().parse().ok());
+        .map(publication_post::person_ref)
+        .filter(|person| matches!(person, PersonRef::Linked(_) | PersonRef::Draft(_)));
     let field = match kind.as_str() {
         "person" => SuggestField::Person,
         "work" => SuggestField::Work,
@@ -337,6 +338,21 @@ fn shown(suggestion: Suggestion) -> FieldMatch {
     let exact = suggestion.exact;
     match suggestion.item {
         Suggested::Person(person) => item(Entity::Person(person), exact),
+        Suggested::DraftPerson(person) => FieldMatch {
+            kind: "person",
+            value: person.name.clone(),
+            exact,
+            primary: person.name.clone(),
+            secondary: person.title,
+            href: None,
+            data: Data::Person {
+                reference: Reference::Draft {
+                    id: publication_post::person_field(PersonRef::Draft(person.id)),
+                    source: "Draft",
+                },
+                name: person.name,
+            },
+        },
         Suggested::Publication(publication) => item(Entity::Publication(publication), exact),
         Suggested::Work { work, number: None } => item(Entity::Work(work), exact),
         // A number input puts the matched number in the input and leads with it, rather than the

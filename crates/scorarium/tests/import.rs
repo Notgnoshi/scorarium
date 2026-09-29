@@ -362,6 +362,11 @@ async fn imports_sharing_a_draft_work_produce_one_work() {
     let body: serde_json::Value = server.get(&suggest).await.json();
     assert_eq!(body["matches"].as_array().unwrap().len(), 0);
 
+    let chopin = format!("/library/{}/suggest/person?q=chopin&drafts=1", library.id);
+    let body: serde_json::Value = server.get(&chopin).await.json();
+    assert_eq!(body["matches"][0]["kind"], "person");
+    assert_eq!(body["matches"][0]["reference"]["source"], "Draft");
+
     server
         .post(&format!("{anthology}/save"))
         .form(&form("Anthology", &draft, "Nocturne in E-flat"))

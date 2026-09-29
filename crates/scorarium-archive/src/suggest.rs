@@ -15,7 +15,7 @@ use crate::{Result, person, tag};
 pub enum SuggestField {
     Person,
     Work,
-    WorkNumber { composer: Option<i64> },
+    WorkNumber { composer: Option<PersonRef> },
     Publication,
     Role,
     Publisher,
@@ -24,6 +24,14 @@ pub enum SuggestField {
     TimeSignature,
     Instrumentation,
     Location,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DraftPersonSummary {
+    pub id: i64,
+    pub name: String,
+    /// The title of a draft crediting this person
+    pub title: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,6 +46,7 @@ pub struct DraftWorkSummary {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Suggested {
     Person(PersonSummary),
+    DraftPerson(DraftPersonSummary),
     /// `number` is the catalog number that matched; None from a title input
     Work {
         work: WorkSummary,
@@ -78,6 +87,7 @@ pub(crate) async fn suggest(
     typed: &str,
     public_suggestions_only: bool,
     draft_works: &[WorkRawInput],
+    draft_persons: Vec<DraftPersonSummary>,
 ) -> Result<Vec<Suggestion>> {
     // An entity field has no small vocabulary to fall back on, so nothing typed means nothing to
     // yield as suggestions.
@@ -97,14 +107,15 @@ pub(crate) async fn suggest(
             let persons = summary::persons(conn, Some(library_id), false, None, None)
                 .await?
                 .into_iter()
-                .map(|found| found.summary)
+                .map(|found| PersonCandidate::Stored(found.summary))
+                .chain(draft_persons.into_iter().map(PersonCandidate::Draft))
                 .collect();
             ranked_entities(
                 typed,
                 persons,
-                |person| person.name.clone(),
-                |person| person.name.as_str(),
-                Suggested::Person,
+                |person| person.name().to_string(),
+                PersonCandidate::name,
+                PersonCandidate::offered,
             )
         }
         SuggestField::Work => {
@@ -127,8 +138,15 @@ pub(crate) async fn suggest(
             )
         }
         SuggestField::WorkNumber { composer } => {
-            let works = summary::works(conn, Some(library_id), false, composer)
-                .await?
+            // A stored work cannot credit a draft person, so a draft composer narrows to drafts
+            let stored = match composer {
+                Some(PersonRef::Linked(id)) => {
+                    summary::works(conn, Some(library_id), false, Some(id)).await?
+                }
+                Some(_) => Vec::new(),
+                None => summary::works(conn, Some(library_id), false, None).await?,
+            };
+            let works = stored
                 .into_iter()
                 .map(|found| WorkCandidate::Stored(found.summary))
                 .chain(
@@ -262,6 +280,27 @@ pub(crate) async fn suggest(
     })
 }
 
+enum PersonCandidate {
+    Stored(PersonSummary),
+    Draft(DraftPersonSummary),
+}
+
+impl PersonCandidate {
+    fn name(&self) -> &str {
+        match self {
+            PersonCandidate::Stored(person) => &person.name,
+            PersonCandidate::Draft(person) => &person.name,
+        }
+    }
+
+    fn offered(self) -> Suggested {
+        match self {
+            PersonCandidate::Stored(person) => Suggested::Person(person),
+            PersonCandidate::Draft(person) => Suggested::DraftPerson(person),
+        }
+    }
+}
+
 #[derive(Clone)]
 enum WorkCandidate {
     Stored(WorkSummary),
@@ -310,7 +349,7 @@ impl WorkCandidate {
 }
 
 /// None when a composer is given and the draft work is not linked to them.
-fn draft_candidate(work: &WorkRawInput, composer: Option<i64>) -> Option<WorkCandidate> {
+fn draft_candidate(work: &WorkRawInput, composer: Option<PersonRef>) -> Option<WorkCandidate> {
     let Some(WorkRef::Draft(id)) = work.id else {
         unreachable!("the store names every draft work it holds");
     };
@@ -318,7 +357,7 @@ fn draft_candidate(work: &WorkRawInput, composer: Option<i64>) -> Option<WorkCan
         && !work
             .contributors
             .iter()
-            .any(|credit| credit.person == PersonRef::Linked(composer))
+            .any(|credit| credit.person == composer)
     {
         return None;
     }

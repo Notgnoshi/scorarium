@@ -304,7 +304,14 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
     };
     let suggest = async |typed: &str, composer: Option<i64>| {
         library
-            .suggest(SuggestField::WorkNumber { composer }, typed, false, false)
+            .suggest(
+                SuggestField::WorkNumber {
+                    composer: composer.map(PersonRef::Linked),
+                },
+                typed,
+                false,
+                false,
+            )
             .await
             .unwrap()
     };

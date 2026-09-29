@@ -5,6 +5,7 @@ use crate::import::Lookup;
 use crate::input::{self, ContributorInput, PersonRef, WorkRef};
 use crate::person::PersonRawInput;
 use crate::publication::PublicationRawInput;
+use crate::suggest::DraftPersonSummary;
 use crate::summary::PersonSummary;
 use crate::work::WorkRawInput;
 
@@ -177,6 +178,34 @@ impl DraftStore {
             .unwrap_or_default()
     }
 
+    /// Each draft person with the title of one draft crediting them, to tell namesakes apart.
+    pub(crate) fn person_summaries(&self, library_id: i64) -> Vec<DraftPersonSummary> {
+        let Some(library) = self.libraries.get(&library_id) else {
+            return Vec::new();
+        };
+        library
+            .persons
+            .iter()
+            .map(|(id, person)| {
+                let publication = library
+                    .publications
+                    .values()
+                    .find(|saved| credits_draft_person(&saved.fields.contributors, *id))
+                    .map(|saved| saved.fields.title.clone());
+                let work = library
+                    .works
+                    .values()
+                    .find(|work| credits_draft_person(&work.contributors, *id))
+                    .map(|work| work.title.clone());
+                DraftPersonSummary {
+                    id: *id,
+                    name: person.name.clone(),
+                    title: publication.or(work).unwrap_or_default(),
+                }
+            })
+            .collect()
+    }
+
     pub(crate) fn forget(&mut self, library_id: i64, import_id: i64) {
         if let Some(library) = self.libraries.get_mut(&library_id) {
             library.publications.remove(&import_id);
@@ -210,17 +239,21 @@ impl LibraryDrafts {
                 .any(|saved| saved.contents.contains(&WorkRef::Draft(*id)))
         });
         self.persons.retain(|id, _| {
-            let credited = |credits: &[ContributorInput]| {
-                credits
-                    .iter()
-                    .any(|credit| credit.person == PersonRef::Draft(*id))
-            };
             self.publications
                 .values()
-                .any(|saved| credited(&saved.fields.contributors))
-                || self.works.values().any(|work| credited(&work.contributors))
+                .any(|saved| credits_draft_person(&saved.fields.contributors, *id))
+                || self
+                    .works
+                    .values()
+                    .any(|work| credits_draft_person(&work.contributors, *id))
         });
     }
+}
+
+fn credits_draft_person(credits: &[ContributorInput], id: i64) -> bool {
+    credits
+        .iter()
+        .any(|credit| credit.person == PersonRef::Draft(id))
 }
 
 /// Decide whom one credit refers to, creating a draft person for a new name.

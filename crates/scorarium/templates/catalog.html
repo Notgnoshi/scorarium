@@ -30,7 +30,7 @@
                 name = role?.closest("[data-row]").querySelector("[name=contributor_name]");
             }
             const reference = name && referenceOf(name)?.value;
-            return /^\d+$/.test(reference ?? "") ? reference : "";
+            return reference && reference !== "new" ? reference : "";
         }
 
         function showRecognized(input, recognized) {
