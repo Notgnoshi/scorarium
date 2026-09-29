@@ -663,8 +663,8 @@ pub(crate) async fn load_publications(
 
 /// Create a publication and everything it names, on the caller's transaction.
 ///
-/// Every work of the input is created, ids and all ignored: linking an existing work into another
-/// publication is not something the input can ask for yet.
+/// A content naming a work the library has by stored id is linked and edited in place, as on
+/// update; any other content creates a work.
 pub(crate) async fn create_publication(
     shared: &Arc<ArchiveInner>,
     audited: &mut Audited<'_>,
@@ -688,7 +688,7 @@ pub(crate) async fn create_publication(
     let id = created.last_insert_rowid();
     write_publication_children(audited, library_id, id, &input).await?;
     for content in &input.contents {
-        work::create_work_in_publication(audited, library_id, id, content).await?;
+        work::link_or_create_work(audited, library_id, id, content).await?;
     }
     let publication = load_publications(shared, audited, library_id, Some(id), None, None, None)
         .await?
@@ -697,10 +697,7 @@ pub(crate) async fn create_publication(
     Ok(publication)
 }
 
-/// Write a publication's identifiers, links, contributor links and holdings.
-///
-/// What it leaves out is the contents, since a publication being created writes its works in full
-/// while one being edited reconciles them against what is stored.
+/// Write a publication's identifiers, links, contributor links and holdings, but not its contents.
 pub(crate) async fn write_publication_children(
     conn: &mut SqliteConnection,
     library_id: i64,

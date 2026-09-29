@@ -675,45 +675,77 @@ pub(crate) async fn write_publication_works(
         .await?;
     }
     for input in contents {
-        let Some(WorkRef::Stored(work_id)) = input.id else {
-            create_work_in_publication(audited, library_id, publication_id, input).await?;
-            continue;
-        };
-        if !stored.contains(&work_id) {
-            let exists = sqlx::query_scalar!(
-                "SELECT id FROM work WHERE library_id = ? AND id = ?",
-                library_id,
-                work_id
-            )
-            .fetch_optional(&mut **audited)
-            .await?;
-            if exists.is_none() {
-                create_work_in_publication(audited, library_id, publication_id, input).await?;
-                continue;
+        match input.id {
+            Some(WorkRef::Stored(work_id)) if stored.contains(&work_id) => {
+                write_linked_work(audited, library_id, work_id, input).await?;
             }
-            link_work_to_publication(audited, library_id, publication_id, work_id).await?;
+            _ => link_or_create_work(audited, library_id, publication_id, input).await?,
         }
-        sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
+    }
+    Ok(())
+}
+
+/// Add work into a publication that does not contain it yet.
+pub(crate) async fn link_or_create_work(
+    audited: &mut Audited<'_>,
+    library_id: i64,
+    publication_id: i64,
+    input: &WorkInput,
+) -> crate::Result<()> {
+    match input.id {
+        Some(WorkRef::Stored(work_id)) if work_exists(audited, library_id, work_id).await? => {
+            link_work_to_publication(audited, library_id, publication_id, work_id).await?;
+            write_linked_work(audited, library_id, work_id, input).await
+        }
+        _ => {
+            create_work_in_publication(audited, library_id, publication_id, input).await?;
+            Ok(())
+        }
+    }
+}
+
+async fn work_exists(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+) -> crate::Result<bool> {
+    let found = sqlx::query_scalar!(
+        "SELECT id FROM work WHERE library_id = ? AND id = ?",
+        library_id,
+        work_id
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(found.is_some())
+}
+
+/// Apply an input to a work a publication contains
+async fn write_linked_work(
+    audited: &mut Audited<'_>,
+    library_id: i64,
+    work_id: i64,
+    input: &WorkInput,
+) -> crate::Result<()> {
+    sqlx::query!(
+        "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
                  stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
-            input.title,
-            input.key,
-            input.time_signature,
-            input.instrumentation,
-            input.stars,
-            input.note,
-            library_id,
-            work_id
-        )
-        .execute(&mut **audited)
-        .await?;
-        write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
-        write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
-        write_work_links(audited, work_id, &input.links).await?;
-        tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
-        absorb_into_duplicate(audited, library_id, work_id).await?;
-    }
+        input.title,
+        input.key,
+        input.time_signature,
+        input.instrumentation,
+        input.stars,
+        input.note,
+        library_id,
+        work_id
+    )
+    .execute(&mut **audited)
+    .await?;
+    write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
+    write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
+    write_work_links(audited, work_id, &input.links).await?;
+    tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
+    absorb_into_duplicate(audited, library_id, work_id).await?;
     Ok(())
 }
 
