@@ -50,6 +50,9 @@ function openMenu(input, matches) {
             const badge = document.createElement("span");
             badge.className = "badge text-bg-secondary ms-auto flex-shrink-0";
             badge.textContent = match.reference.source;
+            badge.title = match.reference.source === "Draft" ?
+                "A draft from a pending import" :
+                `Found on ${match.reference.source}`;
             named.appendChild(badge);
         }
         item.appendChild(named);
@@ -71,6 +74,7 @@ function openMenu(input, matches) {
 async function request(input) {
     const q = input.value.trim();
     const params = new URLSearchParams({ q });
+    if (input.form?.dataset.suggestDrafts !== undefined) params.set("drafts", "1");
     input.dispatchEvent(new CustomEvent("suggest:query", { bubbles: true, detail: { params } }));
     const sources = "suggestExternal" in input.dataset ? ["local", "external"] : ["local"];
     const results = new Map();

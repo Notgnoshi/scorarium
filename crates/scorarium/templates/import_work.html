@@ -3,7 +3,8 @@
     <h1>{{ base.title }}</h1>
     <form method="post"
           action="/library/{{ library.id }}/import/{{ import.id }}/work/{{ work_id }}"
-          data-library-id="{{ library.id }}">
+          data-library-id="{{ library.id }}"
+          data-suggest-drafts>
         {% include "work_fields.html" %}
         <div class="d-flex gap-2">
             <button class="btn btn-primary">Save</button>

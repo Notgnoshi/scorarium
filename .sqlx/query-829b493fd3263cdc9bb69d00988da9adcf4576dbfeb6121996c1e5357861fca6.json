@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id FROM pending_import WHERE library_id = ?",
+  "query": "SELECT id FROM work WHERE library_id = ? AND id = ?",
   "describe": {
     "columns": [
       {
@@ -9,18 +9,18 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "pending_import",
+            "table": "work",
             "name": "id"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false
     ]
   },
-  "hash": "bdcca8a4d48db05f63becc2833ce8948e028f0b2f297f312f07e5e91336a68f4"
+  "hash": "829b493fd3263cdc9bb69d00988da9adcf4576dbfeb6121996c1e5357861fca6"
 }

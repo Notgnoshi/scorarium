@@ -4,8 +4,10 @@ use sqlx::SqliteConnection;
 
 use crate::catalog::CatalogNumber;
 use crate::fuzzy::{normalize, rank};
+use crate::input::{ContributorInput, PersonRef, WorkRef};
 use crate::summary::{self, PersonSummary, PublicationSummary, WorkSummary};
 use crate::tag::TagCount;
+use crate::work::WorkRawInput;
 use crate::{Result, person, tag};
 
 /// Which field to generate suggestions for
@@ -13,7 +15,7 @@ use crate::{Result, person, tag};
 pub enum SuggestField {
     Person,
     Work,
-    WorkNumber { composer: Option<i64> },
+    WorkNumber { composer: Option<PersonRef> },
     Publication,
     Role,
     Publisher,
@@ -25,11 +27,34 @@ pub enum SuggestField {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DraftPersonSummary {
+    pub id: i64,
+    pub name: String,
+    /// The title of a draft crediting this person
+    pub title: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DraftWorkSummary {
+    pub id: i64,
+    pub title: String,
+    pub contributor: Option<ContributorInput>,
+    /// Highest-priority scheme first, then entry order
+    pub numbers: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Suggested {
     Person(PersonSummary),
+    DraftPerson(DraftPersonSummary),
     /// `number` is the catalog number that matched; None from a title input
     Work {
         work: WorkSummary,
+        number: Option<String>,
+    },
+    /// A work another pending import holds; offered on the import pages only
+    DraftWork {
+        work: DraftWorkSummary,
         number: Option<String>,
     },
     Publication(PublicationSummary),
@@ -61,6 +86,8 @@ pub(crate) async fn suggest(
     field: SuggestField,
     typed: &str,
     public_suggestions_only: bool,
+    draft_works: &[WorkRawInput],
+    draft_persons: Vec<DraftPersonSummary>,
 ) -> Result<Vec<Suggestion>> {
     // An entity field has no small vocabulary to fall back on, so nothing typed means nothing to
     // yield as suggestions.
@@ -80,44 +107,53 @@ pub(crate) async fn suggest(
             let persons = summary::persons(conn, Some(library_id), false, None, None)
                 .await?
                 .into_iter()
-                .map(|found| found.summary)
+                .map(|found| PersonCandidate::Stored(found.summary))
+                .chain(draft_persons.into_iter().map(PersonCandidate::Draft))
                 .collect();
             ranked_entities(
                 typed,
                 persons,
-                |person| person.name.clone(),
-                |person| person.name.as_str(),
-                Suggested::Person,
+                |person| person.name().to_string(),
+                PersonCandidate::name,
+                PersonCandidate::offered,
             )
         }
         SuggestField::Work => {
             let works = summary::works(conn, Some(library_id), false, None)
                 .await?
                 .into_iter()
-                .map(|found| found.summary)
+                .map(|found| WorkCandidate::Stored(found.summary))
+                .chain(
+                    draft_works
+                        .iter()
+                        .filter_map(|work| draft_candidate(work, None)),
+                )
                 .collect();
             ranked_entities(
                 typed,
                 works,
-                // A work is found by what identifies it, not by its title alone
-                |work| {
-                    let mut text = work.title.clone();
-                    let credited = work.contributor.iter().map(|person| &person.name);
-                    for part in credited.chain(work.numbers.iter()) {
-                        text.push(' ');
-                        text.push_str(part);
-                    }
-                    text
-                },
-                |work| work.title.as_str(),
-                |work| Suggested::Work { work, number: None },
+                WorkCandidate::text,
+                WorkCandidate::title,
+                |work| work.offered(None),
             )
         }
         SuggestField::WorkNumber { composer } => {
-            let works = summary::works(conn, Some(library_id), false, composer)
-                .await?
+            // A stored work cannot credit a draft person, so a draft composer narrows to drafts
+            let stored = match composer {
+                Some(PersonRef::Linked(id)) => {
+                    summary::works(conn, Some(library_id), false, Some(id)).await?
+                }
+                Some(_) => Vec::new(),
+                None => summary::works(conn, Some(library_id), false, None).await?,
+            };
+            let works = stored
                 .into_iter()
-                .map(|found| found.summary)
+                .map(|found| WorkCandidate::Stored(found.summary))
+                .chain(
+                    draft_works
+                        .iter()
+                        .filter_map(|work| draft_candidate(work, composer)),
+                )
                 .collect();
             work_numbers(typed, works)
         }
@@ -244,6 +280,104 @@ pub(crate) async fn suggest(
     })
 }
 
+enum PersonCandidate {
+    Stored(PersonSummary),
+    Draft(DraftPersonSummary),
+}
+
+impl PersonCandidate {
+    fn name(&self) -> &str {
+        match self {
+            PersonCandidate::Stored(person) => &person.name,
+            PersonCandidate::Draft(person) => &person.name,
+        }
+    }
+
+    fn offered(self) -> Suggested {
+        match self {
+            PersonCandidate::Stored(person) => Suggested::Person(person),
+            PersonCandidate::Draft(person) => Suggested::DraftPerson(person),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum WorkCandidate {
+    Stored(WorkSummary),
+    Draft(DraftWorkSummary),
+}
+
+impl WorkCandidate {
+    fn title(&self) -> &str {
+        match self {
+            WorkCandidate::Stored(work) => &work.title,
+            WorkCandidate::Draft(work) => &work.title,
+        }
+    }
+
+    fn contributor_name(&self) -> Option<&str> {
+        match self {
+            WorkCandidate::Stored(work) => work.contributor.as_ref().map(|c| c.name.as_str()),
+            WorkCandidate::Draft(work) => work.contributor.as_ref().map(|c| c.name.as_str()),
+        }
+    }
+
+    fn numbers(&self) -> &[String] {
+        match self {
+            WorkCandidate::Stored(work) => &work.numbers,
+            WorkCandidate::Draft(work) => &work.numbers,
+        }
+    }
+
+    // A work is found by what identifies it, not by its title alone
+    fn text(&self) -> String {
+        let mut text = self.title().to_string();
+        let numbers = self.numbers().iter().map(String::as_str);
+        for part in self.contributor_name().into_iter().chain(numbers) {
+            text.push(' ');
+            text.push_str(part);
+        }
+        text
+    }
+
+    fn offered(self, number: Option<String>) -> Suggested {
+        match self {
+            WorkCandidate::Stored(work) => Suggested::Work { work, number },
+            WorkCandidate::Draft(work) => Suggested::DraftWork { work, number },
+        }
+    }
+}
+
+/// None when a composer is given and the draft work is not linked to them.
+fn draft_candidate(work: &WorkRawInput, composer: Option<PersonRef>) -> Option<WorkCandidate> {
+    let Some(WorkRef::Draft(id)) = work.id else {
+        unreachable!("the store names every draft work it holds");
+    };
+    if let Some(composer) = composer
+        && !work
+            .contributors
+            .iter()
+            .any(|credit| credit.person == composer)
+    {
+        return None;
+    }
+    let mut numbers = work.catalog_numbers.clone();
+    // A stable sort, so numbers sharing a scheme keep the order they were entered in
+    numbers.sort_by_key(|number| {
+        CatalogNumber::parse(number)
+            .scheme_priority()
+            .unwrap_or(usize::MAX)
+    });
+    Some(WorkCandidate::Draft(DraftWorkSummary {
+        id,
+        title: work.title.clone(),
+        contributor: work
+            .lead_contributor()
+            .map(|i| work.contributors[i].clone()),
+        numbers,
+    }))
+}
+
 /// Rank items against the typed text, or keep their alphabetical order when nothing is typed.
 fn ranked<T>(
     typed: &str,
@@ -304,11 +438,11 @@ fn exact_first(mut suggestions: Vec<Suggestion>) -> Vec<Suggestion> {
 }
 
 /// Every catalog number that fits what was typed, best first.
-fn work_numbers(typed: &str, works: Vec<WorkSummary>) -> Vec<Suggestion> {
+fn work_numbers(typed: &str, works: Vec<WorkCandidate>) -> Vec<Suggestion> {
     let wanted = CatalogNumber::parse(typed);
     let (mut same, mut begun, mut other) = (Vec::new(), Vec::new(), Vec::new());
     for work in &works {
-        for number in &work.numbers {
+        for number in work.numbers() {
             let parsed = CatalogNumber::parse(number);
             if parsed.matches(&wanted) {
                 same.push((work, number, parsed));
@@ -324,16 +458,13 @@ fn work_numbers(typed: &str, works: Vec<WorkSummary>) -> Vec<Suggestion> {
         tier.sort_by(|(work, _, number), (its_work, _, its_number)| {
             number
                 .cmp(its_number)
-                .then_with(|| work.title.cmp(&its_work.title))
+                .then_with(|| work.title().cmp(its_work.title()))
         });
     }
 
-    let offered = |work: &WorkSummary, number: &String, exact: bool| Suggestion {
+    let offered = |work: &WorkCandidate, number: &String, exact: bool| Suggestion {
         exact,
-        item: Suggested::Work {
-            work: work.clone(),
-            number: Some(number.clone()),
-        },
+        item: work.clone().offered(Some(number.clone())),
     };
     let mut suggestions: Vec<Suggestion> = same
         .iter()
@@ -348,10 +479,10 @@ fn work_numbers(typed: &str, works: Vec<WorkSummary>) -> Vec<Suggestion> {
     let texts: Vec<String> = other
         .iter()
         .map(|(work, number)| {
-            let mut text = format!("{number} {}", work.title);
-            if let Some(person) = &work.contributor {
+            let mut text = format!("{number} {}", work.title());
+            if let Some(name) = work.contributor_name() {
                 text.push(' ');
-                text.push_str(&person.name);
+                text.push_str(name);
             }
             text
         })

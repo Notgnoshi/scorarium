@@ -544,3 +544,113 @@ async fn publication_edit_flow() {
         .await;
     response.assert_status(StatusCode::NOT_FOUND);
 }
+
+/// Picking a work from autocomplete links it rather than creating a duplicate namesake
+#[tokio::test]
+async fn a_picked_work_is_linked_and_edited_in_place() {
+    let state = TestDb::new()
+        .library("Sheet music")
+        .password("hunter2")
+        .build()
+        .await;
+    let library = state.archive.libraries().await.unwrap().remove(0);
+    let copy = HoldingRawInput {
+        id: None,
+        kind: HoldingKind::Physical,
+        location: "Shelf".into(),
+    };
+    let preludes = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Preludes".into(),
+                holdings: vec![copy.clone()],
+                contents: vec![WorkRawInput {
+                    title: "Raindrop".into(),
+                    key: "D-flat major".into(),
+                    catalog_numbers: vec!["B. 107".into(), "Op. 28 No. 15".into()],
+                    ..WorkRawInput::default()
+                }],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let raindrop = preludes.works().await.unwrap().remove(0).id;
+    let anthology = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Anthology".into(),
+                holdings: vec![copy],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let shelf = anthology.holdings[0].id.to_string();
+    let edit = format!("/library/{}/publication/{}/edit", library.id, anthology.id);
+    let server = browser(state);
+    server.post("/login").form(&[("password", "hunter2")]).await;
+
+    fn form<'a>(shelf: &'a str, work_id: &'a str) -> Vec<(&'a str, &'a str)> {
+        vec![
+            ("title", "Anthology"),
+            ("publisher", ""),
+            ("year", ""),
+            ("holding_id_0", shelf),
+            ("holding_kind_0", "physical"),
+            ("holding_location_0", "Shelf"),
+            ("holding_file_0", ""),
+            ("work_id", work_id),
+            ("work_title", "Raindrop Prelude"),
+            ("work_catalog_number", "Op. 28 No. 15"),
+            ("work_contributor_name", ""),
+            ("work_contributor_role", ""),
+            ("work_contributor_person", ""),
+        ]
+    }
+
+    let response = server
+        .post(&edit)
+        .form(&form(&shelf, &raindrop.to_string()))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let works = library
+        .publication(anthology.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .works()
+        .await
+        .unwrap();
+    assert_eq!(works.len(), 1);
+    assert_eq!(works[0].id, raindrop);
+    assert_eq!(works[0].title, "Raindrop Prelude");
+    assert_eq!(works[0].key.as_deref(), Some("D-flat major"));
+    assert_eq!(
+        works[0]
+            .catalog_numbers
+            .iter()
+            .map(|n| n.as_str())
+            .collect::<Vec<_>>(),
+        ["B. 107", "Op. 28 No. 15"]
+    );
+    assert_eq!(works[0].publications().await.unwrap().len(), 2);
+
+    // A draft reference isn't in the catalog, so the work gets created here too
+    let response = server.post(&edit).form(&form(&shelf, "draft:3")).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let works = library
+        .publication(anthology.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .works()
+        .await
+        .unwrap();
+    assert_eq!(works.len(), 1);
+    assert_ne!(works[0].id, raindrop);
+}

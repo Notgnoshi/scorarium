@@ -1,6 +1,6 @@
 use scorarium_archive::{
     Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, NotFound,
-    PersonRef, PublicationRawInput, WorkRawInput, identifier,
+    PersonRef, PublicationRawInput, WorkRawInput, WorkRef, identifier,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
@@ -181,7 +181,7 @@ async fn raw_input_shows_what_was_stored() {
     expected.holdings[1].id = Some(publication.holdings[1].id);
     expected.identifiers[0].value = "978-0-486-23134-1".into();
     expected.identifiers[1].value = "UT 50061".into();
-    expected.contents[0].id = Some(contents[0].id);
+    expected.contents[0].id = Some(WorkRef::Stored(contents[0].id));
     // A stored credit loads linked to whichever person it was written against
     for (input, stored) in expected
         .contributors

@@ -5,6 +5,7 @@
 mod audit;
 mod catalog;
 mod demo;
+mod draft;
 mod fuzzy;
 mod holding;
 pub mod identifier;
@@ -20,7 +21,6 @@ mod summary;
 mod tag;
 mod work;
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -35,21 +35,23 @@ pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
 };
 pub use crate::identifier::{Identifier, IdentifierRawInput};
-pub use crate::import::{Draft, Lookup, PendingImport};
-pub use crate::input::{ContributorInput, PersonRef, ValidationError};
+pub use crate::import::{Accepted, DraftPublication, Lookup, PendingImport};
+pub use crate::input::{ContributorInput, PersonRef, ValidationError, WorkRef};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
     Contributor, Person, PersonErrors, PersonInput, PersonRawInput, credit_priority,
 };
 pub use crate::publication::{
-    Publication, PublicationErrors, PublicationInput, PublicationRawInput,
+    Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 pub use crate::search::{Entity, SearchHit};
-pub use crate::suggest::{SuggestField, Suggested, Suggestion};
+pub use crate::suggest::{
+    DraftPersonSummary, DraftWorkSummary, SuggestField, Suggested, Suggestion,
+};
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
 pub use crate::tag::TagCount;
-pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkRawInput};
+pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
 
 pub type Result<T> = eyre::Result<T>;
 
@@ -80,7 +82,14 @@ pub struct Archive {
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
     pool: SqlitePool,
-    pub drafts: Mutex<HashMap<i64, import::SavedDraft>>,
+    drafts: Mutex<draft::DraftStore>,
+}
+
+impl ArchiveInner {
+    /// The drafts, behind their lock
+    pub(crate) fn drafts(&self) -> std::sync::MutexGuard<'_, draft::DraftStore> {
+        self.drafts.lock().expect("draft lock poisoned")
+    }
 }
 
 // database access
@@ -97,7 +106,7 @@ impl ArchiveInner {
         let mut tx = self.pool.begin().await?;
         let group = audit::insert(&mut tx, None, source, &event).await?;
         audit::trim(&mut tx).await?;
-        Ok(audit::Audited::new(tx, group))
+        Ok(audit::Audited::new(tx, group, &self.drafts))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries

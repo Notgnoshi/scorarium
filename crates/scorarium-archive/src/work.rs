@@ -6,7 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
-use crate::input::{self, ContributorInput, PersonRef, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
@@ -16,8 +16,8 @@ use crate::{
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkRawInput {
-    /// The work this edits, or a draft work's id; None for one being added
-    pub id: Option<i64>,
+    /// The work this edits; None for one being added
+    pub id: Option<WorkRef>,
     pub title: String,
     pub key: String,
     pub time_signature: String,
@@ -30,10 +30,112 @@ pub struct WorkRawInput {
     pub links: Vec<String>,
 }
 
+/// A work posted from the publication form
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkPost {
+    pub id: Option<WorkRef>,
+    pub title: String,
+    pub catalog_number: String,
+    pub contributor: ContributorInput,
+}
+
+impl WorkRawInput {
+    /// The lead contributor a work shows on the publication pages
+    pub fn lead_contributor(&self) -> Option<usize> {
+        self.contributors
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, contributor)| person::credit_priority(&contributor.role))
+            .map(|(i, _)| i)
+    }
+
+    /// The lead catalog number a work shows on the publication pages
+    pub fn lead_catalog_number(&self) -> Option<usize> {
+        self.catalog_numbers
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, number)| {
+                CatalogNumber::parse(number)
+                    .scheme_priority()
+                    .unwrap_or(usize::MAX)
+            })
+            .map(|(i, _)| i)
+    }
+
+    /// Apply a posted work edit from the publication page
+    pub(crate) fn apply(&mut self, posted: WorkPost) {
+        self.title = posted.title;
+        self.set_lead_contributor(posted.contributor);
+        self.set_lead_catalog_number(posted.catalog_number);
+    }
+
+    fn set_lead_contributor(&mut self, posted: ContributorInput) {
+        let empty = posted.name.is_empty() && posted.role.is_empty();
+        match self.lead_contributor() {
+            Some(i) if self.contributors[i] == posted => {}
+            Some(i) if !empty => {
+                self.contributors[i] = posted.clone();
+                let mut index = 0;
+                self.contributors.retain(|contributor| {
+                    let keep = index == i || *contributor != posted;
+                    index += 1;
+                    keep
+                });
+            }
+            Some(i) => {
+                self.contributors.remove(i);
+            }
+            None if !empty => self.contributors.push(posted),
+            None => {}
+        }
+    }
+
+    fn set_lead_catalog_number(&mut self, posted: String) {
+        let parsed = CatalogNumber::parse(&posted);
+        match self.lead_catalog_number() {
+            Some(i) if self.catalog_numbers[i] == posted => {}
+            Some(i) if !posted.is_empty() => {
+                self.catalog_numbers[i] = posted;
+                let mut index = 0;
+                self.catalog_numbers.retain(|number| {
+                    let keep = index == i || !CatalogNumber::parse(number).matches(&parsed);
+                    index += 1;
+                    keep
+                });
+            }
+            Some(i) => {
+                self.catalog_numbers.remove(i);
+            }
+            None if !posted.is_empty() => self.catalog_numbers.push(posted),
+            None => {}
+        }
+    }
+}
+
+impl From<WorkPost> for WorkRawInput {
+    fn from(posted: WorkPost) -> Self {
+        WorkRawInput {
+            id: None,
+            title: posted.title,
+            contributors: match posted.contributor {
+                ContributorInput { name, role, .. } if name.is_empty() && role.is_empty() => {
+                    Vec::new()
+                }
+                contributor => vec![contributor],
+            },
+            catalog_numbers: match posted.catalog_number {
+                number if number.is_empty() => Vec::new(),
+                number => vec![number],
+            },
+            ..WorkRawInput::default()
+        }
+    }
+}
+
 /// A work's parsed and validated fields
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkInput {
-    pub(crate) id: Option<i64>,
+    pub(crate) id: Option<WorkRef>,
     pub(crate) title: String,
     pub(crate) key: Option<String>,
     pub(crate) time_signature: Option<String>,
@@ -206,7 +308,7 @@ impl Work {
     /// What the work's edit page opens with
     pub fn raw_input(&self) -> WorkRawInput {
         WorkRawInput {
-            id: Some(self.id),
+            id: Some(WorkRef::Stored(self.id)),
             title: self.title.clone(),
             key: self.key.clone().unwrap_or_default(),
             time_signature: self.time_signature.clone().unwrap_or_default(),
@@ -500,8 +602,8 @@ pub(crate) async fn load_catalog_numbers(
 
 /// Create a work and put it in a publication, on the caller's transaction.
 ///
-/// The input's id is ignored: a publication creates every work it names, since linking an existing
-/// work into another publication is not something the input can ask for yet.
+/// The input's id is ignored: it is either an import draft's id, which means nothing to the
+/// catalog, or a work that no longer exists.
 pub(crate) async fn create_work_in_publication(
     audited: &mut Audited<'_>,
     library_id: i64,
@@ -539,10 +641,11 @@ pub(crate) async fn create_work_in_publication(
 
 /// Reconcile a publication's contents against the works its input names.
 ///
-/// An input whose id the publication already contains edits that work in place, fields and credits
-/// alike; any other input creates a work. Works the input no longer names are unlinked rather than
-/// deleted; cleanup is handled by orphan cleanup on the library. Existing links keep their
-/// position, so reordering the input does not reorder the contents.
+/// An input naming a work the library has edits that work in place, fields and credits alike,
+/// linking it into the publication first when it is not yet contained; any other input creates a
+/// work. Works the input no longer names are unlinked rather than deleted; cleanup is handled by
+/// orphan cleanup on the library. Existing links keep their position, so reordering the input does
+/// not reorder the contents.
 pub(crate) async fn write_publication_works(
     audited: &mut Audited<'_>,
     library_id: i64,
@@ -555,7 +658,13 @@ pub(crate) async fn write_publication_works(
     )
     .fetch_all(&mut **audited)
     .await?;
-    let named: Vec<i64> = contents.iter().filter_map(|work| work.id).collect();
+    let named: Vec<i64> = contents
+        .iter()
+        .filter_map(|work| match work.id {
+            Some(WorkRef::Stored(id)) => Some(id),
+            _ => None,
+        })
+        .collect();
     for work_id in stored.iter().filter(|id| !named.contains(id)) {
         sqlx::query!(
             "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
@@ -566,33 +675,76 @@ pub(crate) async fn write_publication_works(
         .await?;
     }
     for input in contents {
-        // An id the publication does not contain names nothing this input may edit
-        let Some(work_id) = input.id.filter(|id| stored.contains(id)) else {
-            create_work_in_publication(audited, library_id, publication_id, input).await?;
-            continue;
-        };
-        sqlx::query!(
-            "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
-                 stars = ?, note = ?
-             WHERE library_id = ? AND id = ?",
-            input.title,
-            input.key,
-            input.time_signature,
-            input.instrumentation,
-            input.stars,
-            input.note,
-            library_id,
-            work_id
-        )
-        .execute(&mut **audited)
-        .await?;
-        write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
-        write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
-        write_work_links(audited, work_id, &input.links).await?;
-        tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
-        absorb_into_duplicate(audited, library_id, work_id).await?;
+        match input.id {
+            Some(WorkRef::Stored(work_id)) if stored.contains(&work_id) => {
+                write_linked_work(audited, library_id, work_id, input).await?;
+            }
+            _ => {
+                link_or_create_work(audited, library_id, publication_id, input).await?;
+            }
+        }
     }
     Ok(())
+}
+
+/// Add work into a publication that does not contain it yet, returning the surviving work's id.
+pub(crate) async fn link_or_create_work(
+    audited: &mut Audited<'_>,
+    library_id: i64,
+    publication_id: i64,
+    input: &WorkInput,
+) -> crate::Result<i64> {
+    match input.id {
+        Some(WorkRef::Stored(work_id)) if work_exists(audited, library_id, work_id).await? => {
+            link_work_to_publication(audited, library_id, publication_id, work_id).await?;
+            write_linked_work(audited, library_id, work_id, input).await
+        }
+        _ => create_work_in_publication(audited, library_id, publication_id, input).await,
+    }
+}
+
+pub(crate) async fn work_exists(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    work_id: i64,
+) -> crate::Result<bool> {
+    let found = sqlx::query_scalar!(
+        "SELECT id FROM work WHERE library_id = ? AND id = ?",
+        library_id,
+        work_id
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(found.is_some())
+}
+
+/// Apply an input to a work a publication contains, returning the surviving work's id
+async fn write_linked_work(
+    audited: &mut Audited<'_>,
+    library_id: i64,
+    work_id: i64,
+    input: &WorkInput,
+) -> crate::Result<i64> {
+    sqlx::query!(
+        "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
+                 stars = ?, note = ?
+             WHERE library_id = ? AND id = ?",
+        input.title,
+        input.key,
+        input.time_signature,
+        input.instrumentation,
+        input.stars,
+        input.note,
+        library_id,
+        work_id
+    )
+    .execute(&mut **audited)
+    .await?;
+    write_work_contributors(audited, library_id, work_id, &input.contributors).await?;
+    write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
+    write_work_links(audited, work_id, &input.links).await?;
+    tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
+    absorb_into_duplicate(audited, library_id, work_id).await
 }
 
 /// Put an existing work into another publication.
@@ -618,11 +770,12 @@ pub(crate) async fn link_work_to_publication(
 /// `into` keeps every field it has; `from` fills only blanks, because the older record is the more
 /// likely to be complete and correct.
 pub(crate) async fn merge_works(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     from: i64,
     into: i64,
 ) -> crate::Result<()> {
+    let conn: &mut SqliteConnection = audited;
     let source = sqlx::query!(
         "SELECT \"key\", time_signature, instrumentation, stars, note FROM work WHERE library_id = ? AND id = ?",
         library_id,
@@ -713,6 +866,7 @@ pub(crate) async fn merge_works(
     )
     .execute(&mut *conn)
     .await?;
+    audited.record_merge(library_id, from, into);
     Ok(())
 }
 
@@ -915,7 +1069,7 @@ mod tests {
     #[test]
     fn parse_takes_what_was_typed() {
         let raw = WorkRawInput {
-            id: Some(7),
+            id: Some(WorkRef::Stored(7)),
             title: "  Gnossienne No. 1  ".into(),
             key: String::new(),
             time_signature: "3/4".into(),
@@ -933,7 +1087,7 @@ mod tests {
         assert_eq!(
             parsed,
             WorkInput {
-                id: Some(7),
+                id: Some(WorkRef::Stored(7)),
                 title: "Gnossienne No. 1".into(),
                 // A field left blank is no value at all, not an empty one
                 key: None,
@@ -947,5 +1101,39 @@ mod tests {
                 links: vec!["https://imslp.org/wiki/Main_Page".into()],
             }
         );
+    }
+
+    #[test]
+    fn lead_catalog_number_prefers_the_highest_priority_scheme_then_input_order() {
+        let lead = |numbers: &[&str]| {
+            WorkRawInput {
+                catalog_numbers: numbers.iter().map(|n| n.to_string()).collect(),
+                ..WorkRawInput::default()
+            }
+            .lead_catalog_number()
+        };
+        assert_eq!(lead(&["D 899 No. 3", "Op. 90 No. 3"]), Some(1));
+        assert_eq!(lead(&["Op. 28", "Op. 28 No. 15"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "KK IVa/16"]), Some(0));
+        assert_eq!(lead(&["Hob. XVI:52", "BWV 988"]), Some(1));
+        assert_eq!(lead(&[]), None);
+    }
+
+    #[test]
+    fn lead_contributor_prefers_composer_then_author() {
+        let lead = |credits: &[(&str, &str)]| {
+            WorkRawInput {
+                contributors: credits
+                    .iter()
+                    .map(|(name, role)| contributor(name, role))
+                    .collect(),
+                ..WorkRawInput::default()
+            }
+            .lead_contributor()
+        };
+        assert_eq!(lead(&[("A", "arranger"), ("B", "composer")]), Some(1));
+        assert_eq!(lead(&[("A", "editor"), ("B", "author")]), Some(1));
+        assert_eq!(lead(&[("A", "editor"), ("B", "arranger")]), Some(0));
+        assert_eq!(lead(&[]), None);
     }
 }

@@ -1,12 +1,17 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
-use crate::publication::{self, Publication, PublicationInput, PublicationRawInput};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source};
+use crate::input::{PersonRef, WorkRef};
+use crate::publication::{
+    self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
+};
+use crate::summary::{self, PersonSummary};
+use crate::work::{self, Work};
+use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, draft, person};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -30,9 +35,9 @@ pub enum Lookup {
     Failed(String),
 }
 
-/// The review page's edits for one pending import
+/// The review page's edits for one pending import, with every work it contains filled in
 #[derive(Clone, Debug)]
-pub struct Draft {
+pub struct DraftPublication {
     pub input: PublicationRawInput,
     /// False when nothing has been saved and the input was seeded just now
     pub saved: bool,
@@ -40,79 +45,163 @@ pub struct Draft {
     pub lookup: Option<Lookup>,
 }
 
-/// A draft as the archive keeps it, alongside what it needs to name the next work.
+/// What accepting a draft publication resulted in
 #[derive(Debug)]
-pub(crate) struct SavedDraft {
-    input: PublicationRawInput,
-    // Never reused, so a work id left over from an earlier view of the page cannot attach itself
-    // to a work added since
-    next_work_id: i64,
-    lookup: Option<Lookup>,
+pub enum Accepted {
+    Published(Box<Publication>),
+    /// The draft was not valid and stays saved with the posted edits, for the review page
+    Refused(Box<PublicationErrors>),
 }
 
 impl PendingImport {
     /// The saved draft, or one seeded from the entry page when nothing has been saved.
-    pub fn draft(&self) -> Draft {
-        match self.saved_drafts().get(&self.id) {
-            Some(saved) => Draft {
-                input: saved.input.clone(),
-                saved: true,
-                lookup: saved.lookup.clone(),
-            },
-            None => Draft {
+    pub async fn draft(&self) -> crate::Result<DraftPublication> {
+        let snapshot = self.archive.drafts().snapshot(self.library_id, self.id);
+        let Some(snapshot) = snapshot else {
+            return Ok(DraftPublication {
                 input: self.initial_draft_contents(),
                 saved: false,
                 lookup: None,
-            },
-        }
-    }
-
-    /// Store the review page's edits, and return what was stored.
-    pub fn save_draft(&self, mut input: PublicationRawInput) -> Draft {
-        let mut drafts = self.saved_drafts();
-        let saved = drafts.entry(self.id).or_insert_with(|| SavedDraft {
-            input: PublicationRawInput::default(),
-            next_work_id: 1,
-            lookup: None,
-        });
-        for work in &mut input.contents {
-            if work.id.is_none() {
-                work.id = Some(saved.next_work_id);
-                saved.next_work_id += 1;
+            });
+        };
+        let mut input = snapshot.fields;
+        let mut tx = self.archive.begin_read().await?;
+        for content in snapshot.contents {
+            match content {
+                draft::Content::Draft(work) => input.contents.push(*work),
+                draft::Content::Stored(id) => {
+                    let stored = work::load_works(
+                        &self.archive,
+                        &mut tx,
+                        self.library_id,
+                        Some(id),
+                        None,
+                        None,
+                    )
+                    .await?
+                    .pop();
+                    input.contents.extend(stored.as_ref().map(Work::raw_input));
+                }
             }
         }
-        saved.input = input.clone();
-        Draft {
+        tx.commit().await?;
+        Ok(DraftPublication {
             input,
             saved: true,
-            lookup: saved.lookup.clone(),
+            lookup: snapshot.lookup,
+        })
+    }
+
+    pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
+        let stored: Vec<PersonSummary>;
+        // The catalog can have collected a stored work since the page was opened
+        let mut vanished = Vec::new();
+        {
+            let mut conn = self.archive.acquire_read().await?;
+            stored = summary::persons(&mut conn, Some(self.library_id), false, None, None)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
+            for work in &input.contents {
+                if let Some(WorkRef::Stored(id)) = work.id
+                    && !work::work_exists(&mut conn, self.library_id, id).await?
+                {
+                    vanished.push(id);
+                }
+            }
         }
+        self.archive
+            .drafts()
+            .save(self.library_id, self.id, input, &vanished, &stored);
+        self.draft().await
+    }
+
+    /// Merge the review page's post into the draft and store it.
+    pub async fn save(&self, post: PublicationPost) -> crate::Result<DraftPublication> {
+        let input = self.merge(post).await?;
+        self.save_draft(input).await
+    }
+
+    async fn merge(&self, post: PublicationPost) -> crate::Result<PublicationRawInput> {
+        let mut shown = self.draft().await?.input.contents;
+        let mut tx = self.archive.begin_read().await?;
+        for id in post.contents.iter().filter_map(|work| work.id) {
+            if shown.iter().any(|work| work.id == Some(id)) {
+                continue;
+            }
+            let picked = match id {
+                WorkRef::Stored(id) => work::load_works(
+                    &self.archive,
+                    &mut tx,
+                    self.library_id,
+                    Some(id),
+                    None,
+                    None,
+                )
+                .await?
+                .pop()
+                .map(|work| work.raw_input()),
+                WorkRef::Draft(id) => self.archive.drafts().work(self.library_id, id),
+            };
+            shown.extend(picked);
+        }
+        tx.commit().await?;
+        Ok(post.merge(shown))
     }
 
     /// Note what a source lookup produced, so the review page can say so.
-    ///
-    /// A lookup only ever follows a save, so an unsaved draft here is a caller bug.
     pub fn record_lookup(&self, lookup: Lookup) {
-        let mut drafts = self.saved_drafts();
-        let saved = drafts
-            .get_mut(&self.id)
-            .expect("a lookup is recorded on a saved draft");
-        saved.lookup = Some(lookup);
+        self.archive
+            .drafts()
+            .record_lookup(self.library_id, self.id, lookup);
     }
 
-    /// Create the publication this import became, and delete the import, in one transaction.
+    /// Merge the posted form into the draft and accept it into a publication if it is valid.
     ///
     /// Returns a [NotFound] error when the import was already accepted or discarded.
-    pub async fn accept_into_publication(
-        self,
-        input: &PublicationInput,
-    ) -> crate::Result<Publication> {
+    pub async fn accept(self, post: PublicationPost) -> crate::Result<Accepted> {
+        let saved = self.save(post).await?;
+        // A draft that is not ready remains saved with validation errors explaining why it was rejected
+        let parsed = match saved.input.parse() {
+            Ok(parsed) => parsed,
+            Err(errors) => return Ok(Accepted::Refused(errors)),
+        };
+        let publication = self.accept_into_publication(&parsed).await?;
+        Ok(Accepted::Published(Box::new(publication)))
+    }
+
+    async fn accept_into_publication(self, input: &PublicationInput) -> crate::Result<Publication> {
+        let drafted = self.archive.drafts().persons(self.library_id);
+        let mut input = input.clone();
+        let mut names = BTreeMap::new();
+        for credit in input.contributors_mut() {
+            if let PersonRef::Draft(id) = credit.person {
+                // A concurrent accept can have relinked and collected it since this draft was saved
+                let person = drafted
+                    .get(&id)
+                    .ok_or_else(|| eyre::eyre!("draft person {id} is gone: {:?}", credit.name))?;
+                names.insert(id, person.name.clone());
+            }
+        }
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::ImportAccepted))
             .await?;
-        let publication =
-            publication::create_publication(&self.archive, &mut audited, self.library_id, input)
+        let mut persons = Vec::with_capacity(names.len());
+        for (id, name) in names {
+            let stored = person::create_person(&mut audited, self.library_id, &name).await?;
+            persons.push((id, stored));
+        }
+        for credit in input.contributors_mut() {
+            if let PersonRef::Draft(id) = credit.person
+                && let Some((_, stored)) = persons.iter().find(|(draft, _)| *draft == id)
+            {
+                credit.person = PersonRef::Linked(*stored);
+            }
+        }
+        let (publication, work_ids) =
+            publication::create_publication(&self.archive, &mut audited, self.library_id, &input)
                 .await?;
         let result = sqlx::query!(
             "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
@@ -128,7 +217,19 @@ impl PendingImport {
         }
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
-        self.forget_draft();
+        // Only after the commit, so a rolled-back accept leaves every draft as it was
+        let works: Vec<(i64, i64)> = input
+            .contents
+            .iter()
+            .zip(work_ids)
+            .filter_map(|(work, stored)| match work.id {
+                Some(WorkRef::Draft(draft)) => Some((draft, stored)),
+                _ => None,
+            })
+            .collect();
+        self.archive
+            .drafts()
+            .accept(self.library_id, self.id, &works, &persons);
         Ok(publication)
     }
 
@@ -169,7 +270,7 @@ impl PendingImport {
     }
 
     fn forget_draft(&self) {
-        self.saved_drafts().remove(&self.id);
+        self.archive.drafts().forget(self.library_id, self.id);
     }
 
     /// What the review page opens with before anything is saved: the copies as they were entered,
@@ -201,10 +302,6 @@ impl PendingImport {
         }
         input.title = query.to_string();
         input
-    }
-
-    fn saved_drafts(&self) -> std::sync::MutexGuard<'_, HashMap<i64, SavedDraft>> {
-        self.archive.drafts.lock().expect("draft lock poisoned")
     }
 }
 
@@ -299,18 +396,4 @@ pub(crate) async fn load_pending_imports(
             });
     }
     Ok(imports)
-}
-
-/// The ids of a library's pending imports, so that deleting the library can drop their drafts.
-pub(crate) async fn pending_import_ids(
-    conn: &mut SqliteConnection,
-    library_id: i64,
-) -> crate::Result<Vec<i64>> {
-    let ids = sqlx::query_scalar!(
-        "SELECT id FROM pending_import WHERE library_id = ?",
-        library_id
-    )
-    .fetch_all(conn)
-    .await?;
-    Ok(ids)
 }

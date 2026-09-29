@@ -26,7 +26,7 @@ use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
     NotFound, PendingImport, Person, PersonRef, PersonSummary, Publication, PublicationErrors,
-    PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput, same_name,
+    PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput, WorkRef, same_name,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -229,30 +229,6 @@ impl std::error::Error for LoginRequired {}
 /// What a work shows when its only problem is a field the publication form does not reach.
 const HIDDEN_WORK_PROBLEM: &str = "A hidden field is incomplete. Open the work to fix it.";
 
-/// What a work's edit control does, which is a property of the page rather than the work.
-#[derive(Default)]
-pub enum WorkEdit {
-    /// Link to the stored work's edit page, which returns to `back` when it is done
-    Stored { back: String },
-    /// Save the draft and open the draft work, since a draft work has no stable link of its own
-    #[default]
-    Draft,
-}
-
-impl WorkEdit {
-    pub fn is_draft(&self) -> bool {
-        matches!(self, WorkEdit::Draft)
-    }
-
-    /// Where a stored work's edit link returns to. Empty for a draft work, which has no link.
-    pub fn back(&self) -> &str {
-        match self {
-            WorkEdit::Stored { back } => back,
-            WorkEdit::Draft => "",
-        }
-    }
-}
-
 /// One copy as the form shows it. The macros take plain strings, so that a filled copy and the
 /// blank template copy render through the same code.
 pub struct ShownHolding {
@@ -286,8 +262,10 @@ pub enum PersonState {
 /// One work as the publication form shows it: its title, and the one catalog number and the one
 /// contributor the page picks.
 pub struct ShownWork {
-    /// The hidden field's value: the work's id, empty for one being added
+    /// The hidden field's value: the work's reference, empty for one being added
     pub id: String,
+    /// Whether the work is in the catalog
+    pub stored: bool,
     pub title: String,
     pub catalog_number: String,
     pub recognized: bool,
@@ -316,7 +294,10 @@ pub struct FormFields {
     pub links: Vec<(String, String)>,
     pub works: Vec<ShownWork>,
     pub no_copies_warning: String,
-    pub work_edit: WorkEdit,
+    /// Where a stored work's edit page returns to
+    pub work_back: String,
+    /// Whether this is the import review page, where a stored work is shown rather than edited
+    pub review: bool,
 }
 
 impl FormFields {
@@ -339,7 +320,8 @@ impl FormFields {
             links: pair_messages(&input.links, &errors.links),
             works: shown_works(&input.contents, &errors.contents, persons, names),
             no_copies_warning: String::new(),
-            work_edit: WorkEdit::default(),
+            work_back: String::new(),
+            review: false,
             input,
             errors,
         }
@@ -351,9 +333,10 @@ impl FormFields {
         self
     }
 
-    /// What a work's edit control does on this page.
-    pub fn edit_works(mut self, work_edit: WorkEdit) -> Self {
-        self.work_edit = work_edit;
+    /// Where a stored work's edit page returns to, and whether this is the import review page.
+    pub fn work_edit(mut self, back: &str, review: bool) -> Self {
+        self.work_back = back.to_string();
+        self.review = review;
         self
     }
 }
@@ -446,8 +429,8 @@ fn shown_contributor(
         (PersonRef::Linked(_), Some(found)) => {
             (contributor.person, found.name.clone(), PersonState::Linked)
         }
-        (PersonRef::New, _) => (
-            PersonRef::New,
+        (PersonRef::New | PersonRef::Draft(_), _) => (
+            contributor.person,
             contributor.name.clone(),
             if names.iter().any(|name| same_name(name, &contributor.name)) {
                 PersonState::Namesake
@@ -525,17 +508,18 @@ fn shown_works(
         .enumerate()
         .map(|(i, work)| {
             let errors = errors.get(i).unwrap_or(&no_errors);
-            let lead = publication_post::lead_contributor(&work.contributors);
+            let lead = work.lead_contributor();
             let shown = lead
                 .map(|i| work.contributors[i].clone())
                 .unwrap_or_default();
-            let lead_number = publication_post::lead_catalog_number(&work.catalog_numbers);
+            let lead_number = work.lead_catalog_number();
             let number = lead_number
                 .map(|i| work.catalog_numbers[i].clone())
                 .unwrap_or_default();
             let credit = shown_contributor(&shown, persons, names, String::new());
             ShownWork {
-                id: work.id.map(|id| id.to_string()).unwrap_or_default(),
+                id: publication_post::work_field(work.id),
+                stored: matches!(work.id, Some(WorkRef::Stored(_))),
                 title: work.title.clone(),
                 recognized: CatalogNumber::parse(&number).is_recognized(),
                 catalog_number: number,

@@ -4,13 +4,13 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_archive::{Library, Publication, PublicationErrors, PublicationRawInput, Work};
-
-use super::{
-    AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, WorkEdit, linked_summaries,
+use scorarium_archive::{
+    Library, Publication, PublicationErrors, PublicationRawInput, Work, WorkRef,
 };
+
+use super::{AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, linked_summaries};
 use crate::AppState;
-use crate::publication_post::PublicationPost;
+use crate::publication_post::PublicationForm;
 
 #[derive(Template)]
 #[template(path = "publication.html")]
@@ -100,11 +100,27 @@ pub async fn save(
     Path((library_id, id)): Path<(i64, i64)>,
     RawForm(body): RawForm,
 ) -> Result<Response, AppError> {
-    let post = PublicationPost::decode(&body)?;
+    let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
     let mut publication = library.publication(id).await?.or_not_found()?;
-    // The page showed one contributor per work; the stored works are what the rest comes from
-    let shown = publication.raw_input(&publication.works().await?).contents;
+    let post = form.into_post();
+    // The page showed one contributor per work; the stored works are where the rest comes from. A
+    // work picked from autocomplete is not among them, so it is fetched to be edited whole.
+    let mut shown = publication.raw_input(&publication.works().await?).contents;
+    for id in post.contents.iter().filter_map(|work| match work.id {
+        Some(WorkRef::Stored(id)) => Some(id),
+        _ => None,
+    }) {
+        if shown
+            .iter()
+            .any(|work| work.id == Some(WorkRef::Stored(id)))
+        {
+            continue;
+        }
+        if let Some(work) = library.work(id).await? {
+            shown.push(work.raw_input());
+        }
+    }
     let mut input = post.merge(shown);
     library
         .resolve_contributors(input.contributors_mut())
@@ -150,12 +166,13 @@ async fn render_edit(
     let fields = FormFields::build(input, errors, &persons, &names)
         .warn_when_empty(NO_COPIES)
         // A work's edit button opens the work, which comes back here when it is done
-        .edit_works(WorkEdit::Stored {
-            back: format!(
+        .work_edit(
+            &format!(
                 "/library/{}/publication/{}/edit",
                 library.id, publication.id
             ),
-        });
+            false,
+        );
     let page = EditPage {
         base: base.page(
             publication.title.clone(),

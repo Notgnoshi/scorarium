@@ -4,26 +4,30 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use scorarium_archive::identifier::{self, Kind};
-use scorarium_archive::{CatalogNumber, Entity, NotFound, SuggestField, Suggested, Suggestion};
+use scorarium_archive::{
+    CatalogNumber, DraftWorkSummary, Entity, NotFound, PersonRef, SuggestField, Suggested,
+    Suggestion, WorkRef,
+};
 use scorarium_client::open_library::WorkHit;
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 use super::{AppError, OrNotFound, Session, search};
-use crate::AppState;
 use crate::enrich::open_library;
+use crate::{AppState, publication_post};
 
 /// What the input has typed so far, plus what the input's neighbours need the archive to know
 #[derive(Deserialize)]
 pub struct FieldQuery {
     #[serde(default)]
     q: String,
-    /// for work-number only: the person id the work's contributor is linked to
+    /// for work-number only: the neighbouring contributor's hidden field
     composer: Option<String>,
     /// for tag only: comma-separated tags already picked
     exclude: Option<String>,
     #[serde(default)]
     source: Source,
+    drafts: Option<String>,
 }
 
 #[derive(Deserialize, Default, PartialEq, Eq)]
@@ -64,6 +68,10 @@ struct FieldMatch {
 enum Reference {
     Local {
         id: i64,
+    },
+    Draft {
+        id: String,
+        source: &'static str,
     },
     External {
         /// The source's display name
@@ -120,7 +128,8 @@ pub async fn field(
     let composer = query
         .composer
         .as_deref()
-        .and_then(|composer| composer.trim().parse().ok());
+        .map(publication_post::person_ref)
+        .filter(|person| matches!(person, PersonRef::Linked(_) | PersonRef::Draft(_)));
     let field = match kind.as_str() {
         "person" => SuggestField::Person,
         "work" => SuggestField::Work,
@@ -156,7 +165,9 @@ pub async fn field(
             matches: external(&state, &query.q).await,
         }));
     }
-    let mut suggestions = library.suggest(field, &query.q, false).await?;
+    let mut suggestions = library
+        .suggest(field, &query.q, false, query.drafts.is_some())
+        .await?;
     if let Some(exclude) = &query.exclude {
         let chosen: Vec<&str> = exclude.split(',').map(str::trim).collect();
         suggestions.retain(|suggestion| match &suggestion.item {
@@ -278,11 +289,70 @@ fn item(entity: Entity, exact: bool) -> FieldMatch {
     }
 }
 
+/// A draft work as a dropdown item, led by the title or by the matched number as a stored work's is
+fn draft_item(work: DraftWorkSummary, number: Option<String>, exact: bool) -> FieldMatch {
+    let contributor = work.contributor.as_ref().map(|c| c.name.as_str());
+    let (value, primary, secondary, recognized) = match &number {
+        Some(number) => (
+            number.clone(),
+            number.clone(),
+            search::credit(Some(&work.title), contributor),
+            Some(CatalogNumber::parse(number).is_recognized()),
+        ),
+        None => (
+            work.title.clone(),
+            work.title.clone(),
+            search::credit(work.numbers.first().map(String::as_str), contributor),
+            work.numbers
+                .first()
+                .map(|number| CatalogNumber::parse(number).is_recognized()),
+        ),
+    };
+    FieldMatch {
+        kind: "work",
+        value,
+        exact,
+        primary,
+        secondary,
+        href: None,
+        data: Data::Work {
+            reference: Reference::Draft {
+                id: publication_post::work_field(Some(WorkRef::Draft(work.id))),
+                source: "Draft",
+            },
+            title: work.title,
+            contributor: work.contributor.as_ref().map(|c| c.name.clone()),
+            role: work.contributor.as_ref().map(|c| c.role.clone()),
+            contributor_id: work.contributor.and_then(|c| match c.person {
+                PersonRef::Linked(id) => Some(id),
+                _ => None,
+            }),
+            numbers: work.numbers,
+            recognized,
+        },
+    }
+}
+
 /// One suggestion as a dropdown item
 fn shown(suggestion: Suggestion) -> FieldMatch {
     let exact = suggestion.exact;
     match suggestion.item {
         Suggested::Person(person) => item(Entity::Person(person), exact),
+        Suggested::DraftPerson(person) => FieldMatch {
+            kind: "person",
+            value: person.name.clone(),
+            exact,
+            primary: person.name.clone(),
+            secondary: person.title,
+            href: None,
+            data: Data::Person {
+                reference: Reference::Draft {
+                    id: publication_post::person_field(PersonRef::Draft(person.id)),
+                    source: "Draft",
+                },
+                name: person.name,
+            },
+        },
         Suggested::Publication(publication) => item(Entity::Publication(publication), exact),
         Suggested::Work { work, number: None } => item(Entity::Work(work), exact),
         // A number input puts the matched number in the input and leads with it, rather than the
@@ -305,6 +375,7 @@ fn shown(suggestion: Suggestion) -> FieldMatch {
             }
             shown
         }
+        Suggested::DraftWork { work, number } => draft_item(work, number, exact),
         Suggested::Tag { name, count } => FieldMatch {
             kind: "tag",
             value: name.clone(),

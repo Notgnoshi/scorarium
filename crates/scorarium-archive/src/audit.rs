@@ -1,6 +1,9 @@
 use std::ops::{Deref, DerefMut};
+use std::sync::Mutex;
 
 use sqlx::{Sqlite, SqliteConnection, Transaction};
+
+use crate::draft::DraftStore;
 
 /// How many groups of events the log keeps
 pub(crate) const MAX_GROUPS: usize = 1_000;
@@ -232,11 +235,27 @@ pub(crate) struct Audited<'a> {
     tx: Transaction<'a, Sqlite>,
     /// The group ID that this handle's consequences hang from
     group: i64,
+    /// The `(library_id, from, into)` of each work merge
+    merges: Vec<(i64, i64, i64)>,
+    drafts: &'a Mutex<DraftStore>,
 }
 
 impl<'a> Audited<'a> {
-    pub(crate) fn new(tx: Transaction<'a, Sqlite>, group: i64) -> Audited<'a> {
-        Audited { tx, group }
+    pub(crate) fn new(
+        tx: Transaction<'a, Sqlite>,
+        group: i64,
+        drafts: &'a Mutex<DraftStore>,
+    ) -> Audited<'a> {
+        Audited {
+            tx,
+            group,
+            merges: Vec::new(),
+            drafts,
+        }
+    }
+
+    pub(crate) fn record_merge(&mut self, library_id: i64, from: i64, into: i64) {
+        self.merges.push((library_id, from, into));
     }
 
     /// Record a consequence of the action this handle was opened for
@@ -284,6 +303,12 @@ impl<'a> Audited<'a> {
 
     pub(crate) async fn commit(self) -> crate::Result<()> {
         self.tx.commit().await?;
+        if !self.merges.is_empty() {
+            self.drafts
+                .lock()
+                .expect("draft lock poisoned")
+                .follow_merges(&self.merges);
+        }
         Ok(())
     }
 

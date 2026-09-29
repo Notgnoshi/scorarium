@@ -72,8 +72,6 @@ impl Library {
                 Event::about(Action::Deleted, self.entity_ref()),
             )
             .await?;
-        // The pending imports cascade away with the library, but their drafts are in memory.
-        let drafted = import::pending_import_ids(&mut audited, self.id).await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
             .execute(&mut *audited)
             .await?;
@@ -82,10 +80,8 @@ impl Library {
             return Err(NotFound.into());
         }
         audited.commit().await?;
-        let mut drafts = self.archive.drafts.lock().expect("draft lock poisoned");
-        for id in drafted {
-            drafts.remove(&id);
-        }
+        // The pending imports cascade away with the library, but their drafts are in memory
+        self.archive.drafts().drop_library(self.id);
         Ok(())
     }
 
@@ -136,7 +132,7 @@ impl Library {
             .archive
             .begin_audit(Source::User, Event::new(Action::Created))
             .await?;
-        let publication =
+        let (publication, _) =
             publication::create_publication(&self.archive, &mut audited, self.id, input).await?;
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
@@ -256,11 +252,8 @@ impl Library {
         &self,
         contributors: impl Iterator<Item = &mut ContributorInput>,
     ) -> Result<()> {
-        let persons = self.person_summaries(None).await?;
-        for contributor in contributors {
-            contributor.resolve_by_name(&persons);
-        }
-        Ok(())
+        let mut conn = self.archive.acquire_read().await?;
+        person::resolve_contributors(&mut conn, self.id, contributors).await
     }
 
     /// The summary of one person here, or nothing when no such person is in this library
@@ -318,12 +311,28 @@ impl Library {
         field: SuggestField,
         typed: &str,
         public_only: bool,
+        include_drafts: bool,
     ) -> Result<Vec<Suggestion>> {
         if public_only && self.private {
             return Ok(Vec::new());
         }
+        let (draft_works, draft_persons) = if include_drafts {
+            let drafts = self.archive.drafts();
+            (drafts.works(self.id), drafts.person_summaries(self.id))
+        } else {
+            (Vec::new(), Vec::new())
+        };
         let mut conn = self.archive.acquire_read().await?;
-        suggest::suggest(&mut conn, self.id, field, typed, public_only).await
+        suggest::suggest(
+            &mut conn,
+            self.id,
+            field,
+            typed,
+            public_only,
+            &draft_works,
+            draft_persons,
+        )
+        .await
     }
 }
 

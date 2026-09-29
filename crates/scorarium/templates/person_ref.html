@@ -78,7 +78,7 @@
 
         function link(input, match) {
             referenceOf(input).value = match.reference.id;
-            showPerson(input, "linked");
+            showPerson(input, match.reference.source === "Draft" ? "new" : "linked");
         }
 
         document.addEventListener("suggest:matches", (e) => {
