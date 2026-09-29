@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
+use crate::fuzzy::normalize;
 use crate::import::Lookup;
-use crate::input::WorkRef;
+use crate::input::{self, ContributorInput, PersonRef, WorkRef};
+use crate::person::PersonRawInput;
 use crate::publication::PublicationRawInput;
+use crate::summary::PersonSummary;
 use crate::work::WorkRawInput;
 
 #[derive(Debug)]
@@ -41,6 +44,8 @@ struct LibraryDrafts {
     publications: HashMap<i64, SavedDraft>,
     /// Keyed by draft work id
     works: HashMap<i64, WorkRawInput>,
+    /// Keyed by draft person id
+    persons: HashMap<i64, PersonRawInput>,
 }
 
 impl DraftStore {
@@ -86,8 +91,13 @@ impl DraftStore {
         import_id: i64,
         mut input: PublicationRawInput,
         vanished: &[i64],
+        stored: &[PersonSummary],
     ) {
         let library = self.libraries.entry(library_id).or_default();
+        let mut created = HashMap::new();
+        for credit in input.contributors_mut() {
+            resolve_credit(&mut self.last_id, library, stored, &mut created, credit);
+        }
         let mut contents = Vec::with_capacity(input.contents.len());
         for mut work in std::mem::take(&mut input.contents) {
             let reference = match work.id {
@@ -128,7 +138,13 @@ impl DraftStore {
         saved.lookup = Some(lookup);
     }
 
-    pub(crate) fn accept(&mut self, library_id: i64, import_id: i64, published: &[(i64, i64)]) {
+    pub(crate) fn accept(
+        &mut self,
+        library_id: i64,
+        import_id: i64,
+        works: &[(i64, i64)],
+        persons: &[(i64, i64)],
+    ) {
         let Some(library) = self.libraries.get_mut(&library_id) else {
             return;
         };
@@ -136,14 +152,29 @@ impl DraftStore {
         for saved in library.publications.values_mut() {
             for reference in &mut saved.contents {
                 if let WorkRef::Draft(id) = reference
-                    && let Some((_, stored)) = published.iter().find(|(draft, _)| draft == id)
+                    && let Some((_, stored)) = works.iter().find(|(draft, _)| draft == id)
                 {
                     *reference = WorkRef::Stored(*stored);
                 }
             }
             saved.dedupe();
+            for credit in &mut saved.fields.contributors {
+                relink_person(credit, persons);
+            }
+        }
+        for work in library.works.values_mut() {
+            for credit in &mut work.contributors {
+                relink_person(credit, persons);
+            }
         }
         library.collect();
+    }
+
+    pub(crate) fn persons(&self, library_id: i64) -> HashMap<i64, PersonRawInput> {
+        self.libraries
+            .get(&library_id)
+            .map(|library| library.persons.clone())
+            .unwrap_or_default()
     }
 
     pub(crate) fn forget(&mut self, library_id: i64, import_id: i64) {
@@ -172,13 +203,74 @@ impl SavedDraft {
 }
 
 impl LibraryDrafts {
-    /// Remove the draft works no draft publication contains.
     fn collect(&mut self) {
         self.works.retain(|id, _| {
             self.publications
                 .values()
                 .any(|saved| saved.contents.contains(&WorkRef::Draft(*id)))
         });
+        self.persons.retain(|id, _| {
+            let credited = |credits: &[ContributorInput]| {
+                credits
+                    .iter()
+                    .any(|credit| credit.person == PersonRef::Draft(*id))
+            };
+            self.publications
+                .values()
+                .any(|saved| credited(&saved.fields.contributors))
+                || self.works.values().any(|work| credited(&work.contributors))
+        });
+    }
+}
+
+/// Decide whom one credit refers to, creating a draft person for a new name.
+fn resolve_credit(
+    last_id: &mut i64,
+    library: &mut LibraryDrafts,
+    stored: &[PersonSummary],
+    created: &mut HashMap<String, i64>,
+    credit: &mut ContributorInput,
+) {
+    if credit.name.trim().is_empty() {
+        return;
+    }
+    match credit.person {
+        PersonRef::New => {}
+        PersonRef::Linked(id) if stored.iter().any(|person| person.id == id) => return,
+        PersonRef::Draft(id) if library.persons.contains_key(&id) => return,
+        // A person picked on a page can be gone by the time the page is saved
+        PersonRef::Linked(_) | PersonRef::Draft(_) | PersonRef::Unresolved => {
+            let stored = stored
+                .iter()
+                .map(|person| (PersonRef::Linked(person.id), person.name.as_str()));
+            let drafts = library
+                .persons
+                .iter()
+                .map(|(id, person)| (PersonRef::Draft(*id), person.name.as_str()));
+            credit.person = input::resolve_name(&credit.name, stored.chain(drafts));
+        }
+    }
+    if credit.person == PersonRef::New {
+        let id = *created.entry(normalize(&credit.name)).or_insert_with(|| {
+            *last_id += 1;
+            library.persons.insert(
+                *last_id,
+                PersonRawInput {
+                    name: credit.name.trim().to_string(),
+                    links: Vec::new(),
+                },
+            );
+            *last_id
+        });
+        credit.person = PersonRef::Draft(id);
+    }
+}
+
+fn relink_person(credit: &mut ContributorInput, persons: &[(i64, i64)]) {
+    if let PersonRef::Draft(id) = credit.person
+        && let Some((_, stored)) = persons.iter().find(|(draft, _)| *draft == id)
+    {
+        credit.person = PersonRef::Linked(*stored);
     }
 }
 
@@ -217,7 +309,7 @@ mod tests {
     fn work_ids_are_never_shared_and_a_library_takes_only_its_drafts() {
         let mut store = DraftStore::default();
 
-        store.save(1, 10, album(vec![work("Gymnopedie No. 1")]), &[]);
+        store.save(1, 10, album(vec![work("Gymnopedie No. 1")]), &[], &[]);
         assert_eq!(
             contents(&store, 1, 10),
             [(WorkRef::Draft(1), "Gymnopedie No. 1".to_string())]
@@ -226,6 +318,7 @@ mod tests {
             2,
             20,
             album(vec![work("Chapter One"), work("Chapter Two")]),
+            &[],
             &[],
         );
         assert_eq!(
@@ -237,7 +330,7 @@ mod tests {
         );
 
         // Dropping a work does not hand its id to the next one added
-        store.save(1, 10, album(vec![work("Gymnopedie No. 2")]), &[]);
+        store.save(1, 10, album(vec![work("Gymnopedie No. 2")]), &[], &[]);
         assert_eq!(
             contents(&store, 1, 10),
             [(WorkRef::Draft(4), "Gymnopedie No. 2".to_string())]
@@ -257,15 +350,15 @@ mod tests {
     #[test]
     fn a_shared_work_is_collected_when_nothing_holds_it() {
         let mut store = DraftStore::default();
-        store.save(1, 10, album(vec![work("Nocturne")]), &[]);
+        store.save(1, 10, album(vec![work("Nocturne")]), &[], &[]);
         let nocturne = WorkRawInput {
             id: Some(WorkRef::Draft(1)),
             ..work("Nocturne")
         };
-        store.save(1, 20, album(vec![nocturne]), &[]);
+        store.save(1, 20, album(vec![nocturne]), &[], &[]);
 
         // Dropped from one import, kept by the other
-        store.save(1, 10, album(vec![]), &[]);
+        store.save(1, 10, album(vec![]), &[], &[]);
         assert_eq!(contents(&store, 1, 20).len(), 1);
         assert!(store.libraries[&1].works.contains_key(&1));
 
@@ -277,7 +370,13 @@ mod tests {
     #[test]
     fn accepting_relinks_the_other_imports() {
         let mut store = DraftStore::default();
-        store.save(1, 10, album(vec![work("Nocturne"), work("Mazurka")]), &[]);
+        store.save(
+            1,
+            10,
+            album(vec![work("Nocturne"), work("Mazurka")]),
+            &[],
+            &[],
+        );
         store.save(
             1,
             20,
@@ -293,11 +392,12 @@ mod tests {
                 },
             ]),
             &[],
+            &[],
         );
 
         // The catalog kept the nocturne as work 7, absorbed into the duplicate the second import
         // holds, and the mazurka as work 8. The second import then holds work 7 once.
-        store.accept(1, 10, &[(1, 7), (2, 8)]);
+        store.accept(1, 10, &[(1, 7), (2, 8)], &[]);
 
         assert!(store.snapshot(1, 10).is_none());
         assert_eq!(

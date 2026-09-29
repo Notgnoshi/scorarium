@@ -55,10 +55,11 @@ impl Display for ValidationError {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PersonRef {
     /// An existing person, whose stored name the posted name never changes
     Linked(i64),
+    Draft(i64),
     /// A person to create with the typed name, even when a namesake exists
     New,
     /// Nobody chosen yet; refused when submitted
@@ -85,21 +86,33 @@ pub struct ContributorInput {
     pub person: PersonRef,
 }
 
+pub(crate) fn resolve_name<'a>(
+    name: &str,
+    candidates: impl Iterator<Item = (PersonRef, &'a str)>,
+) -> PersonRef {
+    let mut namesakes = candidates
+        .filter(|(_, candidate)| same_name(candidate, name))
+        .map(|(person, _)| person);
+    match (namesakes.next(), namesakes.next()) {
+        (None, _) => PersonRef::New,
+        (Some(person), None) => person,
+        (Some(_), Some(_)) => PersonRef::Unresolved,
+    }
+}
+
 impl ContributorInput {
     pub(crate) fn resolve_by_name(&mut self, persons: &[PersonSummary]) {
         match self.person {
             PersonRef::New => return,
             PersonRef::Linked(id) if persons.iter().any(|person| person.id == id) => return,
-            PersonRef::Linked(_) | PersonRef::Unresolved => {}
+            PersonRef::Linked(_) | PersonRef::Draft(_) | PersonRef::Unresolved => {}
         }
-        let mut namesakes = persons
-            .iter()
-            .filter(|person| same_name(&person.name, &self.name));
-        self.person = match (namesakes.next(), namesakes.next()) {
-            (None, _) => PersonRef::New,
-            (Some(person), None) => PersonRef::Linked(person.id),
-            (Some(_), Some(_)) => PersonRef::Unresolved,
-        };
+        self.person = resolve_name(
+            &self.name,
+            persons
+                .iter()
+                .map(|person| (PersonRef::Linked(person.id), person.name.as_str())),
+        );
     }
 }
 
@@ -110,7 +123,7 @@ pub(crate) fn parse_contributors(
     raw: &[ContributorInput],
 ) -> Result<Vec<ContributorInput>, Vec<Option<ValidationError>>> {
     let mut contributors = Vec::new();
-    let mut seen_persons = BTreeSet::new();
+    let mut seen_persons: BTreeSet<(PersonRef, String)> = BTreeSet::new();
     let mut seen_new = BTreeSet::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
@@ -128,7 +141,9 @@ pub(crate) fn parse_contributors(
                 return Some(ValidationError::RoleRequired);
             }
             let person_seen = match contributor.person {
-                PersonRef::Linked(id) => !seen_persons.insert((id, role.to_string())),
+                PersonRef::Linked(_) | PersonRef::Draft(_) => {
+                    !seen_persons.insert((contributor.person, role.to_string()))
+                }
                 PersonRef::New => !seen_new.insert((normalize(name), role.to_string())),
                 // Names are resolved before parsing, so one still unresolved is shared by several
                 // people, and which of them is meant is the user's choice

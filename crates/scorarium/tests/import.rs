@@ -249,7 +249,7 @@ async fn isbn_import_is_seeded_from_open_library() {
     response.assert_text_contains("value=\"Bagatelles, Rondos and Other Shorter Works for Piano\"");
     response.assert_text_contains("value=\"Ludwig van Beethoven\"");
     response.assert_text_contains("value=\"author\"");
-    response.assert_text_contains("name=\"contributor_person\" value=\"new\"");
+    response.assert_text_contains("name=\"contributor_person\" value=\"draft:1\"");
     response.assert_text_contains("value=\"Dover Publications\"");
     response.assert_text_contains("value=\"1987\"");
     response.assert_text_contains("value=\"978-0-486-25392-3\"");
@@ -333,6 +333,9 @@ async fn imports_sharing_a_draft_work_produce_one_work() {
             ("holding_kind_0", "physical".to_string()),
             ("holding_location_0", "Shelf".to_string()),
             ("holding_file_0", String::new()),
+            ("contributor_name", "Frederic Chopin".to_string()),
+            ("contributor_role", "composer".to_string()),
+            ("contributor_person", String::new()),
             ("work_id", work_id.to_string()),
             ("work_title", work_title.to_string()),
             ("work_catalog_number", String::new()),
@@ -384,8 +387,12 @@ async fn imports_sharing_a_draft_work_produce_one_work() {
     response.assert_status(StatusCode::SEE_OTHER);
     let published = library.publications().await.unwrap().remove(0);
     let nocturne = published.works().await.unwrap().remove(0).id;
+    let stored_chopin = published.contributors[0].person_id;
     let response = server.get(&anthology).await;
     response.assert_text_contains(format!("name=\"work_id\" value=\"{nocturne}\""));
+    response.assert_text_contains(format!(
+        "name=\"contributor_person\" value=\"{stored_chopin}\""
+    ));
     response.assert_text_contains("readonly");
     response.assert_text_contains(format!(
         "/library/{}/work/{nocturne}/edit?back=",

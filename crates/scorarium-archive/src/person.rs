@@ -335,16 +335,19 @@ pub(crate) async fn credited_person(
             })
         }
         PersonRef::New => create_person(conn, library_id, &contributor.name).await,
-        // The parser refuses these, and the demo resolves its own, so one here is a bug
-        PersonRef::Unresolved => Err(eyre::eyre!(
-            "an unresolved contributor reached the write path: {:?}",
+        PersonRef::Draft(_) | PersonRef::Unresolved => Err(eyre::eyre!(
+            "attempted to credit a person not contained by the library: {:?}",
             contributor.name
         )),
     }
 }
 
 /// Create a person, whether or not the library has one by that name
-async fn create_person(conn: &mut SqliteConnection, library_id: i64, name: &str) -> Result<i64> {
+pub(crate) async fn create_person(
+    conn: &mut SqliteConnection,
+    library_id: i64,
+    name: &str,
+) -> Result<i64> {
     let sort_name = sort_name(name);
     let created = sqlx::query!(
         "INSERT INTO person (library_id, name, sort_name) VALUES (?, ?, ?)",

@@ -429,8 +429,8 @@ fn shown_contributor(
         (PersonRef::Linked(_), Some(found)) => {
             (contributor.person, found.name.clone(), PersonState::Linked)
         }
-        (PersonRef::New, _) => (
-            PersonRef::New,
+        (PersonRef::New | PersonRef::Draft(_), _) => (
+            contributor.person,
             contributor.name.clone(),
             if names.iter().any(|name| same_name(name, &contributor.name)) {
                 PersonState::Namesake

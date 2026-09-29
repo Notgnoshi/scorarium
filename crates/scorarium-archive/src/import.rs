@@ -1,14 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
-use crate::input::WorkRef;
+use crate::input::{PersonRef, WorkRef};
 use crate::publication::{
     self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
+use crate::summary::{self, PersonSummary};
 use crate::work::{self, Work};
 use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, draft, person};
 
@@ -91,16 +92,17 @@ impl PendingImport {
         })
     }
 
-    pub async fn save_draft(
-        &self,
-        mut input: PublicationRawInput,
-    ) -> crate::Result<DraftPublication> {
+    pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
+        let stored: Vec<PersonSummary>;
         // The catalog can have collected a stored work since the page was opened
         let mut vanished = Vec::new();
         {
             let mut conn = self.archive.acquire_read().await?;
-            person::resolve_contributors(&mut conn, self.library_id, input.contributors_mut())
-                .await?;
+            stored = summary::persons(&mut conn, Some(self.library_id), false, None, None)
+                .await?
+                .into_iter()
+                .map(|found| found.summary)
+                .collect();
             for work in &input.contents {
                 if let Some(WorkRef::Stored(id)) = work.id
                     && !work::work_exists(&mut conn, self.library_id, id).await?
@@ -111,7 +113,7 @@ impl PendingImport {
         }
         self.archive
             .drafts()
-            .save(self.library_id, self.id, input, &vanished);
+            .save(self.library_id, self.id, input, &vanished, &stored);
         self.draft().await
     }
 
@@ -170,12 +172,36 @@ impl PendingImport {
     }
 
     async fn accept_into_publication(self, input: &PublicationInput) -> crate::Result<Publication> {
+        let drafted = self.archive.drafts().persons(self.library_id);
+        let mut input = input.clone();
+        let mut names = BTreeMap::new();
+        for credit in input.contributors_mut() {
+            if let PersonRef::Draft(id) = credit.person {
+                // A concurrent accept can have relinked and collected it since this draft was saved
+                let person = drafted
+                    .get(&id)
+                    .ok_or_else(|| eyre::eyre!("draft person {id} is gone: {:?}", credit.name))?;
+                names.insert(id, person.name.clone());
+            }
+        }
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::ImportAccepted))
             .await?;
+        let mut persons = Vec::with_capacity(names.len());
+        for (id, name) in names {
+            let stored = person::create_person(&mut audited, self.library_id, &name).await?;
+            persons.push((id, stored));
+        }
+        for credit in input.contributors_mut() {
+            if let PersonRef::Draft(id) = credit.person
+                && let Some((_, stored)) = persons.iter().find(|(draft, _)| *draft == id)
+            {
+                credit.person = PersonRef::Linked(*stored);
+            }
+        }
         let (publication, work_ids) =
-            publication::create_publication(&self.archive, &mut audited, self.library_id, input)
+            publication::create_publication(&self.archive, &mut audited, self.library_id, &input)
                 .await?;
         let result = sqlx::query!(
             "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
@@ -192,7 +218,7 @@ impl PendingImport {
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
         // Only after the commit, so a rolled-back accept leaves every draft as it was
-        let published: Vec<(i64, i64)> = input
+        let works: Vec<(i64, i64)> = input
             .contents
             .iter()
             .zip(work_ids)
@@ -203,7 +229,7 @@ impl PendingImport {
             .collect();
         self.archive
             .drafts()
-            .accept(self.library_id, self.id, &published);
+            .accept(self.library_id, self.id, &works, &persons);
         Ok(publication)
     }
 

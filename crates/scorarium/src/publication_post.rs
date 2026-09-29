@@ -196,9 +196,13 @@ struct Posted<'a> {
 }
 
 pub fn person_ref(field: &str) -> PersonRef {
-    match field.trim() {
-        "new" => PersonRef::New,
-        field => field
+    let field = field.trim();
+    if field == "new" {
+        return PersonRef::New;
+    }
+    match field.strip_prefix(DRAFT_PREFIX) {
+        Some(id) => id.parse().map_or(PersonRef::Unresolved, PersonRef::Draft),
+        None => field
             .parse()
             .map_or(PersonRef::Unresolved, PersonRef::Linked),
     }
@@ -207,12 +211,13 @@ pub fn person_ref(field: &str) -> PersonRef {
 pub fn person_field(person: PersonRef) -> String {
     match person {
         PersonRef::Linked(id) => id.to_string(),
+        PersonRef::Draft(id) => format!("{DRAFT_PREFIX}{id}"),
         PersonRef::New => "new".to_string(),
         PersonRef::Unresolved => String::new(),
     }
 }
 
-/// The prefix that tells a draft work's id from a stored one in the hidden field
+/// The prefix that tells a draft work's or person's id from a stored one in the hidden field
 const DRAFT_PREFIX: &str = "draft:";
 
 pub fn work_ref(field: &str) -> Option<WorkRef> {
@@ -301,12 +306,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_work_reference_round_trips_through_the_hidden_field() {
+    fn references_round_trip_through_the_hidden_field() {
         for id in [None, Some(WorkRef::Stored(5)), Some(WorkRef::Draft(3))] {
             assert_eq!(work_ref(&work_field(id)), id);
         }
         assert_eq!(work_ref(" 5 "), Some(WorkRef::Stored(5)));
         assert_eq!(work_ref("draft:x"), None);
+        for person in [
+            PersonRef::Unresolved,
+            PersonRef::New,
+            PersonRef::Linked(5),
+            PersonRef::Draft(3),
+        ] {
+            assert_eq!(person_ref(&person_field(person)), person);
+        }
     }
 
     /// Each copy posts its fields under a suffix of its own, and the copies come back in the
