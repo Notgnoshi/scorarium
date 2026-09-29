@@ -770,11 +770,12 @@ pub(crate) async fn link_work_to_publication(
 /// `into` keeps every field it has; `from` fills only blanks, because the older record is the more
 /// likely to be complete and correct.
 pub(crate) async fn merge_works(
-    conn: &mut SqliteConnection,
+    audited: &mut Audited<'_>,
     library_id: i64,
     from: i64,
     into: i64,
 ) -> crate::Result<()> {
+    let conn: &mut SqliteConnection = audited;
     let source = sqlx::query!(
         "SELECT \"key\", time_signature, instrumentation, stars, note FROM work WHERE library_id = ? AND id = ?",
         library_id,
@@ -865,6 +866,7 @@ pub(crate) async fn merge_works(
     )
     .execute(&mut *conn)
     .await?;
+    audited.record_merge(library_id, from, into);
     Ok(())
 }
 

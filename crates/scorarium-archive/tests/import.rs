@@ -258,3 +258,44 @@ async fn discarding_removes_the_import() {
     let err = stale.discard().await.unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());
 }
+
+#[tokio::test]
+async fn merging_works_moves_drafts_to_the_survivor() {
+    let (_archive, library) = library().await;
+    let publication = library
+        .create_publication(
+            &PublicationRawInput {
+                title: "Preludes".into(),
+                holdings: holdings(HoldingKind::Physical, ""),
+                contents: vec![
+                    WorkRawInput {
+                        title: "Raindrop".into(),
+                        ..WorkRawInput::default()
+                    },
+                    WorkRawInput {
+                        title: "Prelude in D-flat".into(),
+                        ..WorkRawInput::default()
+                    },
+                ],
+                ..PublicationRawInput::default()
+            }
+            .parse()
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let works = publication.works().await.unwrap();
+    let (survivor, absorbed) = (works[0].id, works[1].id);
+    let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
+    let import = library.start_import("", &copies).await.unwrap();
+    let mut input = import.draft().await.unwrap().input;
+    input.contents = vec![works[1].raw_input()];
+    import.save_draft(input).await.unwrap();
+
+    library.merge_works(absorbed, survivor).await.unwrap();
+
+    assert_eq!(
+        work_ids(&import.draft().await.unwrap()),
+        [Some(WorkRef::Stored(survivor))]
+    );
+}

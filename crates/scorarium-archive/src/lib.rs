@@ -106,7 +106,7 @@ impl ArchiveInner {
         let mut tx = self.pool.begin().await?;
         let group = audit::insert(&mut tx, None, source, &event).await?;
         audit::trim(&mut tx).await?;
-        Ok(audit::Audited::new(tx, group))
+        Ok(audit::Audited::new(tx, group, &self.drafts))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries

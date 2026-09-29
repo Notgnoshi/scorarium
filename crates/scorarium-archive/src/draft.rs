@@ -139,6 +139,25 @@ impl DraftStore {
         saved.lookup = Some(lookup);
     }
 
+    /// Move drafts' references from each absorbed work to its survivor
+    ///
+    /// Returns `(library_id, from, into)` in the order the merges happened.
+    pub(crate) fn follow_merges(&mut self, merges: &[(i64, i64, i64)]) {
+        for &(library_id, from, into) in merges {
+            let Some(library) = self.libraries.get_mut(&library_id) else {
+                continue;
+            };
+            for saved in library.publications.values_mut() {
+                for reference in &mut saved.contents {
+                    if *reference == WorkRef::Stored(from) {
+                        *reference = WorkRef::Stored(into);
+                    }
+                }
+                saved.dedupe();
+            }
+        }
+    }
+
     pub(crate) fn accept(
         &mut self,
         library_id: i64,
