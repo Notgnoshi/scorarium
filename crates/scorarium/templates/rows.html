@@ -172,21 +172,21 @@
         {# djlint:on #}
         {# The row edits one contributor, so say when the work credits others it leaves alone #}
         {% if !more.is_empty() %}<span class="input-group-text">and {{ more }} more</span>{% endif %}
-        {% if stored %}
-            <a class="btn btn-outline-secondary"
-               href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ back|urlencode }}"
-               aria-label="Edit work"
-               title="Edit the stored work">
-                <i class="bi bi-pencil" aria-hidden="true"></i>
-            </a>
-        {% else if review %}
+        {% if review %}
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-edit-work
                     aria-label="Edit work"
-                    title="Save the draft and edit the work">
+                    title="{% if stored %}Save draft and edit the work{% endif %}">
                 <i class="bi bi-pencil" aria-hidden="true"></i>
             </button>
+        {% else if stored %}
+            <a class="btn btn-outline-secondary"
+               href="/library/{{ library_id }}/work/{{ id }}/edit?back={{ back|urlencode }}"
+               aria-label="Edit work"
+               title="Edit the work">
+                <i class="bi bi-pencil" aria-hidden="true"></i>
+            </a>
         {% endif %}
         <button type="button"
                 class="btn btn-outline-secondary"

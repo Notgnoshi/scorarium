@@ -399,10 +399,20 @@ async fn imports_sharing_a_draft_work_produce_one_work() {
         "name=\"contributor_person\" value=\"{stored_chopin}\""
     ));
     response.assert_text_contains("readonly");
-    response.assert_text_contains(format!(
+
+    // The stored work's pencil saves the draft, then redirects to the stored work's edit page
+    let mut fields = form("Anthology", &nocturne.to_string(), "Nocturne No. 2");
+    fields.push(("edit_work", "0".to_string()));
+    let response = server
+        .post(&format!("{anthology}/save"))
+        .form(&fields)
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    let location = response.header("location").to_str().unwrap().to_string();
+    assert!(location.starts_with(&format!(
         "/library/{}/work/{nocturne}/edit?back=",
         library.id
-    ));
+    )));
 
     // Accepting the second links the stored work rather than copying it
     let response = server
