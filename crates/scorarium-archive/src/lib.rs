@@ -6,6 +6,7 @@ mod audit;
 mod catalog;
 mod demo;
 mod draft;
+pub mod external_id;
 mod fuzzy;
 mod holding;
 pub mod identifier;
