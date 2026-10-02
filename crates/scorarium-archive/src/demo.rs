@@ -76,10 +76,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
 
     // A book with works, so pages show works without any music-specific fields
     let mut dictionary = writing("The Devil's Dictionary");
-    dictionary.links = links(
-        EntityKind::Publication,
-        &["https://www.gutenberg.org/ebooks/972"],
-    );
+    dictionary.links = links(EntityKind::Work, &["https://www.gutenberg.org/ebooks/972"]);
     create(
         &books,
         PublicationInput {
@@ -101,6 +98,11 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             ],
         },
     )
+    .await?;
+    sqlx::query!(
+        "UPDATE work_link SET kind = 'generic', external_id = NULL WHERE url = 'https://www.gutenberg.org/ebooks/972'"
+    )
+    .execute(&archive.shared.pool)
     .await?;
 
     // An anthology: every composer is credited on the publication, but only Rachmaninoff's pieces

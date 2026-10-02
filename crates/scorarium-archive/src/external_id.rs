@@ -1,5 +1,8 @@
 use percent_encoding::percent_decode_str;
+use sqlx::SqliteConnection;
 use url::Url;
+
+use crate::{Action, ArchiveInner, Event, Field, Source};
 
 /// The entity kind a link belongs to
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -10,8 +13,7 @@ pub enum EntityKind {
 }
 
 /// A site whose record URLs are recognized
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sqlx::Type)]
-#[sqlx(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// A link that does not name a known external record or site
     Generic,
@@ -31,6 +33,30 @@ pub enum Kind {
     InternetArchive,
     Gutenberg,
     Librivox,
+}
+
+impl Kind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::Generic => "generic",
+            Kind::OpenLibrary => "openlibrary",
+            Kind::Wikidata => "wikidata",
+            Kind::MusicBrainz => "musicbrainz",
+            Kind::Imslp => "imslp",
+            Kind::Viaf => "viaf",
+            Kind::Gnd => "gnd",
+            Kind::Isni => "isni",
+            Kind::Loc => "loc",
+            Kind::K10plus => "k10plus",
+            Kind::Dnb => "dnb",
+            Kind::Harvard => "harvard",
+            Kind::Goodreads => "goodreads",
+            Kind::LibraryThing => "librarything",
+            Kind::InternetArchive => "internetarchive",
+            Kind::Gutenberg => "gutenberg",
+            Kind::Librivox => "librivox",
+        }
+    }
 }
 
 /// A record from a known external site, with the ID in the site's canonical form
@@ -55,10 +81,10 @@ impl Link {
         }
     }
 
-    pub(crate) fn columns(&self) -> (Kind, Option<&str>) {
+    pub(crate) fn columns(&self) -> (&'static str, Option<&str>) {
         match &self.record {
-            Some(record) => (record.kind, Some(&record.id)),
-            None => (Kind::Generic, None),
+            Some(record) => (record.kind.as_str(), Some(&record.id)),
+            None => (Kind::Generic.as_str(), None),
         }
     }
 }
@@ -147,6 +173,122 @@ pub fn build(entity: EntityKind, kind: Kind, id: &str) -> Option<Url> {
         _ => return None,
     };
     Url::parse(&url).ok()
+}
+
+/// Recompute every link's kind and ID
+///
+/// The ID is a function of the URL, so recomputing is always safe.
+pub(crate) async fn recognize_all(archive: &ArchiveInner) -> crate::Result<()> {
+    let rows = {
+        let mut conn = archive.acquire_read().await?;
+        sqlx::query!(
+            r#"SELECT 'publication' AS "entity!", id AS "id!", publication_id AS "entity_id!",
+                      url AS "url!", kind, external_id
+               FROM publication_link
+               UNION ALL
+               SELECT 'work', id, work_id, url, kind, external_id FROM work_link
+               UNION ALL
+               SELECT 'person', id, person_id, url, kind, external_id FROM person_link
+               ORDER BY 1, 3, 2"#
+        )
+        .fetch_all(&mut *conn)
+        .await?
+    };
+
+    let mut changes: Vec<(EntityKind, i64, Option<ExternalId>)> = Vec::new();
+    for links in rows.chunk_by(|a, b| a.entity == b.entity && a.entity_id == b.entity_id) {
+        let entity = match links[0].entity.as_str() {
+            "publication" => EntityKind::Publication,
+            "work" => EntityKind::Work,
+            _ => EntityKind::Person,
+        };
+        let mut records: Vec<ExternalId> = Vec::new();
+        for link in links {
+            let record = Url::parse(&link.url)
+                .ok()
+                .and_then(|url| recognize(entity, &url))
+                .filter(|record| !records.contains(record));
+            records.extend(record.clone());
+            let computed = record.as_ref().map_or((Kind::Generic, None), |record| {
+                (record.kind, Some(record.id.as_str()))
+            });
+            if (link.kind.as_str(), link.external_id.as_deref())
+                != (computed.0.as_str(), computed.1)
+            {
+                changes.push((entity, link.id, record));
+            }
+        }
+    }
+    if changes.is_empty() {
+        return Ok(());
+    }
+
+    let headline = Event {
+        fields: vec![Field::Links],
+        ..Event::new(Action::Updated)
+    };
+    let mut audited = archive
+        .begin_audit(Source::LinkRecognition, headline)
+        .await?;
+    // Cleared first so a record moving between two links never collides with the unique index
+    for (entity, id, _) in &changes {
+        set_columns(&mut audited, *entity, *id, Kind::Generic.as_str(), None).await?;
+    }
+    for (entity, id, record) in &changes {
+        if let Some(record) = record {
+            set_columns(
+                &mut audited,
+                *entity,
+                *id,
+                record.kind.as_str(),
+                Some(&record.id),
+            )
+            .await?;
+        }
+    }
+    audited.commit().await
+}
+
+async fn set_columns(
+    conn: &mut SqliteConnection,
+    entity: EntityKind,
+    id: i64,
+    kind: &str,
+    external_id: Option<&str>,
+) -> crate::Result<()> {
+    match entity {
+        EntityKind::Publication => {
+            sqlx::query!(
+                "UPDATE publication_link SET kind = ?, external_id = ? WHERE id = ?",
+                kind,
+                external_id,
+                id
+            )
+            .execute(conn)
+            .await?
+        }
+        EntityKind::Work => {
+            sqlx::query!(
+                "UPDATE work_link SET kind = ?, external_id = ? WHERE id = ?",
+                kind,
+                external_id,
+                id
+            )
+            .execute(conn)
+            .await?
+        }
+        EntityKind::Person => {
+            sqlx::query!(
+                "UPDATE person_link SET kind = ?, external_id = ? WHERE id = ?",
+                kind,
+                external_id,
+                id
+            )
+            .execute(conn)
+            .await?
+        }
+    };
+    Ok(())
 }
 
 /// https://www.wikidata.org/wiki/Property:P648
@@ -394,6 +536,7 @@ fn number(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Archive, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput};
 
     #[test]
     fn urls_resolve_to_records() {
@@ -795,5 +938,63 @@ mod tests {
                 assert_eq!(recognize(*entity, &built), Some(expected), "{built}");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn the_startup_recognition_pass_repairs_links() {
+        let archive = Archive::in_memory().await.unwrap();
+        let library = archive.create_library("Sheet music", false).await.unwrap();
+        let work = |title: &str, links: &[&str]| WorkRawInput {
+            title: title.into(),
+            links: links.iter().map(|link| link.to_string()).collect(),
+            ..WorkRawInput::default()
+        };
+        let input = PublicationRawInput {
+            title: "Nocturnes".into(),
+            holdings: vec![HoldingRawInput {
+                id: None,
+                kind: HoldingKind::Physical,
+                location: "Shelf".into(),
+            }],
+            contents: vec![
+                work(
+                    "Repaired",
+                    &[
+                        "https://www.wikidata.org/wiki/Q255",
+                        "https://en.wikipedia.org/wiki/Nocturnes_(Chopin)",
+                    ],
+                ),
+                work("Aliases", &["https://www.wikidata.org/wiki/Q7"]),
+                work("Correct", &["https://en.wikipedia.org/wiki/Erik_Satie"]),
+            ],
+            ..PublicationRawInput::default()
+        }
+        .parse()
+        .unwrap();
+        let publication = library.create_publication(&input).await.unwrap();
+        let works = publication.works().await.unwrap();
+        let (repaired, aliases) = (works[0].id, works[1].id);
+
+        let pool = &archive.shared().pool;
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "UPDATE work_link SET external_id = 'Q999' WHERE work_id = {repaired} AND kind = 'wikidata';
+             UPDATE work_link SET kind = 'generic', external_id = NULL WHERE work_id = {aliases};
+             INSERT INTO work_link (work_id, url) VALUES ({aliases}, 'https://www.wikidata.org/entity/Q7');
+             UPDATE work_link SET kind = 'retired', external_id = 'x' WHERE url = 'https://en.wikipedia.org/wiki/Nocturnes_(Chopin)';"
+        )))
+        .execute(pool)
+        .await
+        .unwrap();
+
+        recognize_all(archive.shared()).await.unwrap();
+
+        let ids = sqlx::query_scalar!("SELECT external_id FROM work_link ORDER BY id")
+            .fetch_all(pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            ids,
+            [Some("Q255".into()), None, Some("Q7".into()), None, None]
+        );
     }
 }

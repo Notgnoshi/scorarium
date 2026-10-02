@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE publication_link SET kind = ?, external_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a3c45c6ac258a62cb903ef6a15b083a0f6b0d9b6a3ab097811fc84052faf40b1"
+}

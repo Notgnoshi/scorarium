@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work_link SET kind = ?, external_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6a004db75ee5c571cefe6a80b3551e8de6e83bfb2b6ae502b5d40fd5ddca6b43"
+}

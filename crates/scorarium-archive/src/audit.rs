@@ -16,6 +16,8 @@ pub enum Source {
     OrphanCleanup,
     /// An event triggered by merging two entities
     Merge,
+    /// An event triggered by recomputing which records links name when the archive opens
+    LinkRecognition,
 }
 
 impl Source {
@@ -24,6 +26,7 @@ impl Source {
             Source::User => "user",
             Source::OrphanCleanup => "orphan_cleanup",
             Source::Merge => "merge",
+            Source::LinkRecognition => "link_recognition",
         }
     }
 
@@ -32,6 +35,7 @@ impl Source {
             "user" => Source::User,
             "orphan_cleanup" => Source::OrphanCleanup,
             "merge" => Source::Merge,
+            "link_recognition" => Source::LinkRecognition,
             other => eyre::bail!("unknown audit source {other:?}"),
         })
     }

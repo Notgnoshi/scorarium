@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT external_id FROM work_link ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "external_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_link",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "a9c2a5f16e54a6a8fb65b3c224364cefe39a893a2aa7cdd38e20432ea3d2ab2a"
+}
