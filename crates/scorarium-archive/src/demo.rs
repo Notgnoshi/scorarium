@@ -1,4 +1,7 @@
+use url::Url;
+
 use crate::catalog::CatalogNumber;
+use crate::external_id::{EntityKind, Link};
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::identifier::{self, Kind, Normalized};
 use crate::input::{ContributorInput, PersonRef};
@@ -31,10 +34,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             holdings: vec![physical(Some("Desk"))],
             identifiers: vec![normalized(Kind::Isbn, "978-1-68050-127-8")?],
             contributors: vec![contributor("Drew Neil", "author")],
-            links: links(&[
-                "https://openlibrary.org/books/OL27196589M/Practical_Vim",
-                "https://www.goodreads.com/book/show/42854052-practical-vim",
-            ]),
+            links: links(
+                EntityKind::Publication,
+                &[
+                    "https://openlibrary.org/books/OL27196589M/Practical_Vim",
+                    "https://www.goodreads.com/book/show/42854052-practical-vim",
+                ],
+            ),
             contents: Vec::new(),
         },
     )
@@ -56,10 +62,13 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 contributor("Ben Straub", "author"),
             ],
             // A site the table does not know, so the page falls back on its favicon
-            links: links(&[
-                "https://openlibrary.org/books/OL26372169M/Pro_Git",
-                "https://git-scm.com/book/en/v2",
-            ]),
+            links: links(
+                EntityKind::Publication,
+                &[
+                    "https://openlibrary.org/books/OL26372169M/Pro_Git",
+                    "https://git-scm.com/book/en/v2",
+                ],
+            ),
             contents: Vec::new(),
         },
     )
@@ -67,7 +76,10 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
 
     // A book with works, so pages show works without any music-specific fields
     let mut dictionary = writing("The Devil's Dictionary");
-    dictionary.links = links(&["https://www.gutenberg.org/ebooks/972"]);
+    dictionary.links = links(
+        EntityKind::Publication,
+        &["https://www.gutenberg.org/ebooks/972"],
+    );
     create(
         &books,
         PublicationInput {
@@ -168,12 +180,15 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
         .push(contributor("Georgy Kirkor", "arranger"));
     tone_poem.stars = Some(4);
     tone_poem.tags = vec!["transcription".into(), "want-to-learn".into()];
-    tone_poem.links = links(&[
-        "https://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)",
-        "https://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637",
-        "https://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)",
-        "https://www.wikidata.org/wiki/Q629711",
-    ]);
+    tone_poem.links = links(
+        EntityKind::Work,
+        &[
+            "https://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)",
+            "https://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637",
+            "https://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)",
+            "https://www.wikidata.org/wiki/Q629711",
+        ],
+    );
     create(
         &sheet_music,
         PublicationInput {
@@ -210,7 +225,10 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
                 normalized(Kind::PublisherNumber, "Vol 1869")?,
             ],
             contributors: vec![contributor(SATIE, "composer")],
-            links: links(&["https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)"]),
+            links: links(
+                EntityKind::Publication,
+                &["https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)"],
+            ),
             contents: ["D major", "C major", "A minor"]
                 .into_iter()
                 .enumerate()
@@ -274,15 +292,17 @@ async fn link_person(library: &Library, role: &str, name: &str, urls: &[&str]) -
         .expect("the demo credits this person on a publication above");
     let input = PersonRawInput {
         name: name.into(),
-        links: links(urls),
+        links: urls.iter().map(|url| url.to_string()).collect(),
     };
     let input = input.parse().expect("the demo's links are valid");
     person.update(&input).await
 }
 
 /// The demo's URLs are written already normalized, so they skip the parser the web forms use
-fn links(urls: &[&str]) -> Vec<String> {
-    urls.iter().map(|url| url.to_string()).collect()
+fn links(entity: EntityKind, urls: &[&str]) -> Vec<Link> {
+    urls.iter()
+        .map(|url| Link::new(entity, Url::parse(url).expect("the demo's links are valid")))
+        .collect()
 }
 
 fn contributor(name: &str, role: &str) -> ContributorInput {

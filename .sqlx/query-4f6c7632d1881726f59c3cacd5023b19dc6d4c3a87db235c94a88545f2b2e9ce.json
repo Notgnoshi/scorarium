@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO work_link (work_id, url, kind, external_id) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "4f6c7632d1881726f59c3cacd5023b19dc6d4c3a87db235c94a88545f2b2e9ce"
+}

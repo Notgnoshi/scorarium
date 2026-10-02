@@ -4,6 +4,7 @@ use std::sync::Arc;
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
+use crate::external_id::{EntityKind, Link};
 use crate::fuzzy::normalize;
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
@@ -34,7 +35,7 @@ pub struct PersonRawInput {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PersonInput {
     pub(crate) name: String,
-    pub(crate) links: Vec<String>,
+    pub(crate) links: Vec<Link>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -60,7 +61,7 @@ impl PersonRawInput {
             name: name.is_empty().then_some(ValidationError::NameRequired),
             links: Vec::new(),
         };
-        let links = match input::parse_links(&self.links) {
+        let links = match input::parse_links(EntityKind::Person, &self.links) {
             Ok(links) => links,
             Err(slots) => {
                 errors.links = slots;
@@ -253,16 +254,19 @@ pub(crate) async fn load_persons(
 async fn write_person_links(
     conn: &mut SqliteConnection,
     person_id: i64,
-    links: &[String],
+    links: &[Link],
 ) -> Result<()> {
     sqlx::query!("DELETE FROM person_link WHERE person_id = ?", person_id)
         .execute(&mut *conn)
         .await?;
-    for url in links {
+    for link in links {
+        let (kind, external_id) = link.columns();
         sqlx::query!(
-            "INSERT INTO person_link (person_id, url) VALUES (?, ?)",
+            "INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)",
             person_id,
-            url
+            link.url,
+            kind,
+            external_id
         )
         .execute(&mut *conn)
         .await?;

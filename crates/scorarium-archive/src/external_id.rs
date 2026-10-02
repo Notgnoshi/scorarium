@@ -40,6 +40,29 @@ pub struct ExternalId {
     pub id: String,
 }
 
+/// A validated external link
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Link {
+    pub url: String,
+    pub record: Option<ExternalId>,
+}
+
+impl Link {
+    pub(crate) fn new(entity: EntityKind, url: Url) -> Link {
+        Link {
+            record: recognize(entity, &url),
+            url: url.into(),
+        }
+    }
+
+    pub(crate) fn columns(&self) -> (Kind, Option<&str>) {
+        match &self.record {
+            Some(record) => (record.kind, Some(&record.id)),
+            None => (Kind::Generic, None),
+        }
+    }
+}
+
 /// Which record at a known site this URL points to, if any
 pub fn recognize(entity: EntityKind, url: &Url) -> Option<ExternalId> {
     use EntityKind::*;

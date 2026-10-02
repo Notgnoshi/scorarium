@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "522c9f5b049ea4ee38fa7ecdcb4ce4a95c3e2b1f70c5ce1a88113fcb0988a92a"
+}

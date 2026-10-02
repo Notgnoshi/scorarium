@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 use crate::catalog::CatalogNumber;
+use crate::external_id::{EntityKind, Link};
 use crate::fuzzy::normalize;
 use crate::identifier;
 use crate::summary::{PersonSummary, same_name};
@@ -194,8 +195,11 @@ pub(crate) fn parse_catalog_numbers(
     }
 }
 
-pub(crate) fn parse_links(raw: &[String]) -> Result<Vec<String>, Vec<Option<ValidationError>>> {
-    let mut links: Vec<String> = Vec::new();
+pub(crate) fn parse_links(
+    entity: EntityKind,
+    raw: &[String],
+) -> Result<Vec<Link>, Vec<Option<ValidationError>>> {
+    let mut links: Vec<Link> = Vec::new();
     let errors: Vec<Option<ValidationError>> = raw
         .iter()
         .map(|raw| {
@@ -209,10 +213,15 @@ pub(crate) fn parse_links(raw: &[String]) -> Result<Vec<String>, Vec<Option<Vali
             if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
                 return Some(ValidationError::InvalidUrl);
             }
-            if links.iter().any(|seen| seen == url.as_str()) {
+            let link = Link::new(entity, url);
+            // Two URLs naming the same record become one link to the user
+            let listed = links.iter().any(|seen| {
+                seen.url == link.url || (seen.record.is_some() && seen.record == link.record)
+            });
+            if listed {
                 return Some(ValidationError::AlreadyListed);
             }
-            links.push(url.into());
+            links.push(link);
             None
         })
         .collect();
@@ -293,10 +302,12 @@ mod tests {
             "imslp.org",
             "javascript:alert(1)",
             "",
+            "https://www.wikidata.org/wiki/Q255",
+            "https://www.wikidata.org/entity/Q255",
         ];
         let raw: Vec<String> = raw.iter().map(|link| link.to_string()).collect();
         assert_eq!(
-            parse_links(&raw).unwrap_err(),
+            parse_links(EntityKind::Person, &raw).unwrap_err(),
             vec![
                 None,
                 // The same address once the host is lowercased and the default port dropped
@@ -305,11 +316,17 @@ mod tests {
                 Some(ValidationError::InvalidUrl),
                 Some(ValidationError::InvalidUrl),
                 Some(ValidationError::FillOrRemove),
+                None,
+                // A different URL for the same record
+                Some(ValidationError::AlreadyListed),
             ]
         );
         assert_eq!(
-            parse_links(&["  https://IMSLP.org  ".to_string()]).unwrap(),
-            vec!["https://imslp.org/".to_string()]
+            parse_links(EntityKind::Person, &["  https://IMSLP.org  ".to_string()]).unwrap(),
+            vec![Link {
+                url: "https://imslp.org/".to_string(),
+                record: None,
+            }]
         );
     }
 }
