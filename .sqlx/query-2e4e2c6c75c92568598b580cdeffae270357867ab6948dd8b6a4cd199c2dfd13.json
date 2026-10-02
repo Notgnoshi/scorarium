@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO work_link (work_id, url, kind, external_id)\n         SELECT ?, url, kind, external_id FROM work_link WHERE work_id = ? ORDER BY id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2e4e2c6c75c92568598b580cdeffae270357867ab6948dd8b6a4cd199c2dfd13"
+}

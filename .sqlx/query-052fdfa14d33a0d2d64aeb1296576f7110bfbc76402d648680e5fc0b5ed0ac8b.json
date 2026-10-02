@@ -1,0 +1,81 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 'publication' AS \"entity!\", id AS \"id!\", publication_id AS \"entity_id!\",\n                      url AS \"url!\", kind, external_id\n               FROM publication_link\n               UNION ALL\n               SELECT 'work', id, work_id, url, kind, external_id FROM work_link\n               UNION ALL\n               SELECT 'person', id, person_id, url, kind, external_id FROM person_link\n               ORDER BY 1, 3, 2",
+  "describe": {
+    "columns": [
+      {
+        "name": "entity!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "id!",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "entity_id!",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "publication_id"
+          }
+        }
+      },
+      {
+        "name": "url!",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "052fdfa14d33a0d2d64aeb1296576f7110bfbc76402d648680e5fc0b5ed0ac8b"
+}

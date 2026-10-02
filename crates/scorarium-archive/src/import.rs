@@ -11,7 +11,9 @@ use crate::publication::{
 };
 use crate::summary::{self, PersonSummary};
 use crate::work::{self, Work};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, NotFound, Source, draft, person};
+use crate::{
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, NotFound, Source, draft, person,
+};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -262,7 +264,7 @@ impl PendingImport {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Import,
+            kind: AuditSubject::Import,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.query.clone(),

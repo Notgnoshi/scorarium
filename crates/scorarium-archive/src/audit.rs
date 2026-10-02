@@ -16,6 +16,8 @@ pub enum Source {
     OrphanCleanup,
     /// An event triggered by merging two entities
     Merge,
+    /// An event triggered by recomputing which records links name when the archive opens
+    LinkRecognition,
 }
 
 impl Source {
@@ -24,6 +26,7 @@ impl Source {
             Source::User => "user",
             Source::OrphanCleanup => "orphan_cleanup",
             Source::Merge => "merge",
+            Source::LinkRecognition => "link_recognition",
         }
     }
 
@@ -32,6 +35,7 @@ impl Source {
             "user" => Source::User,
             "orphan_cleanup" => Source::OrphanCleanup,
             "merge" => Source::Merge,
+            "link_recognition" => Source::LinkRecognition,
             other => eyre::bail!("unknown audit source {other:?}"),
         })
     }
@@ -82,7 +86,7 @@ impl Action {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum EntityKind {
+pub enum AuditSubject {
     Publication,
     Work,
     Person,
@@ -90,24 +94,24 @@ pub enum EntityKind {
     Import,
 }
 
-impl EntityKind {
+impl AuditSubject {
     pub fn as_str(self) -> &'static str {
         match self {
-            EntityKind::Publication => "publication",
-            EntityKind::Work => "work",
-            EntityKind::Person => "person",
-            EntityKind::Library => "library",
-            EntityKind::Import => "import",
+            AuditSubject::Publication => "publication",
+            AuditSubject::Work => "work",
+            AuditSubject::Person => "person",
+            AuditSubject::Library => "library",
+            AuditSubject::Import => "import",
         }
     }
 
-    fn parse(text: &str) -> crate::Result<EntityKind> {
+    fn parse(text: &str) -> crate::Result<AuditSubject> {
         Ok(match text {
-            "publication" => EntityKind::Publication,
-            "work" => EntityKind::Work,
-            "person" => EntityKind::Person,
-            "library" => EntityKind::Library,
-            "import" => EntityKind::Import,
+            "publication" => AuditSubject::Publication,
+            "work" => AuditSubject::Work,
+            "person" => AuditSubject::Person,
+            "library" => AuditSubject::Library,
+            "import" => AuditSubject::Import,
             other => eyre::bail!("unknown audit entity kind {other:?}"),
         })
     }
@@ -184,7 +188,7 @@ impl Field {
 /// What an entry points at, when it points at anything
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EntityRef {
-    pub kind: EntityKind,
+    pub kind: AuditSubject,
     pub id: i64,
     pub library_id: Option<i64>,
     /// The entity's name as it read when the entry was written, so a deleted entity still renders
@@ -469,7 +473,7 @@ fn parse_row(row: Row) -> crate::Result<AuditEntry> {
     let entity = match row.entity_kind {
         None => None,
         Some(kind) => Some(EntityRef {
-            kind: EntityKind::parse(&kind)?,
+            kind: AuditSubject::parse(&kind)?,
             id: row
                 .entity_id
                 .ok_or_else(|| eyre::eyre!("audit entry {} names no entity id", row.id))?,
@@ -506,7 +510,7 @@ mod tests {
         Event {
             action,
             entity: Some(EntityRef {
-                kind: EntityKind::Publication,
+                kind: AuditSubject::Publication,
                 id: 1,
                 library_id: Some(1),
                 label: label.to_string(),

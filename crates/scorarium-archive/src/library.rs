@@ -12,7 +12,9 @@ use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
 use crate::work::{self, Work};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
+use crate::{
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
+};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -88,7 +90,7 @@ impl Library {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Library,
+            kind: AuditSubject::Library,
             id: self.id,
             library_id: Some(self.id),
             label: self.name.clone(),
@@ -351,7 +353,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
     .await?;
     for work in works {
         let entity = EntityRef {
-            kind: EntityKind::Work,
+            kind: AuditSubject::Work,
             id: work.id,
             library_id: Some(library_id),
             label: work.title,
@@ -372,7 +374,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
     .await?;
     for person in persons {
         let entity = EntityRef {
-            kind: EntityKind::Person,
+            kind: AuditSubject::Person,
             id: person.id,
             library_id: Some(library_id),
             label: person.name,

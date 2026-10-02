@@ -7,7 +7,7 @@ use axum::extract::{Query, State};
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_archive::{
-    Action, AuditEntry, CatalogNumberEntry, EntityKind, EntityRef, NotFound, PasswordCheck,
+    Action, AuditEntry, AuditSubject, CatalogNumberEntry, EntityRef, NotFound, PasswordCheck,
 };
 use serde::Deserialize;
 
@@ -135,7 +135,7 @@ struct ShownEntry {
 
 fn shown_entry(
     entry: &AuditEntry,
-    hrefs: &HashMap<(EntityKind, i64), Option<String>>,
+    hrefs: &HashMap<(AuditSubject, i64), Option<String>>,
 ) -> ShownEntry {
     let entity = entry.event.entity.as_ref();
     let noun = entity
@@ -179,7 +179,7 @@ fn shown_entry(
 async fn entity_hrefs(
     state: &AppState,
     entries: &[AuditEntry],
-) -> Result<HashMap<(EntityKind, i64), Option<String>>, AppError> {
+) -> Result<HashMap<(AuditSubject, i64), Option<String>>, AppError> {
     let mut hrefs = HashMap::new();
     for entity in entries
         .iter()
@@ -203,20 +203,20 @@ async fn entity_href(state: &AppState, entity: &EntityRef) -> Result<Option<Stri
     };
     let id = entity.id;
     Ok(match entity.kind {
-        EntityKind::Library => Some(format!("/library/{library_id}")),
-        EntityKind::Publication => library
+        AuditSubject::Library => Some(format!("/library/{library_id}")),
+        AuditSubject::Publication => library
             .publication(id)
             .await?
             .map(|_| format!("/library/{library_id}/publication/{id}")),
-        EntityKind::Work => library
+        AuditSubject::Work => library
             .work(id)
             .await?
             .map(|_| format!("/library/{library_id}/work/{id}")),
-        EntityKind::Person => library
+        AuditSubject::Person => library
             .person(id)
             .await?
             .map(|_| format!("/library/{library_id}/person/{id}")),
-        EntityKind::Import => library
+        AuditSubject::Import => library
             .pending_import(id)
             .await?
             .map(|_| format!("/library/{library_id}/import/{id}")),

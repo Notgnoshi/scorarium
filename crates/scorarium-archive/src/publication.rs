@@ -5,13 +5,14 @@ use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
+use crate::external_id::{EntityKind, Link};
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
 use crate::{
-    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
 
 /// A publication's editable fields as typed from the web form
@@ -94,7 +95,7 @@ pub struct PublicationInput {
     pub(crate) holdings: Vec<HoldingInput>,
     pub(crate) identifiers: Vec<(identifier::Kind, identifier::Normalized)>,
     pub(crate) contributors: Vec<ContributorInput>,
-    pub(crate) links: Vec<String>,
+    pub(crate) links: Vec<Link>,
     pub(crate) contents: Vec<WorkInput>,
 }
 
@@ -191,7 +192,7 @@ impl PublicationRawInput {
                 Vec::new()
             }
         };
-        let links = match input::parse_links(&self.links) {
+        let links = match input::parse_links(EntityKind::Publication, &self.links) {
             Ok(links) => links,
             Err(slots) => {
                 errors.links = slots;
@@ -446,7 +447,7 @@ impl Publication {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Publication,
+            kind: AuditSubject::Publication,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.title.clone(),
@@ -717,7 +718,7 @@ pub(crate) async fn write_publication_children(
 async fn write_publication_links(
     conn: &mut SqliteConnection,
     publication_id: i64,
-    links: &[String],
+    links: &[Link],
 ) -> crate::Result<()> {
     sqlx::query!(
         "DELETE FROM publication_link WHERE publication_id = ?",
@@ -725,11 +726,15 @@ async fn write_publication_links(
     )
     .execute(&mut *conn)
     .await?;
-    for url in links {
+    for link in links {
+        let (kind, external_id) = link.columns();
         sqlx::query!(
-            "INSERT INTO publication_link (publication_id, url) VALUES (?, ?)",
+            "INSERT INTO publication_link (publication_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
             publication_id,
-            url
+            link.url,
+            kind,
+            external_id
         )
         .execute(&mut *conn)
         .await?;
@@ -940,7 +945,13 @@ mod tests {
             )]
         );
         assert_eq!(input.contributors, [contributor("Erik Satie", "composer")]);
-        assert_eq!(input.links, ["https://imslp.org/wiki/Main_Page"]);
+        assert_eq!(
+            input.links,
+            [Link {
+                url: "https://imslp.org/wiki/Main_Page".into(),
+                record: None,
+            }]
+        );
         assert_eq!(input.contents.len(), 1);
         assert_eq!(input.contents[0].title, "Gymnopedie No. 1");
     }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work_link SET kind = 'generic', external_id = NULL WHERE url = 'https://www.gutenberg.org/ebooks/972'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "2063e0235d71daba61738e50a6d5069e3827293e7c1a74f0baf38c99330d7fb9"
+}

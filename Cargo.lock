@@ -2323,6 +2323,7 @@ dependencies = [
  "frizbee",
  "isbn",
  "log",
+ "percent-encoding",
  "serde",
  "serde_json",
  "sqlx",

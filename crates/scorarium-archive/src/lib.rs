@@ -6,6 +6,7 @@ mod audit;
 mod catalog;
 mod demo;
 mod draft;
+pub mod external_id;
 mod fuzzy;
 mod holding;
 pub mod identifier;
@@ -29,7 +30,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
-pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
+pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Event, Field, Source};
 pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
@@ -135,7 +136,11 @@ impl Archive {
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
         let pool = SqlitePool::connect_with(options).await?;
         MIGRATOR.run(&pool).await?;
-        Ok(Archive::new(pool))
+        let archive = Archive::new(pool);
+        // Re-process all saved links so that if, in the future, a new external ID type is added, we
+        // can recognize it in existing data.
+        external_id::recognize_all(&archive.shared).await?;
+        Ok(archive)
     }
 
     /// A fresh, migrated, empty archive that lives in-memory
@@ -166,7 +171,8 @@ impl Archive {
 
     /// Fill an empty archive with the demo libraries that `--demo` serves
     pub async fn populate_demo(&self) -> Result<()> {
-        demo::populate(self).await
+        demo::populate(self).await?;
+        external_id::recognize_all(&self.shared).await
     }
 
     #[cfg(test)]

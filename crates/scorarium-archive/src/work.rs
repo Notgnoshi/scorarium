@@ -6,11 +6,12 @@ use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
+use crate::external_id::{EntityKind, Link};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
-    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
 
 /// A work's editable fields as entered from the web forms
@@ -145,7 +146,7 @@ pub struct WorkInput {
     pub(crate) tags: Vec<String>,
     pub(crate) contributors: Vec<ContributorInput>,
     pub(crate) catalog_numbers: Vec<CatalogNumber>,
-    pub(crate) links: Vec<String>,
+    pub(crate) links: Vec<Link>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -214,7 +215,7 @@ impl WorkRawInput {
                 Vec::new()
             }
         };
-        let links = match input::parse_links(&self.links) {
+        let links = match input::parse_links(EntityKind::Work, &self.links) {
             Ok(links) => links,
             Err(slots) => {
                 errors.links = slots;
@@ -430,7 +431,7 @@ impl Work {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Work,
+            kind: AuditSubject::Work,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.title.clone(),
@@ -828,8 +829,8 @@ pub(crate) async fn merge_works(
     .await?;
     // Normalization at parse time is what makes the work_link_url index the union of the two sets
     sqlx::query!(
-        "INSERT OR IGNORE INTO work_link (work_id, url)
-         SELECT ?, url FROM work_link WHERE work_id = ? ORDER BY id",
+        "INSERT OR IGNORE INTO work_link (work_id, url, kind, external_id)
+         SELECT ?, url, kind, external_id FROM work_link WHERE work_id = ? ORDER BY id",
         into,
         from
     )
@@ -933,7 +934,7 @@ pub(crate) async fn absorb_into_duplicate(
         .await?;
     merge_works(audited, library_id, work_id, into).await?;
     let entity = EntityRef {
-        kind: EntityKind::Work,
+        kind: AuditSubject::Work,
         id: into,
         library_id: Some(library_id),
         label: survivor,
@@ -972,16 +973,19 @@ pub(crate) async fn write_work_catalog_numbers(
 pub(crate) async fn write_work_links(
     conn: &mut SqliteConnection,
     work_id: i64,
-    links: &[String],
+    links: &[Link],
 ) -> crate::Result<()> {
     sqlx::query!("DELETE FROM work_link WHERE work_id = ?", work_id)
         .execute(&mut *conn)
         .await?;
-    for url in links {
+    for link in links {
+        let (kind, external_id) = link.columns();
         sqlx::query!(
-            "INSERT INTO work_link (work_id, url) VALUES (?, ?)",
+            "INSERT INTO work_link (work_id, url, kind, external_id) VALUES (?, ?, ?, ?)",
             work_id,
-            url
+            link.url,
+            kind,
+            external_id
         )
         .execute(&mut *conn)
         .await?;
@@ -1020,6 +1024,7 @@ pub(crate) async fn write_work_contributors(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::external_id::{ExternalId, Kind};
 
     fn contributor(name: &str, role: &str) -> ContributorInput {
         ContributorInput {
@@ -1098,7 +1103,13 @@ mod tests {
                 tags: vec!["piano".into(), "christmas".into()],
                 contributors: vec![contributor("Erik Satie", "composer")],
                 catalog_numbers: vec![CatalogNumber::parse("BWV 988")],
-                links: vec!["https://imslp.org/wiki/Main_Page".into()],
+                links: vec![Link {
+                    url: "https://imslp.org/wiki/Main_Page".into(),
+                    record: Some(ExternalId {
+                        kind: Kind::Imslp,
+                        id: "Main_Page".into(),
+                    }),
+                }],
             }
         );
     }

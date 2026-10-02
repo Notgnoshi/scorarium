@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE person_link SET kind = ?, external_id = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1d3909d49e0ac94fabbd0e77eb6bdffcc0f27ad9a9332fe94a7e69e41830ca59"
+}

@@ -206,3 +206,39 @@ async fn merge_works_is_available_directly() {
     let err = library.merge_works(from, into).await.unwrap_err();
     assert!(err.downcast_ref::<scorarium_archive::NotFound>().is_some());
 }
+
+#[tokio::test]
+async fn merging_keeps_the_survivors_url_for_a_shared_record() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Sheet music", false).await.unwrap();
+    let mut a = album("A", "Nocturne", &["Op. 9 No. 2"]);
+    a.contents[0].links = vec![
+        "https://www.wikidata.org/wiki/Q255".into(),
+        "https://en.wikipedia.org/wiki/Nocturnes,_Op._9_(Chopin)".into(),
+    ];
+    let mut b = album("B", "Nocturne in E-flat", &["B. 54"]);
+    b.contents[0].links = vec![
+        "https://www.wikidata.org/entity/Q255".into(),
+        "https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Frederic)".into(),
+    ];
+    let a = library
+        .create_publication(&a.parse().unwrap())
+        .await
+        .unwrap();
+    let b = library
+        .create_publication(&b.parse().unwrap())
+        .await
+        .unwrap();
+    let into = a.works().await.unwrap()[0].id;
+    let from = b.works().await.unwrap()[0].id;
+
+    let merged = library.merge_works(from, into).await.unwrap();
+    assert_eq!(
+        merged.links,
+        [
+            "https://www.wikidata.org/wiki/Q255",
+            "https://en.wikipedia.org/wiki/Nocturnes,_Op._9_(Chopin)",
+            "https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Frederic)",
+        ]
+    );
+}
