@@ -29,7 +29,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
-pub use crate::audit::{Action, AuditEntry, EntityKind, EntityRef, Event, Field, Source};
+pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Event, Field, Source};
 pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,

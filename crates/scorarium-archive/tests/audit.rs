@@ -1,5 +1,5 @@
 use scorarium_archive::{
-    Action, Archive, ContributorInput, EntityKind, Field, HoldingKind, HoldingRawInput,
+    Action, Archive, AuditSubject, ContributorInput, Field, HoldingKind, HoldingRawInput,
     IdentifierRawInput, PersonRef, PublicationInput, PublicationRawInput, Source, WorkRawInput,
 };
 
@@ -42,7 +42,7 @@ async fn consequences_group_under_their_headline() {
     assert_eq!(entries[0].source, Source::User);
     assert_eq!(entries[0].event.action, Action::Created);
     let entity = entries[0].event.entity.as_ref().unwrap();
-    assert_eq!(entity.kind, EntityKind::Library);
+    assert_eq!(entity.kind, AuditSubject::Library);
     assert_eq!(entity.id, library.id);
     assert_eq!(entity.label, "Test");
 }
@@ -174,10 +174,10 @@ async fn an_edit_records_the_deletions_it_caused() {
         vec![
             (
                 Source::OrphanCleanup,
-                EntityKind::Work,
+                AuditSubject::Work,
                 "Goldberg Variations"
             ),
-            (Source::OrphanCleanup, EntityKind::Person, "Bach"),
+            (Source::OrphanCleanup, AuditSubject::Person, "Bach"),
         ]
     );
 }

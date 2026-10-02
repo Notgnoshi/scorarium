@@ -11,7 +11,7 @@ use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
 use crate::{
-    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
 
 /// A publication's editable fields as typed from the web form
@@ -446,7 +446,7 @@ impl Publication {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Publication,
+            kind: AuditSubject::Publication,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.title.clone(),

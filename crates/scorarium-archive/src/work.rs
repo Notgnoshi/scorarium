@@ -10,7 +10,7 @@ use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
 use crate::{
-    Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Source, library, tag,
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
 
 /// A work's editable fields as entered from the web forms
@@ -430,7 +430,7 @@ impl Work {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Work,
+            kind: AuditSubject::Work,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.title.clone(),
@@ -933,7 +933,7 @@ pub(crate) async fn absorb_into_duplicate(
         .await?;
     merge_works(audited, library_id, work_id, into).await?;
     let entity = EntityRef {
-        kind: EntityKind::Work,
+        kind: AuditSubject::Work,
         id: into,
         library_id: Some(library_id),
         label: survivor,

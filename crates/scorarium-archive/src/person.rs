@@ -8,7 +8,9 @@ use crate::fuzzy::normalize;
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
 use crate::summary::{self, PersonSummary};
-use crate::{Action, ArchiveInner, EntityKind, EntityRef, Event, Field, NotFound, Result, Source};
+use crate::{
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
+};
 
 /// A person who contributed to a publication or work
 ///
@@ -180,7 +182,7 @@ impl Person {
     /// Get an EntityRef referring to this entity for use in the audit log
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
-            kind: EntityKind::Person,
+            kind: AuditSubject::Person,
             id: self.id,
             library_id: Some(self.library_id),
             label: self.name.clone(),
