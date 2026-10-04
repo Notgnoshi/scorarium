@@ -235,6 +235,21 @@ pub(crate) fn parse_links(
     }
 }
 
+pub(crate) fn valid_links(entity: EntityKind, raw: &[String]) -> Vec<Link> {
+    match parse_links(entity, raw) {
+        Ok(links) => links,
+        Err(errors) => {
+            let kept: Vec<String> = raw
+                .iter()
+                .zip(errors)
+                .filter(|(_, error)| error.is_none())
+                .map(|(link, _)| link.clone())
+                .collect();
+            parse_links(entity, &kept).unwrap_or_default()
+        }
+    }
+}
+
 /// Check a rating, which a publication and a work each carry
 pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
     match raw.trim() {

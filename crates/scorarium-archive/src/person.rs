@@ -31,6 +31,16 @@ pub struct PersonRawInput {
     pub links: Vec<String>,
 }
 
+/// A person from an external source
+///
+/// Whether they are a person stored in the library, a draft person, or nobody the library knows
+/// about yet, so we can't store an ID to the real person.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExternalPerson {
+    pub name: String,
+    pub links: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersonName {
     pub person: PersonRef,
