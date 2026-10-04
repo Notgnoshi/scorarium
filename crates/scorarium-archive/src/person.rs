@@ -290,6 +290,30 @@ async fn insert_person_links(
     Ok(())
 }
 
+/// Add the links a person does not already have
+pub(crate) async fn add_missing_links(
+    conn: &mut SqliteConnection,
+    person_id: i64,
+    links: &[Link],
+) -> Result<u64> {
+    let mut added = 0;
+    for link in links {
+        let (kind, external_id) = link.columns();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO person_link (person_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
+            person_id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *conn)
+        .await?;
+        added += result.rows_affected();
+    }
+    Ok(added)
+}
+
 /// Create the persons a submission asks for, one per distinct normalized name, and link each
 /// contributor asking for one to it.
 pub(crate) async fn create_new_persons<'a>(
