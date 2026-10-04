@@ -736,7 +736,7 @@ impl OptionalFromRequestParts<Arc<AppState>> for Session {
     }
 }
 
-pub struct AppError(color_eyre::Report);
+pub struct AppError(eyre::Report);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -754,7 +754,7 @@ impl IntoResponse for AppError {
     }
 }
 
-impl<E: Into<color_eyre::Report>> From<E> for AppError {
+impl<E: Into<eyre::Report>> From<E> for AppError {
     fn from(err: E) -> Self {
         Self(err.into())
     }

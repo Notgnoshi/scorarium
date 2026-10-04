@@ -1,0 +1,29 @@
+[package]
+name = "scorarium-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The scorarium web server"
+
+[dependencies]
+askama.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+clap.workspace = true
+cookie.workspace = true
+eyre.workspace = true
+getrandom.workspace = true
+rust-embed.workspace = true
+scorarium-archive.workspace = true
+scorarium-client.workspace = true
+serde.workspace = true
+serde_html_form.workspace = true
+tokio = { workspace = true, features = ["time"] }
+tower-http.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+axum-test.workspace = true
+scorarium-tests.workspace = true
+serde_json.workspace = true

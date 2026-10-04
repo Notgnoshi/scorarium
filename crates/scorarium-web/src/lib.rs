@@ -2,12 +2,14 @@ pub mod enrich;
 pub mod links;
 pub mod publication_post;
 pub mod router;
+mod serve;
 pub mod session;
 
 use scorarium_archive::Archive;
 use scorarium_client::Client;
 
 pub use crate::router::router;
+pub use crate::serve::{ServeArgs, serve};
 
 /// Shared state for all request handlers.
 pub struct AppState {

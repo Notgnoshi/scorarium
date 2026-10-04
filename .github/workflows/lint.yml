@@ -43,7 +43,7 @@ jobs:
                       --max-line-length 120 \
                       --format-css \
                       --format-js \
-                      crates/scorarium/templates/
+                      crates/scorarium-web/templates/
 
     build:
         runs-on: ubuntu-latest
@@ -125,7 +125,7 @@ jobs:
                   outdated=0
                   for spec in "bootstrap bootstrap.min.css" "icons bootstrap-icons.min.css"; do
                       set -- $spec
-                      vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium/assets/$2")
+                      vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium-web/assets/$2")
                       latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/twbs/$1/releases/latest")
                       latest=${latest##*/v}
                       echo "$1: vendored=$vendored latest=$latest"

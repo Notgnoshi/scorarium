@@ -99,7 +99,7 @@ async fn login_logout_flow() {
 async fn repeated_failures_lock_out_login() {
     let server = browser(TestDb::new().password("hunter2").build().await);
 
-    for _ in 0..scorarium::session::LOGIN_ATTEMPTS {
+    for _ in 0..scorarium_web::session::LOGIN_ATTEMPTS {
         let response = server.post("/login").form(&[("password", "wrong")]).await;
         response.assert_status_ok();
         response.assert_text_contains("Login failed");

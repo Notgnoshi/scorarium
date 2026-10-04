@@ -1,6 +1,6 @@
 use axum_test::TestServer;
-use scorarium::router;
 use scorarium_tests::TestDb;
+use scorarium_web::router;
 
 #[tokio::test]
 async fn index_lists_libraries() {
