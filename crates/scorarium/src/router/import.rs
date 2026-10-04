@@ -169,13 +169,14 @@ pub async fn start(
     let seeded = import.draft().await?;
     if let Some(isbn) = seeded.input.identifiers.iter().find(|i| i.kind == "isbn") {
         let deadline = Instant::now() + enrich::BUDGET;
-        let (found, lookup) =
+        let (found, authors, lookup) =
             open_library::lookup_isbn(&state.sources.open_library(), &isbn.value, deadline).await;
         let mut draft = seeded.input.clone();
         if let Some(found) = found {
             enrich::merge(&mut draft, found);
         }
         import.save_draft(draft).await?;
+        import.add_external_contributors(authors).await?;
         import.record_lookup(lookup);
     }
 
