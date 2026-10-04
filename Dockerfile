@@ -7,3 +7,4 @@ USER 1000:1000
 WORKDIR /data
 EXPOSE 3000
 ENTRYPOINT ["/scorarium"]
+CMD ["serve"]

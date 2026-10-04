@@ -3,18 +3,13 @@ name = "scorarium-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "A physical and digital sheet music library"
-
-[[bin]]
-name = "scorarium"
-path = "src/main.rs"
+description = "The scorarium web server"
 
 [dependencies]
 askama.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 clap.workspace = true
-color-eyre.workspace = true
 cookie.workspace = true
 eyre.workspace = true
 getrandom.workspace = true
@@ -26,7 +21,6 @@ serde_html_form.workspace = true
 tokio = { workspace = true, features = ["time"] }
 tower-http.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
 url.workspace = true
 
 [dev-dependencies]

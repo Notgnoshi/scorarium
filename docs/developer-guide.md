@@ -7,7 +7,8 @@ toolchain, and we aspire to keep all dependencies up-to-date.
 
 * `scorarium-archive` provides the project's data model and data persistence
 * `scorarium-client` provides API clients for the external metadata sources
-* `scorarium-web` is the web server, and builds the `scorarium` binary
+* `scorarium-web` provides the web server
+* `scorarium` is the binary, a thin wrapper that dispatches to subcommands such as `serve`
 * `scorarium-tests` provides test fixtures for integration tests
 
 It's a "usual" Rust project, so you can use `cargo` as normal:
@@ -16,7 +17,7 @@ It's a "usual" Rust project, so you can use `cargo` as normal:
 cargo build
 cargo run -- ...
 # Serve an in-memory demo database for demo and testing purposes
-cargo run -- --demo
+cargo run -- serve --demo
 # nextest is preferred over 'cargo test' for better speed; both will work
 cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
