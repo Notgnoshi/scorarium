@@ -41,7 +41,7 @@ pub use crate::input::{ContributorInput, PersonRef, ValidationError, WorkRef};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
-    Contributor, Person, PersonErrors, PersonInput, PersonRawInput, credit_priority,
+    Contributor, Person, PersonErrors, PersonInput, PersonName, PersonRawInput, credit_priority,
 };
 pub use crate::publication::{
     Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,

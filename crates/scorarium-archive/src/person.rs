@@ -31,6 +31,12 @@ pub struct PersonRawInput {
     pub links: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersonName {
+    pub person: PersonRef,
+    pub name: String,
+}
+
 /// A person's parsed and validated fields
 #[derive(Debug, PartialEq, Eq)]
 pub struct PersonInput {
@@ -395,18 +401,18 @@ pub(crate) async fn list_contributor_roles(
     Ok(roles)
 }
 
-/// Every person's display name in the library, by sort name
+/// Every person's id and display name in the library, by sort name
 pub(crate) async fn list_person_names(
     conn: &mut SqliteConnection,
     library_id: i64,
-) -> Result<Vec<String>> {
-    let names = sqlx::query_scalar!(
-        "SELECT name FROM person WHERE library_id = ? ORDER BY sort_name",
+) -> Result<Vec<(i64, String)>> {
+    let names = sqlx::query!(
+        "SELECT id, name FROM person WHERE library_id = ? ORDER BY sort_name",
         library_id
     )
     .fetch_all(conn)
     .await?;
-    Ok(names)
+    Ok(names.into_iter().map(|row| (row.id, row.name)).collect())
 }
 
 /// "Erik Satie" sorts as "Satie, Erik"

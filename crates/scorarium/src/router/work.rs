@@ -179,7 +179,7 @@ async fn render_edit(
     errors: WorkErrors,
 ) -> Result<Response, AppError> {
     let persons = linked_summaries(&library, input.contributors.iter().map(|c| c.person)).await?;
-    let names = library.person_names().await?;
+    let names = library.person_names(false).await?;
     let fields = WorkFields::build(input, errors, &persons, &names);
     let page = EditPage {
         base: base.page(

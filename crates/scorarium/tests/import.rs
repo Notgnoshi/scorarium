@@ -212,7 +212,9 @@ async fn manual_import_flow() {
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
     // The publication and its work both ask for a new Satie, and one submission creates one person
-    assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
+    let names = library.person_names(false).await.unwrap();
+    assert_eq!(names.len(), 1);
+    assert_eq!(names[0].name, "Erik Satie");
     server
         .get(&review)
         .await

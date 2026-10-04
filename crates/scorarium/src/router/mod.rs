@@ -25,8 +25,9 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Person, PersonRef, PersonSummary, Publication, PublicationErrors,
-    PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput, WorkRef, same_name,
+    NotFound, PendingImport, Person, PersonName, PersonRef, PersonSummary, Publication,
+    PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput,
+    WorkRef, same_name,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -305,7 +306,7 @@ impl FormFields {
         input: PublicationRawInput,
         errors: PublicationErrors,
         persons: &[PersonSummary],
-        names: &[String],
+        names: &[PersonName],
     ) -> Self {
         Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
@@ -363,7 +364,7 @@ impl WorkFields {
         input: WorkRawInput,
         errors: WorkErrors,
         persons: &[PersonSummary],
-        names: &[String],
+        names: &[PersonName],
     ) -> Self {
         Self {
             contributors: shown_contributors(
@@ -399,7 +400,7 @@ fn shown_contributors(
     contributors: &[ContributorInput],
     errors: &[Option<ValidationError>],
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
 ) -> Vec<ShownContributor> {
     contributors
         .iter()
@@ -418,7 +419,7 @@ fn shown_contributors(
 fn shown_contributor(
     contributor: &ContributorInput,
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
     message: String,
 ) -> ShownContributor {
     let linked = match contributor.person {
@@ -432,7 +433,10 @@ fn shown_contributor(
         (PersonRef::New | PersonRef::Draft(_), _) => (
             contributor.person,
             contributor.name.clone(),
-            if names.iter().any(|name| same_name(name, &contributor.name)) {
+            if names
+                .iter()
+                .any(|known| same_name(&known.name, &contributor.name))
+            {
                 PersonState::Namesake
             } else {
                 PersonState::New
@@ -441,7 +445,7 @@ fn shown_contributor(
         _ => {
             let namesakes = names
                 .iter()
-                .filter(|name| same_name(name, &contributor.name))
+                .filter(|known| same_name(&known.name, &contributor.name))
                 .count();
             (
                 PersonRef::Unresolved,
@@ -500,7 +504,7 @@ fn shown_works(
     contents: &[WorkRawInput],
     errors: &[WorkErrors],
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
 ) -> Vec<ShownWork> {
     let no_errors = WorkErrors::default();
     contents

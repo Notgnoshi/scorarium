@@ -279,11 +279,11 @@ async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
         "Erik Satie"
     );
     let saties = library
-        .person_names()
+        .person_names(false)
         .await
         .unwrap()
         .into_iter()
-        .filter(|name| name == "Erik Satie")
+        .filter(|known| known.name == "Erik Satie")
         .count();
     assert_eq!(saties, 2, "no third Satie was created");
 }
@@ -325,11 +325,11 @@ async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
     // The first spelling seen names the person
     assert_eq!(works[1].contributors[0].name, "Erik Satie");
     let saties = library
-        .person_names()
+        .person_names(false)
         .await
         .unwrap()
         .into_iter()
-        .filter(|name| name == "Erik Satie")
+        .filter(|known| known.name == "Erik Satie")
         .count();
     assert_eq!(saties, 2);
 }
