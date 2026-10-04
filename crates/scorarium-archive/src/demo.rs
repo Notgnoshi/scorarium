@@ -262,6 +262,18 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
     )
     .await?;
 
+    link_person(
+        &books,
+        "author",
+        BIERCE,
+        &[
+            "https://www.wikidata.org/wiki/Q191050",
+            "https://d-nb.info/gnd/115511474",
+            "https://www.goodreads.com/author/show/14403",
+        ],
+    )
+    .await?;
+
     let prelude_id = russian_album.works().await?[0].id;
     // The same work in two publications, so work pages list more than one
     let event = Event {
