@@ -254,6 +254,7 @@ async fn publication_edit_flow() {
         name: "Drew Neil".into(),
         role: "author".into(),
         person: PersonRef::New,
+        external_person: None,
     };
     let input = PublicationRawInput {
         title: "Practial Vim".into(),
@@ -277,6 +278,7 @@ async fn publication_edit_flow() {
                         name: "Marion Wenz".into(),
                         role: "translator".into(),
                         person: PersonRef::New,
+                        external_person: None,
                     },
                 ],
                 ..WorkRawInput::default()

@@ -22,6 +22,7 @@ fn goldberg() -> PublicationInput {
                 name: "Bach".into(),
                 role: "composer".into(),
                 person: PersonRef::New,
+                external_person: None,
             }],
             ..WorkRawInput::default()
         }],

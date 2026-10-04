@@ -52,6 +52,8 @@ pub struct WorkPost {
     #[serde(default)]
     contributor_person: Vec<String>,
     #[serde(default)]
+    contributor_external_person: Vec<String>,
+    #[serde(default)]
     catalog_number: Vec<String>,
     #[serde(default)]
     link: Vec<String>,
@@ -73,6 +75,7 @@ impl From<WorkPost> for WorkRawInput {
                 post.contributor_name,
                 post.contributor_role,
                 &post.contributor_person,
+                &post.contributor_external_person,
             ),
             catalog_numbers: post
                 .catalog_number

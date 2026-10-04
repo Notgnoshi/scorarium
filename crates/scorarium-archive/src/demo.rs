@@ -312,6 +312,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
         name: name.into(),
         role: role.into(),
         person: PersonRef::Unresolved,
+        external_person: None,
     }
 }
 

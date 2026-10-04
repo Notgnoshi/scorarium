@@ -8,6 +8,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
         name: name.into(),
         role: role.into(),
         person: PersonRef::New,
+        external_person: None,
     }
 }
 

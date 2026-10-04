@@ -192,6 +192,7 @@ async fn accepting_creates_the_publication_once() {
             name: "Erik Satie".into(),
             role: "composer".into(),
             person: PersonRef::Unresolved,
+            external_person: None,
         }],
         contents: vec![WorkPost {
             // A draft's work ids mean nothing to the database and are ignored

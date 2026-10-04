@@ -51,6 +51,8 @@ struct Fields {
     #[serde(default)]
     contributor_person: Vec<String>,
     #[serde(default)]
+    contributor_external_person: Vec<String>,
+    #[serde(default)]
     link: Vec<String>,
     #[serde(default)]
     work_id: Vec<String>,
@@ -64,6 +66,8 @@ struct Fields {
     work_contributor_role: Vec<String>,
     #[serde(default)]
     work_contributor_person: Vec<String>,
+    #[serde(default)]
+    work_contributor_external_person: Vec<String>,
     /// The index of the work whose edit button was clicked; absent on a plain submit
     edit_work: Option<String>,
 }
@@ -103,6 +107,7 @@ impl PublicationForm {
             contributor_name,
             contributor_role,
             contributor_person,
+            contributor_external_person,
             link,
             work_id,
             work_title,
@@ -110,6 +115,7 @@ impl PublicationForm {
             work_contributor_name,
             work_contributor_role,
             work_contributor_person,
+            work_contributor_external_person,
             edit_work: _,
         } = fields;
         PublicationPost {
@@ -121,7 +127,12 @@ impl PublicationForm {
             tags: tags.trim().to_string(),
             holdings,
             identifiers: identifiers(identifier_kind, identifier_value),
-            contributors: contributors(contributor_name, contributor_role, &contributor_person),
+            contributors: contributors(
+                contributor_name,
+                contributor_role,
+                &contributor_person,
+                &contributor_external_person,
+            ),
             links: link.iter().map(|link| link.trim().to_string()).collect(),
             contents: works(
                 work_id,
@@ -130,6 +141,7 @@ impl PublicationForm {
                 work_contributor_name,
                 work_contributor_role,
                 &work_contributor_person,
+                &work_contributor_external_person,
             ),
         }
     }
@@ -217,6 +229,14 @@ pub fn person_field(person: PersonRef) -> String {
     }
 }
 
+pub fn external_person_ref(field: &str) -> Option<i64> {
+    field.trim().parse().ok()
+}
+
+pub fn external_person_field(external_person: Option<i64>) -> String {
+    external_person.map(|id| id.to_string()).unwrap_or_default()
+}
+
 /// The prefix that tells a draft work's or person's id from a stored one in the hidden field
 const DRAFT_PREFIX: &str = "draft:";
 
@@ -241,6 +261,7 @@ pub fn contributors(
     name: Vec<String>,
     role: Vec<String>,
     person: &[String],
+    external_person: &[String],
 ) -> Vec<ContributorInput> {
     name.into_iter()
         .zip(role)
@@ -252,6 +273,9 @@ pub fn contributors(
                 .get(i)
                 .map(|field| person_ref(field))
                 .unwrap_or_default(),
+            external_person: external_person
+                .get(i)
+                .and_then(|field| external_person_ref(field)),
         })
         .collect()
 }
@@ -274,6 +298,7 @@ fn works(
     name: Vec<String>,
     role: Vec<String>,
     person: &[String],
+    external_person: &[String],
 ) -> Vec<WorkPost> {
     title
         .into_iter()
@@ -296,6 +321,9 @@ fn works(
                     .get(i)
                     .map(|field| person_ref(field))
                     .unwrap_or_default(),
+                external_person: external_person
+                    .get(i)
+                    .and_then(|field| external_person_ref(field)),
             },
         })
         .collect()
@@ -320,6 +348,23 @@ mod tests {
         ] {
             assert_eq!(person_ref(&person_field(person)), person);
         }
+    }
+
+    #[test]
+    fn an_external_person_stays_with_the_contributor_it_was_posted_beside() {
+        let fields = |values: &[&str]| -> Vec<String> {
+            values.iter().map(|value| value.to_string()).collect()
+        };
+        let posted = contributors(
+            fields(&["Glenn Gould", "Johann Sebastian Bach", "Donald Tovey"]),
+            fields(&["performer", "composer", "editor"]),
+            &fields(&["", "12", "new"]),
+            &fields(&["", "7", ""]),
+        );
+
+        let external_persons: Vec<Option<i64>> =
+            posted.iter().map(|posted| posted.external_person).collect();
+        assert_eq!(external_persons, [None, Some(7), None]);
     }
 
     /// Each copy posts its fields under a suffix of its own, and the copies come back in the

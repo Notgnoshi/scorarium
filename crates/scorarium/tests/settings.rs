@@ -166,6 +166,7 @@ async fn the_audit_page_shows_an_edit_and_its_consequences() {
                         name: "Bach".into(),
                         role: "composer".into(),
                         person: PersonRef::New,
+                        external_person: None,
                     }],
                     ..WorkRawInput::default()
                 }],

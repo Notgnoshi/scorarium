@@ -97,6 +97,7 @@ pub fn to_publication(edition: &Edition, authors: &[Author]) -> PublicationRawIn
                 name: author.name.clone(),
                 role: "author".to_string(),
                 person: PersonRef::Unresolved,
+                external_person: None,
             })
             .collect(),
         links: vec![edition.url()],
@@ -167,11 +168,13 @@ mod tests {
                         name: "Ludwig van Beethoven".to_string(),
                         role: "author".to_string(),
                         person: PersonRef::Unresolved,
+                        external_person: None,
                     },
                     ContributorInput {
                         name: "Somebody".to_string(),
                         role: "author".to_string(),
                         person: PersonRef::Unresolved,
+                        external_person: None,
                     },
                 ],
                 links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],

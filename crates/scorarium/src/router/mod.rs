@@ -245,6 +245,8 @@ pub struct ShownContributor {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    /// The hidden field's value: the external person's id, or empty when there is none
+    pub external_person: String,
     pub state: PersonState,
     pub message: String,
 }
@@ -276,6 +278,8 @@ pub struct ShownWork {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    /// The hidden field's value: the external person's id, or empty when there is none
+    pub external_person: String,
     pub state: PersonState,
     /// How many contributors the form does not show, empty when it shows them all
     pub more: String,
@@ -459,6 +463,7 @@ fn shown_contributor(
         name,
         role: contributor.role.clone(),
         person: publication_post::person_field(person),
+        external_person: publication_post::external_person_field(contributor.external_person),
         state,
         message,
     }
@@ -532,6 +537,7 @@ fn shown_works(
                 name: credit.name,
                 role: credit.role,
                 person: credit.person,
+                external_person: credit.external_person,
                 state: credit.state,
                 // A work may credit nobody at all, so say how many are hidden only when any are
                 more: match work.contributors.len() {

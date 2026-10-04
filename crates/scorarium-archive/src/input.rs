@@ -85,6 +85,8 @@ pub struct ContributorInput {
     pub name: String,
     pub role: String,
     pub person: PersonRef,
+    /// The external person a lookup found for this contributor, if one did
+    pub external_person: Option<i64>,
 }
 
 pub(crate) fn resolve_name<'a>(
@@ -158,6 +160,7 @@ pub(crate) fn parse_contributors(
                 name: name.to_string(),
                 role: role.to_string(),
                 person: contributor.person,
+                external_person: contributor.external_person,
             });
             None
         })
@@ -267,6 +270,7 @@ mod tests {
             name: name.into(),
             role: "composer".into(),
             person,
+            external_person: None,
         };
         let mut contributors = [
             contributor("erik satie", PersonRef::Unresolved),
