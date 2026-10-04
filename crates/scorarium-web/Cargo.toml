@@ -16,6 +16,7 @@ axum-extra.workspace = true
 clap.workspace = true
 color-eyre.workspace = true
 cookie.workspace = true
+eyre.workspace = true
 getrandom.workspace = true
 rust-embed.workspace = true
 scorarium-archive.workspace = true
