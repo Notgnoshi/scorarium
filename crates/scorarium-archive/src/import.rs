@@ -192,7 +192,7 @@ impl PendingImport {
             .await?;
         let mut persons = Vec::with_capacity(names.len());
         for (id, name) in names {
-            let stored = person::create_person(&mut audited, self.library_id, &name).await?;
+            let stored = person::create_person(&mut audited, self.library_id, &name, &[]).await?;
             persons.push((id, stored));
         }
         for credit in input.contributors_mut() {

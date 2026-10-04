@@ -169,7 +169,10 @@ impl Person {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
-        write_person_links(&mut audited, self.id, &input.links).await?;
+        sqlx::query!("DELETE FROM person_link WHERE person_id = ?", self.id)
+            .execute(&mut *audited)
+            .await?;
+        insert_person_links(&mut audited, self.id, &input.links).await?;
         let reloaded = load_persons(
             &self.archive,
             &mut audited,
@@ -257,14 +260,11 @@ pub(crate) async fn load_persons(
     Ok(persons)
 }
 
-async fn write_person_links(
+async fn insert_person_links(
     conn: &mut SqliteConnection,
     person_id: i64,
     links: &[Link],
 ) -> Result<()> {
-    sqlx::query!("DELETE FROM person_link WHERE person_id = ?", person_id)
-        .execute(&mut *conn)
-        .await?;
     for link in links {
         let (kind, external_id) = link.columns();
         sqlx::query!(
@@ -295,7 +295,7 @@ pub(crate) async fn create_new_persons<'a>(
         let id = match created.get(&normalize(&contributor.name)) {
             Some(id) => *id,
             None => {
-                let id = create_person(&mut *conn, library_id, &contributor.name).await?;
+                let id = create_person(&mut *conn, library_id, &contributor.name, &[]).await?;
                 created.insert(normalize(&contributor.name), id);
                 id
             }
@@ -346,7 +346,7 @@ pub(crate) async fn credited_person(
                 )
             })
         }
-        PersonRef::New => create_person(conn, library_id, &contributor.name).await,
+        PersonRef::New => create_person(conn, library_id, &contributor.name, &[]).await,
         PersonRef::Draft(_) | PersonRef::Unresolved => Err(eyre::eyre!(
             "attempted to credit a person not contained by the library: {:?}",
             contributor.name
@@ -359,6 +359,7 @@ pub(crate) async fn create_person(
     conn: &mut SqliteConnection,
     library_id: i64,
     name: &str,
+    links: &[Link],
 ) -> Result<i64> {
     let sort_name = sort_name(name);
     let created = sqlx::query!(
@@ -367,9 +368,11 @@ pub(crate) async fn create_person(
         name,
         sort_name,
     )
-    .execute(conn)
+    .execute(&mut *conn)
     .await?;
-    Ok(created.last_insert_rowid())
+    let id = created.last_insert_rowid();
+    insert_person_links(conn, id, links).await?;
+    Ok(id)
 }
 
 /// How strongly a role identifies the work it is credited on, lowest first.
