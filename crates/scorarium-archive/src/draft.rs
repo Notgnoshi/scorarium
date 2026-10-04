@@ -1,21 +1,24 @@
 use std::collections::HashMap;
 
+use crate::external_id::EntityKind;
 use crate::fuzzy::normalize;
 use crate::import::Lookup;
 use crate::input::{self, ContributorInput, PersonRef, WorkRef};
-use crate::person::PersonRawInput;
+use crate::person::{ExternalPerson, PersonRawInput};
 use crate::publication::PublicationRawInput;
 use crate::suggest::DraftPersonSummary;
 use crate::summary::PersonSummary;
 use crate::work::WorkRawInput;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct SavedDraft {
     /// The publication's own fields; its contents are the references beside them
     fields: PublicationRawInput,
     contents: Vec<WorkRef>,
     /// The API lookup outcome, if there was one
     lookup: Option<Lookup>,
+    /// What lookups found about persons before we are able to associate them with a draft or stored person
+    external_persons: HashMap<i64, ExternalPerson>,
 }
 
 #[derive(Debug)]
@@ -115,18 +118,40 @@ impl DraftStore {
             }
             contents.push(reference);
         }
-        let saved = library
-            .publications
-            .entry(import_id)
-            .or_insert_with(|| SavedDraft {
-                fields: PublicationRawInput::default(),
-                contents: Vec::new(),
-                lookup: None,
-            });
+        let saved = library.publications.entry(import_id).or_default();
         saved.fields = input;
         saved.contents = contents;
         saved.dedupe();
         library.collect();
+    }
+
+    pub(crate) fn add_external_person(
+        &mut self,
+        library_id: i64,
+        import_id: i64,
+        mut person: ExternalPerson,
+    ) -> i64 {
+        person.links = input::valid_links(EntityKind::Person, &person.links)
+            .into_iter()
+            .map(|link| link.url)
+            .collect();
+        let library = self.libraries.entry(library_id).or_default();
+        let saved = library.publications.entry(import_id).or_default();
+        self.last_id += 1;
+        saved.external_persons.insert(self.last_id, person);
+        self.last_id
+    }
+
+    pub(crate) fn external_persons(
+        &self,
+        library_id: i64,
+        import_id: i64,
+    ) -> HashMap<i64, ExternalPerson> {
+        self.libraries
+            .get(&library_id)
+            .and_then(|library| library.publications.get(&import_id))
+            .map(|saved| saved.external_persons.clone())
+            .unwrap_or_default()
     }
 
     /// Note what a source API lookup produced

@@ -342,6 +342,7 @@ impl Publication {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
                     person: PersonRef::Linked(contributor.person_id),
+                    external_person: None,
                 })
                 .collect(),
             links: self.links.clone(),
@@ -784,6 +785,7 @@ mod tests {
             name: name.into(),
             role: role.into(),
             person: PersonRef::New,
+            external_person: None,
         }
     }
 
@@ -828,6 +830,7 @@ mod tests {
                     name: "Erik Satie".into(),
                     role: "editor".into(),
                     person: PersonRef::Unresolved,
+                    external_person: None,
                 },
             ],
             links: vec!["imslp.org".into()],
@@ -961,6 +964,7 @@ mod tests {
             name: name.into(),
             role: role.into(),
             person: PersonRef::Unresolved,
+            external_person: None,
         }
     }
 

@@ -212,7 +212,9 @@ async fn manual_import_flow() {
     response.assert_text_contains("satie.pdf");
     response.assert_text_contains("Gymnopedie No. 1");
     // The publication and its work both ask for a new Satie, and one submission creates one person
-    assert_eq!(library.person_names().await.unwrap(), ["Erik Satie"]);
+    let names = library.person_names(false).await.unwrap();
+    assert_eq!(names.len(), 1);
+    assert_eq!(names[0].name, "Erik Satie");
     server
         .get(&review)
         .await
@@ -249,7 +251,8 @@ async fn isbn_import_is_seeded_from_open_library() {
     response.assert_text_contains("value=\"Bagatelles, Rondos and Other Shorter Works for Piano\"");
     response.assert_text_contains("value=\"Ludwig van Beethoven\"");
     response.assert_text_contains("value=\"author\"");
-    response.assert_text_contains("name=\"contributor_person\" value=\"draft:1\"");
+    response.assert_text_contains("name=\"contributor_person\" value=\"draft:2\"");
+    response.assert_text_contains("name=\"contributor_external_person\" value=\"1\"");
     response.assert_text_contains("value=\"Dover Publications\"");
     response.assert_text_contains("value=\"1987\"");
     response.assert_text_contains("value=\"978-0-486-25392-3\"");

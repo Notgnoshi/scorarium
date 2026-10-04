@@ -1,7 +1,8 @@
 use scorarium_archive::{
-    Accepted, Archive, ContributorInput, DraftPublication, HoldingKind, HoldingRawInput, Library,
-    NotFound, PersonRef, PublicationPost, PublicationRawInput, ValidationError, WorkPost,
-    WorkRawInput, WorkRef, parse_holdings,
+    Accepted, Action, Archive, AuditSubject, ContributorInput, DraftPublication, ExternalPerson,
+    Field, HoldingKind, HoldingRawInput, Library, NotFound, PendingImport, Person, PersonRawInput,
+    PersonRef, PublicationPost, PublicationRawInput, ValidationError, WorkPost, WorkRawInput,
+    WorkRef, parse_holdings,
 };
 
 fn work_ids(draft: &DraftPublication) -> Vec<Option<WorkRef>> {
@@ -192,6 +193,7 @@ async fn accepting_creates_the_publication_once() {
             name: "Erik Satie".into(),
             role: "composer".into(),
             person: PersonRef::Unresolved,
+            external_person: None,
         }],
         contents: vec![WorkPost {
             // A draft's work ids mean nothing to the database and are ignored
@@ -298,4 +300,155 @@ async fn merging_works_moves_drafts_to_the_survivor() {
         work_ids(&import.draft().await.unwrap()),
         [Some(WorkRef::Stored(survivor))]
     );
+}
+
+const WIKIDATA: &str = "https://www.wikidata.org/wiki/Q255";
+const VIAF: &str = "https://viaf.org/viaf/32182557";
+
+async fn import_with_external_beethoven(library: &Library) -> (PendingImport, ContributorInput) {
+    let copies = parse_holdings(&holdings(HoldingKind::Physical, "Piano bench")).unwrap();
+    let import = library.start_import("", &copies).await.unwrap();
+    let beethoven = ExternalPerson {
+        name: "Ludwig van Beethoven".into(),
+        links: vec![WIKIDATA.into(), "not a url".into(), VIAF.into()],
+    };
+    let draft = import
+        .add_external_contributors(vec![(beethoven, "composer".into())])
+        .await
+        .unwrap();
+    let contributor = draft.input.contributors[0].clone();
+    (import, contributor)
+}
+
+/// Accept the import with one contributor, and return the person that contributor names
+async fn accept_with(
+    library: &Library,
+    import: PendingImport,
+    contributor: ContributorInput,
+) -> Person {
+    let post = PublicationPost {
+        title: "Bagatelles".into(),
+        holdings: import.draft().await.unwrap().input.holdings,
+        contributors: vec![contributor],
+        ..PublicationPost::default()
+    };
+    let Accepted::Published(publication) = import.accept(post).await.unwrap() else {
+        panic!("a valid draft was refused");
+    };
+    let id = publication.contributors[0].person_id;
+    library.person(id).await.unwrap().unwrap()
+}
+
+#[tokio::test]
+async fn accepting_gives_a_new_person_the_links_a_lookup_found() {
+    let (_archive, library) = library().await;
+    let (import, contributor) = import_with_external_beethoven(&library).await;
+
+    let beethoven = accept_with(&library, import, contributor).await;
+
+    assert_eq!(beethoven.name, "Ludwig van Beethoven");
+    assert_eq!(beethoven.links, [WIKIDATA, VIAF]);
+}
+
+#[tokio::test]
+async fn the_links_a_lookup_found_follow_a_renamed_contributor() {
+    let (_archive, library) = library().await;
+    let (import, contributor) = import_with_external_beethoven(&library).await;
+    // Typing in the name field clears the person reference but keeps the external person's
+    let renamed = ContributorInput {
+        name: "L. v. Beethoven".into(),
+        person: PersonRef::Unresolved,
+        ..contributor
+    };
+
+    let beethoven = accept_with(&library, import, renamed).await;
+
+    assert_eq!(beethoven.name, "L. v. Beethoven");
+    assert_eq!(beethoven.links, [WIKIDATA, VIAF]);
+}
+
+/// A person already in the library, with links, and their id
+async fn stored_person(library: &Library, name: &str, links: &[&str]) -> i64 {
+    let input = PublicationRawInput {
+        title: "Sonatas".into(),
+        holdings: holdings(HoldingKind::Physical, "Piano bench"),
+        contributors: vec![ContributorInput {
+            name: name.into(),
+            role: "composer".into(),
+            person: PersonRef::New,
+            external_person: None,
+        }],
+        ..PublicationRawInput::default()
+    };
+    let publication = library
+        .create_publication(&input.parse().unwrap())
+        .await
+        .unwrap();
+    let id = publication.contributors[0].person_id;
+    let mut person = library.person(id).await.unwrap().unwrap();
+    let edited = PersonRawInput {
+        name: name.into(),
+        links: links.iter().map(|link| link.to_string()).collect(),
+    };
+    person.update(&edited.parse().unwrap()).await.unwrap();
+    id
+}
+
+/// How many times an accepted import has added links to this person
+async fn links_gained(archive: &Archive, person: i64) -> usize {
+    let entries = archive.audit_log().await.unwrap();
+    entries
+        .iter()
+        .filter(|entry| {
+            let about = entry.event.entity.as_ref();
+            // A hand edit of the person heads its own group; an accept's entry hangs from one
+            entry.group_id.is_some()
+                && entry.event.action == Action::Updated
+                && entry.event.fields == [Field::Links]
+                && about.is_some_and(|entity| {
+                    entity.kind == AuditSubject::Person && entity.id == person
+                })
+        })
+        .count()
+}
+
+#[tokio::test]
+async fn accepting_adds_the_links_a_lookup_found_to_a_stored_person() {
+    // The same record as WIKIDATA, under its other URL
+    const ENTITY: &str = "https://www.wikidata.org/entity/Q255";
+    let (archive, library) = library().await;
+    let stored = stored_person(&library, "Ludwig van Beethoven", &[ENTITY]).await;
+
+    let (import, contributor) = import_with_external_beethoven(&library).await;
+    assert_eq!(contributor.person, PersonRef::Linked(stored));
+    let beethoven = accept_with(&library, import, contributor).await;
+
+    assert_eq!(beethoven.id, stored);
+    assert_eq!(beethoven.links, [ENTITY, VIAF]);
+    assert_eq!(library.person_names(false).await.unwrap().len(), 1);
+    assert_eq!(links_gained(&archive, stored).await, 1);
+
+    // The same lookup again finds nothing he lacks, so nothing is recorded
+    let (import, contributor) = import_with_external_beethoven(&library).await;
+    let beethoven = accept_with(&library, import, contributor).await;
+    assert_eq!(beethoven.links, [ENTITY, VIAF]);
+    assert_eq!(links_gained(&archive, stored).await, 1);
+}
+
+#[tokio::test]
+async fn the_links_a_lookup_found_follow_a_contributor_to_the_stored_person_picked() {
+    let (_archive, library) = library().await;
+    let stored = stored_person(&library, "L. v. Beethoven", &[]).await;
+
+    let (import, contributor) = import_with_external_beethoven(&library).await;
+    // Picking from the dropdown sets the name and the person, and keeps the external person
+    let picked = ContributorInput {
+        name: "L. v. Beethoven".into(),
+        person: PersonRef::Linked(stored),
+        ..contributor
+    };
+    let beethoven = accept_with(&library, import, picked).await;
+
+    assert_eq!(beethoven.id, stored);
+    assert_eq!(beethoven.links, [WIKIDATA, VIAF]);
 }

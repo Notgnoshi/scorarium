@@ -39,6 +39,7 @@ async fn search_sees_what_the_viewer_sees() {
                 name: "Frederic Chopin".into(),
                 role: "composer".into(),
                 person: PersonRef::New,
+                external_person: None,
             }],
             catalog_numbers: vec!["Op. 9 No. 2".into()],
             ..WorkRawInput::default()

@@ -3,16 +3,18 @@ use std::sync::Arc;
 
 use sqlx::SqliteConnection;
 
+use crate::external_id::EntityKind;
 use crate::holding::{Holding, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
-use crate::input::{PersonRef, WorkRef};
+use crate::input::{ContributorInput, PersonRef, WorkRef};
+use crate::person::ExternalPerson;
 use crate::publication::{
     self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 use crate::summary::{self, PersonSummary};
 use crate::work::{self, Work};
 use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, NotFound, Source, draft, person,
+    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, draft, person,
 };
 
 /// An import the user has started but has not yet accepted or discarded
@@ -95,6 +97,23 @@ impl PendingImport {
     }
 
     pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
+        self.store(input, Vec::new()).await
+    }
+
+    /// Add contributors a lookup found to the draft
+    pub async fn add_external_contributors(
+        &self,
+        found: Vec<(ExternalPerson, String)>,
+    ) -> crate::Result<DraftPublication> {
+        let input = self.draft().await?.input;
+        self.store(input, found).await
+    }
+
+    async fn store(
+        &self,
+        mut input: PublicationRawInput,
+        found: Vec<(ExternalPerson, String)>,
+    ) -> crate::Result<DraftPublication> {
         let stored: Vec<PersonSummary>;
         // The catalog can have collected a stored work since the page was opened
         let mut vanished = Vec::new();
@@ -113,9 +132,20 @@ impl PendingImport {
                 }
             }
         }
-        self.archive
-            .drafts()
-            .save(self.library_id, self.id, input, &vanished, &stored);
+        {
+            let mut drafts = self.archive.drafts();
+            for (person, role) in found {
+                let name = person.name.clone();
+                let id = drafts.add_external_person(self.library_id, self.id, person);
+                input.contributors.push(ContributorInput {
+                    name,
+                    role,
+                    person: PersonRef::Unresolved,
+                    external_person: Some(id),
+                });
+            }
+            drafts.save(self.library_id, self.id, input, &vanished, &stored);
+        }
         self.draft().await
     }
 
@@ -174,25 +204,54 @@ impl PendingImport {
     }
 
     async fn accept_into_publication(self, input: &PublicationInput) -> crate::Result<Publication> {
-        let drafted = self.archive.drafts().persons(self.library_id);
+        let (drafted, external) = {
+            let drafts = self.archive.drafts();
+            (
+                drafts.persons(self.library_id),
+                drafts.external_persons(self.library_id, self.id),
+            )
+        };
         let mut input = input.clone();
-        let mut names = BTreeMap::new();
-        for credit in input.contributors_mut() {
-            if let PersonRef::Draft(id) = credit.person {
-                // A concurrent accept can have relinked and collected it since this draft was saved
-                let person = drafted
-                    .get(&id)
-                    .ok_or_else(|| eyre::eyre!("draft person {id} is gone: {:?}", credit.name))?;
-                names.insert(id, person.name.clone());
+        let mut new_persons: BTreeMap<i64, (String, Vec<String>)> = BTreeMap::new();
+        // The links lookups found for each stored person this import refers to
+        let mut additions: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+        for contributor in input.contributors_mut() {
+            // A reference that matches nothing in this import carries nothing
+            let found = contributor
+                .external_person
+                .and_then(|id| external.get(&id))
+                .map(|found| found.links.as_slice())
+                .unwrap_or_default();
+            match contributor.person {
+                PersonRef::Draft(id) => {
+                    // A concurrent accept can have relinked and collected it since this draft
+                    // was saved
+                    let person = drafted.get(&id).ok_or_else(|| {
+                        eyre::eyre!("draft person {id} is gone: {:?}", contributor.name)
+                    })?;
+                    let (_, links) = new_persons
+                        .entry(id)
+                        .or_insert_with(|| (person.name.clone(), Vec::new()));
+                    links.extend(found.iter().cloned());
+                }
+                PersonRef::Linked(id) if !found.is_empty() => {
+                    additions
+                        .entry(id)
+                        .or_default()
+                        .extend(found.iter().cloned());
+                }
+                _ => {}
             }
         }
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::ImportAccepted))
             .await?;
-        let mut persons = Vec::with_capacity(names.len());
-        for (id, name) in names {
-            let stored = person::create_person(&mut audited, self.library_id, &name).await?;
+        let mut persons = Vec::with_capacity(new_persons.len());
+        for (id, (name, links)) in new_persons {
+            let links = crate::input::valid_links(EntityKind::Person, &links);
+            let stored =
+                person::create_person(&mut audited, self.library_id, &name, &links).await?;
             persons.push((id, stored));
         }
         for credit in input.contributors_mut() {
@@ -205,6 +264,22 @@ impl PendingImport {
         let (publication, work_ids) =
             publication::create_publication(&self.archive, &mut audited, self.library_id, &input)
                 .await?;
+        for (id, links) in additions {
+            let links = crate::input::valid_links(EntityKind::Person, &links);
+            if person::add_missing_links(&mut audited, id, &links).await? == 0 {
+                continue;
+            }
+            let gained =
+                person::load_persons(&self.archive, &mut audited, self.library_id, Some(id), None)
+                    .await?
+                    .pop()
+                    .ok_or_else(|| eyre::eyre!("person {id} is gone after gaining links"))?;
+            let event = Event {
+                fields: vec![Field::Links],
+                ..Event::about(Action::Updated, gained.entity_ref())
+            };
+            audited.record(Source::User, event).await?;
+        }
         let result = sqlx::query!(
             "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
             self.library_id,

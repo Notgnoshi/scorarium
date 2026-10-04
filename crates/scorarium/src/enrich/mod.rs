@@ -84,6 +84,7 @@ mod tests {
                 name: "Ludwig van Beethoven".to_string(),
                 role: "author".to_string(),
                 person: PersonRef::Unresolved,
+                external_person: None,
             }],
             links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],
             ..Default::default()
@@ -103,6 +104,7 @@ mod tests {
                     name: "Ludwig van Beethoven".to_string(),
                     role: "author".to_string(),
                     person: PersonRef::Unresolved,
+                    external_person: None,
                 }],
                 links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],
                 ..Default::default()

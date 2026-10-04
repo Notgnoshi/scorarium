@@ -85,6 +85,8 @@ pub struct ContributorInput {
     pub name: String,
     pub role: String,
     pub person: PersonRef,
+    /// The external person a lookup found for this contributor, if one did
+    pub external_person: Option<i64>,
 }
 
 pub(crate) fn resolve_name<'a>(
@@ -158,6 +160,7 @@ pub(crate) fn parse_contributors(
                 name: name.to_string(),
                 role: role.to_string(),
                 person: contributor.person,
+                external_person: contributor.external_person,
             });
             None
         })
@@ -232,6 +235,21 @@ pub(crate) fn parse_links(
     }
 }
 
+pub(crate) fn valid_links(entity: EntityKind, raw: &[String]) -> Vec<Link> {
+    match parse_links(entity, raw) {
+        Ok(links) => links,
+        Err(errors) => {
+            let kept: Vec<String> = raw
+                .iter()
+                .zip(errors)
+                .filter(|(_, error)| error.is_none())
+                .map(|(link, _)| link.clone())
+                .collect();
+            parse_links(entity, &kept).unwrap_or_default()
+        }
+    }
+}
+
 /// Check a rating, which a publication and a work each carry
 pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
     match raw.trim() {
@@ -267,6 +285,7 @@ mod tests {
             name: name.into(),
             role: "composer".into(),
             person,
+            external_person: None,
         };
         let mut contributors = [
             contributor("erik satie", PersonRef::Unresolved),

@@ -25,8 +25,9 @@ use axum::routing::{get, post};
 use axum_extra::extract::CookieJar;
 use scorarium_archive::{
     Archive, CatalogNumber, ContributorInput, HoldingRawInput, IdentifierRawInput, Library,
-    NotFound, PendingImport, Person, PersonRef, PersonSummary, Publication, PublicationErrors,
-    PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput, WorkRef, same_name,
+    NotFound, PendingImport, Person, PersonName, PersonRef, PersonSummary, Publication,
+    PublicationErrors, PublicationRawInput, ValidationError, Work, WorkErrors, WorkRawInput,
+    WorkRef, same_name,
 };
 use serde::Deserialize;
 use tower_http::trace::TraceLayer;
@@ -244,6 +245,8 @@ pub struct ShownContributor {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    /// The hidden field's value: the external person's id, or empty when there is none
+    pub external_person: String,
     pub state: PersonState,
     pub message: String,
 }
@@ -275,6 +278,8 @@ pub struct ShownWork {
     pub role: String,
     /// The hidden field's value: the linked person's id, or empty when nobody is linked
     pub person: String,
+    /// The hidden field's value: the external person's id, or empty when there is none
+    pub external_person: String,
     pub state: PersonState,
     /// How many contributors the form does not show, empty when it shows them all
     pub more: String,
@@ -305,7 +310,7 @@ impl FormFields {
         input: PublicationRawInput,
         errors: PublicationErrors,
         persons: &[PersonSummary],
-        names: &[String],
+        names: &[PersonName],
     ) -> Self {
         Self {
             holdings: shown_holdings(&input.holdings, &errors.holdings.each),
@@ -363,7 +368,7 @@ impl WorkFields {
         input: WorkRawInput,
         errors: WorkErrors,
         persons: &[PersonSummary],
-        names: &[String],
+        names: &[PersonName],
     ) -> Self {
         Self {
             contributors: shown_contributors(
@@ -399,7 +404,7 @@ fn shown_contributors(
     contributors: &[ContributorInput],
     errors: &[Option<ValidationError>],
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
 ) -> Vec<ShownContributor> {
     contributors
         .iter()
@@ -418,13 +423,19 @@ fn shown_contributors(
 fn shown_contributor(
     contributor: &ContributorInput,
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
     message: String,
 ) -> ShownContributor {
     let linked = match contributor.person {
         PersonRef::Linked(id) => persons.iter().find(|person| person.id == id),
         _ => None,
     };
+    let namesakes = names
+        .iter()
+        .filter(|known| {
+            known.person != contributor.person && same_name(&known.name, &contributor.name)
+        })
+        .count();
     let (person, name, state) = match (contributor.person, linked) {
         (PersonRef::Linked(_), Some(found)) => {
             (contributor.person, found.name.clone(), PersonState::Linked)
@@ -432,32 +443,27 @@ fn shown_contributor(
         (PersonRef::New | PersonRef::Draft(_), _) => (
             contributor.person,
             contributor.name.clone(),
-            if names.iter().any(|name| same_name(name, &contributor.name)) {
+            if namesakes > 0 {
                 PersonState::Namesake
             } else {
                 PersonState::New
             },
         ),
-        _ => {
-            let namesakes = names
-                .iter()
-                .filter(|name| same_name(name, &contributor.name))
-                .count();
-            (
-                PersonRef::Unresolved,
-                contributor.name.clone(),
-                if namesakes > 1 {
-                    PersonState::Ambiguous
-                } else {
-                    PersonState::Unresolved
-                },
-            )
-        }
+        _ => (
+            PersonRef::Unresolved,
+            contributor.name.clone(),
+            if namesakes > 1 {
+                PersonState::Ambiguous
+            } else {
+                PersonState::Unresolved
+            },
+        ),
     };
     ShownContributor {
         name,
         role: contributor.role.clone(),
         person: publication_post::person_field(person),
+        external_person: publication_post::external_person_field(contributor.external_person),
         state,
         message,
     }
@@ -500,7 +506,7 @@ fn shown_works(
     contents: &[WorkRawInput],
     errors: &[WorkErrors],
     persons: &[PersonSummary],
-    names: &[String],
+    names: &[PersonName],
 ) -> Vec<ShownWork> {
     let no_errors = WorkErrors::default();
     contents
@@ -531,6 +537,7 @@ fn shown_works(
                 name: credit.name,
                 role: credit.role,
                 person: credit.person,
+                external_person: credit.external_person,
                 state: credit.state,
                 // A work may credit nobody at all, so say how many are hidden only when any are
                 more: match work.contributors.len() {

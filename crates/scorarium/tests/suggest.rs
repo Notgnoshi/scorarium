@@ -25,6 +25,7 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
                     name: composer.into(),
                     role: "composer".into(),
                     person: PersonRef::New,
+                    external_person: None,
                 }],
                 catalog_numbers: vec![(*number).into()],
                 ..WorkRawInput::default()

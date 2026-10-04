@@ -8,6 +8,7 @@ fn composer(name: &str) -> ContributorInput {
         name: name.into(),
         role: "composer".into(),
         person: PersonRef::New,
+        external_person: None,
     }
 }
 
@@ -90,6 +91,7 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
         name: "Sue".into(),
         role: "editor".into(),
         person: PersonRef::New,
+        external_person: None,
     });
     let anthology = library
         .create_publication(&anthology.parse().unwrap())

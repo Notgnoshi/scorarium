@@ -162,7 +162,7 @@ async fn render_edit(
         .iter()
         .chain(input.contents.iter().flat_map(|work| &work.contributors));
     let persons = linked_summaries(&library, credited.map(|c| c.person)).await?;
-    let names = library.person_names().await?;
+    let names = library.person_names(false).await?;
     let fields = FormFields::build(input, errors, &persons, &names)
         .warn_when_empty(NO_COPIES)
         // A work's edit button opens the work, which comes back here when it is done

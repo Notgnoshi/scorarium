@@ -5,8 +5,8 @@ use sqlx::SqliteConnection;
 use crate::audit::Audited;
 use crate::holding::HoldingInput;
 use crate::import::{self, PendingImport};
-use crate::input::ContributorInput;
-use crate::person::{self, Person};
+use crate::input::{ContributorInput, PersonRef};
+use crate::person::{self, Person, PersonName};
 use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
@@ -272,9 +272,25 @@ impl Library {
     }
 
     /// Every person's display name, by sort name
-    pub async fn person_names(&self) -> Result<Vec<String>> {
+    pub async fn person_names(&self, include_drafts: bool) -> Result<Vec<PersonName>> {
         let mut conn = self.archive.acquire_read().await?;
-        person::list_person_names(&mut conn, self.id).await
+        let stored = person::list_person_names(&mut conn, self.id).await?;
+        let mut names: Vec<_> = stored
+            .into_iter()
+            .map(|(id, name)| PersonName {
+                person: PersonRef::Linked(id),
+                name,
+            })
+            .collect();
+        if include_drafts {
+            let mut drafts: Vec<_> = self.archive.drafts().persons(self.id).into_iter().collect();
+            drafts.sort_by_key(|(id, _)| *id);
+            names.extend(drafts.into_iter().map(|(id, person)| PersonName {
+                person: PersonRef::Draft(id),
+                name: person.name,
+            }));
+        }
+        Ok(names)
     }
 
     /// Every tag in the library with its use count, alphabetically

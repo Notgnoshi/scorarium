@@ -76,12 +76,12 @@
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
             {% for row in fields.contributors %}
-                {% call rows::contributor_row(row.name, row.role, row.person, row.state, row.message) %}
+                {% call rows::contributor_row(row.name, row.role, row.person, row.external_person, row.state, row.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::contributor_row("", "", "", crate::router::PersonState::Unresolved, "") %}
+            {% call rows::contributor_row("", "", "", "", crate::router::PersonState::Unresolved, "") %}
             {% endcall %}
         </template>
         <button type="button"
@@ -95,12 +95,12 @@
         <legend class="float-none w-auto px-2 fs-6">Works</legend>
         <div data-rows-list>
             {% for w in fields.works %}
-                {% call rows::work_row(library.id, w.id, w.stored, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.person, w.state, w.more, w.message, fields.work_back, fields.review) %}
+                {% call rows::work_row(library.id, w.id, w.stored, w.title, w.catalog_number, w.recognized, w.more_numbers, w.name, w.role, w.person, w.external_person, w.state, w.more, w.message, fields.work_back, fields.review) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::work_row(library.id, "", false, "", "", false, "", "", "", "", crate::router::PersonState::Unresolved, "", "", fields.work_back, fields.review) %}
+            {% call rows::work_row(library.id, "", false, "", "", false, "", "", "", "", "", crate::router::PersonState::Unresolved, "", "", fields.work_back, fields.review) %}
             {% endcall %}
         </template>
         <button type="button"

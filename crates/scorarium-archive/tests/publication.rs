@@ -1,5 +1,5 @@
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, NotFound,
+    Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, Library, NotFound,
     PersonRef, PublicationRawInput, WorkRawInput, WorkRef, identifier,
 };
 
@@ -8,6 +8,7 @@ fn contributor(name: &str, role: &str) -> ContributorInput {
         name: name.into(),
         role: role.into(),
         person: PersonRef::New,
+        external_person: None,
     }
 }
 
@@ -17,6 +18,11 @@ fn holding(kind: HoldingKind, location: &str) -> HoldingRawInput {
         kind,
         location: location.into(),
     }
+}
+
+async fn person_names(library: &Library) -> Vec<String> {
+    let names = library.person_names(false).await.unwrap();
+    names.into_iter().map(|known| known.name).collect()
 }
 
 /// A publication carrying one of everything, for the tests that read it back.
@@ -217,10 +223,7 @@ async fn suggestions_span_publications_and_their_contents() {
         ["arranger", "composer", "editor"]
     );
     // By sort name, which is the surname heuristic at work
-    assert_eq!(
-        library.person_names().await.unwrap(),
-        ["Bob", "Erik Satie", "Sue"]
-    );
+    assert_eq!(person_names(&library).await, ["Bob", "Erik Satie", "Sue"]);
 
     let satie = library
         .persons_with_role("composer")
@@ -241,10 +244,7 @@ async fn suggestions_span_publications_and_their_contents() {
         .unwrap();
 
     // A credit linked to someone the library already has adds nobody
-    assert_eq!(
-        library.person_names().await.unwrap(),
-        ["Bob", "Erik Satie", "Sue"]
-    );
+    assert_eq!(person_names(&library).await, ["Bob", "Erik Satie", "Sue"]);
 }
 
 /// The edit page posts the whole publication back, so update has to reconcile every child: keep
@@ -352,7 +352,7 @@ async fn update_reconciles_every_child() {
     // The work the edit stopped listing is gone, and with it the person only it credited
     assert!(library.work(dropped_work).await.unwrap().is_none());
     assert_eq!(
-        library.person_names().await.unwrap(),
+        person_names(&library).await,
         ["Ann", "Bob", "Erik Satie", "Sue"]
     );
 
@@ -416,7 +416,7 @@ async fn delete_collects_only_what_nothing_else_reaches() {
     assert!(library.work(prelude).await.unwrap().is_some());
     assert!(library.work(etude).await.unwrap().is_none());
     // Rachmaninoff is credited elsewhere; the anthology's other composers were credited here alone
-    let names = library.person_names().await.unwrap();
+    let names = person_names(&library).await;
     assert!(names.iter().any(|name| name == "Sergei Rachmaninoff"));
     assert!(!names.iter().any(|name| name == "Dmitri Kabalevsky"));
 }
@@ -452,10 +452,7 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
     // The linked credit keeps its person rather than creating a second one
     assert_eq!(work.contributors[1].person_id, satie);
     // Sue was credited only here
-    assert_eq!(
-        library.person_names().await.unwrap(),
-        ["Ann", "Bob", "Erik Satie"]
-    );
+    assert_eq!(person_names(&library).await, ["Ann", "Bob", "Erik Satie"]);
 
     // A work collected along with its last publication cannot be edited
     let mut stale = library.work(work.id).await.unwrap().unwrap();

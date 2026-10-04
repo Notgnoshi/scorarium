@@ -254,6 +254,7 @@ async fn publication_edit_flow() {
         name: "Drew Neil".into(),
         role: "author".into(),
         person: PersonRef::New,
+        external_person: None,
     };
     let input = PublicationRawInput {
         title: "Practial Vim".into(),
@@ -277,6 +278,7 @@ async fn publication_edit_flow() {
                         name: "Marion Wenz".into(),
                         role: "translator".into(),
                         person: PersonRef::New,
+                        external_person: None,
                     },
                 ],
                 ..WorkRawInput::default()
@@ -534,7 +536,7 @@ async fn publication_edit_flow() {
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", &format!("/library/{library_id}"));
     assert!(library.publication(publication).await.unwrap().is_none());
-    assert_eq!(library.person_names().await.unwrap(), [] as [String; 0]);
+    assert!(library.person_names(false).await.unwrap().is_empty());
 
     // Deleting again is a miss, not a second delete
     let response = server

@@ -83,12 +83,12 @@
         <legend class="float-none w-auto px-2 fs-6">Contributors</legend>
         <div data-rows-list>
             {% for row in fields.contributors %}
-                {% call rows::contributor_row(row.name, row.role, row.person, row.state, row.message) %}
+                {% call rows::contributor_row(row.name, row.role, row.person, row.external_person, row.state, row.message) %}
                 {% endcall %}
             {% endfor %}
         </div>
         <template>
-            {% call rows::contributor_row("", "", "", crate::router::PersonState::Unresolved, "") %}
+            {% call rows::contributor_row("", "", "", "", crate::router::PersonState::Unresolved, "") %}
             {% endcall %}
         </template>
         <button type="button"

@@ -327,6 +327,7 @@ impl Work {
                     name: contributor.name.clone(),
                     role: contributor.role.clone(),
                     person: PersonRef::Linked(contributor.person_id),
+                    external_person: None,
                 })
                 .collect(),
             catalog_numbers: self
@@ -1031,6 +1032,7 @@ mod tests {
             name: name.into(),
             role: role.into(),
             person: PersonRef::New,
+            external_person: None,
         }
     }
 

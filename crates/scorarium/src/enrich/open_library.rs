@@ -1,7 +1,6 @@
+use scorarium_archive::external_id::{self, EntityKind};
 use scorarium_archive::identifier::{self, Kind};
-use scorarium_archive::{
-    ContributorInput, IdentifierRawInput, Lookup, PersonRef, PublicationRawInput,
-};
+use scorarium_archive::{ExternalPerson, IdentifierRawInput, Lookup, PublicationRawInput};
 use scorarium_client::Priority;
 use scorarium_client::open_library::{Author, Edition, OpenLibrary, WorkHit};
 use tokio::time::Instant;
@@ -11,13 +10,35 @@ pub async fn lookup_isbn(
     client: &OpenLibrary<'_>,
     isbn: &str,
     deadline: Instant,
-) -> (Option<PublicationRawInput>, Lookup) {
+) -> (
+    Option<PublicationRawInput>,
+    Vec<(ExternalPerson, String)>,
+    Lookup,
+) {
     let lookup = client.edition_by_isbn(isbn, Priority::Interactive);
     let edition = match tokio::time::timeout_at(deadline, lookup).await {
         Ok(Ok(Some(edition))) => edition,
-        Ok(Ok(None)) => return (None, Lookup::Failed(format!("no record for {isbn}"))),
-        Ok(Err(error)) => return (None, Lookup::Failed(format!("edition {isbn}: {error:#}"))),
-        Err(_) => return (None, Lookup::Failed(format!("edition {isbn}: timed out"))),
+        Ok(Ok(None)) => {
+            return (
+                None,
+                Vec::new(),
+                Lookup::Failed(format!("no record for {isbn}")),
+            );
+        }
+        Ok(Err(error)) => {
+            return (
+                None,
+                Vec::new(),
+                Lookup::Failed(format!("edition {isbn}: {error:#}")),
+            );
+        }
+        Err(_) => {
+            return (
+                None,
+                Vec::new(),
+                Lookup::Failed(format!("edition {isbn}: timed out")),
+            );
+        }
     };
 
     let mut authors = Vec::new();
@@ -38,11 +59,16 @@ pub async fn lookup_isbn(
         }
     }
 
-    let publication = to_publication(&edition, &authors);
+    let publication = to_publication(&edition);
+    let contributors = to_contributors(&authors);
     if problems.is_empty() {
-        (Some(publication), Lookup::Found)
+        (Some(publication), contributors, Lookup::Found)
     } else {
-        (Some(publication), Lookup::Failed(problems.join("; ")))
+        (
+            Some(publication),
+            contributors,
+            Lookup::Failed(problems.join("; ")),
+        )
     }
 }
 
@@ -60,8 +86,8 @@ pub async fn search_titles(
     }
 }
 
-/// Convert an Open Library [Edition] to scorarium's [PublicationRawInput]
-pub fn to_publication(edition: &Edition, authors: &[Author]) -> PublicationRawInput {
+/// Convert an Open Library [Edition] to scorarium's [PublicationRawInput], without its authors
+pub fn to_publication(edition: &Edition) -> PublicationRawInput {
     let title = match &edition.subtitle {
         Some(subtitle) => format!("{}: {subtitle}", edition.title),
         None => edition.title.clone(),
@@ -91,17 +117,52 @@ pub fn to_publication(edition: &Edition, authors: &[Author]) -> PublicationRawIn
             .and_then(year)
             .unwrap_or_default(),
         identifiers,
-        contributors: authors
-            .iter()
-            .map(|author| ContributorInput {
-                name: author.name.clone(),
-                role: "author".to_string(),
-                person: PersonRef::Unresolved,
-            })
-            .collect(),
         links: vec![edition.url()],
         ..Default::default()
     }
+}
+
+/// Open Library's IDs for the author identifier sources the archive can link to
+const AUTHOR_IDS: [(&str, external_id::Kind); 10] = [
+    ("wikidata", external_id::Kind::Wikidata),
+    ("viaf", external_id::Kind::Viaf),
+    ("isni", external_id::Kind::Isni),
+    ("gnd", external_id::Kind::Gnd),
+    ("lc_naf", external_id::Kind::Loc),
+    ("musicbrainz", external_id::Kind::MusicBrainz),
+    ("goodreads", external_id::Kind::Goodreads),
+    ("librarything", external_id::Kind::LibraryThing),
+    ("project_gutenberg", external_id::Kind::Gutenberg),
+    ("librivox", external_id::Kind::Librivox),
+];
+
+pub fn to_contributors(authors: &[Author]) -> Vec<(ExternalPerson, String)> {
+    authors
+        .iter()
+        .map(|author| {
+            let own = person_link(external_id::Kind::OpenLibrary, &author.olid);
+            let others = AUTHOR_IDS
+                .iter()
+                .filter_map(|(key, kind)| person_link(*kind, author.remote_ids.get(*key)?));
+            let person = ExternalPerson {
+                name: author.name.clone(),
+                links: own
+                    .into_iter()
+                    .chain(others)
+                    .chain(author.links.iter().cloned())
+                    .collect(),
+            };
+            (person, "author".to_string())
+        })
+        .collect()
+}
+
+/// The archive's URL for a person's record at a site
+fn person_link(kind: external_id::Kind, id: &str) -> Option<String> {
+    let url = external_id::build(EntityKind::Person, kind, id)?;
+    // The builder does not check the identifier, and a malformed one names no record
+    external_id::recognize(EntityKind::Person, &url)?;
+    Some(url.into())
 }
 
 /// The first run of exactly four ASCII digits in a free-text date
@@ -138,22 +199,8 @@ mod tests {
             covers: vec![310277],
             works: vec!["OL1258206W".to_string()],
         };
-        let author = |olid: &str, name: &str| Author {
-            olid: olid.to_string(),
-            name: name.to_string(),
-            personal_name: None,
-            alternate_names: Vec::new(),
-            birth_date: None,
-            death_date: None,
-            remote_ids: HashMap::new(),
-        };
-        let authors = [
-            author("OL127077A", "Ludwig van Beethoven"),
-            author("OL2A", "Somebody"),
-        ];
-
         assert_eq!(
-            to_publication(&edition, &authors),
+            to_publication(&edition),
             PublicationRawInput {
                 title: "Bagatelles, Rondos and Other Shorter Works: for Piano".to_string(),
                 publisher: "Dover Publications".to_string(),
@@ -162,21 +209,43 @@ mod tests {
                     kind: "isbn".to_string(),
                     value: "978-0-486-25392-3".to_string(),
                 }],
-                contributors: vec![
-                    ContributorInput {
-                        name: "Ludwig van Beethoven".to_string(),
-                        role: "author".to_string(),
-                        person: PersonRef::Unresolved,
-                    },
-                    ContributorInput {
-                        name: "Somebody".to_string(),
-                        role: "author".to_string(),
-                        person: PersonRef::Unresolved,
-                    },
-                ],
                 links: vec!["https://openlibrary.org/books/OL7636066M".to_string()],
                 ..Default::default()
             }
+        );
+    }
+
+    #[test]
+    fn an_author_becomes_an_external_person_with_the_links_the_archive_recognizes() {
+        let beethoven = Author {
+            olid: "OL127077A".to_string(),
+            name: "Ludwig van Beethoven".to_string(),
+            personal_name: None,
+            alternate_names: Vec::new(),
+            birth_date: None,
+            death_date: None,
+            remote_ids: HashMap::from([
+                ("viaf".to_string(), "32182557".to_string()),
+                ("wikidata".to_string(), "Q255".to_string()),
+                ("imdb".to_string(), "nm0002727".to_string()),
+            ]),
+            links: vec!["http://en.wikipedia.org/wiki/Ludwig_van_Beethoven".to_string()],
+        };
+
+        assert_eq!(
+            to_contributors(&[beethoven]),
+            [(
+                ExternalPerson {
+                    name: "Ludwig van Beethoven".to_string(),
+                    links: vec![
+                        "https://openlibrary.org/authors/OL127077A".to_string(),
+                        "https://www.wikidata.org/wiki/Q255".to_string(),
+                        "https://viaf.org/viaf/32182557".to_string(),
+                        "http://en.wikipedia.org/wiki/Ludwig_van_Beethoven".to_string(),
+                    ],
+                },
+                "author".to_string(),
+            )]
         );
     }
 
