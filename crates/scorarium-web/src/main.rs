@@ -3,15 +3,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use scorarium::{AppState, router};
 use scorarium_archive::Archive;
 use scorarium_client::{Client, UserAgent};
+use scorarium_web::{AppState, router};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 /// A physical and digital sheet music library.
 #[derive(Debug, Parser)]
-#[command(version)]
+#[command(name = "scorarium", version)]
 struct Args {
     /// Address and port to serve on.
     #[arg(short, long, env = "SCORARIUM_BIND", default_value = "0.0.0.0:3000")]

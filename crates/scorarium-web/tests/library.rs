@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use scorarium::router;
 use scorarium_tests::{TestDb, browser, demo_login};
+use scorarium_web::router;
 
 #[tokio::test]
 async fn library_page() {

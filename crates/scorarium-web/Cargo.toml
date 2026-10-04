@@ -1,9 +1,13 @@
 [package]
-name = "scorarium"
+name = "scorarium-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "A physical and digital sheet music library"
+
+[[bin]]
+name = "scorarium"
+path = "src/main.rs"
 
 [dependencies]
 askama.workspace = true

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use scorarium::enrich::open_library::search_titles;
 use scorarium_tests::TestDb;
+use scorarium_web::enrich::open_library::search_titles;
 use tokio::time::Instant;
 
 #[tokio::test]

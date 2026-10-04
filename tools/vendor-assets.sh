@@ -4,7 +4,7 @@ set -o pipefail
 set -o nounset
 set -o noclobber
 
-dest="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/crates/scorarium/assets"
+dest="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/crates/scorarium-web/assets"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 

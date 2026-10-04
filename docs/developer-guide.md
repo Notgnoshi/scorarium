@@ -7,7 +7,7 @@ toolchain, and we aspire to keep all dependencies up-to-date.
 
 * `scorarium-archive` provides the project's data model and data persistence
 * `scorarium-client` provides API clients for the external metadata sources
-* `scorarium` is the web server
+* `scorarium-web` is the web server, and builds the `scorarium` binary
 * `scorarium-tests` provides test fixtures for integration tests
 
 It's a "usual" Rust project, so you can use `cargo` as normal:
@@ -22,7 +22,7 @@ cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
 cargo clippy --all-targets --all-features
 # pip install djlint
-djlint --reformat --profile django --indent 4 --max-line-length 120 --format-css --format-js crates/scorarium/templates
+djlint --reformat --profile django --indent 4 --max-line-length 120 --format-css --format-js crates/scorarium-web/templates
 
 # For updating or auditing dependencies
 cargo install cargo-edit

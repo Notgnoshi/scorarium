@@ -9,10 +9,10 @@ license = "MIT"
 
 [workspace.dependencies]
 # Internal crates
-scorarium = { path = "crates/scorarium" }
 scorarium-archive = { path = "crates/scorarium-archive" }
 scorarium-client = { path = "crates/scorarium-client" }
 scorarium-tests = { path = "crates/scorarium-tests" }
+scorarium-web = { path = "crates/scorarium-web" }
 
 # External crates
 argon2 = "0.6.0"

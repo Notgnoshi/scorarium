@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use axum_test::{TestResponse, TestServer};
-use scorarium::AppState;
 use scorarium_archive::Archive;
 use scorarium_client::fake::FakeTransport;
 use scorarium_client::{Client, UserAgent};
+use scorarium_web::AppState;
 
 #[ctor::ctor(unsafe)]
 fn setup_test_logging() {
@@ -89,7 +89,7 @@ impl TestDb {
 /// The state is shared rather than handed over, so a test can keep looking things up in the
 /// archive while the server serves from it.
 pub fn browser(state: Arc<AppState>) -> TestServer {
-    let mut server = TestServer::new(scorarium::router(state));
+    let mut server = TestServer::new(scorarium_web::router(state));
     server.save_cookies();
     server
 }
