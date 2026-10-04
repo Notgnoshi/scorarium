@@ -146,7 +146,11 @@ pub fn to_contributors(authors: &[Author]) -> Vec<(ExternalPerson, String)> {
                 .filter_map(|(key, kind)| person_link(*kind, author.remote_ids.get(*key)?));
             let person = ExternalPerson {
                 name: author.name.clone(),
-                links: own.into_iter().chain(others).collect(),
+                links: own
+                    .into_iter()
+                    .chain(others)
+                    .chain(author.links.iter().cloned())
+                    .collect(),
             };
             (person, "author".to_string())
         })
@@ -225,6 +229,7 @@ mod tests {
                 ("wikidata".to_string(), "Q255".to_string()),
                 ("imdb".to_string(), "nm0002727".to_string()),
             ]),
+            links: vec!["http://en.wikipedia.org/wiki/Ludwig_van_Beethoven".to_string()],
         };
 
         assert_eq!(
@@ -236,6 +241,7 @@ mod tests {
                         "https://openlibrary.org/authors/OL127077A".to_string(),
                         "https://www.wikidata.org/wiki/Q255".to_string(),
                         "https://viaf.org/viaf/32182557".to_string(),
+                        "http://en.wikipedia.org/wiki/Ludwig_van_Beethoven".to_string(),
                     ],
                 },
                 "author".to_string(),

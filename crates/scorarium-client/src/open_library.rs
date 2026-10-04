@@ -136,6 +136,8 @@ pub struct Author {
     pub death_date: Option<String>,
     /// Identifiers in other authorities
     pub remote_ids: HashMap<String, String>,
+    /// URLs the record lists for the author
+    pub links: Vec<String>,
 }
 
 /// A work as the Open Library search API describes it
@@ -222,6 +224,14 @@ struct RawAuthor {
     death_date: Option<String>,
     #[serde(default)]
     remote_ids: HashMap<String, String>,
+    #[serde(default)]
+    links: Vec<RawLink>,
+}
+
+/// A URL an editor attached to a record.
+#[derive(Deserialize)]
+struct RawLink {
+    url: Option<String>,
 }
 
 /// How Open Library refers to another record.
@@ -343,6 +353,7 @@ impl From<RawAuthor> for Author {
             birth_date: raw.birth_date,
             death_date: raw.death_date,
             remote_ids: raw.remote_ids,
+            links: raw.links.into_iter().filter_map(|link| link.url).collect(),
         }
     }
 }
@@ -497,5 +508,20 @@ mod tests {
         assert_eq!(author.name, "Ludwig van Beethoven");
         assert_eq!(author.birth_date.as_deref(), Some("1770"));
         assert_eq!(author.remote_ids.get("wikidata").unwrap(), "Q255");
+    }
+
+    #[tokio::test]
+    async fn an_author_record_lists_links() {
+        let author = client()
+            .open_library()
+            .author("OL21093A", Priority::Background)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            author.links,
+            ["http://en.wikipedia.org/wiki/Ambrose_Bierce"]
+        );
     }
 }
