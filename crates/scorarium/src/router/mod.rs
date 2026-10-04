@@ -426,6 +426,12 @@ fn shown_contributor(
         PersonRef::Linked(id) => persons.iter().find(|person| person.id == id),
         _ => None,
     };
+    let namesakes = names
+        .iter()
+        .filter(|known| {
+            known.person != contributor.person && same_name(&known.name, &contributor.name)
+        })
+        .count();
     let (person, name, state) = match (contributor.person, linked) {
         (PersonRef::Linked(_), Some(found)) => {
             (contributor.person, found.name.clone(), PersonState::Linked)
@@ -433,30 +439,21 @@ fn shown_contributor(
         (PersonRef::New | PersonRef::Draft(_), _) => (
             contributor.person,
             contributor.name.clone(),
-            if names
-                .iter()
-                .any(|known| same_name(&known.name, &contributor.name))
-            {
+            if namesakes > 0 {
                 PersonState::Namesake
             } else {
                 PersonState::New
             },
         ),
-        _ => {
-            let namesakes = names
-                .iter()
-                .filter(|known| same_name(&known.name, &contributor.name))
-                .count();
-            (
-                PersonRef::Unresolved,
-                contributor.name.clone(),
-                if namesakes > 1 {
-                    PersonState::Ambiguous
-                } else {
-                    PersonState::Unresolved
-                },
-            )
-        }
+        _ => (
+            PersonRef::Unresolved,
+            contributor.name.clone(),
+            if namesakes > 1 {
+                PersonState::Ambiguous
+            } else {
+                PersonState::Unresolved
+            },
+        ),
     };
     ShownContributor {
         name,

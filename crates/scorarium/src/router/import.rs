@@ -223,7 +223,7 @@ pub async fn review(
             .flat_map(|work| &work.contributors),
     );
     let persons = linked_summaries(&library, credited.map(|c| c.person)).await?;
-    let names = library.person_names(false).await?;
+    let names = library.person_names(true).await?;
     let page = ReviewPage {
         base: base.page(
             title,
@@ -322,7 +322,7 @@ pub async fn work(
         input.title.clone()
     };
     let persons = linked_summaries(&library, input.contributors.iter().map(|c| c.person)).await?;
-    let names = library.person_names(false).await?;
+    let names = library.person_names(true).await?;
     let page = ImportWorkPage {
         base: base.page(
             title,
