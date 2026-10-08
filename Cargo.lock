@@ -2294,6 +2294,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "scorarium-archive",
+ "scorarium-cli",
  "scorarium-web",
  "tokio",
  "tracing",
@@ -2318,6 +2319,17 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "scorarium-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "eyre",
+ "scorarium-archive",
+ "shlex",
+ "tokio",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ toolchain, and we aspire to keep all dependencies up-to-date.
 
 * `scorarium-archive` provides the project's data model and data persistence
 * `scorarium-client` provides API clients for the external metadata sources
+* `scorarium-cli` provides the `scorarium shell` command shell
 * `scorarium-web` provides the web server
 * `scorarium` is the binary, a thin wrapper that dispatches to subcommands such as `serve`
 * `scorarium-tests` provides test fixtures for integration tests

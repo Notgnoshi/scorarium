@@ -1,0 +1,15 @@
+[package]
+name = "scorarium-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The scorarium command shell"
+
+[dependencies]
+clap.workspace = true
+eyre.workspace = true
+scorarium-archive.workspace = true
+shlex.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

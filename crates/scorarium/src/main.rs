@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use scorarium_archive::Archive;
+use scorarium_cli::ShellArgs;
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -42,6 +43,9 @@ struct Args {
 enum Command {
     /// Run the web server.
     Serve(ServeArgs),
+
+    /// Run developer shell to interact with the Scorarium database
+    Shell(ShellArgs),
 }
 
 /// Open the archive the global flags point at.
@@ -62,6 +66,7 @@ async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             EnvFilter::builder()
                 .with_default_directive(args.log_level.into())
@@ -73,6 +78,17 @@ async fn main() -> color_eyre::Result<()> {
         Command::Serve(serve) => {
             let archive = open_archive(&args.data_dir, args.demo, true).await?;
             scorarium_web::serve(serve, archive, args.demo, args.contact.as_deref()).await?;
+        }
+        Command::Shell(shell) => {
+            if !args.demo && !args.data_dir.is_dir() {
+                color_eyre::eyre::bail!(
+                    "data directory {} does not exist",
+                    args.data_dir.display()
+                );
+            }
+            // The shell shares the database with a running server, so it never migrates it.
+            let archive = open_archive(&args.data_dir, args.demo, false).await?;
+            scorarium_cli::shell(shell, archive).await?;
         }
     }
     Ok(())

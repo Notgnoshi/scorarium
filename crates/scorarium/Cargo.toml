@@ -9,6 +9,7 @@ description = "A physical and digital sheet music library"
 clap.workspace = true
 color-eyre.workspace = true
 scorarium-archive.workspace = true
+scorarium-cli.workspace = true
 scorarium-web.workspace = true
 tokio.workspace = true
 tracing.workspace = true
