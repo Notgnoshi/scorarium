@@ -70,6 +70,41 @@ fn visibility(private: bool) -> &'static str {
     if private { "private" } else { "public" }
 }
 
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub(crate) enum Visibility {
+    Public,
+    Private,
+}
+
+fn validate_name(raw: &str) -> eyre::Result<&str> {
+    let name = raw.trim();
+    if name.is_empty() {
+        eyre::bail!("library name is empty");
+    }
+    Ok(name)
+}
+
+pub(crate) async fn create(
+    archive: &Archive,
+    raw: &str,
+    visibility: Visibility,
+) -> eyre::Result<()> {
+    let private = matches!(visibility, Visibility::Private);
+    archive.create_library(validate_name(raw)?, private).await?;
+    Ok(())
+}
+
+/// Rename a library, keeping its visibility.
+pub(crate) async fn rename(archive: &Archive, reference: &str, raw: &str) -> eyre::Result<()> {
+    let mut library = resolve(archive, reference).await?;
+    let private = library.private;
+    library.update(validate_name(raw)?, private).await
+}
+
+pub(crate) async fn delete(archive: &Archive, reference: &str) -> eyre::Result<()> {
+    resolve(archive, reference).await?.delete().await
+}
+
 pub(crate) fn write_table<const N: usize>(
     out: &mut impl Write,
     rows: &[[String; N]],

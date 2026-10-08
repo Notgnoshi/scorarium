@@ -4,7 +4,7 @@ use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
 use scorarium_archive::Archive;
 
-use crate::library;
+use crate::library::{self, Visibility};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -41,6 +41,28 @@ enum LibraryCommand {
         #[arg(value_name = "library")]
         library: String,
     },
+    /// Create a library
+    Create {
+        #[arg(value_name = "name")]
+        name: String,
+        /// The library's visibility
+        #[arg(value_enum, value_name = "visibility", default_value_t = Visibility::Private)]
+        visibility: Visibility,
+    },
+    /// Rename a library
+    Rename {
+        /// The library name or id
+        #[arg(value_name = "library")]
+        library: String,
+        #[arg(value_name = "new-name")]
+        new_name: String,
+    },
+    /// Delete a library and everything in it
+    Delete {
+        /// The library name or id
+        #[arg(value_name = "library")]
+        library: String,
+    },
 }
 
 /// Whether the shell keeps reading after a command.
@@ -72,6 +94,13 @@ pub(crate) async fn execute(
         Command::Library { command } => match command {
             LibraryCommand::List => library::list(archive, out).await?,
             LibraryCommand::Show { library } => library::show(archive, &library, out).await?,
+            LibraryCommand::Create { name, visibility } => {
+                library::create(archive, &name, visibility).await?
+            }
+            LibraryCommand::Rename { library, new_name } => {
+                library::rename(archive, &library, &new_name).await?
+            }
+            LibraryCommand::Delete { library } => library::delete(archive, &library).await?,
         },
         Command::Quit => return Ok(Flow::Quit),
     }

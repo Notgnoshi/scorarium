@@ -73,3 +73,32 @@ async fn library_show_resolves_by_name_before_id() {
         )
     );
 }
+
+#[tokio::test]
+async fn library_create_rename_delete() {
+    let archive = demo().await;
+    let script = "library create Magazines public\n\
+                  library create 'Liner notes'\n\
+                  library list\n\
+                  library rename Magazines Periodicals\n\
+                  library delete 'Liner notes'\n\
+                  library list\n";
+    let (out, result) = run(&archive, script).await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "1\tBooks      \tprivate\n\
+         4\tLiner notes\tprivate\n\
+         3\tMagazines  \tpublic\n\
+         2\tSheet music\tpublic\n\
+         1\tBooks      \tprivate\n\
+         3\tPeriodicals\tpublic\n\
+         2\tSheet music\tpublic\n"
+    );
+
+    let (_, result) = run(&archive, "library create '  '\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: library name is empty"
+    );
+}
