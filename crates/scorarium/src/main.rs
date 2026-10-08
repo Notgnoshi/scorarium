@@ -88,7 +88,9 @@ async fn main() -> color_eyre::Result<()> {
             }
             // The shell shares the database with a running server, so it never migrates it.
             let archive = open_archive(&args.data_dir, args.demo, false).await?;
-            scorarium_cli::shell(shell, archive).await?;
+            // The demo library is throwaway, so its history is too
+            let history = (!args.demo).then(|| args.data_dir.join(".shell_history"));
+            scorarium_cli::shell(shell, archive, history).await?;
         }
     }
     Ok(())

@@ -8,8 +8,7 @@ description = "The scorarium command shell"
 [dependencies]
 clap.workspace = true
 eyre.workspace = true
+reedline.workspace = true
 scorarium-archive.workspace = true
 shlex.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true
