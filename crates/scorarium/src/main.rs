@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
+use scorarium_archive::Archive;
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -43,6 +44,19 @@ enum Command {
     Serve(ServeArgs),
 }
 
+/// Open the archive the global flags point at.
+async fn open_archive(data_dir: &Path, demo: bool, migrate: bool) -> color_eyre::Result<Archive> {
+    if demo {
+        tracing::info!("using an in-memory demo library");
+        let archive = Archive::in_memory().await?;
+        archive.populate_demo().await?;
+        Ok(archive)
+    } else {
+        tracing::info!(data_dir = %data_dir.display(), "opening library");
+        Ok(Archive::open(data_dir, migrate).await?)
+    }
+}
+
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -57,7 +71,9 @@ async fn main() -> color_eyre::Result<()> {
 
     match args.command {
         Command::Serve(serve) => {
-            scorarium_web::serve(serve, &args.data_dir, args.demo, args.contact.as_deref()).await
+            let archive = open_archive(&args.data_dir, args.demo, true).await?;
+            scorarium_web::serve(serve, archive, args.demo, args.contact.as_deref()).await?;
         }
     }
+    Ok(())
 }

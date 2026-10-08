@@ -2293,6 +2293,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "color-eyre",
+ "scorarium-archive",
  "scorarium-web",
  "tokio",
  "tracing",

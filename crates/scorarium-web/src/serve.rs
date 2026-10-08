@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 
 use scorarium_archive::Archive;
@@ -18,26 +17,14 @@ pub struct ServeArgs {
     pub insecure_cookies: bool,
 }
 
-/// Serve the library in `data_dir`, or an in-memory demo library, until interrupted.
+/// Serve the given archive until interrupted.
 pub async fn serve(
     args: ServeArgs,
-    data_dir: &Path,
+    archive: Archive,
     demo: bool,
     contact: Option<&str>,
 ) -> eyre::Result<()> {
-    let archive = if demo {
-        let archive = Archive::in_memory().await?;
-        archive.populate_demo().await?;
-        tracing::info!(bind = %args.bind, "starting scorarium with in-memory demo data");
-        archive
-    } else {
-        tracing::info!(
-            bind = %args.bind,
-            data_dir = %data_dir.display(),
-            "starting scorarium"
-        );
-        Archive::open(data_dir, true).await?
-    };
+    tracing::info!(bind = %args.bind, "starting scorarium");
 
     if contact.is_none() {
         tracing::warn!(
