@@ -163,6 +163,8 @@ async fn works_come_back_whole_and_scoped_to_their_library() {
     assert_eq!(found.title, gymnopedie.title);
     let books = archive.create_library("Books", false).await.unwrap();
     assert!(books.work(gymnopedie.id).await.unwrap().is_none());
+    assert_eq!(library.publication_count().await.unwrap(), 1);
+    assert_eq!(books.publication_count().await.unwrap(), 0);
 
     let containing = gymnopedie.publications().await.unwrap();
     assert_eq!(containing.len(), 1);
