@@ -75,6 +75,28 @@ impl std::error::Error for NotFound {}
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
+/// Check if the database matches the migrations expected by this binary
+async fn check_schema_version(pool: &SqlitePool) -> Result<()> {
+    use sqlx::migrate::Migrate;
+
+    let mut conn = pool.acquire().await?;
+    if let Some(version) = conn.dirty_version(&MIGRATOR.table_name).await? {
+        eyre::bail!("database migration {version} was only partially applied");
+    }
+    let applied = conn.list_applied_migrations(&MIGRATOR.table_name).await?;
+    let applied = applied.iter().map(|m| m.version).max().unwrap_or(0);
+    let expected = MIGRATOR.iter().map(|m| m.version).max().unwrap_or(0);
+    match applied.cmp(&expected) {
+        std::cmp::Ordering::Equal => Ok(()),
+        std::cmp::Ordering::Less => eyre::bail!(
+            "database is version {applied} but this binary expects version {expected} (migrate the database)"
+        ),
+        std::cmp::Ordering::Greater => eyre::bail!(
+            "database is version {applied} but this binary expects version {expected} (update the application)"
+        ),
+    }
+}
+
 #[derive(Debug)]
 pub struct Archive {
     shared: Arc<ArchiveInner>,
@@ -124,11 +146,13 @@ impl ArchiveInner {
 
 // construction
 impl Archive {
-    /// Open the archive in the given data directory, creating and migrating it as necessary.
-    pub async fn open(data_dir: &Path) -> Result<Archive> {
+    /// Open the archive in the given data directory, creating it as necessary.
+    pub async fn open(data_dir: &Path, migrate: bool) -> Result<Archive> {
         std::fs::create_dir_all(data_dir)?;
+        let path = data_dir.join("scorarium.db");
+        let migrate = migrate || !path.exists();
         let options = SqliteConnectOptions::new()
-            .filename(data_dir.join("scorarium.db"))
+            .filename(path)
             .create_if_missing(true)
             .foreign_keys(true)
             .journal_mode(SqliteJournalMode::Wal)
@@ -136,7 +160,11 @@ impl Archive {
             .log_statements(log::LevelFilter::Trace)
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
         let pool = SqlitePool::connect_with(options).await?;
-        MIGRATOR.run(&pool).await?;
+        if migrate {
+            MIGRATOR.run(&pool).await?;
+        } else {
+            check_schema_version(&pool).await?;
+        }
         let archive = Archive::new(pool);
         // Re-process all saved links so that if, in the future, a new external ID type is added, we
         // can recognize it in existing data.
@@ -308,5 +336,40 @@ impl Archive {
             .await?;
         password::update_password_hash(&mut audited, &hash).await?;
         audited.commit().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn open_refuses_to_migrate_an_outdated_database() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut versions: Vec<i64> = MIGRATOR.iter().map(|m| m.version).collect();
+        versions.sort_unstable();
+        let [.., previous, newest] = versions[..] else {
+            panic!("the test needs at least two migrations");
+        };
+
+        Archive::open(data_dir.path(), true).await.unwrap();
+        let archive = Archive::open(data_dir.path(), false).await.unwrap();
+
+        // Roll the recorded schema version back one migration, as if the binary were newer than
+        // whoever last migrated this database.
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = ?")
+            .bind(newest)
+            .execute(&archive.shared.pool)
+            .await
+            .unwrap();
+        drop(archive);
+
+        let error = Archive::open(data_dir.path(), false).await.unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("version {previous}"))
+                && message.contains(&format!("version {newest}")),
+            "{message}"
+        );
     }
 }

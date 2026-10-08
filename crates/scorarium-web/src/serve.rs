@@ -36,7 +36,7 @@ pub async fn serve(
             data_dir = %data_dir.display(),
             "starting scorarium"
         );
-        Archive::open(data_dir).await?
+        Archive::open(data_dir, true).await?
     };
 
     if contact.is_none() {
