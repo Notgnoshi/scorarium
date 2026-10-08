@@ -35,6 +35,12 @@ enum Command {
 enum LibraryCommand {
     /// List every library
     List,
+    /// Show the contents of a library
+    Show {
+        /// The library name or id
+        #[arg(value_name = "library")]
+        library: String,
+    },
 }
 
 /// Whether the shell keeps reading after a command.
@@ -65,6 +71,7 @@ pub(crate) async fn execute(
     match line.command {
         Command::Library { command } => match command {
             LibraryCommand::List => library::list(archive, out).await?,
+            LibraryCommand::Show { library } => library::show(archive, &library, out).await?,
         },
         Command::Quit => return Ok(Flow::Quit),
     }
