@@ -100,6 +100,18 @@ impl Library {
 
 // publications
 impl Library {
+    /// How many publications the library holds
+    pub async fn publication_count(&self) -> Result<i64> {
+        let mut conn = self.archive.acquire_read().await?;
+        let count = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM publication WHERE library_id = ?",
+            self.id
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(count)
+    }
+
     /// Every publication in the library, in arbitrary order
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         let mut tx = self.archive.begin_read().await?;
