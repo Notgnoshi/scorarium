@@ -2,11 +2,14 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use reedline::{
-    DefaultHinter, DefaultPrompt, DefaultPromptSegment, FileBackedHistory, Reedline, Signal,
+    ColumnarMenu, DefaultHinter, DefaultPrompt, DefaultPromptSegment, Emacs, FileBackedHistory,
+    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    default_emacs_keybindings,
 };
 use scorarium_archive::Archive;
 
 use crate::command::{self, Flow};
+use crate::completer::ShellCompleter;
 use crate::log::LogWriter;
 
 const HIST_SIZE: usize = 1000;
@@ -17,9 +20,23 @@ pub(crate) async fn run(
     history: Option<PathBuf>,
     log: &LogWriter,
 ) -> eyre::Result<()> {
+    let mut keybindings = default_emacs_keybindings();
+    keybindings.add_binding(
+        KeyModifiers::NONE,
+        KeyCode::Tab,
+        ReedlineEvent::UntilFound(vec![
+            ReedlineEvent::Menu("completion".into()),
+            ReedlineEvent::MenuNext,
+        ]),
+    );
     let mut editor = Reedline::create()
         .with_hinter(Box::new(DefaultHinter::default()))
-        .with_external_printer(log.take_printer());
+        .with_external_printer(log.take_printer())
+        .with_completer(Box::new(ShellCompleter::default()))
+        .with_menu(ReedlineMenu::EngineCompleter(Box::new(
+            ColumnarMenu::default().with_name("completion"),
+        )))
+        .with_edit_mode(Box::new(Emacs::new(keybindings)));
     if let Some(path) = history {
         let history = FileBackedHistory::with_file(HIST_SIZE, path)?;
         editor = editor.with_history(Box::new(history));

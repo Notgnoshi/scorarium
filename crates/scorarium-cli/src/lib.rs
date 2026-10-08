@@ -1,4 +1,5 @@
 mod command;
+mod completer;
 mod interactive;
 mod library;
 mod log;

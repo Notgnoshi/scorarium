@@ -13,7 +13,7 @@ use crate::library::{self, Visibility};
     subcommand_value_name = "command",
     help_template = "{about-section}{usage-heading} {usage}\n\n{all-args}"
 )]
-struct Line {
+pub(crate) struct Line {
     #[command(subcommand)]
     command: Command,
 }
