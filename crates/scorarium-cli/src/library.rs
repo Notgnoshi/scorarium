@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_archive::{Archive, Library};
+use scorarium_engine::archive::{Archive, Library};
 
 pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 3]> = archive

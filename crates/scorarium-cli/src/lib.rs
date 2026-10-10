@@ -8,7 +8,7 @@ mod script;
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
 
-use scorarium_archive::Archive;
+use scorarium_engine::archive::Archive;
 
 pub use crate::log::LogWriter;
 pub use crate::script::run_script;

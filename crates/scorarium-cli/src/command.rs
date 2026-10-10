@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
-use scorarium_archive::Archive;
+use scorarium_engine::archive::Archive;
 
 use crate::library::{self, Visibility};
 

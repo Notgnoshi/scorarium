@@ -9,6 +9,6 @@ description = "The scorarium command shell"
 clap.workspace = true
 eyre.workspace = true
 reedline.workspace = true
-scorarium-archive.workspace = true
+scorarium-engine.workspace = true
 shlex.workspace = true
 tokio.workspace = true

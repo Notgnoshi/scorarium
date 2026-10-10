@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use scorarium_archive::Archive;
 use scorarium_cli::{LogWriter, ShellArgs};
+use scorarium_engine::archive::Archive;
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
