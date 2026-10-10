@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Response};
-use scorarium_archive::{Contributor, Library};
+use scorarium_engine::archive::{Contributor, Library};
 
 use super::{AppError, BaseContext, Crumb, OrNotFound, Session};
 use crate::AppState;
@@ -108,7 +108,7 @@ pub async fn tagged(
         .collect();
     // A tag nothing carries is not a page, which is also what an invalid slug gets
     if entities.is_empty() {
-        return Err(AppError::from(scorarium_archive::NotFound));
+        return Err(AppError::from(scorarium_engine::archive::NotFound));
     }
     entities.sort_by(|a, b| a.title.cmp(&b.title));
     let page = TagPage {

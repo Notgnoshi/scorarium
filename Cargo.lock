@@ -2489,8 +2489,6 @@ dependencies = [
  "eyre",
  "getrandom 0.4.3",
  "rust-embed",
- "scorarium-archive",
- "scorarium-client",
  "scorarium-engine",
  "scorarium-tests",
  "serde",

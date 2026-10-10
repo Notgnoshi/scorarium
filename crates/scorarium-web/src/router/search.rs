@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Response};
-use scorarium_archive::{Entity, PersonSummary, WorkSummary};
+use scorarium_engine::archive::{Entity, PersonSummary, WorkSummary};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb};
