@@ -2455,6 +2455,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scorarium-engine"
+version = "0.1.0"
+dependencies = [
+ "scorarium-archive",
+ "scorarium-client",
+ "tokio",
+]
+
+[[package]]
 name = "scorarium-tests"
 version = "0.1.0"
 dependencies = [
@@ -2482,6 +2491,7 @@ dependencies = [
  "rust-embed",
  "scorarium-archive",
  "scorarium-client",
+ "scorarium-engine",
  "scorarium-tests",
  "serde",
  "serde_html_form",

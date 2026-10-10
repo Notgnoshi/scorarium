@@ -9,6 +9,7 @@ use scorarium_archive::{
     PendingImport, PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef,
     parse_holdings,
 };
+use scorarium_engine::enrich;
 use serde::Deserialize;
 
 use super::work::WorkPost;
@@ -16,8 +17,8 @@ use super::{
     AppError, BaseContext, Crumb, FormFields, OrNotFound, Session, ShownHolding, WorkFields, age,
     linked_summaries,
 };
+use crate::AppState;
 use crate::publication_post::{self, PublicationForm};
-use crate::{AppState, enrich};
 
 const UNTITLED: &str = "Untitled import";
 const UNTITLED_WORK: &str = "Untitled work";

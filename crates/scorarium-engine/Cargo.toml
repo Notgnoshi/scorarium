@@ -1,0 +1,11 @@
+[package]
+name = "scorarium-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The high level operations shared between the web server and CLI"
+
+[dependencies]
+scorarium-archive.workspace = true
+scorarium-client.workspace = true
+tokio = { workspace = true, features = ["time"] }

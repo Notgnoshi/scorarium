@@ -9,11 +9,11 @@ use scorarium_archive::{
     Suggestion, WorkRef,
 };
 use scorarium_client::open_library::WorkHit;
+use scorarium_engine::enrich::open_library;
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 use super::{AppError, OrNotFound, Session, search};
-use crate::enrich::open_library;
 use crate::{AppState, publication_post};
 
 /// What the input has typed so far, plus what the input's neighbours need the archive to know
