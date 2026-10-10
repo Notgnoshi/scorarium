@@ -184,7 +184,7 @@ pub async fn field(
 
 async fn external(state: &AppState, q: &str) -> Vec<FieldMatch> {
     let q = q.trim();
-    if !worth_searching(q) {
+    if !open_library::worth_searching(q) {
         return Vec::new();
     }
     let deadline = Instant::now() + EXTERNAL_DEADLINE;
@@ -193,18 +193,6 @@ async fn external(state: &AppState, q: &str) -> Vec<FieldMatch> {
         .into_iter()
         .map(candidate)
         .collect()
-}
-
-fn worth_searching(q: &str) -> bool {
-    if identifier::looks_like_identifier(q) {
-        return false;
-    }
-    let mut words = q.split_whitespace();
-    match (words.next(), words.next()) {
-        (Some(_), Some(_)) => true,
-        (Some(word), None) => word.chars().count() >= 6,
-        (None, _) => false,
-    }
 }
 
 fn candidate(hit: WorkHit) -> FieldMatch {
