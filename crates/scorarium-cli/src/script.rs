@@ -1,7 +1,7 @@
 use std::io::{BufRead, Write};
 
 use eyre::WrapErr;
-use scorarium_archive::Archive;
+use scorarium_engine::archive::Archive;
 
 use crate::command::{self, Flow};
 

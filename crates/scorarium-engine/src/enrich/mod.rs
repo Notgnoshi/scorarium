@@ -3,10 +3,30 @@ pub mod open_library;
 use std::time::Duration;
 
 use scorarium_archive::identifier::{self, Kind};
-use scorarium_archive::{IdentifierRawInput, PublicationRawInput};
+use scorarium_archive::{IdentifierRawInput, PendingImport, PublicationRawInput};
+use scorarium_client::open_library::OpenLibrary;
+use tokio::time::Instant;
 
-/// How long Start waits for a source before moving on with whatever arrived
-pub const BUDGET: Duration = Duration::from_secs(5);
+/// Seed a fresh import's draft from its ISBN, if it has one.
+pub async fn seed_from_isbn(
+    import: &PendingImport,
+    client: &OpenLibrary<'_>,
+) -> scorarium_archive::Result<()> {
+    let seeded = import.draft().await?;
+    let Some(isbn) = seeded.input.identifiers.iter().find(|i| i.kind == "isbn") else {
+        return Ok(());
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let (found, authors, lookup) = open_library::lookup_isbn(client, &isbn.value, deadline).await;
+    let mut draft = seeded.input.clone();
+    if let Some(found) = found {
+        merge(&mut draft, found);
+    }
+    import.save_draft(draft).await?;
+    import.add_external_contributors(authors).await?;
+    import.record_lookup(lookup);
+    Ok(())
+}
 
 /// Fill a draft with what a source found, without disturbing what is already there.
 pub fn merge(draft: &mut PublicationRawInput, found: PublicationRawInput) {

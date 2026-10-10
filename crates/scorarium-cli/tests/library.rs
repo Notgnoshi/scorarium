@@ -1,4 +1,4 @@
-use scorarium_archive::Archive;
+use scorarium_engine::archive::Archive;
 
 async fn demo() -> Archive {
     let archive = Archive::in_memory().await.unwrap();

@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use scorarium_archive::{
+use scorarium_engine::archive::{
     ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput, WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};

@@ -6,7 +6,7 @@ use reedline::{
     KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
     default_emacs_keybindings,
 };
-use scorarium_archive::Archive;
+use scorarium_engine::archive::Archive;
 
 use crate::command::{self, Flow};
 use crate::completer::ShellCompleter;

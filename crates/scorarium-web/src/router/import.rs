@@ -4,13 +4,13 @@ use askama::Template;
 use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_archive::{
+use scorarium_engine::archive::{
     Accepted, DraftPublication, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup,
     PendingImport, PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef,
     parse_holdings,
 };
+use scorarium_engine::enrich;
 use serde::Deserialize;
-use tokio::time::Instant;
 
 use super::work::WorkPost;
 use super::{
@@ -18,7 +18,6 @@ use super::{
     linked_summaries,
 };
 use crate::AppState;
-use crate::enrich::{self, open_library};
 use crate::publication_post::{self, PublicationForm};
 
 const UNTITLED: &str = "Untitled import";
@@ -162,23 +161,9 @@ pub async fn start(
     };
     let import = library.start_import(&form.query, &holdings).await?;
 
-    // An ISBN is looked up before the redirect, so the review page opens seeded. Saving even a
-    // failed lookup's identifier-only draft is what makes the page validate it on first view.
-    //
-    // This is a blocking request for now until I learn more.
-    let seeded = import.draft().await?;
-    if let Some(isbn) = seeded.input.identifiers.iter().find(|i| i.kind == "isbn") {
-        let deadline = Instant::now() + enrich::BUDGET;
-        let (found, authors, lookup) =
-            open_library::lookup_isbn(&state.sources.open_library(), &isbn.value, deadline).await;
-        let mut draft = seeded.input.clone();
-        if let Some(found) = found {
-            enrich::merge(&mut draft, found);
-        }
-        import.save_draft(draft).await?;
-        import.add_external_contributors(authors).await?;
-        import.record_lookup(lookup);
-    }
+    // An ISBN is looked up before the redirect, so the review page opens seeded. This is a
+    // blocking request for now until I learn more.
+    enrich::seed_from_isbn(&import, &state.sources.open_library()).await?;
 
     let next = if more {
         format!("/library/{id}/import?more=1")

@@ -2397,8 +2397,8 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "color-eyre",
- "scorarium-archive",
  "scorarium-cli",
+ "scorarium-engine",
  "scorarium-web",
  "tokio",
  "tracing",
@@ -2432,7 +2432,7 @@ dependencies = [
  "clap",
  "eyre",
  "reedline",
- "scorarium-archive",
+ "scorarium-engine",
  "shlex",
  "tokio",
 ]
@@ -2452,6 +2452,15 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "scorarium-engine"
+version = "0.1.0"
+dependencies = [
+ "scorarium-archive",
+ "scorarium-client",
+ "tokio",
 ]
 
 [[package]]
@@ -2480,8 +2489,7 @@ dependencies = [
  "eyre",
  "getrandom 0.4.3",
  "rust-embed",
- "scorarium-archive",
- "scorarium-client",
+ "scorarium-engine",
  "scorarium-tests",
  "serde",
  "serde_html_form",

@@ -14,8 +14,7 @@ cookie.workspace = true
 eyre.workspace = true
 getrandom.workspace = true
 rust-embed.workspace = true
-scorarium-archive.workspace = true
-scorarium-client.workspace = true
+scorarium-engine.workspace = true
 serde.workspace = true
 serde_html_form.workspace = true
 tokio = { workspace = true, features = ["time"] }

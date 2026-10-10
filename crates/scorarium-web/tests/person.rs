@@ -137,7 +137,8 @@ async fn person_edit_renames_and_links() {
     // A rejected submission comes back with its message, having changed nothing
     let response = server.post(&edit).form(&[("name", "  ")]).await;
     response.assert_status_ok();
-    response.assert_text_contains(scorarium_archive::ValidationError::NameRequired.to_string());
+    response
+        .assert_text_contains(scorarium_engine::archive::ValidationError::NameRequired.to_string());
     assert_eq!(
         library.person(kabalevsky.id).await.unwrap().unwrap().name,
         "Dmitri Kabalevsky"

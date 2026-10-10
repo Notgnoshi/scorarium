@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use scorarium_archive::{
+use scorarium_engine::archive::{
     ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef,
     PublicationRawInput, WorkRawInput,
 };
@@ -210,7 +210,8 @@ async fn the_links_fieldset_saves_what_it_accepts() {
         .collect();
     let response = server.post(&edit).form(&posted).await;
     response.assert_status_ok();
-    response.assert_text_contains(scorarium_archive::ValidationError::InvalidUrl.to_string());
+    response
+        .assert_text_contains(scorarium_engine::archive::ValidationError::InvalidUrl.to_string());
     response.assert_text_contains(format!("value=\"{imslp}\""));
     response.assert_text_contains("value=\"henle.de\"");
     assert!(

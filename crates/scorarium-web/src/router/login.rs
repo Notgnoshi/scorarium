@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use scorarium_archive::PasswordCheck;
+use scorarium_engine::archive::PasswordCheck;
 use serde::Deserialize;
 
 use super::{AppError, BackQuery, BaseContext, Crumb, SESSION_COOKIE, back_or};

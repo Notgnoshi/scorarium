@@ -5,7 +5,7 @@ use scorarium_client::Priority;
 use scorarium_client::open_library::{Author, Edition, OpenLibrary, WorkHit};
 use tokio::time::Instant;
 
-/// Everything Open Library says about an ISBN, within the deadline.
+/// Interactively look up an ISBN from Open Library
 pub async fn lookup_isbn(
     client: &OpenLibrary<'_>,
     isbn: &str,
@@ -72,7 +72,7 @@ pub async fn lookup_isbn(
     }
 }
 
-/// Candidates for a title as typed, within the deadline.
+/// Interactively search for a title from Open Library
 pub async fn search_titles(
     client: &OpenLibrary<'_>,
     title: &str,
@@ -83,6 +83,19 @@ pub async fn search_titles(
     match tokio::time::timeout_at(deadline, search).await {
         Ok(Ok(hits)) => hits,
         Ok(Err(_)) | Err(_) => Vec::new(),
+    }
+}
+
+/// Whether a search query is worth making an external title search
+pub fn worth_searching(q: &str) -> bool {
+    if identifier::looks_like_identifier(q) {
+        return false;
+    }
+    let mut words = q.split_whitespace();
+    match (words.next(), words.next()) {
+        (Some(_), Some(_)) => true,
+        (Some(word), None) => word.chars().count() >= 6,
+        (None, _) => false,
     }
 }
 
@@ -160,7 +173,6 @@ pub fn to_contributors(authors: &[Author]) -> Vec<(ExternalPerson, String)> {
 /// The archive's URL for a person's record at a site
 fn person_link(kind: external_id::Kind, id: &str) -> Option<String> {
     let url = external_id::build(EntityKind::Person, kind, id)?;
-    // The builder does not check the identifier, and a malformed one names no record
     external_id::recognize(EntityKind::Person, &url)?;
     Some(url.into())
 }
