@@ -10,7 +10,7 @@ use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
-use crate::work::{self, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
+use crate::work::{self, Work, WorkErrors, WorkInput, WorkMerges, WorkPost, WorkRawInput};
 use crate::{
     Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
 };
@@ -362,7 +362,8 @@ impl Publication {
     /// Apply an edited input, then collect whatever the edit left credited nowhere.
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
-    pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<()> {
+    pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<WorkMerges> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(
@@ -391,8 +392,14 @@ impl Publication {
         person::create_new_persons(&mut audited, self.library_id, input.contributors_mut()).await?;
         let contents_before = contained_work_ids(&mut audited, self.id).await?;
         write_publication_children(&mut audited, self.library_id, self.id, &input).await?;
-        work::write_publication_works(&mut audited, self.library_id, self.id, &input.contents)
-            .await?;
+        work::write_publication_works(
+            &mut audited,
+            self.library_id,
+            self.id,
+            &input.contents,
+            &mut merges,
+        )
+        .await?;
         let contents_after = contained_work_ids(&mut audited, self.id).await?;
         library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_publications(
@@ -415,7 +422,7 @@ impl Publication {
         audited.set_fields(&fields).await?;
         audited.commit().await?;
         *self = reloaded;
-        Ok(())
+        Ok(merges)
     }
 
     /// Delete the publication, then cleanup any orphans the deletion resulted in.
@@ -672,6 +679,7 @@ pub(crate) async fn create_publication(
     audited: &mut Audited<'_>,
     library_id: i64,
     input: &PublicationInput,
+    merges: &mut WorkMerges,
 ) -> crate::Result<(Publication, Vec<i64>)> {
     let mut input = input.clone();
     person::create_new_persons(audited, library_id, input.contributors_mut()).await?;
@@ -691,7 +699,7 @@ pub(crate) async fn create_publication(
     write_publication_children(audited, library_id, id, &input).await?;
     let mut work_ids = Vec::with_capacity(input.contents.len());
     for content in &input.contents {
-        work_ids.push(work::link_or_create_work(audited, library_id, id, content).await?);
+        work_ids.push(work::link_or_create_work(audited, library_id, id, content, merges).await?);
     }
     let publication = load_publications(shared, audited, library_id, Some(id), None, None, None)
         .await?

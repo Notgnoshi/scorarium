@@ -46,7 +46,7 @@ async fn search_sees_what_the_viewer_sees() {
         }],
         ..PublicationRawInput::default()
     };
-    music
+    let _ = music
         .create_publication(&nocturnes.parse().unwrap())
         .await
         .unwrap();
@@ -57,7 +57,7 @@ async fn search_sees_what_the_viewer_sees() {
         holdings: vec![holding(HoldingKind::Physical, "")],
         ..PublicationRawInput::default()
     };
-    books
+    let _ = books
         .create_publication(&hymnal.parse().unwrap())
         .await
         .unwrap();

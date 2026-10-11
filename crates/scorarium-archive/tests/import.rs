@@ -153,7 +153,8 @@ async fn accepting_a_picked_stored_work_links_it_whole() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let raindrop = preludes.works().await.unwrap().remove(0).id;
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
     let import = library.start_import("", &copies).await.unwrap();
@@ -263,7 +264,7 @@ async fn discarding_removes_the_import() {
 
 #[tokio::test]
 async fn merging_works_moves_drafts_to_the_survivor() {
-    let (_archive, library) = library().await;
+    let (archive, library) = library().await;
     let publication = library
         .create_publication(
             &PublicationRawInput {
@@ -285,7 +286,8 @@ async fn merging_works_moves_drafts_to_the_survivor() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let works = publication.works().await.unwrap();
     let (survivor, absorbed) = (works[0].id, works[1].id);
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
@@ -294,7 +296,8 @@ async fn merging_works_moves_drafts_to_the_survivor() {
     input.contents = vec![works[1].raw_input()];
     import.save_draft(input).await.unwrap();
 
-    library.merge_works(absorbed, survivor).await.unwrap();
+    let (_, merges) = library.merge_works(absorbed, survivor).await.unwrap();
+    archive.relink_draft_works(merges);
 
     assert_eq!(
         work_ids(&import.draft().await.unwrap()),
@@ -383,7 +386,8 @@ async fn stored_person(library: &Library, name: &str, links: &[&str]) -> i64 {
     let publication = library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let id = publication.contributors[0].person_id;
     let mut person = library.person(id).await.unwrap().unwrap();
     let edited = PersonRawInput {

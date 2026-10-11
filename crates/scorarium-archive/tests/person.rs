@@ -43,7 +43,7 @@ fn publication(
 async fn library() -> (Archive, scorarium_archive::Library) {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Sheet music", false).await.unwrap();
-    library
+    let _ = library
         .create_publication(
             &publication(
                 "Three gymnopedies",
@@ -69,7 +69,7 @@ async fn library() -> (Archive, scorarium_archive::Library) {
         .remove(0);
     let mut credit = contributor("Erik Satie", "composer");
     credit.person = PersonRef::Linked(satie.id);
-    library
+    let _ = library
         .create_publication(
             &publication(
                 "Gnossiennes",
@@ -201,7 +201,7 @@ async fn an_edit_renames_and_relinks() {
 async fn a_role_spans_publications_and_works() {
     let (archive, library) = library().await;
     let other = archive.create_library("Books", false).await.unwrap();
-    other
+    let _ = other
         .create_publication(
             &publication(
                 "Practical Vim",
@@ -271,7 +271,8 @@ async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     assert_eq!(stored.contributors[0].person_id, bob.id);
     // The credit shows the stored name: a contributor never renames anyone
     assert_eq!(stored.contributors[0].name, "Erik Satie");
@@ -315,7 +316,8 @@ async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
     // One person for the publication and both works, deliberately a namesake of the fixture's
     let created = stored.contributors[0].person_id;

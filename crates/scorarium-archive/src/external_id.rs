@@ -971,7 +971,7 @@ mod tests {
         }
         .parse()
         .unwrap();
-        let publication = library.create_publication(&input).await.unwrap();
+        let publication = library.create_publication(&input).await.unwrap().0;
         let works = publication.works().await.unwrap();
         let (repaired, aliases) = (works[0].id, works[1].id);
 

@@ -87,7 +87,8 @@ async fn settings_lists_unrecognized_catalog_numbers() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let sonata = publication
         .works()
         .await
@@ -176,12 +177,13 @@ async fn the_audit_page_shows_an_edit_and_its_consequences() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     // Emptying the publication orphans the work, and the work's only composer with it
     let works = publication.works().await.unwrap();
     let mut emptied = publication.raw_input(&works);
     emptied.contents.clear();
-    publication.update(&emptied.parse().unwrap()).await.unwrap();
+    let _ = publication.update(&emptied.parse().unwrap()).await.unwrap();
 
     let server = browser(state.clone());
     server.post("/login").form(&[("password", "hunter2")]).await;

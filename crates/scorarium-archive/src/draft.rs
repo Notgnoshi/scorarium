@@ -8,7 +8,7 @@ use crate::person::{ExternalPerson, PersonRawInput};
 use crate::publication::PublicationRawInput;
 use crate::suggest::DraftPersonSummary;
 use crate::summary::PersonSummary;
-use crate::work::WorkRawInput;
+use crate::work::{WorkMerge, WorkRawInput};
 
 #[derive(Debug, Default)]
 struct SavedDraft {
@@ -166,17 +166,15 @@ impl DraftStore {
     }
 
     /// Move drafts' references from each absorbed work to its survivor
-    ///
-    /// Returns `(library_id, from, into)` in the order the merges happened.
-    pub(crate) fn follow_merges(&mut self, merges: &[(i64, i64, i64)]) {
-        for &(library_id, from, into) in merges {
-            let Some(library) = self.libraries.get_mut(&library_id) else {
+    pub(crate) fn relink_works(&mut self, merges: &[WorkMerge]) {
+        for merge in merges {
+            let Some(library) = self.libraries.get_mut(&merge.library_id) else {
                 continue;
             };
             for saved in library.publications.values_mut() {
                 for reference in &mut saved.contents {
-                    if *reference == WorkRef::Stored(from) {
-                        *reference = WorkRef::Stored(into);
+                    if *reference == WorkRef::Stored(merge.from) {
+                        *reference = WorkRef::Stored(merge.into);
                     }
                 }
                 saved.dedupe();

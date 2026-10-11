@@ -52,7 +52,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
         }],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&input.parse().unwrap())
         .await
         .unwrap();
@@ -144,7 +144,7 @@ async fn entities_are_one_suggestion_each() {
         ],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&input.parse().unwrap())
         .await
         .unwrap();
@@ -154,7 +154,7 @@ async fn entities_are_one_suggestion_each() {
         contributors: vec![contributor("Ambrose Bierce", "author")],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&book.parse().unwrap())
         .await
         .unwrap();
@@ -168,7 +168,7 @@ async fn entities_are_one_suggestion_each() {
         }],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&essays.parse().unwrap())
         .await
         .unwrap();
@@ -257,7 +257,7 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
         ],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&chopin.parse().unwrap())
         .await
         .unwrap();
@@ -285,6 +285,7 @@ async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
         .create_publication(&rachmaninoff.parse().unwrap())
         .await
         .unwrap()
+        .0
         .works()
         .await
         .unwrap()[0]

@@ -39,6 +39,7 @@ async fn publish(library: &Library, title: &str, composer: &str, works: &[(&str,
         .create_publication(&input.parse().unwrap())
         .await
         .unwrap()
+        .0
         .works()
         .await
         .unwrap()[0]

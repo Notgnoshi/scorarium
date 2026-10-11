@@ -133,7 +133,8 @@ async fn links_open_in_a_new_tab_under_their_site() {
     let publication = library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
     let server = browser(state);
     let response = server
@@ -186,7 +187,8 @@ async fn the_links_fieldset_saves_what_it_accepts() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let view = format!("/library/{}/publication/{}", library.id, stored.id);
     let edit = format!("{view}/edit");
     let imslp = "https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)";
@@ -295,7 +297,8 @@ async fn publication_edit_flow() {
     let stored = library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let publication = stored.id;
     let shelf = stored.holdings[0].id;
     let solo = stored.contributors[0].person_id;
@@ -579,7 +582,8 @@ async fn a_picked_work_is_linked_and_edited_in_place() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let raindrop = preludes.works().await.unwrap().remove(0).id;
     let anthology = library
         .create_publication(
@@ -592,7 +596,8 @@ async fn a_picked_work_is_linked_and_edited_in_place() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let shelf = anthology.holdings[0].id.to_string();
     let edit = format!("/library/{}/publication/{}/edit", library.id, anthology.id);
     let server = browser(state);

@@ -12,7 +12,7 @@ use crate::publication::{
     self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 use crate::summary::{self, PersonSummary};
-use crate::work::{self, Work};
+use crate::work::{self, Work, WorkMerges};
 use crate::{
     Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, draft, person,
 };
@@ -261,9 +261,15 @@ impl PendingImport {
                 credit.person = PersonRef::Linked(*stored);
             }
         }
-        let (publication, work_ids) =
-            publication::create_publication(&self.archive, &mut audited, self.library_id, &input)
-                .await?;
+        let mut merges = WorkMerges::default();
+        let (publication, work_ids) = publication::create_publication(
+            &self.archive,
+            &mut audited,
+            self.library_id,
+            &input,
+            &mut merges,
+        )
+        .await?;
         for (id, links) in additions {
             let links = crate::input::valid_links(EntityKind::Person, &links);
             if person::add_missing_links(&mut audited, id, &links).await? == 0 {
@@ -304,9 +310,11 @@ impl PendingImport {
                 _ => None,
             })
             .collect();
-        self.archive
-            .drafts()
-            .accept(self.library_id, self.id, &works, &persons);
+        {
+            let mut drafts = self.archive.drafts();
+            drafts.accept(self.library_id, self.id, &works, &persons);
+            drafts.relink_works(merges.as_slice());
+        }
         Ok(publication)
     }
 

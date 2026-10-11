@@ -73,7 +73,8 @@ async fn a_created_publication_reads_back_whole() {
     let created = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
     assert_eq!(created.title, "Three gymnopedies");
     assert_eq!(created.publisher.as_deref(), Some("Dover"));
@@ -142,7 +143,8 @@ async fn works_come_back_whole_and_scoped_to_their_library() {
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
     let contents = publication.works().await.unwrap();
 
@@ -180,7 +182,8 @@ async fn raw_input_shows_what_was_stored() {
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let contents = publication.works().await.unwrap();
 
     let mut expected = gymnopedies();
@@ -214,7 +217,7 @@ async fn raw_input_shows_what_was_stored() {
 async fn suggestions_span_publications_and_their_contents() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Sheet music", false).await.unwrap();
-    library
+    let _ = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
         .unwrap();
@@ -240,7 +243,7 @@ async fn suggestions_span_publications_and_their_contents() {
         contributors: vec![credit],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&gnossiennes.parse().unwrap())
         .await
         .unwrap();
@@ -265,7 +268,8 @@ async fn update_reconciles_every_child() {
     let mut publication = library
         .create_publication(&start.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     // Bob is credited elsewhere too, so dropping his credit here must not collect him
     let mut elsewhere = contributor("Bob", "arranger");
     elsewhere.person = PersonRef::Linked(
@@ -282,7 +286,7 @@ async fn update_reconciles_every_child() {
         contributors: vec![elsewhere],
         ..PublicationRawInput::default()
     };
-    library
+    let _ = library
         .create_publication(&gnossiennes.parse().unwrap())
         .await
         .unwrap();
@@ -317,7 +321,7 @@ async fn update_reconciles_every_child() {
         ..WorkRawInput::default()
     });
 
-    publication.update(&edit.parse().unwrap()).await.unwrap();
+    let _ = publication.update(&edit.parse().unwrap()).await.unwrap();
 
     assert_eq!(publication.title, "Trois gymnopedies");
     // The kept copy keeps its identity and takes its new location; the file is gone
@@ -370,7 +374,8 @@ async fn updating_a_deleted_publication_is_not_found() {
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let mut stale = library.publication(publication.id).await.unwrap().unwrap();
     let input = gymnopedies().parse().unwrap();
 
@@ -430,7 +435,8 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
     let publication = library
         .create_publication(&gymnopedies().parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let mut work = publication.works().await.unwrap().pop().unwrap();
     let satie = work.contributors[0].person_id;
 
@@ -441,7 +447,7 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
     let mut composer = contributor("Erik Satie", "composer");
     composer.person = PersonRef::Linked(satie);
     edit.contributors = vec![contributor("Ann", "arranger"), composer];
-    work.update(&edit.parse().unwrap()).await.unwrap();
+    let _ = work.update(&edit.parse().unwrap()).await.unwrap();
 
     assert_eq!(work.title, "Gymnopedie No. 1 (revised)");
     assert_eq!(work.time_signature.as_deref(), Some("3/4"));

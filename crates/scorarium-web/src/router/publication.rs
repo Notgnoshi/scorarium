@@ -127,7 +127,8 @@ pub async fn save(
         .await?;
     match input.parse() {
         Ok(parsed) => {
-            publication.update(&parsed).await?;
+            let merges = publication.update(&parsed).await?;
+            state.archive.relink_draft_works(merges);
             Ok(Redirect::to(&format!("/library/{library_id}/publication/{id}")).into_response())
         }
         Err(errors) => render_edit(base, library, publication, input, *errors).await,

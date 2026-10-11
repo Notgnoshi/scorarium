@@ -53,7 +53,9 @@ pub use crate::suggest::{
 };
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
 pub use crate::tag::TagCount;
-pub use crate::work::{CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkPost, WorkRawInput};
+pub use crate::work::{
+    CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost, WorkRawInput,
+};
 
 pub type Result<T> = eyre::Result<T>;
 
@@ -130,7 +132,7 @@ impl ArchiveInner {
         let mut tx = self.pool.begin().await?;
         let group = audit::insert(&mut tx, None, source, &event).await?;
         audit::trim(&mut tx).await?;
-        Ok(audit::Audited::new(tx, group, &self.drafts))
+        Ok(audit::Audited::new(tx, group))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries
@@ -211,6 +213,13 @@ impl Archive {
 }
 
 impl Archive {
+    /// Point drafts that refer to a merged work at its survivor.
+    pub fn relink_draft_works(&self, merges: WorkMerges) {
+        if !merges.as_slice().is_empty() {
+            self.shared.drafts().relink_works(merges.as_slice());
+        }
+    }
+
     /// Get the database's audit log, most recent entries first.
     pub async fn audit_log(&self) -> Result<Vec<AuditEntry>> {
         let mut conn = self.shared.acquire_read().await?;

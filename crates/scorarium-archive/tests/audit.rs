@@ -76,8 +76,8 @@ async fn every_mutation_records_a_headline() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test", false).await.unwrap();
     let input = goldberg();
-    let mut publication = library.create_publication(&input).await.unwrap();
-    publication.update(&input).await.unwrap();
+    let mut publication = library.create_publication(&input).await.unwrap().0;
+    let _ = publication.update(&input).await.unwrap();
     publication.delete().await.unwrap();
     archive.claim_password("hunter2").await.unwrap();
     archive.change_password("hunter3").await.unwrap();
@@ -108,14 +108,14 @@ async fn every_mutation_records_a_headline() {
 async fn an_update_names_only_the_fields_that_changed() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test", false).await.unwrap();
-    let mut publication = library.create_publication(&goldberg()).await.unwrap();
-    library.create_publication(&goldberg()).await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap().0;
+    let _ = library.create_publication(&goldberg()).await.unwrap();
 
     // Edited the way the edit page does it, so the contained work keeps its id
     let works = publication.works().await.unwrap();
     let mut retitled = publication.raw_input(&works);
     retitled.title = "Aria mit verschiedenen Veraenderungen".into();
-    publication
+    let _ = publication
         .update(&retitled.parse().unwrap())
         .await
         .unwrap();
@@ -130,12 +130,12 @@ async fn an_update_names_only_the_fields_that_changed() {
 async fn an_update_that_changes_nothing_names_no_fields() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test", false).await.unwrap();
-    let mut publication = library.create_publication(&goldberg()).await.unwrap();
-    library.create_publication(&goldberg()).await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap().0;
+    let _ = library.create_publication(&goldberg()).await.unwrap();
 
     let works = publication.works().await.unwrap();
     let unchanged = publication.raw_input(&works).parse().unwrap();
-    publication.update(&unchanged).await.unwrap();
+    let _ = publication.update(&unchanged).await.unwrap();
 
     let latest = archive.audit_log().await.unwrap().remove(0);
     assert_eq!(latest.event.action, Action::Updated);
@@ -149,12 +149,12 @@ async fn an_update_that_changes_nothing_names_no_fields() {
 async fn an_edit_records_the_deletions_it_caused() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test", false).await.unwrap();
-    let mut publication = library.create_publication(&goldberg()).await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap().0;
 
     let works = publication.works().await.unwrap();
     let mut emptied = publication.raw_input(&works);
     emptied.contents.clear();
-    publication.update(&emptied.parse().unwrap()).await.unwrap();
+    let _ = publication.update(&emptied.parse().unwrap()).await.unwrap();
 
     let entries = archive.audit_log().await.unwrap();
     let headline = &entries[0];

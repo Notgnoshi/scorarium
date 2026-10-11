@@ -11,7 +11,7 @@ use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
-use crate::work::{self, Work};
+use crate::work::{self, Work, WorkMerges};
 use crate::{
     Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
 };
@@ -141,16 +141,26 @@ impl Library {
     }
 
     /// Create a publication, with its identifiers, contributors, holdings and contents
-    pub async fn create_publication(&self, input: &PublicationInput) -> Result<Publication> {
+    pub async fn create_publication(
+        &self,
+        input: &PublicationInput,
+    ) -> Result<(Publication, WorkMerges)> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::Created))
             .await?;
-        let (publication, _) =
-            publication::create_publication(&self.archive, &mut audited, self.id, input).await?;
+        let (publication, _) = publication::create_publication(
+            &self.archive,
+            &mut audited,
+            self.id,
+            input,
+            &mut merges,
+        )
+        .await?;
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
-        Ok(publication)
+        Ok((publication, merges))
     }
 }
 
@@ -208,7 +218,8 @@ impl Library {
     /// Fold one work into another and delete it; the survivor is returned reloaded.
     ///
     /// Returns a [NotFound] error when either work is not in this library.
-    pub async fn merge_works(&self, from: i64, into: i64) -> Result<Work> {
+    pub async fn merge_works(&self, from: i64, into: i64) -> Result<(Work, WorkMerges)> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::Merged))
@@ -225,7 +236,7 @@ impl Library {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
-        work::merge_works(&mut audited, self.id, from, into).await?;
+        work::merge_works(&mut audited, self.id, from, into, &mut merges).await?;
         collect_orphans(&mut audited, self.id).await?;
         let survivor =
             work::load_works(&self.archive, &mut audited, self.id, Some(into), None, None)
@@ -234,7 +245,7 @@ impl Library {
                 .expect("the survivor was just verified on this transaction");
         audited.set_entity(&survivor.entity_ref()).await?;
         audited.commit().await?;
-        Ok(survivor)
+        Ok((survivor, merges))
     }
 }
 
