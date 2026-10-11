@@ -37,16 +37,28 @@ async fn a_started_import_shows_up_everywhere_it_should() {
     assert_eq!(import.holdings.len(), 1);
     assert_eq!(import.holdings[0].location.as_deref(), Some("Piano bench"));
 
-    let listed = library.pending_imports().await.unwrap();
+    let listed = library.pending_imports();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, import.id);
     assert_eq!(archive.pending_imports().await.unwrap().len(), 1);
     assert_eq!(archive.pending_import_count().await.unwrap(), 1);
-    assert!(library.pending_import(import.id).await.unwrap().is_some());
+    assert!(library.pending_import(import.id).is_some());
 
     // An import belongs to the library it was started in
     let books = archive.create_library("Books", false).await.unwrap();
-    assert!(books.pending_import(import.id).await.unwrap().is_none());
+    assert!(books.pending_import(import.id).is_none());
+
+    // The queue is oldest first across libraries, not grouped by library
+    let second = books.start_import("", &copies).await.unwrap();
+    let third = library.start_import("", &copies).await.unwrap();
+    let queue: Vec<i64> = archive
+        .pending_imports()
+        .await
+        .unwrap()
+        .iter()
+        .map(|import| import.id)
+        .collect();
+    assert_eq!(queue, [import.id, second.id, third.id]);
 }
 
 /// The review page opens on something rather than nothing: the copies as entered, and the query
@@ -108,7 +120,7 @@ async fn saving_names_every_work_the_page_did_not() {
 
     assert_eq!(
         work_ids(&saved),
-        [Some(WorkRef::Draft(1)), Some(WorkRef::Draft(2))]
+        [Some(WorkRef::Draft(3)), Some(WorkRef::Draft(4))]
     );
     assert!(saved.saved);
     // What comes back next is what was stored, not a fresh seed
@@ -117,7 +129,7 @@ async fn saving_names_every_work_the_page_did_not() {
     assert_eq!(reopened.input.title, "Three gymnopedies");
     assert_eq!(
         work_ids(&reopened),
-        [Some(WorkRef::Draft(1)), Some(WorkRef::Draft(2))]
+        [Some(WorkRef::Draft(3)), Some(WorkRef::Draft(4))]
     );
 
     // Dropping a work does not hand its id to the next one added
@@ -130,7 +142,7 @@ async fn saving_names_every_work_the_page_did_not() {
     let saved = import.save_draft(input).await.unwrap();
     assert_eq!(
         work_ids(&saved),
-        [Some(WorkRef::Draft(2)), Some(WorkRef::Draft(3))]
+        [Some(WorkRef::Draft(4)), Some(WorkRef::Draft(5))]
     );
 }
 
@@ -153,7 +165,8 @@ async fn accepting_a_picked_stored_work_links_it_whole() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let raindrop = preludes.works().await.unwrap().remove(0).id;
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
     let import = library.start_import("", &copies).await.unwrap();
@@ -204,7 +217,7 @@ async fn accepting_creates_the_publication_once() {
         ..PublicationPost::default()
     };
     // A second tab, holding the same import
-    let stale = library.pending_import(import.id).await.unwrap().unwrap();
+    let stale = library.pending_import(import.id).unwrap();
 
     // A draft that is not ready is kept, with the edits, for the review page to explain
     let untitled = PublicationPost {
@@ -213,8 +226,6 @@ async fn accepting_creates_the_publication_once() {
     };
     let refused = library
         .pending_import(import.id)
-        .await
-        .unwrap()
         .unwrap()
         .accept(untitled)
         .await
@@ -238,7 +249,7 @@ async fn accepting_creates_the_publication_once() {
     let works = publication.works().await.unwrap();
     assert_eq!(works.len(), 1);
     assert_ne!(works[0].id, 7);
-    assert!(library.pending_imports().await.unwrap().is_empty());
+    assert!(library.pending_imports().is_empty());
     assert_eq!(archive.pending_import_count().await.unwrap(), 0);
 
     // The second tab must not create a second publication
@@ -249,21 +260,35 @@ async fn accepting_creates_the_publication_once() {
 
 #[tokio::test]
 async fn discarding_removes_the_import() {
-    let (_archive, library) = library().await;
+    let (archive, library) = library().await;
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
     let import = library.start_import("", &copies).await.unwrap();
-    let stale = library.pending_import(import.id).await.unwrap().unwrap();
+    let stale = library.pending_import(import.id).unwrap();
+    let staler = library.pending_import(import.id).unwrap();
+    let seed = import.draft().await.unwrap().input;
 
-    import.discard().await.unwrap();
+    import.discard().unwrap();
 
-    assert!(library.pending_imports().await.unwrap().is_empty());
-    let err = stale.discard().await.unwrap_err();
+    assert!(library.pending_imports().is_empty());
+    let err = stale.discard().unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());
+    let err = staler.save_draft(seed).await.unwrap_err();
+    assert!(err.downcast_ref::<NotFound>().is_some());
+
+    // Deleting a library takes its imports with it, and a handle to it cannot start another
+    let gone = archive.create_library("Books", false).await.unwrap();
+    gone.start_import("", &copies).await.unwrap();
+    let handle = gone.clone();
+    gone.delete().await.unwrap();
+    assert!(archive.pending_imports().await.unwrap().is_empty());
+    let err = handle.start_import("", &copies).await.unwrap_err();
+    assert!(err.downcast_ref::<NotFound>().is_some());
+    assert_eq!(archive.pending_import_count().await.unwrap(), 0);
 }
 
 #[tokio::test]
 async fn merging_works_moves_drafts_to_the_survivor() {
-    let (_archive, library) = library().await;
+    let (archive, library) = library().await;
     let publication = library
         .create_publication(
             &PublicationRawInput {
@@ -285,7 +310,8 @@ async fn merging_works_moves_drafts_to_the_survivor() {
             .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let works = publication.works().await.unwrap();
     let (survivor, absorbed) = (works[0].id, works[1].id);
     let copies = parse_holdings(&holdings(HoldingKind::Physical, "")).unwrap();
@@ -294,7 +320,8 @@ async fn merging_works_moves_drafts_to_the_survivor() {
     input.contents = vec![works[1].raw_input()];
     import.save_draft(input).await.unwrap();
 
-    library.merge_works(absorbed, survivor).await.unwrap();
+    let (_, merges) = library.merge_works(absorbed, survivor).await.unwrap();
+    archive.relink_draft_works(merges);
 
     assert_eq!(
         work_ids(&import.draft().await.unwrap()),
@@ -383,7 +410,8 @@ async fn stored_person(library: &Library, name: &str, links: &[&str]) -> i64 {
     let publication = library
         .create_publication(&input.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let id = publication.contributors[0].person_id;
     let mut person = library.person(id).await.unwrap().unwrap();
     let edited = PersonRawInput {

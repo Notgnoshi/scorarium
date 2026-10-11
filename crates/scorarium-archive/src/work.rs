@@ -363,7 +363,8 @@ impl Work {
     /// merge, self is the survivor, so its id differs from the work that was edited.
     ///
     /// Returns a [NotFound] error if the work has since been collected.
-    pub async fn update(&mut self, input: &WorkInput) -> crate::Result<()> {
+    pub async fn update(&mut self, input: &WorkInput) -> crate::Result<WorkMerges> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(
@@ -411,7 +412,8 @@ impl Work {
         .pop()
         .expect("the work was just updated on this transaction");
         audited.set_fields(&changed_fields(self, &edited)).await?;
-        let survivor = absorb_into_duplicate(&mut audited, self.library_id, self.id).await?;
+        let survivor =
+            absorb_into_duplicate(&mut audited, self.library_id, self.id, &mut merges).await?;
         library::collect_orphans(&mut audited, self.library_id).await?;
         let reloaded = load_works(
             &self.archive,
@@ -426,7 +428,7 @@ impl Work {
         .expect("the work was just updated on this transaction");
         audited.commit().await?;
         *self = reloaded;
-        Ok(())
+        Ok(merges)
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
@@ -611,6 +613,7 @@ pub(crate) async fn create_work_in_publication(
     library_id: i64,
     publication_id: i64,
     input: &WorkInput,
+    merges: &mut WorkMerges,
 ) -> crate::Result<i64> {
     let created = sqlx::query!(
         "INSERT INTO work (library_id, title, \"key\", time_signature, instrumentation, stars, note)
@@ -638,7 +641,7 @@ pub(crate) async fn create_work_in_publication(
     write_work_catalog_numbers(audited, id, &input.catalog_numbers).await?;
     write_work_links(audited, id, &input.links).await?;
     tag::write_work_tags(audited, library_id, id, &input.tags).await?;
-    absorb_into_duplicate(audited, library_id, id).await
+    absorb_into_duplicate(audited, library_id, id, merges).await
 }
 
 /// Reconcile a publication's contents against the works its input names.
@@ -653,6 +656,7 @@ pub(crate) async fn write_publication_works(
     library_id: i64,
     publication_id: i64,
     contents: &[WorkInput],
+    merges: &mut WorkMerges,
 ) -> crate::Result<()> {
     let stored = sqlx::query_scalar!(
         "SELECT work_id FROM publication_work WHERE publication_id = ?",
@@ -679,10 +683,10 @@ pub(crate) async fn write_publication_works(
     for input in contents {
         match input.id {
             Some(WorkRef::Stored(work_id)) if stored.contains(&work_id) => {
-                write_linked_work(audited, library_id, work_id, input).await?;
+                write_linked_work(audited, library_id, work_id, input, merges).await?;
             }
             _ => {
-                link_or_create_work(audited, library_id, publication_id, input).await?;
+                link_or_create_work(audited, library_id, publication_id, input, merges).await?;
             }
         }
     }
@@ -695,13 +699,14 @@ pub(crate) async fn link_or_create_work(
     library_id: i64,
     publication_id: i64,
     input: &WorkInput,
+    merges: &mut WorkMerges,
 ) -> crate::Result<i64> {
     match input.id {
         Some(WorkRef::Stored(work_id)) if work_exists(audited, library_id, work_id).await? => {
             link_work_to_publication(audited, library_id, publication_id, work_id).await?;
-            write_linked_work(audited, library_id, work_id, input).await
+            write_linked_work(audited, library_id, work_id, input, merges).await
         }
-        _ => create_work_in_publication(audited, library_id, publication_id, input).await,
+        _ => create_work_in_publication(audited, library_id, publication_id, input, merges).await,
     }
 }
 
@@ -726,6 +731,7 @@ async fn write_linked_work(
     library_id: i64,
     work_id: i64,
     input: &WorkInput,
+    merges: &mut WorkMerges,
 ) -> crate::Result<i64> {
     sqlx::query!(
         "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
@@ -746,7 +752,7 @@ async fn write_linked_work(
     write_work_catalog_numbers(audited, work_id, &input.catalog_numbers).await?;
     write_work_links(audited, work_id, &input.links).await?;
     tag::write_work_tags(audited, library_id, work_id, &input.tags).await?;
-    absorb_into_duplicate(audited, library_id, work_id).await
+    absorb_into_duplicate(audited, library_id, work_id, merges).await
 }
 
 /// Put an existing work into another publication.
@@ -767,6 +773,32 @@ pub(crate) async fn link_work_to_publication(
     Ok(())
 }
 
+/// One work folded into an existing duplicate, either by an explicit or implicit merge of two works
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorkMerge {
+    pub library_id: i64,
+    pub from: i64,
+    pub into: i64,
+}
+
+/// The works a write folded into any existing duplicates.
+///
+/// Drafts referring to a merged work point at a deleted id until relinked with
+/// [Archive::relink_draft_works](crate::Archive::relink_draft_works).
+#[must_use = "drafts referring to a merged work must be relinked"]
+#[derive(Debug, Default)]
+pub struct WorkMerges(Vec<WorkMerge>);
+
+impl WorkMerges {
+    pub(crate) fn push(&mut self, merge: WorkMerge) {
+        self.0.push(merge);
+    }
+
+    pub(crate) fn as_slice(&self) -> &[WorkMerge] {
+        &self.0
+    }
+}
+
 /// Fold `from` into `into` and delete `from`, on the caller's transaction.
 ///
 /// `into` keeps every field it has; `from` fills only blanks, because the older record is the more
@@ -776,6 +808,7 @@ pub(crate) async fn merge_works(
     library_id: i64,
     from: i64,
     into: i64,
+    merges: &mut WorkMerges,
 ) -> crate::Result<()> {
     let conn: &mut SqliteConnection = audited;
     let source = sqlx::query!(
@@ -868,7 +901,11 @@ pub(crate) async fn merge_works(
     )
     .execute(&mut *conn)
     .await?;
-    audited.record_merge(library_id, from, into);
+    merges.push(WorkMerge {
+        library_id,
+        from,
+        into,
+    });
     Ok(())
 }
 
@@ -926,6 +963,7 @@ pub(crate) async fn absorb_into_duplicate(
     audited: &mut Audited<'_>,
     library_id: i64,
     work_id: i64,
+    merges: &mut WorkMerges,
 ) -> crate::Result<i64> {
     let Some(into) = find_duplicate(audited, library_id, work_id).await? else {
         return Ok(work_id);
@@ -933,7 +971,7 @@ pub(crate) async fn absorb_into_duplicate(
     let survivor = sqlx::query_scalar!(r#"SELECT title AS "title!" FROM work WHERE id = ?"#, into)
         .fetch_one(&mut **audited)
         .await?;
-    merge_works(audited, library_id, work_id, into).await?;
+    merge_works(audited, library_id, work_id, into, merges).await?;
     let entity = EntityRef {
         kind: AuditSubject::Work,
         id: into,

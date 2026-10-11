@@ -50,14 +50,15 @@ async fn catalog_numbers_round_trip_and_survive_publication_edits() {
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let mut work = publication.works().await.unwrap().remove(0);
     assert_eq!(values(&work), ["Op. 28 No. 15", "B. 107"]);
 
     // Editing through the edit page's input replaces the list in input order
     let mut input = work.raw_input();
     input.catalog_numbers = vec!["Op. 28/15".into(), "KK IVb/1".into()];
-    work.update(&input.parse().unwrap()).await.unwrap();
+    let _ = work.update(&input.parse().unwrap()).await.unwrap();
     assert_eq!(values(&work), ["Op. 28/15", "KK IVb/1"]);
     let reloaded = library.work(work.id).await.unwrap().unwrap();
     assert_eq!(values(&reloaded), ["Op. 28/15", "KK IVb/1"]);
@@ -66,7 +67,7 @@ async fn catalog_numbers_round_trip_and_survive_publication_edits() {
     let contents = publication.works().await.unwrap();
     let mut input = publication.raw_input(&contents);
     input.title = "24 Preludes".into();
-    publication.update(&input.parse().unwrap()).await.unwrap();
+    let _ = publication.update(&input.parse().unwrap()).await.unwrap();
     let reloaded = library.work(work.id).await.unwrap().unwrap();
     assert_eq!(values(&reloaded), ["Op. 28/15", "KK IVb/1"]);
 }
@@ -80,7 +81,8 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
     let preludes = library
         .create_publication(&preludes.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let raindrop = preludes.works().await.unwrap().remove(0);
 
     // Same composer, same number in a different spelling, a blank key, and an extra credit
@@ -96,7 +98,8 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
     let anthology = library
         .create_publication(&anthology.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
 
     let works = anthology.works().await.unwrap();
     assert_eq!(works.len(), 1);
@@ -132,7 +135,8 @@ async fn a_new_work_with_a_known_number_joins_the_existing_work() {
     let other = library
         .create_publication(&other.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     assert_ne!(other.works().await.unwrap()[0].id, raindrop.id);
 }
 
@@ -147,7 +151,8 @@ async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let older = preludes.works().await.unwrap().remove(0);
     // Works merge on a shared composer, so the second album credits the same Chopin
     let mut anthology = album("Anthology", "Prelude in D-flat", &["B. 107"]);
@@ -156,14 +161,15 @@ async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
     let anthology = library
         .create_publication(&anthology.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let mut newer = anthology.works().await.unwrap().remove(0);
     let newer_id = newer.id;
 
     let mut input = newer.raw_input();
     input.catalog_numbers.push("op. 28 no. 15".into());
     input.title = "Retitled".into();
-    newer.update(&input.parse().unwrap()).await.unwrap();
+    let _ = newer.update(&input.parse().unwrap()).await.unwrap();
 
     assert_eq!(newer.id, older.id, "self is now the survivor");
     assert_eq!(
@@ -189,7 +195,8 @@ async fn merge_works_is_available_directly() {
     let a = library
         .create_publication(&album("A", "Nocturne", &["Op. 9 No. 2"]).parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let b = library
         .create_publication(
             &album("B", "Nocturne in E-flat", &["B. 54"])
@@ -197,11 +204,12 @@ async fn merge_works_is_available_directly() {
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let into = a.works().await.unwrap()[0].id;
     let from = b.works().await.unwrap()[0].id;
 
-    let merged = library.merge_works(from, into).await.unwrap();
+    let (merged, _) = library.merge_works(from, into).await.unwrap();
     assert_eq!(merged.id, into);
     assert_eq!(values(&merged), ["Op. 9 No. 2", "B. 54"]);
     assert_eq!(merged.publications().await.unwrap().len(), 2);
@@ -226,15 +234,17 @@ async fn merging_keeps_the_survivors_url_for_a_shared_record() {
     let a = library
         .create_publication(&a.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let b = library
         .create_publication(&b.parse().unwrap())
         .await
-        .unwrap();
+        .unwrap()
+        .0;
     let into = a.works().await.unwrap()[0].id;
     let from = b.works().await.unwrap()[0].id;
 
-    let merged = library.merge_works(from, into).await.unwrap();
+    let (merged, _) = library.merge_works(from, into).await.unwrap();
     assert_eq!(
         merged.links,
         [

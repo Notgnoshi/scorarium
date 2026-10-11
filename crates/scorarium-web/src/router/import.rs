@@ -116,7 +116,7 @@ async fn render_entry(
         })
         .collect();
     let mut pending = Vec::new();
-    for import in library.pending_imports().await? {
+    for import in library.pending_imports() {
         pending.push(shown(import).await?);
     }
     let page = EntryPage {
@@ -192,7 +192,7 @@ pub async fn review(
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let import = library.pending_import(id).await?.or_not_found()?;
+    let import = library.pending_import(id).or_not_found()?;
     let draft = import.draft().await?;
     let title = label(&import, &draft.input);
     // Errors show for saved drafts only; a fresh import should not open covered in warnings
@@ -238,7 +238,7 @@ pub async fn save(
 ) -> Result<Response, AppError> {
     let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let import = library.pending_import(id).await?.or_not_found()?;
+    let import = library.pending_import(id).or_not_found()?;
     // Read before the submission is consumed. It names a work by position, since a work added just
     // now has no draft id to name it by.
     let edit_work = form.edit_work();
@@ -264,7 +264,7 @@ pub async fn submit(
 ) -> Result<Response, AppError> {
     let form = PublicationForm::decode(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let import = library.pending_import(id).await?.or_not_found()?;
+    let import = library.pending_import(id).or_not_found()?;
     let next = match import.accept(form.into_post()).await? {
         Accepted::Published(publication) => {
             format!("/library/{library_id}/publication/{}", publication.id)
@@ -295,7 +295,7 @@ pub async fn work(
     Path((library_id, id, work_id)): Path<(i64, i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let import = library.pending_import(id).await?.or_not_found()?;
+    let import = library.pending_import(id).or_not_found()?;
     let draft = import.draft().await?;
     let Some(input) = draft_work(&draft, work_id).cloned() else {
         return Ok(StatusCode::NOT_FOUND.into_response());
@@ -336,7 +336,7 @@ pub async fn save_work(
 ) -> Result<Response, AppError> {
     let post: WorkPost = publication_post::decode_form(&body)?;
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    let import = library.pending_import(id).await?.or_not_found()?;
+    let import = library.pending_import(id).or_not_found()?;
     let mut draft = import.draft().await?;
     if draft_work(&draft, work_id).is_none() {
         return Ok(StatusCode::NOT_FOUND.into_response());
@@ -404,12 +404,7 @@ pub async fn delete(
     Path((library_id, id)): Path<(i64, i64)>,
 ) -> Result<Response, AppError> {
     let library = state.archive.library(library_id).await?.or_not_found()?;
-    library
-        .pending_import(id)
-        .await?
-        .or_not_found()?
-        .discard()
-        .await?;
+    library.pending_import(id).or_not_found()?.discard()?;
     Ok(Redirect::to(&format!("/library/{library_id}/import")).into_response())
 }
 

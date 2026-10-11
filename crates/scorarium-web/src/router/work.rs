@@ -159,7 +159,8 @@ pub async fn save(
         .await?;
     match input.parse() {
         Ok(parsed) => {
-            work.update(&parsed).await?;
+            let merges = work.update(&parsed).await?;
+            state.archive.relink_draft_works(merges);
             // A merge folded this work into an older one; show the survivor rather than a page for
             // a work that no longer exists
             let next = if work.id == id {

@@ -293,7 +293,7 @@ async fn create(library: &Library, mut input: PublicationInput) -> Result<Public
     library
         .resolve_contributors(input.contributors_mut())
         .await?;
-    library.create_publication(&input).await
+    Ok(library.create_publication(&input).await?.0)
 }
 
 /// Give a credited person their links, leaving their name as it is.

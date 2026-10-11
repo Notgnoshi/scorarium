@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::SqliteConnection;
 
@@ -11,7 +12,7 @@ use crate::publication::{self, Publication, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
-use crate::work::{self, Work};
+use crate::work::{self, Work, WorkMerges};
 use crate::{
     Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
 };
@@ -82,7 +83,7 @@ impl Library {
             return Err(NotFound.into());
         }
         audited.commit().await?;
-        // The pending imports cascade away with the library, but their drafts are in memory
+        // Imports and their drafts live only in the draft store, so this is the whole cleanup
         self.archive.drafts().drop_library(self.id);
         Ok(())
     }
@@ -141,55 +142,82 @@ impl Library {
     }
 
     /// Create a publication, with its identifiers, contributors, holdings and contents
-    pub async fn create_publication(&self, input: &PublicationInput) -> Result<Publication> {
+    pub async fn create_publication(
+        &self,
+        input: &PublicationInput,
+    ) -> Result<(Publication, WorkMerges)> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::Created))
             .await?;
-        let (publication, _) =
-            publication::create_publication(&self.archive, &mut audited, self.id, input).await?;
+        let (publication, _) = publication::create_publication(
+            &self.archive,
+            &mut audited,
+            self.id,
+            input,
+            &mut merges,
+        )
+        .await?;
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
-        Ok(publication)
+        Ok((publication, merges))
     }
 }
 
 // imports
 impl Library {
     /// This library's pending imports, oldest first
-    pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
-        let mut tx = self.archive.begin_read().await?;
-        let imports =
-            import::load_pending_imports(&self.archive, &mut tx, Some(self.id), None).await?;
-        tx.commit().await?;
-        Ok(imports)
+    pub fn pending_imports(&self) -> Vec<PendingImport> {
+        import::pending_imports(
+            &self.archive,
+            std::slice::from_ref(self),
+            Some(self.id),
+            None,
+        )
     }
 
     /// The given pending import, if this library has it
-    pub async fn pending_import(&self, id: i64) -> Result<Option<PendingImport>> {
-        let mut tx = self.archive.begin_read().await?;
-        let import = import::load_pending_imports(&self.archive, &mut tx, Some(self.id), Some(id))
-            .await?
-            .pop();
-        tx.commit().await?;
-        Ok(import)
+    pub fn pending_import(&self, id: i64) -> Option<PendingImport> {
+        import::pending_imports(
+            &self.archive,
+            std::slice::from_ref(self),
+            Some(self.id),
+            Some(id),
+        )
+        .pop()
     }
 
-    /// Start an import from what the entry page collected
     pub async fn start_import(
         &self,
         query: &str,
         holdings: &[HoldingInput],
     ) -> Result<PendingImport> {
-        let mut audited = self
+        let mut conn = self.archive.acquire_read().await?;
+        if get_library(&self.archive, &mut conn, self.id)
+            .await?
+            .is_none()
+        {
+            return Err(NotFound.into());
+        }
+        let query = query.trim();
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the clock is after 1970")
+            .as_secs() as i64;
+        let (id, holdings) = self
             .archive
-            .begin_audit(Source::User, Event::new(Action::ImportStarted))
-            .await?;
-        let import =
-            import::start_import(&self.archive, &mut audited, self.id, query, holdings).await?;
-        audited.set_entity(&import.entity_ref()).await?;
-        audited.commit().await?;
-        Ok(import)
+            .drafts()
+            .start_import(self.id, query, holdings, created_at);
+        Ok(PendingImport {
+            id,
+            library_id: self.id,
+            library_name: self.name.clone(),
+            query: query.to_string(),
+            holdings,
+            created_at,
+            archive: self.archive.clone(),
+        })
     }
 }
 
@@ -208,7 +236,8 @@ impl Library {
     /// Fold one work into another and delete it; the survivor is returned reloaded.
     ///
     /// Returns a [NotFound] error when either work is not in this library.
-    pub async fn merge_works(&self, from: i64, into: i64) -> Result<Work> {
+    pub async fn merge_works(&self, from: i64, into: i64) -> Result<(Work, WorkMerges)> {
+        let mut merges = WorkMerges::default();
         let mut audited = self
             .archive
             .begin_audit(Source::User, Event::new(Action::Merged))
@@ -225,7 +254,7 @@ impl Library {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
-        work::merge_works(&mut audited, self.id, from, into).await?;
+        work::merge_works(&mut audited, self.id, from, into, &mut merges).await?;
         collect_orphans(&mut audited, self.id).await?;
         let survivor =
             work::load_works(&self.archive, &mut audited, self.id, Some(into), None, None)
@@ -234,7 +263,7 @@ impl Library {
                 .expect("the survivor was just verified on this transaction");
         audited.set_entity(&survivor.entity_ref()).await?;
         audited.commit().await?;
-        Ok(survivor)
+        Ok((survivor, merges))
     }
 }
 
