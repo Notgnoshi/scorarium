@@ -83,7 +83,7 @@ impl Library {
             return Err(NotFound.into());
         }
         audited.commit().await?;
-        // Imports live only here, so this is the whole cleanup
+        // Imports and their drafts live only in the draft store, so this is the whole cleanup
         self.archive.drafts().drop_library(self.id);
         Ok(())
     }

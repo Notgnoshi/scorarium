@@ -453,7 +453,6 @@ fn relink_person(credit: &mut ContributorInput, persons: &[(i64, i64)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::holding::{HoldingInput, HoldingKind};
 
     fn work(title: &str) -> WorkRawInput {
         WorkRawInput {

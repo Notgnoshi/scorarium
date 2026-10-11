@@ -213,10 +213,11 @@ impl PendingImport {
                 drafts.external_persons(self.library_id, self.id),
             )
         };
-        let claim = Accepting {
+        let mut claim = Accepting {
             archive: self.archive.clone(),
             library_id: self.library_id,
             id: self.id,
+            armed: true,
         };
         let input = self.fill(snapshot).await?;
         // A draft that is not ready remains saved with validation errors explaining why it was rejected
@@ -225,7 +226,7 @@ impl PendingImport {
             Err(errors) => return Ok(Accepted::Refused(errors)),
         };
         let publication = self
-            .accept_into_publication(&parsed, drafted, external)
+            .accept_into_publication(&parsed, drafted, external, &mut claim)
             .await?;
         drop(claim);
         Ok(Accepted::Published(Box::new(publication)))
@@ -236,6 +237,7 @@ impl PendingImport {
         input: &PublicationInput,
         drafted: HashMap<i64, PersonRawInput>,
         external: HashMap<i64, ExternalPerson>,
+        claim: &mut Accepting,
     ) -> crate::Result<Publication> {
         let mut input = input.clone();
         let mut new_persons: BTreeMap<i64, (String, Vec<String>)> = BTreeMap::new();
@@ -313,7 +315,8 @@ impl PendingImport {
             audited.record(Source::User, event).await?;
         }
         audited.set_entity(&publication.entity_ref()).await?;
-        audited.commit().await?;
+        claim.armed = false;
+        audited.commit().await.inspect_err(|_| claim.armed = true)?;
         // Only after the commit, so a rolled-back accept leaves every draft as it was
         let works: Vec<(i64, i64)> = input
             .contents
@@ -373,20 +376,18 @@ impl PendingImport {
 }
 
 /// One accept's claim on an import.
-///
-/// Dropping it clears the accepting mark, and `Drop` is the one thing that still runs when the
-/// caller drops the future mid-await because the client went away. An explicit clear after the
-/// transaction would never run on that path, and the import would answer not found to everything
-/// until restart. Once the accept has committed and removed the entry, the clear finds nothing.
 struct Accepting {
     archive: Arc<ArchiveInner>,
     library_id: i64,
     id: i64,
+    armed: bool,
 }
 
 impl Drop for Accepting {
     fn drop(&mut self) {
-        self.archive.drafts().end_accept(self.library_id, self.id);
+        if self.armed {
+            self.archive.drafts().end_accept(self.library_id, self.id);
+        }
     }
 }
 
