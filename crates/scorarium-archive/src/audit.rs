@@ -44,9 +44,7 @@ pub enum Action {
     Updated,
     Deleted,
     Merged,
-    ImportStarted,
     ImportAccepted,
-    ImportDiscarded,
     PasswordClaimed,
     PasswordChanged,
 }
@@ -58,9 +56,7 @@ impl Action {
             Action::Updated => "updated",
             Action::Deleted => "deleted",
             Action::Merged => "merged",
-            Action::ImportStarted => "import_started",
             Action::ImportAccepted => "import_accepted",
-            Action::ImportDiscarded => "import_discarded",
             Action::PasswordClaimed => "password_claimed",
             Action::PasswordChanged => "password_changed",
         }
@@ -72,9 +68,7 @@ impl Action {
             "updated" => Action::Updated,
             "deleted" => Action::Deleted,
             "merged" => Action::Merged,
-            "import_started" => Action::ImportStarted,
             "import_accepted" => Action::ImportAccepted,
-            "import_discarded" => Action::ImportDiscarded,
             "password_claimed" => Action::PasswordClaimed,
             "password_changed" => Action::PasswordChanged,
             other => eyre::bail!("unknown audit action {other:?}"),
@@ -88,7 +82,6 @@ pub enum AuditSubject {
     Work,
     Person,
     Library,
-    Import,
 }
 
 impl AuditSubject {
@@ -98,7 +91,6 @@ impl AuditSubject {
             AuditSubject::Work => "work",
             AuditSubject::Person => "person",
             AuditSubject::Library => "library",
-            AuditSubject::Import => "import",
         }
     }
 
@@ -108,7 +100,6 @@ impl AuditSubject {
             "work" => AuditSubject::Work,
             "person" => AuditSubject::Person,
             "library" => AuditSubject::Library,
-            "import" => AuditSubject::Import,
             other => eyre::bail!("unknown audit entity kind {other:?}"),
         })
     }

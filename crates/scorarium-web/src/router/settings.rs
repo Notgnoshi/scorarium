@@ -147,9 +147,7 @@ fn shown_entry(
         Action::Updated => format!("Updated {noun}"),
         Action::Deleted => format!("Deleted {noun}"),
         Action::Merged => format!("Merged into {noun}"),
-        Action::ImportStarted => "Started import".to_string(),
         Action::ImportAccepted => format!("Accepted import of {noun}"),
-        Action::ImportDiscarded => "Discarded import".to_string(),
         Action::PasswordClaimed => "Claimed the password".to_string(),
         Action::PasswordChanged => "Changed the password".to_string(),
     };
@@ -216,9 +214,6 @@ async fn entity_href(state: &AppState, entity: &EntityRef) -> Result<Option<Stri
             .person(id)
             .await?
             .map(|_| format!("/library/{library_id}/person/{id}")),
-        AuditSubject::Import => library
-            .pending_import(id)
-            .map(|_| format!("/library/{library_id}/import/{id}")),
     })
 }
 
