@@ -1,21 +1,18 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use sqlx::SqliteConnection;
-
 use crate::external_id::EntityKind;
-use crate::holding::{Holding, HoldingInput, HoldingRawInput};
+use crate::holding::{Holding, HoldingRawInput};
 use crate::identifier::{self, IdentifierRawInput};
 use crate::input::{ContributorInput, PersonRef, WorkRef};
-use crate::person::ExternalPerson;
+use crate::library::Library;
+use crate::person::{ExternalPerson, PersonRawInput};
 use crate::publication::{
     self, Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
 };
 use crate::summary::{self, PersonSummary};
 use crate::work::{self, Work, WorkMerges};
-use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, draft, person,
-};
+use crate::{Action, ArchiveInner, Event, Field, NotFound, Source, draft, person};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -29,7 +26,7 @@ pub struct PendingImport {
     pub holdings: Vec<Holding>,
     /// Unix timestamp
     pub created_at: i64,
-    archive: Arc<ArchiveInner>,
+    pub(crate) archive: Arc<ArchiveInner>,
 }
 
 /// How a source lookup ended, for the review page.
@@ -68,6 +65,16 @@ impl PendingImport {
                 lookup: None,
             });
         };
+        let lookup = snapshot.lookup.clone();
+        Ok(DraftPublication {
+            input: self.fill(snapshot).await?,
+            saved: true,
+            lookup,
+        })
+    }
+
+    /// The snapshot's input with its stored works loaded in
+    async fn fill(&self, snapshot: draft::Snapshot) -> crate::Result<PublicationRawInput> {
         let mut input = snapshot.fields;
         let mut tx = self.archive.begin_read().await?;
         for content in snapshot.contents {
@@ -89,11 +96,7 @@ impl PendingImport {
             }
         }
         tx.commit().await?;
-        Ok(DraftPublication {
-            input,
-            saved: true,
-            lookup: snapshot.lookup,
-        })
+        Ok(input)
     }
 
     pub async fn save_draft(&self, input: PublicationRawInput) -> crate::Result<DraftPublication> {
@@ -136,7 +139,9 @@ impl PendingImport {
             let mut drafts = self.archive.drafts();
             for (person, role) in found {
                 let name = person.name.clone();
-                let id = drafts.add_external_person(self.library_id, self.id, person);
+                let Some(id) = drafts.add_external_person(self.library_id, self.id, person) else {
+                    return Err(NotFound.into());
+                };
                 input.contributors.push(ContributorInput {
                     name,
                     role,
@@ -144,7 +149,9 @@ impl PendingImport {
                     external_person: Some(id),
                 });
             }
-            drafts.save(self.library_id, self.id, input, &vanished, &stored);
+            if !drafts.save(self.library_id, self.id, input, &vanished, &stored) {
+                return Err(NotFound.into());
+            }
         }
         self.draft().await
     }
@@ -191,26 +198,45 @@ impl PendingImport {
 
     /// Merge the posted form into the draft and accept it into a publication if it is valid.
     ///
-    /// Returns a [NotFound] error when the import was already accepted or discarded.
+    /// Returns a [NotFound] error when the import was already accepted or discarded, or when
+    /// another accept of it is in flight.
     pub async fn accept(self, post: PublicationPost) -> crate::Result<Accepted> {
-        let saved = self.save(post).await?;
-        // A draft that is not ready remains saved with validation errors explaining why it was rejected
-        let parsed = match saved.input.parse() {
-            Ok(parsed) => parsed,
-            Err(errors) => return Ok(Accepted::Refused(errors)),
-        };
-        let publication = self.accept_into_publication(&parsed).await?;
-        Ok(Accepted::Published(Box::new(publication)))
-    }
-
-    async fn accept_into_publication(self, input: &PublicationInput) -> crate::Result<Publication> {
-        let (drafted, external) = {
-            let drafts = self.archive.drafts();
+        self.save(post).await?;
+        let (snapshot, drafted, external) = {
+            let mut drafts = self.archive.drafts();
+            let Some(snapshot) = drafts.begin_accept(self.library_id, self.id) else {
+                return Err(NotFound.into());
+            };
             (
+                snapshot,
                 drafts.persons(self.library_id),
                 drafts.external_persons(self.library_id, self.id),
             )
         };
+        let claim = Accepting {
+            archive: self.archive.clone(),
+            library_id: self.library_id,
+            id: self.id,
+        };
+        let input = self.fill(snapshot).await?;
+        // A draft that is not ready remains saved with validation errors explaining why it was rejected
+        let parsed = match input.parse() {
+            Ok(parsed) => parsed,
+            Err(errors) => return Ok(Accepted::Refused(errors)),
+        };
+        let publication = self
+            .accept_into_publication(&parsed, drafted, external)
+            .await?;
+        drop(claim);
+        Ok(Accepted::Published(Box::new(publication)))
+    }
+
+    async fn accept_into_publication(
+        self,
+        input: &PublicationInput,
+        drafted: HashMap<i64, PersonRawInput>,
+        external: HashMap<i64, ExternalPerson>,
+    ) -> crate::Result<Publication> {
         let mut input = input.clone();
         let mut new_persons: BTreeMap<i64, (String, Vec<String>)> = BTreeMap::new();
         // The links lookups found for each stored person this import refers to
@@ -286,18 +312,6 @@ impl PendingImport {
             };
             audited.record(Source::User, event).await?;
         }
-        let result = sqlx::query!(
-            "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
-            self.library_id,
-            self.id
-        )
-        .execute(&mut *audited)
-        .await?;
-        if result.rows_affected() == 0 {
-            audited.rollback().await?;
-            self.forget_draft();
-            return Err(NotFound.into());
-        }
         audited.set_entity(&publication.entity_ref()).await?;
         audited.commit().await?;
         // Only after the commit, so a rolled-back accept leaves every draft as it was
@@ -318,50 +332,18 @@ impl PendingImport {
         Ok(publication)
     }
 
-    /// Delete the import and its draft. Returns a [NotFound] error when it is already gone.
-    pub async fn discard(self) -> crate::Result<()> {
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::ImportDiscarded, self.entity_ref()),
-            )
-            .await?;
-        let result = sqlx::query!(
-            "DELETE FROM pending_import WHERE library_id = ? AND id = ?",
-            self.library_id,
-            self.id
-        )
-        .execute(&mut *audited)
-        .await?;
-        if result.rows_affected() == 0 {
-            audited.rollback().await?;
-            self.forget_draft();
-            return Err(NotFound.into());
+    /// Delete the import and its draft. Returns a [NotFound] error when it is already gone or an
+    /// accept of it is in flight.
+    pub fn discard(self) -> crate::Result<()> {
+        if self.archive.drafts().forget(self.library_id, self.id) {
+            Ok(())
+        } else {
+            Err(NotFound.into())
         }
-        audited.commit().await?;
-        self.forget_draft();
-        Ok(())
-    }
-
-    /// Get an EntityRef referring to this entity for use in the audit log
-    pub(crate) fn entity_ref(&self) -> EntityRef {
-        EntityRef {
-            kind: AuditSubject::Import,
-            id: self.id,
-            library_id: Some(self.library_id),
-            label: self.query.clone(),
-        }
-    }
-
-    fn forget_draft(&self) {
-        self.archive.drafts().forget(self.library_id, self.id);
     }
 
     /// What the review page opens with before anything is saved: the copies as they were entered,
     /// and the query as an identifier when it is a valid ISBN or ISMN, else as the title.
-    ///
-    /// Derived on every view rather than stored, so it survives a restart the way the import does.
     fn initial_draft_contents(&self) -> PublicationRawInput {
         let query = self.query.trim();
         let mut input = PublicationRawInput {
@@ -390,95 +372,52 @@ impl PendingImport {
     }
 }
 
-/// Start an import, with the copies entered on the entry page.
-pub(crate) async fn start_import(
-    shared: &Arc<ArchiveInner>,
-    conn: &mut SqliteConnection,
+/// One accept's claim on an import.
+///
+/// Dropping it clears the accepting mark, and `Drop` is the one thing that still runs when the
+/// caller drops the future mid-await because the client went away. An explicit clear after the
+/// transaction would never run on that path, and the import would answer not found to everything
+/// until restart. Once the accept has committed and removed the entry, the clear finds nothing.
+struct Accepting {
+    archive: Arc<ArchiveInner>,
     library_id: i64,
-    query: &str,
-    holdings: &[HoldingInput],
-) -> crate::Result<PendingImport> {
-    let query = query.trim();
-    let created = sqlx::query!(
-        "INSERT INTO pending_import (library_id, query) VALUES (?, ?)",
-        library_id,
-        query,
-    )
-    .execute(&mut *conn)
-    .await?;
-    let id = created.last_insert_rowid();
-    for holding in holdings {
-        let kind = holding.kind.as_str();
-        sqlx::query!(
-            "INSERT INTO pending_import_holding (pending_import_id, kind, location)
-             VALUES (?, ?, ?)",
-            id,
-            kind,
-            holding.location,
-        )
-        .execute(&mut *conn)
-        .await?;
-    }
-    let import = load_pending_imports(shared, conn, None, Some(id))
-        .await?
-        .pop()
-        .expect("the import was just created on this transaction");
-    Ok(import)
+    id: i64,
 }
 
-/// Pending imports in one library, or in every library, oldest first.
-pub(crate) async fn load_pending_imports(
+impl Drop for Accepting {
+    fn drop(&mut self) {
+        self.archive.drafts().end_accept(self.library_id, self.id);
+    }
+}
+
+/// Pending imports in one library, or in every one of `libraries`, oldest first.
+///
+/// An entry whose library is not among those given is skipped: its library was deleted after the
+/// import started, and nothing can reach it any more.
+pub(crate) fn pending_imports(
     shared: &Arc<ArchiveInner>,
-    conn: &mut SqliteConnection,
+    libraries: &[Library],
     library_id: Option<i64>,
     id: Option<i64>,
-) -> crate::Result<Vec<PendingImport>> {
-    let mut imports: Vec<PendingImport> = sqlx::query!(
-        "SELECT p.id, p.library_id, l.name AS library_name, p.query, p.created_at
-         FROM pending_import p JOIN library l ON l.id = p.library_id
-         WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 IS NULL OR p.id = ?2)
-         ORDER BY p.created_at, p.id",
-        library_id,
-        id
-    )
-    .fetch_all(&mut *conn)
-    .await?
-    .into_iter()
-    .map(|row| PendingImport {
-        id: row.id,
-        library_id: row.library_id,
-        library_name: row.library_name,
-        query: row.query,
-        holdings: Vec::new(),
-        created_at: row.created_at,
-        archive: shared.clone(),
-    })
-    .collect();
-    let index: HashMap<i64, usize> = imports
-        .iter()
-        .enumerate()
-        .map(|(i, import)| (import.id, i))
+) -> Vec<PendingImport> {
+    let mut imports: Vec<PendingImport> = shared
+        .drafts()
+        .imports(library_id)
+        .filter(|(_, entry_id, _)| id.is_none_or(|wanted| wanted == *entry_id))
+        .filter_map(|(library_id, id, entry)| {
+            let library = libraries.iter().find(|library| library.id == library_id)?;
+            Some(PendingImport {
+                id,
+                library_id,
+                library_name: library.name.clone(),
+                query: entry.query.clone(),
+                holdings: entry.holdings.clone(),
+                created_at: entry.created_at,
+                archive: shared.clone(),
+            })
+        })
         .collect();
-
-    let holdings = sqlx::query!(
-        "SELECT id, pending_import_id, kind, location FROM pending_import_holding
-         WHERE pending_import_id IN
-            (SELECT id FROM pending_import
-             WHERE (?1 IS NULL OR library_id = ?1) AND (?2 IS NULL OR id = ?2))
-         ORDER BY id",
-        library_id,
-        id
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    for row in holdings {
-        imports[index[&row.pending_import_id]]
-            .holdings
-            .push(Holding {
-                id: row.id,
-                kind: row.kind.parse().map_err(eyre::Report::msg)?,
-                location: row.location,
-            });
-    }
-    Ok(imports)
+    // Ids are handed out in creation order, and the store iterates libraries in hash order
+    imports.sort_by_key(|import| import.id);
+    imports
 }

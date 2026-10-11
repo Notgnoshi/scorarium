@@ -218,7 +218,6 @@ async fn entity_href(state: &AppState, entity: &EntityRef) -> Result<Option<Stri
             .map(|_| format!("/library/{library_id}/person/{id}")),
         AuditSubject::Import => library
             .pending_import(id)
-            .await?
             .map(|_| format!("/library/{library_id}/import/{id}")),
     })
 }

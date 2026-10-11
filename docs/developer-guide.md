@@ -41,7 +41,7 @@ regenerate that metadata against a migrated dev database and check in the result
 ```sh
 cargo install sqlx-cli --no-default-features --features sqlite
 export DATABASE_URL=sqlite://target/dev.db
-cargo sqlx database setup --source crates/scorarium-archive/migrations
+cargo sqlx database reset -y --source crates/scorarium-archive/migrations
 cargo sqlx prepare --workspace -- --all-targets --all-features
 ```
 

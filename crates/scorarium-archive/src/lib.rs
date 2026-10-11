@@ -280,19 +280,19 @@ impl Archive {
 
     /// Every library's pending imports, oldest first
     pub async fn pending_imports(&self) -> Result<Vec<PendingImport>> {
-        let mut tx = self.shared.begin_read().await?;
-        let queue = import::load_pending_imports(&self.shared, &mut tx, None, None).await?;
-        tx.commit().await?;
-        Ok(queue)
+        let mut conn = self.shared.acquire_read().await?;
+        let libraries = library::list_libraries(&self.shared, &mut conn).await?;
+        Ok(import::pending_imports(
+            &self.shared,
+            &libraries,
+            None,
+            None,
+        ))
     }
 
     /// How many imports await review, for the header
     pub async fn pending_import_count(&self) -> Result<i64> {
-        let mut conn = self.shared.acquire_read().await?;
-        let count = sqlx::query_scalar!("SELECT COUNT(*) FROM pending_import")
-            .fetch_one(&mut *conn)
-            .await?;
-        Ok(count)
+        Ok(self.pending_imports().await?.len() as i64)
     }
 }
 
