@@ -182,6 +182,7 @@ async fn the_audit_page_shows_an_edit_and_its_consequences() {
     // Emptying the publication orphans the work, and the work's only composer with it
     let works = publication.works().await.unwrap();
     let mut emptied = publication.raw_input(&works);
+    emptied.title = "Variations for harpsichord".into();
     emptied.contents.clear();
     let _ = publication.update(&emptied.parse().unwrap()).await.unwrap();
 
@@ -197,14 +198,15 @@ async fn the_audit_page_shows_an_edit_and_its_consequences() {
         "href=\"/library/{}/publication/{}\"",
         library.id, publication.id
     ));
-    response.assert_text_contains("(contents)");
+    let body = response.text();
+    assert_eq!(body.matches("Updated publication").count(), 1, "{body}");
+    response.assert_text_contains("(title, contents)");
     response.assert_text_contains("orphan cleanup");
     response.assert_text_contains("Deleted work");
     response.assert_text_contains("Aria");
     response.assert_text_contains("Deleted person");
     response.assert_text_contains("Bach");
     // The work and the person are gone, so nothing links to them
-    let body = response.text();
     assert!(
         !body.contains(&format!("/library/{}/work/", library.id)),
         "{body}"
