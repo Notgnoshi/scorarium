@@ -418,14 +418,16 @@ impl Work {
         .await?
         .pop()
         .expect("the work was just updated on this transaction");
-        audited
-            .record(
-                Source::User,
-                Action::Updated,
-                Some(edited.entity_ref()),
-                &fields,
-            )
-            .await?;
+        for field in fields {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(edited.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         *self = reloaded;
         Ok(merges)
@@ -979,7 +981,7 @@ pub(crate) async fn absorb_into_duplicate(
         label: survivor,
     };
     audited
-        .record(Source::Merge, Action::Merged, Some(entity), &[])
+        .record(Source::Merge, Action::Merged, Some(entity), None)
         .await?;
     Ok(into)
 }

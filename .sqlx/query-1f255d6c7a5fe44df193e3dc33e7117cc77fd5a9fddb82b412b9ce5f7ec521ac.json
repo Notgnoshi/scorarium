@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, created_at, source, action,\n                  entity_kind, entity_id, entity_library_id, entity_label, fields\n           FROM audit_entry\n           WHERE ?1 IS NULL OR id < ?1\n           ORDER BY id DESC\n           LIMIT ?2",
+  "query": "SELECT id, created_at, source, action,\n                  entity_kind, entity_id, entity_library_id, entity_label, field\n           FROM audit_entry\n           WHERE ?1 IS NULL OR id < ?1\n           ORDER BY id DESC\n           LIMIT ?2",
   "describe": {
     "columns": [
       {
@@ -92,13 +92,13 @@
         }
       },
       {
-        "name": "fields",
+        "name": "field",
         "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "audit_entry",
-            "name": "fields"
+            "name": "field"
           }
         }
       }
@@ -118,5 +118,5 @@
       true
     ]
   },
-  "hash": "0e26f36651ff0504c2a9bb28c0a64a198e6e9634aa1eba28305b03cbed289d6e"
+  "hash": "1f255d6c7a5fe44df193e3dc33e7117cc77fd5a9fddb82b412b9ce5f7ec521ac"
 }

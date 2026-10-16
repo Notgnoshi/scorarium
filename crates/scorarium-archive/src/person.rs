@@ -185,14 +185,16 @@ impl Person {
         .await?
         .pop()
         .expect("the person was just updated on this transaction");
-        audited
-            .record(
-                Source::User,
-                Action::Updated,
-                Some(reloaded.entity_ref()),
-                &changed_fields(self, &reloaded),
-            )
-            .await?;
+        for field in changed_fields(self, &reloaded) {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(reloaded.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         *self = reloaded;
         Ok(())

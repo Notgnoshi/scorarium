@@ -11,6 +11,6 @@ CREATE TABLE audit_entry (
     entity_library_id INTEGER,
     -- The entity's name as it read at the time, so a deleted entity still renders as something
     entity_label TEXT,
-    -- JSON array of field names, NULL unless the action is 'updated'
-    fields TEXT
+    -- NULL unless the action is 'updated'
+    field TEXT
 ) STRICT;

@@ -284,7 +284,7 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
             Source::User,
             Action::Updated,
             Some(masterpieces.entity_ref()),
-            &[Field::Contents],
+            Some(Field::Contents),
         )
         .await?;
     audited.commit().await?;

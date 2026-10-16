@@ -27,8 +27,8 @@
                                 {% else if !entry.label.is_empty() %}
                                     {{ entry.label }}
                                 {% endif %}
-                                {% if !entry.fields.is_empty() %}
-                                    <span class="text-body-secondary">({{ entry.fields }})</span>
+                                {% if !entry.field.is_empty() %}
+                                    <span class="text-body-secondary">({{ entry.field }})</span>
                                 {% endif %}
                             </td>
                         </tr>

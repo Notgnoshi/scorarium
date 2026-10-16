@@ -310,7 +310,7 @@ impl PendingImport {
                     Source::User,
                     Action::Updated,
                     Some(gained.entity_ref()),
-                    &[Field::Links],
+                    Some(Field::Links),
                 )
                 .await?;
         }
@@ -319,7 +319,7 @@ impl PendingImport {
                 Source::User,
                 Action::ImportAccepted,
                 Some(publication.entity_ref()),
-                &[],
+                None,
             )
             .await?;
         claim.armed = false;

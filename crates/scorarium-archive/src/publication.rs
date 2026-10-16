@@ -411,14 +411,16 @@ impl Publication {
         if contents_before != contents_after {
             fields.push(Field::Contents);
         }
-        audited
-            .record(
-                Source::User,
-                Action::Updated,
-                Some(reloaded.entity_ref()),
-                &fields,
-            )
-            .await?;
+        for field in fields {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(reloaded.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         *self = reloaded;
         Ok(merges)
@@ -442,7 +444,7 @@ impl Publication {
         }
         library::collect_orphans(&mut audited, self.library_id).await?;
         audited
-            .record(Source::User, Action::Deleted, Some(self.entity_ref()), &[])
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
             .await?;
         audited.commit().await?;
         Ok(())

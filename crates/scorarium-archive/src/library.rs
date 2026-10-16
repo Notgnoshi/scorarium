@@ -52,15 +52,17 @@ impl Library {
         }
         self.name = updated.name;
         self.private = updated.private;
-        // The entry carries the new name
-        audited
-            .record(
-                Source::User,
-                Action::Updated,
-                Some(self.entity_ref()),
-                &fields,
-            )
-            .await?;
+        // Each entry carries the new name
+        for field in fields {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(self.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         Ok(())
     }
@@ -78,7 +80,7 @@ impl Library {
             return Err(NotFound.into());
         }
         audited
-            .record(Source::User, Action::Deleted, Some(self.entity_ref()), &[])
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
             .await?;
         audited.commit().await?;
         // Imports and their drafts live only in the draft store, so this is the whole cleanup
@@ -159,7 +161,7 @@ impl Library {
                 Source::User,
                 Action::Created,
                 Some(publication.entity_ref()),
-                &[],
+                None,
             )
             .await?;
         audited.commit().await?;
@@ -265,7 +267,7 @@ impl Library {
                 Source::User,
                 Action::Merged,
                 Some(survivor.entity_ref()),
-                &[],
+                None,
             )
             .await?;
         audited.commit().await?;
@@ -422,7 +424,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
             label: work.title,
         };
         audited
-            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), &[])
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
             .await?;
     }
     let persons = sqlx::query!(
@@ -443,7 +445,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
             label: person.name,
         };
         audited
-            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), &[])
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
             .await?;
     }
     Ok(())

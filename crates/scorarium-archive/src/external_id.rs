@@ -283,7 +283,7 @@ pub(crate) async fn recognize_all(archive: &ArchiveInner) -> crate::Result<()> {
                 Source::LinkRecognition,
                 Action::Updated,
                 Some(change.owner.clone()),
-                &[Field::Links],
+                Some(Field::Links),
             )
             .await?;
     }

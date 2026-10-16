@@ -2,8 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use sqlx::{Sqlite, SqliteConnection, Transaction};
 
-/// How many entries the log keeps
-pub(crate) const MAX_ENTRIES: usize = 1_000;
+const MAX_ENTRIES: usize = 3_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
@@ -191,7 +190,7 @@ pub struct AuditEntry {
     pub source: Source,
     pub action: Action,
     pub entity: Option<EntityRef>,
-    pub fields: Vec<Field>,
+    pub field: Option<Field>,
 }
 
 /// A write transaction that records what it did before it commits.
@@ -210,7 +209,7 @@ impl<'a> Audited<'a> {
         source: Source,
         action: Action,
         entity: Option<EntityRef>,
-        fields: &[Field],
+        field: Option<Field>,
     ) -> crate::Result<()> {
         let source = source.as_str();
         let action = action.as_str();
@@ -218,15 +217,10 @@ impl<'a> Audited<'a> {
         let id = entity.as_ref().map(|e| e.id);
         let library_id = entity.as_ref().and_then(|e| e.library_id);
         let label = entity.as_ref().map(|e| e.label.as_str());
-        let fields = if fields.is_empty() {
-            None
-        } else {
-            let names: Vec<&str> = fields.iter().map(|f| f.as_str()).collect();
-            Some(serde_json::to_string(&names)?)
-        };
+        let field = field.map(|field| field.as_str());
         sqlx::query!(
             "INSERT INTO audit_entry
-                 (source, action, entity_kind, entity_id, entity_library_id, entity_label, fields)
+                 (source, action, entity_kind, entity_id, entity_library_id, entity_label, field)
              VALUES (?, ?, ?, ?, ?, ?, ?)",
             source,
             action,
@@ -234,7 +228,7 @@ impl<'a> Audited<'a> {
             id,
             library_id,
             label,
-            fields
+            field
         )
         .execute(&mut *self.tx)
         .await?;
@@ -294,7 +288,7 @@ pub(crate) async fn load_entries(
     let limit = limit.map_or(-1, |limit| limit as i64);
     let rows = sqlx::query!(
         r#"SELECT id, created_at, source, action,
-                  entity_kind, entity_id, entity_library_id, entity_label, fields
+                  entity_kind, entity_id, entity_library_id, entity_label, field
            FROM audit_entry
            WHERE ?1 IS NULL OR id < ?1
            ORDER BY id DESC
@@ -317,20 +311,13 @@ pub(crate) async fn load_entries(
                     label: row.entity_label.unwrap_or_default(),
                 }),
             };
-            let fields = match row.fields {
-                None => Vec::new(),
-                Some(json) => serde_json::from_str::<Vec<String>>(&json)?
-                    .iter()
-                    .map(|name| Field::parse(name))
-                    .collect::<crate::Result<_>>()?,
-            };
             Ok(AuditEntry {
                 id: row.id,
                 created_at: row.created_at,
                 source: Source::parse(&row.source)?,
                 action: Action::parse(&row.action)?,
                 entity,
-                fields,
+                field: row.field.as_deref().map(Field::parse).transpose()?,
             })
         })
         .collect()
@@ -360,7 +347,7 @@ mod tests {
                     Source::User,
                     Action::Updated,
                     publication(&format!("p{n}")),
-                    &[],
+                    None,
                 )
                 .await
                 .unwrap();
@@ -390,7 +377,7 @@ mod tests {
                     Source::User,
                     Action::Updated,
                     publication(&format!("p{n}")),
-                    &[],
+                    None,
                 )
                 .await
                 .unwrap();

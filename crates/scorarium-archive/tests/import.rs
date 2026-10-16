@@ -429,7 +429,7 @@ async fn link_updates(archive: &Archive, person: i64) -> usize {
         .iter()
         .filter(|entry| {
             entry.action == Action::Updated
-                && entry.fields == [Field::Links]
+                && entry.field == Some(Field::Links)
                 && entry.entity.as_ref().is_some_and(|entity| {
                     entity.kind == AuditSubject::Person && entity.id == person
                 })

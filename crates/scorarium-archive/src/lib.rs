@@ -253,7 +253,7 @@ impl Archive {
                 Source::User,
                 Action::Created,
                 Some(library.entity_ref()),
-                &[],
+                None,
             )
             .await?;
         audited.commit().await?;
@@ -310,7 +310,7 @@ impl Archive {
         let claimed = password::insert_password_hash(&mut audited, &hash).await?;
         if claimed {
             audited
-                .record(Source::User, Action::PasswordClaimed, None, &[])
+                .record(Source::User, Action::PasswordClaimed, None, None)
                 .await?;
             audited.commit().await?;
         } else {
@@ -338,7 +338,7 @@ impl Archive {
         let mut audited = self.shared.begin_write().await?;
         password::update_password_hash(&mut audited, &hash).await?;
         audited
-            .record(Source::User, Action::PasswordChanged, None, &[])
+            .record(Source::User, Action::PasswordChanged, None, None)
             .await?;
         audited.commit().await
     }

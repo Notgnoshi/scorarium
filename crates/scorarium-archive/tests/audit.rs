@@ -123,7 +123,7 @@ async fn an_update_names_only_the_fields_that_changed() {
 
     let latest = archive.audit_log(None, Some(1)).await.unwrap().remove(0);
     assert_eq!(latest.action, Action::Updated);
-    assert_eq!(latest.fields, vec![Field::Title]);
+    assert_eq!(latest.field, Some(Field::Title));
     // The entry names the publication as it reads after the edit
     assert_eq!(
         latest.entity.unwrap().label,
@@ -131,21 +131,50 @@ async fn an_update_names_only_the_fields_that_changed() {
     );
 }
 
-/// Saving a publication without touching anything records an update with no fields
 #[tokio::test]
-async fn an_update_that_changes_nothing_names_no_fields() {
+async fn an_update_that_changes_nothing_records_nothing() {
+    let archive = Archive::in_memory().await.unwrap();
+    let library = archive.create_library("Test", false).await.unwrap();
+    let mut publication = library.create_publication(&goldberg()).await.unwrap().0;
+    let _ = library.create_publication(&goldberg()).await.unwrap();
+    let before = archive.audit_log(None, None).await.unwrap().len();
+
+    let works = publication.works().await.unwrap();
+    let unchanged = publication.raw_input(&works).parse().unwrap();
+    let _ = publication.update(&unchanged).await.unwrap();
+
+    assert_eq!(archive.audit_log(None, None).await.unwrap().len(), before);
+}
+
+#[tokio::test]
+async fn a_save_writes_one_entry_per_changed_field() {
     let archive = Archive::in_memory().await.unwrap();
     let library = archive.create_library("Test", false).await.unwrap();
     let mut publication = library.create_publication(&goldberg()).await.unwrap().0;
     let _ = library.create_publication(&goldberg()).await.unwrap();
 
     let works = publication.works().await.unwrap();
-    let unchanged = publication.raw_input(&works).parse().unwrap();
-    let _ = publication.update(&unchanged).await.unwrap();
+    let mut edited = publication.raw_input(&works);
+    edited.title = "Aria mit verschiedenen Veraenderungen".into();
+    edited.publisher = "Baerenreiter".into();
+    edited.year = "1977".into();
+    let _ = publication.update(&edited.parse().unwrap()).await.unwrap();
 
-    let latest = archive.audit_log(None, Some(1)).await.unwrap().remove(0);
-    assert_eq!(latest.action, Action::Updated);
-    assert_eq!(latest.fields, Vec::new());
+    let entries = archive.audit_log(None, Some(4)).await.unwrap();
+    let mut fields: Vec<&str> = entries
+        .iter()
+        .take(3)
+        .map(|entry| {
+            assert_eq!(entry.action, Action::Updated);
+            assert_eq!(entry.entity.as_ref().unwrap().id, publication.id);
+            entry.field.unwrap().as_str()
+        })
+        .collect();
+    // The diff lists fields in declaration order, which is not what the test is about
+    fields.sort_unstable();
+    assert_eq!(fields, ["publisher", "title", "year"]);
+    // The fourth entry is the second publication's creation, so the save wrote exactly three
+    assert_eq!(entries[3].action, Action::Created);
 }
 
 /// Removing a work from a publication orphans the work, and orphaning the work orphans the person
@@ -198,5 +227,5 @@ async fn an_edit_records_the_deletions_it_caused() {
             ),
         ]
     );
-    assert_eq!(entries[0].fields, vec![Field::Contents]);
+    assert_eq!(entries[0].field, Some(Field::Contents));
 }

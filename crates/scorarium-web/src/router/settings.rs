@@ -137,8 +137,8 @@ struct ShownEntry {
     label: String,
     /// None when the entity is gone, or when the event names no entity
     href: Option<String>,
-    /// "title, publisher", empty when the action is not an update
-    fields: String,
+    /// "time signature", empty when the action is not an update
+    field: String,
 }
 
 fn shown_entry(
@@ -167,12 +167,10 @@ fn shown_entry(
             .map(|entity| entity.label.clone())
             .unwrap_or_default(),
         href: entity.and_then(|entity| hrefs.get(&(entity.kind, entity.id)).cloned().flatten()),
-        fields: entry
-            .fields
-            .iter()
+        field: entry
+            .field
             .map(|field| field.as_str().replace('_', " "))
-            .collect::<Vec<_>>()
-            .join(", "),
+            .unwrap_or_default(),
     }
 }
 
