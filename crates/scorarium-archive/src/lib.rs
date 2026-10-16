@@ -30,7 +30,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
-pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Event, Field, Source};
+pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Field, Source};
 pub use crate::catalog::CatalogNumber;
 pub use crate::holding::{
     Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput, parse_holdings,
@@ -120,19 +120,16 @@ impl ArchiveInner {
 
 // database access
 impl ArchiveInner {
-    /// Open a write transaction, recording what it is for before anything else happens.
+    /// Open a write transaction.
     ///
-    /// This is intended to be the only mechanism the [Archive]'s [SqlitePool] is available,
-    /// strongly encouraging all database interactions in this crate to land in the audit log.
-    pub(crate) async fn begin_audit(
-        &self,
-        source: Source,
-        event: Event,
-    ) -> Result<audit::Audited<'_>> {
-        let mut tx = self.pool.begin().await?;
-        let group = audit::insert(&mut tx, None, source, &event).await?;
-        audit::trim(&mut tx).await?;
-        Ok(audit::Audited::new(tx, group))
+    /// This is intended to be the only mechanism the [Archive]'s [SqlitePool] is available for
+    /// writing, so that every mutation in this crate records itself in the audit log before it
+    /// commits.
+    ///
+    /// The user is expected to take the [audit::Audited] return value and use
+    /// [audit::Audited::record()] to record an audit log event for each transaction.
+    pub(crate) async fn begin_write(&self) -> Result<audit::Audited<'_>> {
+        Ok(audit::Audited::new(self.pool.begin().await?))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries
@@ -220,19 +217,14 @@ impl Archive {
         }
     }
 
-    /// Get the database's audit log, most recent entries first.
-    pub async fn audit_log(&self) -> Result<Vec<AuditEntry>> {
+    /// Read the audit log, newest first.
+    pub async fn audit_log(
+        &self,
+        before: Option<i64>,
+        limit: Option<usize>,
+    ) -> Result<Vec<AuditEntry>> {
         let mut conn = self.shared.acquire_read().await?;
-        audit::load_entries(&mut conn).await
-    }
-
-    /// One page of the audit log, newest group first, plus the cursor for the next page.
-    ///
-    /// `before` is the cursor the previous page handed back; None starts at the newest. The cursor
-    /// is None on the last page.
-    pub async fn audit_page(&self, before: Option<i64>) -> Result<(Vec<AuditEntry>, Option<i64>)> {
-        let mut conn = self.shared.acquire_read().await?;
-        audit::load_page(&mut conn, before).await
+        audit::load_entries(&mut conn, before, limit).await
     }
 }
 
@@ -254,12 +246,16 @@ impl Archive {
     ///
     /// Names need not be unique.
     pub async fn create_library(&self, name: &str, private: bool) -> Result<Library> {
-        let mut audited = self
-            .shared
-            .begin_audit(Source::User, Event::new(Action::Created))
-            .await?;
+        let mut audited = self.shared.begin_write().await?;
         let library = library::create_library(&self.shared, &mut audited, name, private).await?;
-        audited.set_entity(&library.entity_ref()).await?;
+        audited
+            .record(
+                Source::User,
+                Action::Created,
+                Some(library.entity_ref()),
+                &[],
+            )
+            .await?;
         audited.commit().await?;
         Ok(library)
     }
@@ -310,12 +306,12 @@ impl Archive {
     /// logins cannot both win.
     pub async fn claim_password(&self, password: &str) -> Result<bool> {
         let hash = password::hash_password(password)?;
-        let mut audited = self
-            .shared
-            .begin_audit(Source::User, Event::new(Action::PasswordClaimed))
-            .await?;
+        let mut audited = self.shared.begin_write().await?;
         let claimed = password::insert_password_hash(&mut audited, &hash).await?;
         if claimed {
+            audited
+                .record(Source::User, Action::PasswordClaimed, None, &[])
+                .await?;
             audited.commit().await?;
         } else {
             audited.rollback().await?;
@@ -339,11 +335,11 @@ impl Archive {
     /// allowing them to change it.
     pub async fn change_password(&self, password: &str) -> Result<()> {
         let hash = password::hash_password(password)?;
-        let mut audited = self
-            .shared
-            .begin_audit(Source::User, Event::new(Action::PasswordChanged))
-            .await?;
+        let mut audited = self.shared.begin_write().await?;
         password::update_password_hash(&mut audited, &hash).await?;
+        audited
+            .record(Source::User, Action::PasswordChanged, None, &[])
+            .await?;
         audited.commit().await
     }
 }

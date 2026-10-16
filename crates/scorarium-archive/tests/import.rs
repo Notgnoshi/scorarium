@@ -422,18 +422,15 @@ async fn stored_person(library: &Library, name: &str, links: &[&str]) -> i64 {
     id
 }
 
-/// How many times an accepted import has added links to this person
-async fn links_gained(archive: &Archive, person: i64) -> usize {
-    let entries = archive.audit_log().await.unwrap();
+/// How many updates have changed this person's links, by hand or by an accepted import
+async fn link_updates(archive: &Archive, person: i64) -> usize {
+    let entries = archive.audit_log(None, None).await.unwrap();
     entries
         .iter()
         .filter(|entry| {
-            let about = entry.event.entity.as_ref();
-            // A hand edit of the person heads its own group; an accept's entry hangs from one
-            entry.group_id.is_some()
-                && entry.event.action == Action::Updated
-                && entry.event.fields == [Field::Links]
-                && about.is_some_and(|entity| {
+            entry.action == Action::Updated
+                && entry.fields == [Field::Links]
+                && entry.entity.as_ref().is_some_and(|entity| {
                     entity.kind == AuditSubject::Person && entity.id == person
                 })
         })
@@ -454,13 +451,13 @@ async fn accepting_adds_the_links_a_lookup_found_to_a_stored_person() {
     assert_eq!(beethoven.id, stored);
     assert_eq!(beethoven.links, [ENTITY, VIAF]);
     assert_eq!(library.person_names(false).await.unwrap().len(), 1);
-    assert_eq!(links_gained(&archive, stored).await, 1);
+    assert_eq!(link_updates(&archive, stored).await, 2);
 
     // The same lookup again finds nothing he lacks, so nothing is recorded
     let (import, contributor) = import_with_external_beethoven(&library).await;
     let beethoven = accept_with(&library, import, contributor).await;
     assert_eq!(beethoven.links, [ENTITY, VIAF]);
-    assert_eq!(links_gained(&archive, stored).await, 1);
+    assert_eq!(link_updates(&archive, stored).await, 2);
 }
 
 #[tokio::test]

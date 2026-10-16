@@ -9,7 +9,7 @@ use crate::library::Library;
 use crate::person::PersonRawInput;
 use crate::publication::{Publication, PublicationInput};
 use crate::work::{self, WorkInput};
-use crate::{Action, Archive, Event, Field, Result, Source};
+use crate::{Action, Archive, Field, Result, Source};
 
 const RACHMANINOFF: &str = "Sergei Rachmaninoff";
 const SATIE: &str = "Erik Satie";
@@ -276,12 +276,16 @@ pub(crate) async fn populate(archive: &Archive) -> Result<()> {
 
     let prelude_id = russian_album.works().await?[0].id;
     // The same work in two publications, so work pages list more than one
-    let event = Event {
-        fields: vec![Field::Contents],
-        ..Event::about(Action::Updated, masterpieces.entity_ref())
-    };
-    let mut audited = archive.shared.begin_audit(Source::User, event).await?;
+    let mut audited = archive.shared.begin_write().await?;
     work::link_work_to_publication(&mut audited, sheet_music.id, masterpieces.id, prelude_id)
+        .await?;
+    audited
+        .record(
+            Source::User,
+            Action::Updated,
+            Some(masterpieces.entity_ref()),
+            &[Field::Contents],
+        )
         .await?;
     audited.commit().await?;
 

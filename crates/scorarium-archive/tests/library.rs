@@ -40,10 +40,10 @@ async fn update_changes_the_handle_and_the_stored_values() {
     assert_eq!(stored.name, "Novels");
     assert!(stored.private);
 
-    let newest = archive.audit_log().await.unwrap().remove(0);
-    assert_eq!(newest.event.action, Action::Updated);
-    assert_eq!(newest.event.fields, [Field::Name, Field::Visibility]);
-    assert_eq!(newest.event.entity.unwrap().label, "Novels");
+    let newest = archive.audit_log(None, Some(1)).await.unwrap().remove(0);
+    assert_eq!(newest.action, Action::Updated);
+    assert_eq!(newest.fields, [Field::Name, Field::Visibility]);
+    assert_eq!(newest.entity.unwrap().label, "Novels");
 }
 
 /// Two browser tabs, one of which deleted the library the other is still attempting to use

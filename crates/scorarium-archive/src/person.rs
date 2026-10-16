@@ -9,9 +9,7 @@ use crate::fuzzy::normalize;
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
 use crate::summary::{self, PersonSummary};
-use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
-};
+use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source};
 
 /// A person who contributed to a publication or work
 ///
@@ -158,13 +156,7 @@ impl Person {
     ///
     /// Returns a [NotFound] error if the person has since been collected.
     pub async fn update(&mut self, input: &PersonInput) -> Result<()> {
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::Updated, self.entity_ref()),
-            )
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let sort_name = sort_name(&input.name);
         let result = sqlx::query!(
             "UPDATE person SET name = ?, sort_name = ? WHERE library_id = ? AND id = ?",
@@ -193,7 +185,14 @@ impl Person {
         .await?
         .pop()
         .expect("the person was just updated on this transaction");
-        audited.set_fields(&changed_fields(self, &reloaded)).await?;
+        audited
+            .record(
+                Source::User,
+                Action::Updated,
+                Some(reloaded.entity_ref()),
+                &changed_fields(self, &reloaded),
+            )
+            .await?;
         audited.commit().await?;
         *self = reloaded;
         Ok(())

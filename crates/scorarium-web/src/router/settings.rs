@@ -93,6 +93,8 @@ pub async fn change_password(
     Ok(Redirect::to("/").into_response())
 }
 
+const ENTRIES_PER_PAGE: usize = 50;
+
 #[derive(Deserialize)]
 pub struct AuditQuery {
     /// The cursor the previous page handed back; absent on the first page
@@ -106,7 +108,14 @@ pub async fn audit_page(
     Query(query): Query<AuditQuery>,
     base: BaseContext,
 ) -> Result<Response, AppError> {
-    let (entries, next) = state.archive.audit_page(query.before).await?;
+    // One entry past the page tells whether there is a page after this one
+    let mut entries = state
+        .archive
+        .audit_log(query.before, Some(ENTRIES_PER_PAGE + 1))
+        .await?;
+    let has_older = entries.len() > ENTRIES_PER_PAGE;
+    entries.truncate(ENTRIES_PER_PAGE);
+    let next = has_older.then(|| entries[ENTRIES_PER_PAGE - 1].id);
     let hrefs = entity_hrefs(&state, &entries).await?;
     let page = AuditPage {
         base: base.page("Audit log", vec![Crumb::home(), Crumb::settings()]),
@@ -121,7 +130,6 @@ pub async fn audit_page(
 
 /// One entry as the page shows it
 struct ShownEntry {
-    heads_a_group: bool,
     age: String,
     source: String,
     /// "Created publication", "Deleted work", "Changed the password"
@@ -137,12 +145,12 @@ fn shown_entry(
     entry: &AuditEntry,
     hrefs: &HashMap<(AuditSubject, i64), Option<String>>,
 ) -> ShownEntry {
-    let entity = entry.event.entity.as_ref();
+    let entity = entry.entity.as_ref();
     let noun = entity
         .map(|entity| entity.kind.as_str())
         .unwrap_or_default();
     // Every wording lives here, so a new action does not compile until it reads as something
-    let summary = match entry.event.action {
+    let summary = match entry.action {
         Action::Created => format!("Created {noun}"),
         Action::Updated => format!("Updated {noun}"),
         Action::Deleted => format!("Deleted {noun}"),
@@ -152,7 +160,6 @@ fn shown_entry(
         Action::PasswordChanged => "Changed the password".to_string(),
     };
     ShownEntry {
-        heads_a_group: entry.group_id.is_none(),
         age: age(entry.created_at),
         source: entry.source.as_str().replace('_', " "),
         summary,
@@ -161,7 +168,6 @@ fn shown_entry(
             .unwrap_or_default(),
         href: entity.and_then(|entity| hrefs.get(&(entity.kind, entity.id)).cloned().flatten()),
         fields: entry
-            .event
             .fields
             .iter()
             .map(|field| field.as_str().replace('_', " "))
@@ -179,10 +185,7 @@ async fn entity_hrefs(
     entries: &[AuditEntry],
 ) -> Result<HashMap<(AuditSubject, i64), Option<String>>, AppError> {
     let mut hrefs = HashMap::new();
-    for entity in entries
-        .iter()
-        .filter_map(|entry| entry.event.entity.as_ref())
-    {
+    for entity in entries.iter().filter_map(|entry| entry.entity.as_ref()) {
         let key = (entity.kind, entity.id);
         if hrefs.contains_key(&key) {
             continue;

@@ -10,9 +10,7 @@ use crate::external_id::{EntityKind, Link};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
-use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
-};
+use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library, tag};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -365,13 +363,7 @@ impl Work {
     /// Returns a [NotFound] error if the work has since been collected.
     pub async fn update(&mut self, input: &WorkInput) -> crate::Result<WorkMerges> {
         let mut merges = WorkMerges::default();
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::Updated, self.entity_ref()),
-            )
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!(
             "UPDATE work SET title = ?, \"key\" = ?, time_signature = ?, instrumentation = ?,
                  stars = ?, note = ?
@@ -411,7 +403,7 @@ impl Work {
         .await?
         .pop()
         .expect("the work was just updated on this transaction");
-        audited.set_fields(&changed_fields(self, &edited)).await?;
+        let fields = changed_fields(self, &edited);
         let survivor =
             absorb_into_duplicate(&mut audited, self.library_id, self.id, &mut merges).await?;
         library::collect_orphans(&mut audited, self.library_id).await?;
@@ -426,6 +418,14 @@ impl Work {
         .await?
         .pop()
         .expect("the work was just updated on this transaction");
+        audited
+            .record(
+                Source::User,
+                Action::Updated,
+                Some(edited.entity_ref()),
+                &fields,
+            )
+            .await?;
         audited.commit().await?;
         *self = reloaded;
         Ok(merges)
@@ -979,7 +979,7 @@ pub(crate) async fn absorb_into_duplicate(
         label: survivor,
     };
     audited
-        .record(Source::Merge, Event::about(Action::Merged, entity))
+        .record(Source::Merge, Action::Merged, Some(entity), &[])
         .await?;
     Ok(into)
 }
