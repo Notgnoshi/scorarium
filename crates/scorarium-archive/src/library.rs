@@ -13,9 +13,7 @@ use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
 use crate::work::{self, Work, WorkMerges};
-use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Result, Source,
-};
+use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -31,10 +29,7 @@ impl Library {
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
     pub async fn update(&mut self, name: &str, private: bool) -> Result<()> {
-        let mut audited = self
-            .archive
-            .begin_audit(Source::User, Event::new(Action::Updated))
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let updated = sqlx::query!(
             r#"UPDATE library SET name = ?, private = ? WHERE id = ?
                RETURNING name AS "name!", private AS "private!: bool""#,
@@ -57,9 +52,17 @@ impl Library {
         }
         self.name = updated.name;
         self.private = updated.private;
-        // The entry carries the new name
-        audited.set_entity(&self.entity_ref()).await?;
-        audited.set_fields(&fields).await?;
+        // Each entry carries the new name
+        for field in fields {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(self.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         Ok(())
     }
@@ -68,13 +71,7 @@ impl Library {
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
     pub async fn delete(self) -> Result<()> {
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::Deleted, self.entity_ref()),
-            )
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
             .execute(&mut *audited)
             .await?;
@@ -82,6 +79,9 @@ impl Library {
             audited.rollback().await?;
             return Err(NotFound.into());
         }
+        audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
         audited.commit().await?;
         // Imports and their drafts live only in the draft store, so this is the whole cleanup
         self.archive.drafts().drop_library(self.id);
@@ -147,10 +147,7 @@ impl Library {
         input: &PublicationInput,
     ) -> Result<(Publication, WorkMerges)> {
         let mut merges = WorkMerges::default();
-        let mut audited = self
-            .archive
-            .begin_audit(Source::User, Event::new(Action::Created))
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let (publication, _) = publication::create_publication(
             &self.archive,
             &mut audited,
@@ -159,7 +156,14 @@ impl Library {
             &mut merges,
         )
         .await?;
-        audited.set_entity(&publication.entity_ref()).await?;
+        audited
+            .record(
+                Source::User,
+                Action::Created,
+                Some(publication.entity_ref()),
+                None,
+            )
+            .await?;
         audited.commit().await?;
         Ok((publication, merges))
     }
@@ -238,10 +242,7 @@ impl Library {
     /// Returns a [NotFound] error when either work is not in this library.
     pub async fn merge_works(&self, from: i64, into: i64) -> Result<(Work, WorkMerges)> {
         let mut merges = WorkMerges::default();
-        let mut audited = self
-            .archive
-            .begin_audit(Source::User, Event::new(Action::Merged))
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let both = sqlx::query_scalar!(
             "SELECT COUNT(*) FROM work WHERE library_id = ?1 AND id IN (?2, ?3)",
             self.id,
@@ -261,7 +262,14 @@ impl Library {
                 .await?
                 .pop()
                 .expect("the survivor was just verified on this transaction");
-        audited.set_entity(&survivor.entity_ref()).await?;
+        audited
+            .record(
+                Source::User,
+                Action::Merged,
+                Some(survivor.entity_ref()),
+                None,
+            )
+            .await?;
         audited.commit().await?;
         Ok((survivor, merges))
     }
@@ -416,7 +424,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
             label: work.title,
         };
         audited
-            .record(Source::OrphanCleanup, Event::about(Action::Deleted, entity))
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
             .await?;
     }
     let persons = sqlx::query!(
@@ -437,7 +445,7 @@ pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) 
             label: person.name,
         };
         audited
-            .record(Source::OrphanCleanup, Event::about(Action::Deleted, entity))
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
             .await?;
     }
     Ok(())

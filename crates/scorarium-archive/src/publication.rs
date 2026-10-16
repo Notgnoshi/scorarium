@@ -11,9 +11,7 @@ use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkMerges, WorkPost, WorkRawInput};
-use crate::{
-    Action, ArchiveInner, AuditSubject, EntityRef, Event, Field, NotFound, Source, library, tag,
-};
+use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library, tag};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -364,13 +362,7 @@ impl Publication {
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<WorkMerges> {
         let mut merges = WorkMerges::default();
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::Updated, self.entity_ref()),
-            )
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!(
             "UPDATE publication SET title = ?, publisher = ?, year = ?, stars = ?, note = ?
              WHERE library_id = ? AND id = ?",
@@ -419,7 +411,16 @@ impl Publication {
         if contents_before != contents_after {
             fields.push(Field::Contents);
         }
-        audited.set_fields(&fields).await?;
+        for field in fields {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(reloaded.entity_ref()),
+                    Some(field),
+                )
+                .await?;
+        }
         audited.commit().await?;
         *self = reloaded;
         Ok(merges)
@@ -429,13 +430,7 @@ impl Publication {
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
     pub async fn delete(self) -> crate::Result<()> {
-        let mut audited = self
-            .archive
-            .begin_audit(
-                Source::User,
-                Event::about(Action::Deleted, self.entity_ref()),
-            )
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!(
             "DELETE FROM publication WHERE library_id = ? AND id = ?",
             self.library_id,
@@ -448,6 +443,9 @@ impl Publication {
             return Err(NotFound.into());
         }
         library::collect_orphans(&mut audited, self.library_id).await?;
+        audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
         audited.commit().await?;
         Ok(())
     }

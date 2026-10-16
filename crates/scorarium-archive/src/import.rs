@@ -12,7 +12,7 @@ use crate::publication::{
 };
 use crate::summary::{self, PersonSummary};
 use crate::work::{self, Work, WorkMerges};
-use crate::{Action, ArchiveInner, Event, Field, NotFound, Source, draft, person};
+use crate::{Action, ArchiveInner, Field, NotFound, Source, draft, person};
 
 /// An import the user has started but has not yet accepted or discarded
 #[derive(Clone, Debug)]
@@ -271,10 +271,7 @@ impl PendingImport {
                 _ => {}
             }
         }
-        let mut audited = self
-            .archive
-            .begin_audit(Source::User, Event::new(Action::ImportAccepted))
-            .await?;
+        let mut audited = self.archive.begin_write().await?;
         let mut persons = Vec::with_capacity(new_persons.len());
         for (id, (name, links)) in new_persons {
             let links = crate::input::valid_links(EntityKind::Person, &links);
@@ -308,13 +305,23 @@ impl PendingImport {
                     .await?
                     .pop()
                     .ok_or_else(|| eyre::eyre!("person {id} is gone after gaining links"))?;
-            let event = Event {
-                fields: vec![Field::Links],
-                ..Event::about(Action::Updated, gained.entity_ref())
-            };
-            audited.record(Source::User, event).await?;
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    Some(gained.entity_ref()),
+                    Some(Field::Links),
+                )
+                .await?;
         }
-        audited.set_entity(&publication.entity_ref()).await?;
+        audited
+            .record(
+                Source::User,
+                Action::ImportAccepted,
+                Some(publication.entity_ref()),
+                None,
+            )
+            .await?;
         claim.armed = false;
         audited.commit().await.inspect_err(|_| claim.armed = true)?;
         // Only after the commit, so a rolled-back accept leaves every draft as it was

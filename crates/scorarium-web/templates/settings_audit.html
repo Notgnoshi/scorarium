@@ -16,12 +16,11 @@
                 <tbody>
                     {% for entry in entries %}
                         <tr>
-                            {# Blank on a consequence, so it reads as belonging to the entry above #}
-                            <td>{% if entry.heads_a_group %}{{ entry.age }}{% endif %}</td>
+                            <td>{{ entry.age }}</td>
                             <td>
                                 <span class="badge text-bg-secondary">{{ entry.source }}</span>
                             </td>
-                            <td {% if !entry.heads_a_group %}class="ps-4 text-body-secondary"{% endif %}>
+                            <td>
                                 {{ entry.summary }}
                                 {% if let Some(href) = entry.href %}
                                     <a href="{{ href }}">{{ entry.label }}</a>

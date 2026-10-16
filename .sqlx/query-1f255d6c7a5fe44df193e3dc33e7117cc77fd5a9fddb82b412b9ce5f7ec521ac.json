@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, group_id, created_at, source, action,\n                  entity_kind, entity_id, entity_library_id, entity_label, fields\n           FROM audit_entry\n           ORDER BY COALESCE(group_id, id) DESC, id ASC",
+  "query": "SELECT id, created_at, source, action,\n                  entity_kind, entity_id, entity_library_id, entity_label, field\n           FROM audit_entry\n           WHERE ?1 IS NULL OR id < ?1\n           ORDER BY id DESC\n           LIMIT ?2",
   "describe": {
     "columns": [
       {
@@ -15,19 +15,8 @@
         }
       },
       {
-        "name": "group_id",
-        "ordinal": 1,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "audit_entry",
-            "name": "group_id"
-          }
-        }
-      },
-      {
         "name": "created_at",
-        "ordinal": 2,
+        "ordinal": 1,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -38,7 +27,7 @@
       },
       {
         "name": "source",
-        "ordinal": 3,
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +38,7 @@
       },
       {
         "name": "action",
-        "ordinal": 4,
+        "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +49,7 @@
       },
       {
         "name": "entity_kind",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,7 +60,7 @@
       },
       {
         "name": "entity_id",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,7 +71,7 @@
       },
       {
         "name": "entity_library_id",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -93,7 +82,7 @@
       },
       {
         "name": "entity_label",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -103,23 +92,22 @@
         }
       },
       {
-        "name": "fields",
-        "ordinal": 9,
+        "name": "field",
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
             "table": "audit_entry",
-            "name": "fields"
+            "name": "field"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 2
     },
     "nullable": [
       false,
-      true,
       false,
       false,
       false,
@@ -130,5 +118,5 @@
       true
     ]
   },
-  "hash": "7072f84187c7e7bedeb8127ee485f2a3d815941daa72cc9e0034eb91827a250a"
+  "hash": "1f255d6c7a5fe44df193e3dc33e7117cc77fd5a9fddb82b412b9ce5f7ec521ac"
 }

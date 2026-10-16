@@ -7,7 +7,7 @@ use axum::extract::{Query, State};
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::archive::{
-    Action, AuditEntry, AuditSubject, CatalogNumberEntry, EntityRef, NotFound, PasswordCheck,
+    Action, AuditEntry, AuditSubject, CatalogNumberEntry, EntityRef, Field, NotFound, PasswordCheck,
 };
 use serde::Deserialize;
 
@@ -93,6 +93,8 @@ pub async fn change_password(
     Ok(Redirect::to("/").into_response())
 }
 
+const ENTRIES_PER_PAGE: usize = 100;
+
 #[derive(Deserialize)]
 pub struct AuditQuery {
     /// The cursor the previous page handed back; absent on the first page
@@ -106,13 +108,20 @@ pub async fn audit_page(
     Query(query): Query<AuditQuery>,
     base: BaseContext,
 ) -> Result<Response, AppError> {
-    let (entries, next) = state.archive.audit_page(query.before).await?;
+    // One entry past the page tells whether there is a page after this one
+    let mut entries = state
+        .archive
+        .audit_log(query.before, Some(ENTRIES_PER_PAGE + 1))
+        .await?;
+    let has_older = entries.len() > ENTRIES_PER_PAGE;
+    entries.truncate(ENTRIES_PER_PAGE);
+    let next = has_older.then(|| entries[ENTRIES_PER_PAGE - 1].id);
     let hrefs = entity_hrefs(&state, &entries).await?;
     let page = AuditPage {
         base: base.page("Audit log", vec![Crumb::home(), Crumb::settings()]),
-        entries: entries
+        entries: fold_saves(&entries)
             .iter()
-            .map(|entry| shown_entry(entry, &hrefs))
+            .map(|(entry, fields)| shown_entry(entry, fields, &hrefs))
             .collect(),
         next,
     };
@@ -121,7 +130,6 @@ pub async fn audit_page(
 
 /// One entry as the page shows it
 struct ShownEntry {
-    heads_a_group: bool,
     age: String,
     source: String,
     /// "Created publication", "Deleted work", "Changed the password"
@@ -133,16 +141,45 @@ struct ShownEntry {
     fields: String,
 }
 
+/// Fold audit log events for a bulk edit of one entity into a group
+fn fold_saves(entries: &[AuditEntry]) -> Vec<(&AuditEntry, Vec<Field>)> {
+    let key = |entry: &AuditEntry| entry.entity.as_ref().map(|e| (e.kind, e.id));
+    let mut shown: Vec<(&AuditEntry, Vec<Field>)> = Vec::new();
+    for entry in entries {
+        if let Some((head, fields)) = shown.last_mut()
+            && key(head).is_some()
+            && key(head) == key(entry)
+            && head.action == entry.action
+            && head.source == entry.source
+            && head.created_at - entry.created_at <= 1
+        {
+            if let Some(field) = entry.field
+                && !fields.contains(&field)
+            {
+                fields.push(field);
+            }
+            continue;
+        }
+        shown.push((entry, entry.field.into_iter().collect()));
+    }
+    // Entries are newest first, but the fields read in the order the save wrote them.
+    for (_, fields) in &mut shown {
+        fields.reverse();
+    }
+    shown
+}
+
 fn shown_entry(
     entry: &AuditEntry,
+    fields: &[Field],
     hrefs: &HashMap<(AuditSubject, i64), Option<String>>,
 ) -> ShownEntry {
-    let entity = entry.event.entity.as_ref();
+    let entity = entry.entity.as_ref();
     let noun = entity
         .map(|entity| entity.kind.as_str())
         .unwrap_or_default();
     // Every wording lives here, so a new action does not compile until it reads as something
-    let summary = match entry.event.action {
+    let summary = match entry.action {
         Action::Created => format!("Created {noun}"),
         Action::Updated => format!("Updated {noun}"),
         Action::Deleted => format!("Deleted {noun}"),
@@ -152,7 +189,6 @@ fn shown_entry(
         Action::PasswordChanged => "Changed the password".to_string(),
     };
     ShownEntry {
-        heads_a_group: entry.group_id.is_none(),
         age: age(entry.created_at),
         source: entry.source.as_str().replace('_', " "),
         summary,
@@ -160,9 +196,7 @@ fn shown_entry(
             .map(|entity| entity.label.clone())
             .unwrap_or_default(),
         href: entity.and_then(|entity| hrefs.get(&(entity.kind, entity.id)).cloned().flatten()),
-        fields: entry
-            .event
-            .fields
+        fields: fields
             .iter()
             .map(|field| field.as_str().replace('_', " "))
             .collect::<Vec<_>>()
@@ -179,10 +213,7 @@ async fn entity_hrefs(
     entries: &[AuditEntry],
 ) -> Result<HashMap<(AuditSubject, i64), Option<String>>, AppError> {
     let mut hrefs = HashMap::new();
-    for entity in entries
-        .iter()
-        .filter_map(|entry| entry.event.entity.as_ref())
-    {
+    for entity in entries.iter().filter_map(|entry| entry.entity.as_ref()) {
         let key = (entity.kind, entity.id);
         if hrefs.contains_key(&key) {
             continue;
@@ -259,4 +290,65 @@ fn settings(
         unrecognized,
     }
     .render()
+}
+
+#[cfg(test)]
+mod tests {
+    use scorarium_engine::archive::Source;
+
+    use super::*;
+
+    fn entry(id: i64, created_at: i64, entity_id: i64, field: Option<Field>) -> AuditEntry {
+        AuditEntry {
+            id,
+            created_at,
+            source: Source::User,
+            action: Action::Updated,
+            entity: Some(EntityRef {
+                kind: AuditSubject::Work,
+                id: entity_id,
+                library_id: Some(1),
+                label: "Aria".into(),
+            }),
+            field,
+        }
+    }
+
+    /// Adjacent entries on one entity within a second fold into one shown entry listing each
+    /// field once; a different entity or an older save is its own shown entry.
+    #[test]
+    fn a_save_folds_into_one_shown_entry() {
+        let entries = vec![
+            entry(6, 101, 1, Some(Field::Links)),
+            entry(5, 100, 1, Some(Field::Links)),
+            entry(4, 100, 1, Some(Field::Title)),
+            entry(3, 100, 2, Some(Field::Key)),
+            entry(2, 98, 1, Some(Field::Stars)),
+            entry(1, 98, 1, None),
+        ];
+        let shown: Vec<(i64, Vec<Field>)> = fold_saves(&entries)
+            .into_iter()
+            .map(|(head, fields)| (head.id, fields))
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                (6, vec![Field::Title, Field::Links]),
+                (3, vec![Field::Key]),
+                (2, vec![Field::Stars]),
+            ]
+        );
+    }
+
+    /// Entries that name no entity, such as password changes, are never folded together.
+    #[test]
+    fn entries_without_an_entity_stay_separate() {
+        let nameless = |id| AuditEntry {
+            entity: None,
+            action: Action::PasswordChanged,
+            ..entry(id, 100, 1, None)
+        };
+        let entries = vec![nameless(2), nameless(1)];
+        assert_eq!(fold_saves(&entries).len(), 2);
+    }
 }

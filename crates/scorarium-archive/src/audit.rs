@@ -2,8 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use sqlx::{Sqlite, SqliteConnection, Transaction};
 
-/// How many groups of events the log keeps
-pub(crate) const MAX_GROUPS: usize = 1_000;
+const MAX_ENTRIES: usize = 3_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
@@ -183,101 +182,61 @@ pub struct EntityRef {
     pub label: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event {
-    pub action: Action,
-    /// None when the event names nothing browsable, i.e. a password change
-    pub entity: Option<EntityRef>,
-    /// Only ever non-empty for Action::Updated
-    pub fields: Vec<Field>,
-}
-
-impl Event {
-    /// An event that names no entity, or one whose entity is not known until the mutation has run
-    pub fn new(action: Action) -> Event {
-        Event {
-            action,
-            entity: None,
-            fields: Vec::new(),
-        }
-    }
-
-    pub fn about(action: Action, entity: EntityRef) -> Event {
-        Event {
-            action,
-            entity: Some(entity),
-            fields: Vec::new(),
-        }
-    }
-}
-
 /// One row of the audit log
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditEntry {
     pub id: i64,
-    /// None on the entry that heads a group
-    pub group_id: Option<i64>,
     pub created_at: i64,
     pub source: Source,
-    pub event: Event,
+    pub action: Action,
+    pub entity: Option<EntityRef>,
+    pub field: Option<Field>,
 }
 
-/// A write transaction whose headline entry is already recorded.
+/// A write transaction that records what it did before it commits.
 pub(crate) struct Audited<'a> {
     tx: Transaction<'a, Sqlite>,
-    /// The group ID that this handle's consequences hang from
-    group: i64,
 }
 
 impl<'a> Audited<'a> {
-    pub(crate) fn new(tx: Transaction<'a, Sqlite>, group: i64) -> Audited<'a> {
-        Audited { tx, group }
+    pub(crate) fn new(tx: Transaction<'a, Sqlite>) -> Audited<'a> {
+        Audited { tx }
     }
 
-    /// Record a consequence of the action this handle was opened for
-    pub(crate) async fn record(&mut self, source: Source, event: Event) -> crate::Result<()> {
-        insert(&mut self.tx, Some(self.group), source, &event).await?;
-        Ok(())
-    }
-
-    /// Fill in the headline's entity once the mutation has produced it.
-    ///
-    /// The headline is written before the mutation runs, so an action that creates its entity
-    /// cannot name the id up front.
-    pub(crate) async fn set_entity(&mut self, entity: &EntityRef) -> crate::Result<()> {
-        let kind = entity.kind.as_str();
+    /// Record one action, once the mutation has produced the entity and the diff it names
+    pub(crate) async fn record(
+        &mut self,
+        source: Source,
+        action: Action,
+        entity: Option<EntityRef>,
+        field: Option<Field>,
+    ) -> crate::Result<()> {
+        let source = source.as_str();
+        let action = action.as_str();
+        let kind = entity.as_ref().map(|e| e.kind.as_str());
+        let id = entity.as_ref().map(|e| e.id);
+        let library_id = entity.as_ref().and_then(|e| e.library_id);
+        let label = entity.as_ref().map(|e| e.label.as_str());
+        let field = field.map(|field| field.as_str());
         sqlx::query!(
-            "UPDATE audit_entry
-             SET entity_kind = ?, entity_id = ?, entity_library_id = ?, entity_label = ?
-             WHERE id = ?",
+            "INSERT INTO audit_entry
+                 (source, action, entity_kind, entity_id, entity_library_id, entity_label, field)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            source,
+            action,
             kind,
-            entity.id,
-            entity.library_id,
-            entity.label,
-            self.group
+            id,
+            library_id,
+            label,
+            field
         )
         .execute(&mut *self.tx)
         .await?;
         Ok(())
     }
 
-    /// Fill in the headline's field list once the mutation has run and the diff is known
-    pub(crate) async fn set_fields(&mut self, fields: &[Field]) -> crate::Result<()> {
-        let names: Vec<&str> = fields.iter().map(|field| field.as_str()).collect();
-        let json = (!names.is_empty())
-            .then(|| serde_json::to_string(&names))
-            .transpose()?;
-        sqlx::query!(
-            "UPDATE audit_entry SET fields = ? WHERE id = ?",
-            json,
-            self.group
-        )
-        .execute(&mut *self.tx)
-        .await?;
-        Ok(())
-    }
-
-    pub(crate) async fn commit(self) -> crate::Result<()> {
+    pub(crate) async fn commit(mut self) -> crate::Result<()> {
+        trim(&mut self.tx).await?;
         self.tx.commit().await?;
         Ok(())
     }
@@ -303,50 +262,12 @@ impl DerefMut for Audited<'_> {
     }
 }
 
-/// Write one entry, returning its id. `group` is None for a headline.
-pub(crate) async fn insert(
-    conn: &mut SqliteConnection,
-    group: Option<i64>,
-    source: Source,
-    event: &Event,
-) -> crate::Result<i64> {
-    let source = source.as_str();
-    let action = event.action.as_str();
-    let kind = event.entity.as_ref().map(|e| e.kind.as_str());
-    let id = event.entity.as_ref().map(|e| e.id);
-    let library_id = event.entity.as_ref().and_then(|e| e.library_id);
-    let label = event.entity.as_ref().map(|e| e.label.as_str());
-    let fields = if event.fields.is_empty() {
-        None
-    } else {
-        let names: Vec<&str> = event.fields.iter().map(|f| f.as_str()).collect();
-        Some(serde_json::to_string(&names)?)
-    };
-    let written = sqlx::query!(
-        "INSERT INTO audit_entry
-             (group_id, source, action, entity_kind, entity_id, entity_library_id, entity_label, fields)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        group,
-        source,
-        action,
-        kind,
-        id,
-        library_id,
-        label,
-        fields
-    )
-    .execute(&mut *conn)
-    .await?;
-    Ok(written.last_insert_rowid())
-}
-
-/// Keep the newest [MAX_GROUPS] groups
-pub(crate) async fn trim(conn: &mut SqliteConnection) -> crate::Result<()> {
-    let keep = MAX_GROUPS as i64;
+/// Keep the newest [MAX_ENTRIES] entries
+async fn trim(conn: &mut SqliteConnection) -> crate::Result<()> {
+    let keep = MAX_ENTRIES as i64;
     sqlx::query!(
         "DELETE FROM audit_entry
-         WHERE group_id IS NULL
-           AND id NOT IN (SELECT id FROM audit_entry WHERE group_id IS NULL ORDER BY id DESC LIMIT ?)",
+         WHERE id NOT IN (SELECT id FROM audit_entry ORDER BY id DESC LIMIT ?)",
         keep
     )
     .execute(&mut *conn)
@@ -354,117 +275,52 @@ pub(crate) async fn trim(conn: &mut SqliteConnection) -> crate::Result<()> {
     Ok(())
 }
 
-/// How many groups the settings page shows at once
-pub(crate) const GROUPS_PER_PAGE: usize = 50;
-
-/// One row of the table, as both readers select it
-struct Row {
-    id: i64,
-    group_id: Option<i64>,
-    created_at: i64,
-    source: String,
-    action: String,
-    entity_kind: Option<String>,
-    entity_id: Option<i64>,
-    entity_library_id: Option<i64>,
-    entity_label: Option<String>,
-    fields: Option<String>,
-}
-
-/// Every entry, newest group first, each group's headline ahead of its consequences
-pub(crate) async fn load_entries(conn: &mut SqliteConnection) -> crate::Result<Vec<AuditEntry>> {
-    let rows = sqlx::query_as!(
-        Row,
-        r#"SELECT id, group_id, created_at, source, action,
-                  entity_kind, entity_id, entity_library_id, entity_label, fields
-           FROM audit_entry
-           ORDER BY COALESCE(group_id, id) DESC, id ASC"#
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    rows.into_iter().map(parse_row).collect()
-}
-
-/// One page of groups, newest first, and the cursor for the page after it.
+/// Read entries newest first, below `before` when given, at most `limit` when given.
 ///
-/// `before` excludes every group at or above that headline id; None starts at the newest. Pages
-/// are cut between groups rather than between entries, so a headline never lands at the bottom of
-/// one page with its consequences at the top of the next. The cursor is a keyset rather than an
-/// offset because the demo takes writes continuously, and an offset shifts under a reader paging
-/// through.
-pub(crate) async fn load_page(
+/// The cursor is a keyset rather than an offset because an offset shifts under a reader paging
+/// through while writes land.
+pub(crate) async fn load_entries(
     conn: &mut SqliteConnection,
     before: Option<i64>,
-) -> crate::Result<(Vec<AuditEntry>, Option<i64>)> {
-    // One group past the page tells whether there is a page after this one
-    let limit = GROUPS_PER_PAGE as i64 + 1;
-    let mut groups: Vec<i64> = sqlx::query_scalar!(
-        r#"SELECT id FROM audit_entry
-           WHERE group_id IS NULL AND (?1 IS NULL OR id < ?1)
-           ORDER BY id DESC LIMIT ?2"#,
+    limit: Option<usize>,
+) -> crate::Result<Vec<AuditEntry>> {
+    // SQLite reads a negative LIMIT as no limit
+    let limit = limit.map_or(-1, |limit| limit as i64);
+    let rows = sqlx::query!(
+        r#"SELECT id, created_at, source, action,
+                  entity_kind, entity_id, entity_library_id, entity_label, field
+           FROM audit_entry
+           WHERE ?1 IS NULL OR id < ?1
+           ORDER BY id DESC
+           LIMIT ?2"#,
         before,
         limit
     )
     .fetch_all(&mut *conn)
     .await?;
-    let has_older = groups.len() > GROUPS_PER_PAGE;
-    groups.truncate(GROUPS_PER_PAGE);
-    let (Some(newest), Some(oldest)) = (groups.first(), groups.last()) else {
-        return Ok((Vec::new(), None));
-    };
-    // The page's headlines are a contiguous run of ids, since nothing between the oldest and the
-    // newest is a headline outside the page. So the entries are a range query rather than an IN
-    // list, which the sqlx macros cannot bind anyway.
-    let rows = sqlx::query_as!(
-        Row,
-        r#"SELECT id, group_id, created_at, source, action,
-                  entity_kind, entity_id, entity_library_id, entity_label, fields
-           FROM audit_entry
-           WHERE COALESCE(group_id, id) BETWEEN ?1 AND ?2
-           ORDER BY COALESCE(group_id, id) DESC, id ASC"#,
-        oldest,
-        newest
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    let entries = rows
-        .into_iter()
-        .map(parse_row)
-        .collect::<crate::Result<_>>()?;
-    let next = has_older.then_some(*oldest);
-    Ok((entries, next))
-}
-
-fn parse_row(row: Row) -> crate::Result<AuditEntry> {
-    let entity = match row.entity_kind {
-        None => None,
-        Some(kind) => Some(EntityRef {
-            kind: AuditSubject::parse(&kind)?,
-            id: row
-                .entity_id
-                .ok_or_else(|| eyre::eyre!("audit entry {} names no entity id", row.id))?,
-            library_id: row.entity_library_id,
-            label: row.entity_label.unwrap_or_default(),
-        }),
-    };
-    let fields = match row.fields {
-        None => Vec::new(),
-        Some(json) => serde_json::from_str::<Vec<String>>(&json)?
-            .iter()
-            .map(|name| Field::parse(name))
-            .collect::<crate::Result<_>>()?,
-    };
-    Ok(AuditEntry {
-        id: row.id,
-        group_id: row.group_id,
-        created_at: row.created_at,
-        source: Source::parse(&row.source)?,
-        event: Event {
-            action: Action::parse(&row.action)?,
-            entity,
-            fields,
-        },
-    })
+    rows.into_iter()
+        .map(|row| {
+            let entity = match row.entity_kind {
+                None => None,
+                Some(kind) => Some(EntityRef {
+                    kind: AuditSubject::parse(&kind)?,
+                    id: row
+                        .entity_id
+                        .ok_or_else(|| eyre::eyre!("audit entry {} names no entity id", row.id))?,
+                    library_id: row.entity_library_id,
+                    label: row.entity_label.unwrap_or_default(),
+                }),
+            };
+            Ok(AuditEntry {
+                id: row.id,
+                created_at: row.created_at,
+                source: Source::parse(&row.source)?,
+                action: Action::parse(&row.action)?,
+                entity,
+                field: row.field.as_deref().map(Field::parse).transpose()?,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -472,100 +328,77 @@ mod tests {
     use super::*;
     use crate::Archive;
 
-    fn user_event(action: Action, label: &str) -> Event {
-        Event {
-            action,
-            entity: Some(EntityRef {
-                kind: AuditSubject::Publication,
-                id: 1,
-                library_id: Some(1),
-                label: label.to_string(),
-            }),
-            fields: Vec::new(),
-        }
+    fn publication(label: &str) -> Option<EntityRef> {
+        Some(EntityRef {
+            kind: AuditSubject::Publication,
+            id: 1,
+            library_id: Some(1),
+            label: label.to_string(),
+        })
     }
 
     #[tokio::test]
-    async fn a_handle_records_a_headline_and_its_consequences() {
+    async fn trimming_keeps_the_newest_entries() {
         let archive = Archive::in_memory().await.unwrap();
-        let mut audited = archive
-            .shared()
-            .begin_audit(Source::User, user_event(Action::Updated, "Nocturnes"))
-            .await
-            .unwrap();
-        audited
-            .record(Source::OrphanCleanup, user_event(Action::Deleted, "Bach"))
-            .await
-            .unwrap();
+        let mut audited = archive.shared().begin_write().await.unwrap();
+        for n in 0..(MAX_ENTRIES + 3) {
+            audited
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    publication(&format!("p{n}")),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
         audited.commit().await.unwrap();
 
-        let entries = archive.audit_log().await.unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].group_id, None);
-        assert_eq!(entries[1].group_id, Some(entries[0].id));
-        assert_eq!(entries[1].source, Source::OrphanCleanup);
+        let entries = archive.audit_log(None, None).await.unwrap();
+        assert_eq!(entries.len(), MAX_ENTRIES);
+        assert_eq!(
+            entries[0].entity.as_ref().unwrap().label,
+            format!("p{}", MAX_ENTRIES + 2)
+        );
+        assert_eq!(
+            entries[MAX_ENTRIES - 1].entity.as_ref().unwrap().label,
+            "p3"
+        );
     }
 
+    /// The cursor hands back the rest without a gap or an overlap
     #[tokio::test]
-    async fn trimming_drops_whole_groups() {
+    async fn a_cursor_continues_below_the_last_entry_read() {
         let archive = Archive::in_memory().await.unwrap();
-        for n in 0..(MAX_GROUPS + 3) {
-            let mut audited = archive
-                .shared()
-                .begin_audit(Source::User, user_event(Action::Updated, &format!("p{n}")))
-                .await
-                .unwrap();
+        let mut audited = archive.shared().begin_write().await.unwrap();
+        for n in 0..5 {
             audited
-                .record(Source::Merge, user_event(Action::Merged, "dupe"))
+                .record(
+                    Source::User,
+                    Action::Updated,
+                    publication(&format!("p{n}")),
+                    None,
+                )
                 .await
                 .unwrap();
-            audited.commit().await.unwrap();
         }
-        let entries = archive.audit_log().await.unwrap();
-        // Two entries per group, and no consequence left without its headline
-        assert_eq!(entries.len(), MAX_GROUPS * 2);
-        assert!(entries.iter().all(|entry| match entry.group_id {
-            None => true,
-            Some(group) => entries.iter().any(|other| other.id == group),
-        }));
-    }
+        audited.commit().await.unwrap();
 
-    /// A page is cut between groups, so a consequence never lands on the page after its headline,
-    /// and the cursor hands back the rest without a gap or an overlap.
-    #[tokio::test]
-    async fn pages_are_cut_between_groups() {
-        let archive = Archive::in_memory().await.unwrap();
-        for n in 0..(GROUPS_PER_PAGE * 2) {
-            let mut audited = archive
-                .shared()
-                .begin_audit(Source::User, user_event(Action::Updated, &format!("p{n}")))
-                .await
-                .unwrap();
-            audited
-                .record(Source::Merge, user_event(Action::Merged, "dupe"))
-                .await
-                .unwrap();
-            audited.commit().await.unwrap();
-        }
-
-        let (first, cursor) = archive.audit_page(None).await.unwrap();
-        assert_eq!(first.len(), GROUPS_PER_PAGE * 2);
-        assert_eq!(first[0].event.entity.as_ref().unwrap().label, "p99");
-        assert_eq!(first[0].group_id, None);
-        assert_eq!(first[1].group_id, Some(first[0].id));
-        let oldest_shown = first.last().unwrap().group_id.unwrap();
-        assert_eq!(cursor, Some(oldest_shown));
-
-        let (second, cursor) = archive.audit_page(cursor).await.unwrap();
-        let labels: Vec<&str> = second
-            .iter()
-            .filter(|entry| entry.group_id.is_none())
-            .map(|entry| entry.event.entity.as_ref().unwrap().label.as_str())
-            .collect();
-        assert_eq!(labels.len(), GROUPS_PER_PAGE);
-        assert_eq!(labels[0], "p49");
-        assert_eq!(labels[GROUPS_PER_PAGE - 1], "p0");
-        assert_eq!(second.len(), GROUPS_PER_PAGE * 2);
-        assert_eq!(cursor, None);
+        let labels = |entries: Vec<AuditEntry>| -> Vec<String> {
+            entries
+                .into_iter()
+                .map(|entry| entry.entity.unwrap().label)
+                .collect()
+        };
+        let first = archive.audit_log(None, Some(2)).await.unwrap();
+        let cursor = first.last().unwrap().id;
+        assert_eq!(labels(first), ["p4", "p3"]);
+        let second = archive.audit_log(Some(cursor), Some(2)).await.unwrap();
+        let cursor = second.last().unwrap().id;
+        assert_eq!(labels(second), ["p2", "p1"]);
+        assert_eq!(
+            labels(archive.audit_log(Some(cursor), Some(2)).await.unwrap()),
+            ["p0"]
+        );
     }
 }

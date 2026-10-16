@@ -2,7 +2,7 @@ use percent_encoding::percent_decode_str;
 use sqlx::SqliteConnection;
 use url::Url;
 
-use crate::{Action, ArchiveInner, Event, Field, Source};
+use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, Source};
 
 /// The entity kind a link belongs to
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -175,6 +175,15 @@ pub fn build(entity: EntityKind, kind: Kind, id: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
+/// One link whose stored kind or id disagrees with what its URL says
+struct Change {
+    entity: EntityKind,
+    link_id: i64,
+    record: Option<ExternalId>,
+    /// The link's owner, for the audit entry
+    owner: EntityRef,
+}
+
 /// Recompute every link's kind and ID
 ///
 /// The ID is a function of the URL, so recomputing is always safe.
@@ -182,20 +191,23 @@ pub(crate) async fn recognize_all(archive: &ArchiveInner) -> crate::Result<()> {
     let rows = {
         let mut conn = archive.acquire_read().await?;
         sqlx::query!(
-            r#"SELECT 'publication' AS "entity!", id AS "id!", publication_id AS "entity_id!",
-                      url AS "url!", kind, external_id
-               FROM publication_link
+            r#"SELECT 'publication' AS "entity!", l.id AS "id!", l.publication_id AS "entity_id!",
+                      p.library_id AS "library_id!", p.title AS "label!",
+                      l.url AS "url!", l.kind, l.external_id
+               FROM publication_link l JOIN publication p ON p.id = l.publication_id
                UNION ALL
-               SELECT 'work', id, work_id, url, kind, external_id FROM work_link
+               SELECT 'work', l.id, l.work_id, w.library_id, w.title, l.url, l.kind, l.external_id
+               FROM work_link l JOIN work w ON w.id = l.work_id
                UNION ALL
-               SELECT 'person', id, person_id, url, kind, external_id FROM person_link
+               SELECT 'person', l.id, l.person_id, p.library_id, p.name, l.url, l.kind, l.external_id
+               FROM person_link l JOIN person p ON p.id = l.person_id
                ORDER BY 1, 3, 2"#
         )
         .fetch_all(&mut *conn)
         .await?
     };
 
-    let mut changes: Vec<(EntityKind, i64, Option<ExternalId>)> = Vec::new();
+    let mut changes: Vec<Change> = Vec::new();
     for links in rows.chunk_by(|a, b| a.entity == b.entity && a.entity_id == b.entity_id) {
         let entity = match links[0].entity.as_str() {
             "publication" => EntityKind::Publication,
@@ -215,7 +227,21 @@ pub(crate) async fn recognize_all(archive: &ArchiveInner) -> crate::Result<()> {
             if (link.kind.as_str(), link.external_id.as_deref())
                 != (computed.0.as_str(), computed.1)
             {
-                changes.push((entity, link.id, record));
+                changes.push(Change {
+                    entity,
+                    link_id: link.id,
+                    record,
+                    owner: EntityRef {
+                        kind: match entity {
+                            EntityKind::Publication => AuditSubject::Publication,
+                            EntityKind::Work => AuditSubject::Work,
+                            EntityKind::Person => AuditSubject::Person,
+                        },
+                        id: link.entity_id,
+                        library_id: Some(link.library_id),
+                        label: link.label.clone(),
+                    },
+                });
             }
         }
     }
@@ -223,28 +249,43 @@ pub(crate) async fn recognize_all(archive: &ArchiveInner) -> crate::Result<()> {
         return Ok(());
     }
 
-    let headline = Event {
-        fields: vec![Field::Links],
-        ..Event::new(Action::Updated)
-    };
-    let mut audited = archive
-        .begin_audit(Source::LinkRecognition, headline)
-        .await?;
+    let mut audited = archive.begin_write().await?;
     // Cleared first so a record moving between two links never collides with the unique index
-    for (entity, id, _) in &changes {
-        set_columns(&mut audited, *entity, *id, Kind::Generic.as_str(), None).await?;
+    for change in &changes {
+        set_columns(
+            &mut audited,
+            change.entity,
+            change.link_id,
+            Kind::Generic.as_str(),
+            None,
+        )
+        .await?;
     }
-    for (entity, id, record) in &changes {
-        if let Some(record) = record {
+    for change in &changes {
+        if let Some(record) = &change.record {
             set_columns(
                 &mut audited,
-                *entity,
-                *id,
+                change.entity,
+                change.link_id,
                 record.kind.as_str(),
                 Some(&record.id),
             )
             .await?;
         }
+    }
+    // The changes are in owner order, so an owner's changes are adjacent and make one entry.
+    for (n, change) in changes.iter().enumerate() {
+        if n > 0 && changes[n - 1].owner == change.owner {
+            continue;
+        }
+        audited
+            .record(
+                Source::LinkRecognition,
+                Action::Updated,
+                Some(change.owner.clone()),
+                Some(Field::Links),
+            )
+            .await?;
     }
     audited.commit().await
 }
@@ -996,5 +1037,14 @@ mod tests {
             ids,
             [Some("Q255".into()), None, Some("Q7".into()), None, None]
         );
+
+        // One entry per work, however many of its links changed
+        let entries = archive.audit_log(None, None).await.unwrap();
+        let recognized: Vec<_> = entries
+            .iter()
+            .filter(|entry| entry.source == Source::LinkRecognition)
+            .map(|entry| entry.entity.as_ref().unwrap().id)
+            .collect();
+        assert_eq!(recognized, [aliases, repaired]);
     }
 }
