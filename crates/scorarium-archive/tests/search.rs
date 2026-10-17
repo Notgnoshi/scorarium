@@ -1,17 +1,4 @@
-#![expect(deprecated)]
-
-use scorarium_archive::{
-    Archive, ContributorInput, Entity, HoldingKind, HoldingRawInput, PersonRef,
-    PublicationRawInput, SearchHit, WorkRawInput,
-};
-
-fn holding(kind: HoldingKind, location: &str) -> HoldingRawInput {
-    HoldingRawInput {
-        id: None,
-        kind,
-        location: location.into(),
-    }
-}
+use scorarium_archive::{Archive, CatalogNumber, Entity, HoldingKind, SearchHit, Tag};
 
 /// Each hit as (library, kind, title or name), which is what the results page shows
 fn shown(hits: &[SearchHit]) -> Vec<(&str, &str, &str)> {
@@ -30,39 +17,47 @@ fn shown(hits: &[SearchHit]) -> Vec<(&str, &str, &str)> {
 #[tokio::test]
 async fn search_sees_what_the_viewer_sees() {
     let archive = Archive::in_memory().await.unwrap();
-    let music = archive.create_library("Sheet music", false).await.unwrap();
-    let books = archive.create_library("Books", true).await.unwrap();
-    let nocturnes = PublicationRawInput {
-        title: "Nocturnes".into(),
-        holdings: vec![holding(HoldingKind::Physical, "Piano bench")],
-        contents: vec![WorkRawInput {
-            title: "Nocturne".into(),
-            contributors: vec![ContributorInput {
-                name: "Frederic Chopin".into(),
-                role: "composer".into(),
-                person: PersonRef::New,
-                external_person: None,
-            }],
-            catalog_numbers: vec!["Op. 9 No. 2".into()],
-            ..WorkRawInput::default()
-        }],
-        ..PublicationRawInput::default()
-    };
-    let _ = music
-        .create_publication(&nocturnes.parse().unwrap())
+    let mut edit = archive.edit().await.unwrap();
+    let music = edit.create_library("Sheet music", false).await.unwrap();
+    let mut library = edit.library(music).await.unwrap();
+    let chopin = library
+        .create_person("Frederic Chopin", "Chopin, Frederic")
         .await
         .unwrap();
-    let hymnal = PublicationRawInput {
-        title: "The Hymnal".into(),
-        note: "Carols for the season".into(),
-        tags: "christmas".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        ..PublicationRawInput::default()
-    };
-    let _ = books
-        .create_publication(&hymnal.parse().unwrap())
+    let nocturne = library.create_work("Nocturne").await.unwrap();
+    let mut work = library.work(nocturne).await.unwrap();
+    work.add_contributor(chopin, "composer").await.unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("Op. 9 No. 2"))
         .await
         .unwrap();
+    let (nocturnes, _) = library
+        .create_publication("Nocturnes", HoldingKind::Physical, Some("Piano bench"))
+        .await
+        .unwrap();
+    library
+        .publication(nocturnes)
+        .await
+        .unwrap()
+        .add_work(nocturne)
+        .await
+        .unwrap();
+
+    let books = edit.create_library("Books", true).await.unwrap();
+    let mut library = edit.library(books).await.unwrap();
+    let (hymnal, _) = library
+        .create_publication("The Hymnal", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let mut hymnal = library.publication(hymnal).await.unwrap();
+    hymnal
+        .set_note(Some("Carols for the season"))
+        .await
+        .unwrap();
+    hymnal
+        .add_tag(&"christmas".parse::<Tag>().unwrap())
+        .await
+        .unwrap();
+    edit.commit().await.unwrap();
 
     // A private library answers nobody but a logged-in viewer
     assert_eq!(shown(&archive.search("hymnal", true).await.unwrap()), []);
@@ -87,7 +82,7 @@ async fn search_sees_what_the_viewer_sees() {
         );
     }
 
-    // A composer is both the work crediting them and a person of their own
+    // A composer is both a person of their own and the work they are a contributor to
     assert_eq!(
         shown(&archive.search("chopin", false).await.unwrap()),
         [
