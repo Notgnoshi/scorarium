@@ -56,7 +56,8 @@ pub use crate::suggest::{
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
 pub use crate::tag::{Tag, TagCount};
 pub use crate::work::{
-    CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost, WorkRawInput,
+    CatalogNumberEntry, Work, WorkEdit, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost,
+    WorkRawInput,
 };
 
 pub type Result<T> = eyre::Result<T>;

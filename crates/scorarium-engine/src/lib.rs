@@ -7,8 +7,9 @@ pub mod archive {
         Library, LibraryEdit, Lookup, NotFound, PasswordCheck, PendingImport, Person, PersonEdit,
         PersonErrors, PersonName, PersonRawInput, PersonRef, PersonSummary, Publication,
         PublicationEdit, PublicationErrors, PublicationPost, PublicationRawInput, Source, Stars,
-        SuggestField, Suggested, Suggestion, Tag, ValidationError, Work, WorkErrors, WorkPost,
-        WorkRawInput, WorkRef, WorkSummary, identifier, parse_holdings, same_name, sort_name,
+        SuggestField, Suggested, Suggestion, Tag, ValidationError, Work, WorkEdit, WorkErrors,
+        WorkPost, WorkRawInput, WorkRef, WorkSummary, identifier, parse_holdings, same_name,
+        sort_name,
     };
 }
 

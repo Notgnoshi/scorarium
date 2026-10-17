@@ -12,7 +12,7 @@ use crate::publication::{self, Publication, PublicationEdit, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
-use crate::work::{self, Work, WorkMerges};
+use crate::work::{self, Work, WorkEdit, WorkMerges};
 use crate::{
     Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source,
 };
@@ -252,6 +252,38 @@ impl LibraryEdit<'_> {
     /// Returns a [NotFound] error if this library does not have the person.
     pub async fn person(&mut self, id: i64) -> Result<PersonEdit<'_>> {
         PersonEdit::open(self.edit, self.id, id).await
+    }
+
+    /// Create a work in this library, returning its id
+    ///
+    /// The title must be trimmed and non-empty.
+    pub async fn create_work(&mut self, title: &str) -> Result<i64> {
+        let created = sqlx::query!(
+            "INSERT INTO work (library_id, title) VALUES (?, ?)",
+            self.id,
+            title
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        let id = created.last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Work,
+            id,
+            library_id: Some(self.id),
+            label: title.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok(id)
+    }
+
+    /// Edit the given work in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the work.
+    pub async fn work(&mut self, id: i64) -> Result<WorkEdit<'_>> {
+        WorkEdit::open(self.edit, self.id, id).await
     }
 
     pub(crate) fn entity_ref(&self) -> EntityRef {

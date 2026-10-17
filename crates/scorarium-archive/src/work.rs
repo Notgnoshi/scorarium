@@ -7,10 +7,13 @@ use sqlx::SqliteConnection;
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
 use crate::external_id::{EntityKind, Link};
-use crate::input::{self, ContributorInput, PersonRef, ValidationError, WorkRef};
+use crate::input::{self, ContributorInput, PersonRef, Stars, ValidationError, WorkRef};
 use crate::person::{self, Contributor};
 use crate::publication::{self, Publication};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library, tag};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library,
+    tag,
+};
 
 /// A work's editable fields as entered from the web forms
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -434,6 +437,142 @@ impl Work {
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Work,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct WorkEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    library_id: i64,
+    id: i64,
+    title: String,
+}
+
+impl<'a> WorkEdit<'a> {
+    /// Open a write handle to the given work in the given library
+    ///
+    /// Returns a [NotFound] error if the library does not have the work.
+    pub(crate) async fn open(
+        edit: &'a mut ArchiveEdit,
+        library_id: i64,
+        id: i64,
+    ) -> crate::Result<WorkEdit<'a>> {
+        let title = sqlx::query_scalar!(
+            "SELECT title FROM work WHERE library_id = ? AND id = ?",
+            library_id,
+            id
+        )
+        .fetch_optional(&mut *edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(WorkEdit {
+            edit,
+            library_id,
+            id,
+            title,
+        })
+    }
+}
+
+impl WorkEdit<'_> {
+    /// Set the title of the work
+    ///
+    /// The title must be trimmed and non-empty.
+    pub async fn set_title(&mut self, title: &str) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE work SET title = ?1 WHERE id = ?2 AND title IS NOT ?1",
+            title,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.title = title.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Title)
+            .await
+    }
+
+    /// Set or clear the key of the work
+    pub async fn set_key(&mut self, key: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE work SET \"key\" = ?1 WHERE id = ?2 AND \"key\" IS NOT ?1",
+            key,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Key)
+            .await
+    }
+
+    /// Set or clear the time signature of the work
+    pub async fn set_time_signature(&mut self, time_signature: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE work SET time_signature = ?1 WHERE id = ?2 AND time_signature IS NOT ?1",
+            time_signature,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::TimeSignature)
+            .await
+    }
+
+    /// Set or clear the instrumentation of the work
+    pub async fn set_instrumentation(
+        &mut self,
+        instrumentation: Option<&str>,
+    ) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE work SET instrumentation = ?1 WHERE id = ?2 AND instrumentation IS NOT ?1",
+            instrumentation,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Instrumentation)
+            .await
+    }
+
+    /// Set or clear the rating of the work
+    pub async fn set_stars(&mut self, stars: Option<Stars>) -> crate::Result<()> {
+        let stars = stars.map(Stars::get);
+        let result = sqlx::query!(
+            "UPDATE work SET stars = ?1 WHERE id = ?2 AND stars IS NOT ?1",
+            stars,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Stars)
+            .await
+    }
+
+    /// Set or clear the note on the work
+    pub async fn set_note(&mut self, note: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE work SET note = ?1 WHERE id = ?2 AND note IS NOT ?1",
+            note,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Note)
+            .await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Work,

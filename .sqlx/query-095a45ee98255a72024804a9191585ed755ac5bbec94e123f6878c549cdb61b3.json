@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET time_signature = ?1 WHERE id = ?2 AND time_signature IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "095a45ee98255a72024804a9191585ed755ac5bbec94e123f6878c549cdb61b3"
+}
