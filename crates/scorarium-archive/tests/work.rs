@@ -1,8 +1,8 @@
 #![expect(deprecated)]
 
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
-    WorkRawInput,
+    Archive, CatalogNumber, ContributorInput, Field, HoldingKind, HoldingRawInput, PersonRef,
+    PublicationRawInput, WorkRawInput,
 };
 
 fn composer(name: &str) -> ContributorInput {
@@ -253,6 +253,56 @@ async fn merging_keeps_the_survivors_url_for_a_shared_record() {
             "https://www.wikidata.org/wiki/Q255",
             "https://en.wikipedia.org/wiki/Nocturnes,_Op._9_(Chopin)",
             "https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Frederic)",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_catalog_number_is_matched_however_it_is_spelled() {
+    let archive = Archive::in_memory().await.unwrap();
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Scores", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let (publication, _) = library
+        .create_publication("Sonatas", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let id = library.create_work("Moonlight sonata").await.unwrap();
+    library
+        .publication(publication)
+        .await
+        .unwrap()
+        .add_work(id)
+        .await
+        .unwrap();
+    let mut work = library.work(id).await.unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("Op. 27 No. 2"))
+        .await
+        .unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("op.27 no.2"))
+        .await
+        .unwrap();
+    work.remove_catalog_number(&CatalogNumber::parse("Opus 27 Number 2"))
+        .await
+        .unwrap();
+    edit.commit().await.unwrap();
+
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    assert!(
+        library
+            .work(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .catalog_numbers
+            .is_empty()
+    );
+    assert_eq!(
+        archive.recent_fields(5).await.unwrap(),
+        [
+            Field::CatalogNumbers,
+            Field::CatalogNumbers,
+            Field::Contents
         ]
     );
 }

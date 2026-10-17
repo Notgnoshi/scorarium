@@ -366,6 +366,7 @@ impl Work {
     /// merge, self is the survivor, so its id differs from the work that was edited.
     ///
     /// Returns a [NotFound] error if the work has since been collected.
+    #[deprecated(note = "use WorkEdit")]
     pub async fn update(&mut self, input: &WorkInput) -> crate::Result<WorkMerges> {
         let mut merges = WorkMerges::default();
         let mut audited = self.archive.begin_write().await?;
@@ -572,6 +573,44 @@ impl WorkEdit<'_> {
         .await?;
         self.edit
             .record_if_changed(result, self.entity_ref(), Field::Note)
+            .await
+    }
+
+    /// Add a catalog number to the work
+    pub async fn add_catalog_number(&mut self, number: &CatalogNumber) -> crate::Result<()> {
+        let stored = catalog_numbers_of(&mut self.edit.audited, self.id).await?;
+        if stored.iter().any(|stored| stored.matches(number)) {
+            return Ok(());
+        }
+        let value = number.as_str();
+        let result = sqlx::query!(
+            "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+            self.id,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::CatalogNumbers)
+            .await
+    }
+
+    /// Remove a catalog number from the work
+    pub async fn remove_catalog_number(&mut self, number: &CatalogNumber) -> crate::Result<()> {
+        let stored = catalog_numbers_of(&mut self.edit.audited, self.id).await?;
+        let Some(stored) = stored.iter().find(|stored| stored.matches(number)) else {
+            return Ok(());
+        };
+        let value = stored.as_str();
+        let result = sqlx::query!(
+            "DELETE FROM work_catalog_number WHERE work_id = ? AND value = ?",
+            self.id,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::CatalogNumbers)
             .await
     }
 
