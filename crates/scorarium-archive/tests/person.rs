@@ -1,234 +1,129 @@
-#![expect(deprecated)]
+use scorarium_archive::{Archive, Field, HoldingKind, NotFound, Person};
 
-use scorarium_archive::{
-    Archive, ContributorInput, Field, HoldingKind, HoldingRawInput, NotFound, PersonRawInput,
-    PersonRef, PublicationRawInput, WorkRawInput,
-};
-
-fn contributor(name: &str, role: &str) -> ContributorInput {
-    ContributorInput {
-        name: name.into(),
-        role: role.into(),
-        person: PersonRef::New,
-        external_person: None,
-    }
+fn names(persons: Vec<Person>) -> Vec<String> {
+    persons.into_iter().map(|person| person.name).collect()
 }
 
-fn work(title: &str, contributors: Vec<ContributorInput>) -> WorkRawInput {
-    WorkRawInput {
-        title: title.into(),
-        contributors,
-        ..WorkRawInput::default()
-    }
-}
-
-fn publication(
-    title: &str,
-    contributors: Vec<ContributorInput>,
-    contents: Vec<WorkRawInput>,
-) -> PublicationRawInput {
-    PublicationRawInput {
-        title: title.into(),
-        holdings: vec![HoldingRawInput {
-            id: None,
-            kind: HoldingKind::Physical,
-            location: String::new(),
-        }],
-        contributors,
-        contents,
-        ..PublicationRawInput::default()
-    }
-}
-
-/// Satie is credited directly on one publication and through a work on both; Sue and Ann only ever
-/// through works, Bob only ever directly.
-async fn library() -> (Archive, scorarium_archive::Library) {
+async fn library() -> (Archive, i64) {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let _ = library
-        .create_publication(
-            &publication(
-                "Three gymnopedies",
-                vec![contributor("Erik Satie", "composer")],
-                vec![work(
-                    "Gymnopedie No. 1",
-                    vec![
-                        contributor("Erik Satie", "composer"),
-                        contributor("Sue", "editor"),
-                    ],
-                )],
-            )
-            .parse()
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    // The second publication credits the Satie the first one created, so it links him by id
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Sheet music", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
     let satie = library
-        .persons_with_role("composer")
-        .await
-        .unwrap()
-        .remove(0);
-    let mut credit = contributor("Erik Satie", "composer");
-    credit.person = PersonRef::Linked(satie.id);
-    let _ = library
-        .create_publication(
-            &publication(
-                "Gnossiennes",
-                vec![contributor("Bob", "arranger")],
-                vec![work(
-                    "Gnossienne No. 1",
-                    vec![credit, contributor("Ann", "editor")],
-                )],
-            )
-            .parse()
-            .unwrap(),
-        )
+        .create_person("Erik Satie", "Satie, Erik")
         .await
         .unwrap();
-    (archive, library)
+    let sue = library.create_person("Sue", "Sue").await.unwrap();
+    let bob = library.create_person("Bob", "Bob").await.unwrap();
+    let ann = library.create_person("Ann", "Ann").await.unwrap();
+    let gymnopedie = library.create_work("Gymnopedie No. 1").await.unwrap();
+    let gnossienne = library.create_work("Gnossienne No. 1").await.unwrap();
+    let (gymnopedies, _) = library
+        .create_publication("Three gymnopedies", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let (gnossiennes, _) = library
+        .create_publication("Gnossiennes", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+
+    let mut work = library.work(gymnopedie).await.unwrap();
+    work.add_contributor(satie, "composer").await.unwrap();
+    work.add_contributor(sue, "editor").await.unwrap();
+    let mut work = library.work(gnossienne).await.unwrap();
+    work.add_contributor(satie, "composer").await.unwrap();
+    work.add_contributor(ann, "editor").await.unwrap();
+    let mut publication = library.publication(gymnopedies).await.unwrap();
+    publication
+        .add_contributor(satie, "composer")
+        .await
+        .unwrap();
+    publication.add_work(gymnopedie).await.unwrap();
+    let mut publication = library.publication(gnossiennes).await.unwrap();
+    publication.add_contributor(bob, "arranger").await.unwrap();
+    publication.add_work(gnossienne).await.unwrap();
+    edit.commit().await.unwrap();
+    (archive, library_id)
+}
+
+/// Create a second library holding one editor, and return its id.
+async fn other_library(archive: &Archive) -> i64 {
+    let mut edit = archive.edit().await.unwrap();
+    let id = edit.create_library("Books", false).await.unwrap();
+    let mut library = edit.library(id).await.unwrap();
+    let drew = library
+        .create_person("Drew Neil", "Neil, Drew")
+        .await
+        .unwrap();
+    let (vim, _) = library
+        .create_publication("Practical Vim", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let mut publication = library.publication(vim).await.unwrap();
+    publication.add_contributor(drew, "editor").await.unwrap();
+    edit.commit().await.unwrap();
+    id
 }
 
 #[tokio::test]
-async fn publications_union_direct_and_work_credits() {
-    let (archive, library) = library().await;
+async fn a_person_is_reached_through_every_contributor_link() {
+    let (archive, library_id) = library().await;
+    let other_id = other_library(&archive).await;
+    let library = archive.library(library_id).await.unwrap().unwrap();
     let satie = library
         .persons_with_role("composer")
         .await
         .unwrap()
         .remove(0);
+    let sue = library.persons_with_role("editor").await.unwrap().remove(1);
 
-    assert_eq!(satie.name, "Erik Satie");
-    assert_eq!(satie.sort_name, "Satie, Erik");
-
-    // The first credits him twice over, directly and through its work, and counts once
-    let publications = satie.publications().await.unwrap();
-    let mut titles: Vec<&str> = publications
-        .iter()
-        .map(|publication| publication.title.as_str())
+    // Satie is a contributor on the first publication twice over, and it counts once
+    let mut titles: Vec<String> = satie
+        .publications()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|publication| publication.title)
         .collect();
     titles.sort_unstable();
     assert_eq!(titles, ["Gnossiennes", "Three gymnopedies"]);
 
-    // Someone credited only through a work is still reachable
-    let sue = library.persons_with_role("editor").await.unwrap().remove(1);
-    assert_eq!(sue.name, "Sue");
-    let credits = sue.publications().await.unwrap();
-    assert_eq!(credits.len(), 1);
-    assert_eq!(credits[0].title, "Three gymnopedies");
-
-    // A person belongs to their own library alone
-    let books = archive.create_library("Books", false).await.unwrap();
-    assert!(library.person(satie.id).await.unwrap().is_some());
-    assert!(books.person(satie.id).await.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn a_summary_describes_the_person_asked_for() {
-    let (_archive, library) = library().await;
-    let satie = library
-        .persons_with_role("composer")
+    // Sue is a contributor on a work alone, and is still reachable
+    let titles: Vec<String> = sue
+        .publications()
         .await
         .unwrap()
-        .remove(0);
+        .into_iter()
+        .map(|publication| publication.title)
+        .collect();
+    assert_eq!(titles, ["Three gymnopedies"]);
 
-    // He is credited on both publications and on a work of each, and the direct credit leads
+    // The direct contributor leads, and the other publication counts among the others
     let summary = library.person_summary(satie.id).await.unwrap().unwrap();
     assert_eq!(
-        (summary.id, summary.name, summary.title, summary.others),
-        (
-            satie.id,
-            "Erik Satie".to_string(),
-            "Three gymnopedies".to_string(),
-            2
-        )
+        (summary.name, summary.title, summary.others),
+        ("Erik Satie".to_string(), "Three gymnopedies".to_string(), 2)
     );
-
     assert!(library.person_summary(9999).await.unwrap().is_none());
-}
 
-#[tokio::test]
-async fn an_edit_renames_and_relinks() {
-    let (_archive, library) = library().await;
-    let mut satie = library
-        .persons_with_role("composer")
-        .await
-        .unwrap()
-        .remove(0);
-
-    let input = PersonRawInput {
-        name: "  Ralph Vaughan Williams  ".into(),
-        links: vec![
-            "https://imslp.org/wiki/Category:Vaughan_Williams,_Ralph".into(),
-            "  https://EN.wikipedia.org/wiki/Ralph_Vaughan_Williams  ".into(),
-        ],
-    };
-    satie.update(&input.parse().unwrap()).await.unwrap();
-
-    let reloaded = library.person(satie.id).await.unwrap().unwrap();
-    assert_eq!(reloaded.name, "Ralph Vaughan Williams");
-    // The heuristic takes the last word as the surname, so a compound one sorts under its tail
-    assert_eq!(reloaded.sort_name, "Williams, Ralph Vaughan");
-    assert_eq!(
-        reloaded.links,
-        [
-            "https://imslp.org/wiki/Category:Vaughan_Williams,_Ralph",
-            "https://en.wikipedia.org/wiki/Ralph_Vaughan_Williams",
-        ]
-    );
-
-    // Renaming onto a name someone else already has merges nothing: two persons may share a name
-    let sue = library.persons_with_role("editor").await.unwrap().remove(1);
-    let mut bob = library
-        .persons_with_role("arranger")
-        .await
-        .unwrap()
-        .remove(0);
-    bob.update(
-        &PersonRawInput {
-            name: sue.name.clone(),
-            links: Vec::new(),
-        }
-        .parse()
-        .unwrap(),
-    )
-    .await
-    .unwrap();
-    assert_ne!(bob.id, sue.id);
-    assert_eq!(library.person(bob.id).await.unwrap().unwrap().name, "Sue");
-    assert_eq!(library.person(sue.id).await.unwrap().unwrap().name, "Sue");
+    // A person belongs to their own library alone
+    let other = archive.library(other_id).await.unwrap().unwrap();
+    assert!(other.person(satie.id).await.unwrap().is_none());
 }
 
 #[tokio::test]
 async fn a_role_spans_publications_and_works() {
-    let (archive, library) = library().await;
-    let other = archive.create_library("Books", false).await.unwrap();
-    let _ = other
-        .create_publication(
-            &publication(
-                "Practical Vim",
-                vec![contributor("Drew Neil", "editor")],
-                Vec::new(),
-            )
-            .parse()
-            .unwrap(),
-        )
-        .await
-        .unwrap();
+    let (archive, library_id) = library().await;
+    let other_id = other_library(&archive).await;
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    let other = archive.library(other_id).await.unwrap().unwrap();
 
-    let names = |persons: Vec<scorarium_archive::Person>| {
-        persons
-            .into_iter()
-            .map(|person| person.name)
-            .collect::<Vec<_>>()
-    };
-
-    // Both editors are credited on works alone, and come back by sort name, not by id
+    // Both editors are contributors on works alone, and come back by sort name, not by id
     assert_eq!(
         names(library.persons_with_role("editor").await.unwrap()),
         ["Ann", "Sue"]
     );
-    // Credited on a publication alone
+    // A contributor on a publication alone
     assert_eq!(
         names(library.persons_with_role("arranger").await.unwrap()),
         ["Bob"]
@@ -238,105 +133,6 @@ async fn a_role_spans_publications_and_works() {
         names(other.persons_with_role("editor").await.unwrap()),
         ["Drew Neil"]
     );
-}
-
-#[tokio::test]
-async fn a_linked_contributor_credits_that_person_whatever_the_name_says() {
-    let (_archive, library) = library().await;
-    let satie = library
-        .persons_with_role("composer")
-        .await
-        .unwrap()
-        .remove(0);
-    let mut bob = library
-        .persons_with_role("arranger")
-        .await
-        .unwrap()
-        .remove(0);
-    bob.update(
-        &PersonRawInput {
-            name: "Erik Satie".into(),
-            links: Vec::new(),
-        }
-        .parse()
-        .unwrap(),
-    )
-    .await
-    .unwrap();
-
-    let mut credit = contributor("E. Satie", "composer");
-    credit.person = PersonRef::Linked(bob.id);
-    let stored = library
-        .create_publication(
-            &publication("Sports et divertissements", vec![credit], Vec::new())
-                .parse()
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-        .0;
-    assert_eq!(stored.contributors[0].person_id, bob.id);
-    // The credit shows the stored name: a contributor never renames anyone
-    assert_eq!(stored.contributors[0].name, "Erik Satie");
-    assert_eq!(
-        library.person(satie.id).await.unwrap().unwrap().name,
-        "Erik Satie"
-    );
-    let saties = library
-        .person_names(false)
-        .await
-        .unwrap()
-        .into_iter()
-        .filter(|known| known.name == "Erik Satie")
-        .count();
-    assert_eq!(saties, 2, "no third Satie was created");
-}
-
-#[tokio::test]
-async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
-    let (_archive, library) = library().await;
-    let satie = library
-        .persons_with_role("composer")
-        .await
-        .unwrap()
-        .remove(0)
-        .id;
-    let stored = library
-        .create_publication(
-            &publication(
-                "Sports et divertissements",
-                vec![contributor("Erik Satie", "composer")],
-                vec![
-                    work(
-                        "Choral inappetissant",
-                        vec![contributor("erik satie", "composer")],
-                    ),
-                    work("La balancoire", vec![contributor("erik satie", "composer")]),
-                ],
-            )
-            .parse()
-            .unwrap(),
-        )
-        .await
-        .unwrap()
-        .0;
-
-    // One person for the publication and both works, deliberately a namesake of the fixture's
-    let created = stored.contributors[0].person_id;
-    assert_ne!(created, satie);
-    let works = stored.works().await.unwrap();
-    assert_eq!(works[0].contributors[0].person_id, created);
-    assert_eq!(works[1].contributors[0].person_id, created);
-    // The first spelling seen names the person
-    assert_eq!(works[1].contributors[0].name, "Erik Satie");
-    let saties = library
-        .person_names(false)
-        .await
-        .unwrap()
-        .into_iter()
-        .filter(|known| known.name == "Erik Satie")
-        .count();
-    assert_eq!(saties, 2);
 }
 
 /// Orphans are collected on commit, so test what happens when a person is created and *then* a
