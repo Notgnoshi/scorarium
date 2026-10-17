@@ -1,12 +1,12 @@
-#![expect(deprecated)]
-
-use scorarium_archive::{Action, Archive, Field, NotFound};
+use scorarium_archive::{Archive, Field, NotFound};
 
 #[tokio::test]
 async fn library_retrieval() {
     let archive = Archive::in_memory().await.unwrap();
-    archive.create_library("Sheet music", false).await.unwrap();
-    let books = archive.create_library("Books", true).await.unwrap();
+    let mut edit = archive.edit().await.unwrap();
+    edit.create_library("Sheet music", false).await.unwrap();
+    let books = edit.create_library("Books", true).await.unwrap();
+    edit.commit().await.unwrap();
 
     let listed: Vec<(String, bool)> = archive
         .libraries()
@@ -23,46 +23,10 @@ async fn library_retrieval() {
         ]
     );
 
-    let found = archive.library(books.id).await.unwrap().unwrap();
+    let found = archive.library(books).await.unwrap().unwrap();
     assert_eq!(found.name, "Books");
     assert!(found.private);
-    assert!(archive.library(books.id + 1000).await.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn update_changes_the_handle_and_the_stored_values() {
-    let archive = Archive::in_memory().await.unwrap();
-    let mut library = archive.create_library("Books", false).await.unwrap();
-
-    library.update("Novels", true).await.unwrap();
-
-    assert_eq!(library.name, "Novels");
-    assert!(library.private);
-    let stored = archive.library(library.id).await.unwrap().unwrap();
-    assert_eq!(stored.name, "Novels");
-    assert!(stored.private);
-
-    let newest = archive.audit_log(None, Some(2)).await.unwrap();
-    let fields: Vec<_> = newest.iter().map(|entry| entry.field).collect();
-    assert_eq!(fields, [Some(Field::Visibility), Some(Field::Name)]);
-    assert!(newest.iter().all(|entry| entry.action == Action::Updated));
-    assert_eq!(newest[0].entity.as_ref().unwrap().label, "Novels");
-}
-
-/// Two browser tabs, one of which deleted the library the other is still attempting to use
-#[tokio::test]
-async fn writing_a_deleted_library_is_not_found() {
-    let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Books", false).await.unwrap();
-    let mut stale = archive.library(library.id).await.unwrap().unwrap();
-
-    library.delete().await.unwrap();
-    assert!(archive.library(stale.id).await.unwrap().is_none());
-
-    let err = stale.update("Novels", false).await.unwrap_err();
-    assert!(err.downcast_ref::<NotFound>().is_some());
-    let err = stale.delete().await.unwrap_err();
-    assert!(err.downcast_ref::<NotFound>().is_some());
+    assert!(archive.library(books + 1000).await.unwrap().is_none());
 }
 
 #[tokio::test]
