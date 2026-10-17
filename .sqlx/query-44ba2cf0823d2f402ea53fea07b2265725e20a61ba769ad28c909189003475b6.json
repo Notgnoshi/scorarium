@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE publication SET year = ?1 WHERE id = ?2 AND year IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "44ba2cf0823d2f402ea53fea07b2265725e20a61ba769ad28c909189003475b6"
+}

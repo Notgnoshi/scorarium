@@ -5,10 +5,10 @@ pub mod archive {
         CatalogNumberEntry, Contributor, ContributorInput, DraftPublication, DraftWorkSummary,
         Entity, EntityRef, Field, HoldingErrors, HoldingKind, HoldingRawInput, IdentifierRawInput,
         Library, LibraryEdit, Lookup, NotFound, PasswordCheck, PendingImport, Person, PersonErrors,
-        PersonName, PersonRawInput, PersonRef, PersonSummary, Publication, PublicationErrors,
-        PublicationPost, PublicationRawInput, Source, Stars, SuggestField, Suggested, Suggestion,
-        Tag, ValidationError, Work, WorkErrors, WorkPost, WorkRawInput, WorkRef, WorkSummary,
-        identifier, parse_holdings, same_name,
+        PersonName, PersonRawInput, PersonRef, PersonSummary, Publication, PublicationEdit,
+        PublicationErrors, PublicationPost, PublicationRawInput, Source, Stars, SuggestField,
+        Suggested, Suggestion, Tag, ValidationError, Work, WorkErrors, WorkPost, WorkRawInput,
+        WorkRef, WorkSummary, identifier, parse_holdings, same_name,
     };
 }
 

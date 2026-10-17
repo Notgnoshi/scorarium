@@ -8,10 +8,13 @@ use crate::audit::Audited;
 use crate::external_id::{EntityKind, Link};
 use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
-use crate::input::{self, ContributorInput, PersonRef, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, Stars, ValidationError};
 use crate::person::{self, Contributor};
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkMerges, WorkPost, WorkRawInput};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library, tag};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library,
+    tag,
+};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -451,6 +454,141 @@ impl Publication {
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Publication,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PublicationEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    library_id: i64,
+    id: i64,
+    title: String,
+}
+
+impl<'a> PublicationEdit<'a> {
+    /// Open a write handle to the given publication in the given library
+    ///
+    /// Returns a [NotFound] error if the library does not have the publication.
+    pub(crate) async fn open(
+        edit: &'a mut ArchiveEdit,
+        library_id: i64,
+        id: i64,
+    ) -> crate::Result<PublicationEdit<'a>> {
+        let title = sqlx::query_scalar!(
+            "SELECT title FROM publication WHERE library_id = ? AND id = ?",
+            library_id,
+            id
+        )
+        .fetch_optional(&mut *edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(PublicationEdit {
+            edit,
+            library_id,
+            id,
+            title,
+        })
+    }
+}
+
+impl PublicationEdit<'_> {
+    /// Delete the publication
+    pub async fn delete(self) -> crate::Result<()> {
+        sqlx::query!(
+            "DELETE FROM publication WHERE library_id = ? AND id = ?",
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
+        Ok(())
+    }
+
+    /// Set the title of the publication
+    ///
+    /// The title must be trimmed and non-empty.
+    pub async fn set_title(&mut self, title: &str) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET title = ?1 WHERE id = ?2 AND title IS NOT ?1",
+            title,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.title = title.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Title)
+            .await
+    }
+
+    /// Set or clear the publisher of the publication
+    pub async fn set_publisher(&mut self, publisher: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET publisher = ?1 WHERE id = ?2 AND publisher IS NOT ?1",
+            publisher,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Publisher)
+            .await
+    }
+
+    /// Set or clear the year of the publication
+    pub async fn set_year(&mut self, year: Option<i64>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET year = ?1 WHERE id = ?2 AND year IS NOT ?1",
+            year,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Year)
+            .await
+    }
+
+    /// Set or clear the rating of the publication
+    pub async fn set_stars(&mut self, stars: Option<Stars>) -> crate::Result<()> {
+        let stars = stars.map(Stars::get);
+        let result = sqlx::query!(
+            "UPDATE publication SET stars = ?1 WHERE id = ?2 AND stars IS NOT ?1",
+            stars,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Stars)
+            .await
+    }
+
+    /// Set or clear the note on the publication
+    pub async fn set_note(&mut self, note: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET note = ?1 WHERE id = ?2 AND note IS NOT ?1",
+            note,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Note)
+            .await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Publication,

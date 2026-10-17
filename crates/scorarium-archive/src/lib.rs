@@ -22,6 +22,7 @@ mod summary;
 mod tag;
 mod work;
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -45,7 +46,8 @@ pub use crate::person::{
     credit_priority,
 };
 pub use crate::publication::{
-    Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
+    Publication, PublicationEdit, PublicationErrors, PublicationInput, PublicationPost,
+    PublicationRawInput,
 };
 pub use crate::search::{Entity, SearchHit};
 pub use crate::suggest::{
@@ -113,6 +115,7 @@ pub struct ArchiveEdit {
     shared: Arc<ArchiveInner>,
     audited: audit::Audited<'static>,
     deleted_libraries: Vec<i64>,
+    touched_libraries: BTreeSet<i64>,
 }
 
 impl ArchiveEdit {
@@ -134,7 +137,12 @@ impl ArchiveEdit {
     }
 
     /// Commit edits made through this write handle
-    pub async fn commit(self) -> Result<()> {
+    ///
+    /// Before committing, any orphans created by the edits will be deleted.
+    pub async fn commit(mut self) -> Result<()> {
+        for &id in &self.touched_libraries {
+            library::collect_orphans(&mut self.audited, id).await?;
+        }
         self.audited.commit().await?;
         // Drafts live outside the database, so they can only be dropped once the delete has been committed.
         for id in self.deleted_libraries {
@@ -265,6 +273,7 @@ impl Archive {
             shared: self.shared.clone(),
             audited: self.shared.begin_edit().await?,
             deleted_libraries: Vec::new(),
+            touched_libraries: BTreeSet::new(),
         })
     }
 

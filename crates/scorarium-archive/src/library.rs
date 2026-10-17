@@ -4,11 +4,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
-use crate::holding::HoldingInput;
+use crate::holding::{HoldingInput, HoldingKind};
 use crate::import::{self, PendingImport};
 use crate::input::{ContributorInput, PersonRef};
 use crate::person::{self, Person, PersonName};
-use crate::publication::{self, Publication, PublicationInput};
+use crate::publication::{self, Publication, PublicationEdit, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
@@ -119,6 +119,7 @@ impl ArchiveEdit {
         let library = get_library(&self.shared, &mut self.audited, id)
             .await?
             .ok_or(NotFound)?;
+        self.touched_libraries.insert(id);
         Ok(LibraryEdit {
             edit: self,
             id,
@@ -171,6 +172,53 @@ impl LibraryEdit<'_> {
         // TODO: This can be removed once the Archive is no longer aware of in-memory drafts
         self.edit.deleted_libraries.push(self.id);
         Ok(())
+    }
+
+    /// Create a publication with its first holding, returning the ids of both
+    ///
+    /// The title must be trimmed and non-empty, and the location trimmed or `None`.
+    pub async fn create_publication(
+        &mut self,
+        title: &str,
+        kind: HoldingKind,
+        location: Option<&str>,
+    ) -> Result<(i64, i64)> {
+        let id = sqlx::query!(
+            "INSERT INTO publication (library_id, title) VALUES (?, ?)",
+            self.id,
+            title
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        let kind = kind.as_str();
+        let holding_id = sqlx::query!(
+            "INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)",
+            id,
+            kind,
+            location
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Publication,
+            id,
+            library_id: Some(self.id),
+            label: title.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok((id, holding_id))
+    }
+
+    /// Edit the given publication in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the publication.
+    pub async fn publication(&mut self, id: i64) -> Result<PublicationEdit<'_>> {
+        PublicationEdit::open(self.edit, self.id, id).await
     }
 
     pub(crate) fn entity_ref(&self) -> EntityRef {
@@ -488,10 +536,27 @@ impl Library {
 }
 
 /// Delete what the library no longer has reachable links to.
-///
-/// The order matters: collecting a work takes its contributor links with it, and those links can
-/// be the last thing crediting a person.
 pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) -> Result<()> {
+    // NOTE: Order matters, because cleaning some orphans can result in new orphans.
+    let publications = sqlx::query!(
+        r#"DELETE FROM publication
+           WHERE library_id = ? AND id NOT IN (SELECT publication_id FROM holding)
+           RETURNING id AS "id!", title AS "title!""#,
+        library_id
+    )
+    .fetch_all(&mut **audited)
+    .await?;
+    for publication in publications {
+        let entity = EntityRef {
+            kind: AuditSubject::Publication,
+            id: publication.id,
+            library_id: Some(library_id),
+            label: publication.title,
+        };
+        audited
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
+            .await?;
+    }
     let works = sqlx::query!(
         r#"DELETE FROM work
            WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)
