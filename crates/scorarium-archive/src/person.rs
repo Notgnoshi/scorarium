@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
+use url::Url;
 
 use crate::external_id::{EntityKind, Link};
 use crate::fuzzy::normalize;
@@ -157,6 +158,7 @@ impl Person {
     /// Apply an edited input.
     ///
     /// Returns a [NotFound] error if the person has since been collected.
+    #[deprecated(note = "use PersonEdit")]
     pub async fn update(&mut self, input: &PersonInput) -> Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let sort_name = sort_name(&input.name);
@@ -520,6 +522,45 @@ impl PersonEdit<'_> {
         self.name = name.to_string();
         self.edit
             .record_if_changed(result, self.entity_ref(), Field::Name)
+            .await
+    }
+
+    /// Add a link to the person
+    pub async fn add_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Person, url.clone());
+        let (kind, external_id) = link.columns();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO person_link (person_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
+            .await
+    }
+
+    /// Remove a link from the person
+    pub async fn remove_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Person, url.clone());
+        let (kind, external_id) = link.columns();
+        // A generic URL binds the external id as NULL, so it can only be removed by its exact URL.
+        let result = sqlx::query!(
+            "DELETE FROM person_link
+             WHERE person_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
             .await
     }
 

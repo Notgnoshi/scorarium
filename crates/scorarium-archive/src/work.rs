@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
+use url::Url;
 
 use crate::audit::Audited;
 use crate::catalog::CatalogNumber;
@@ -602,6 +603,45 @@ impl WorkEdit<'_> {
         .await?;
         self.edit
             .record_if_changed(result, self.entity_ref(), Field::Tags)
+            .await
+    }
+
+    /// Add a link to the work
+    pub async fn add_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Work, url.clone());
+        let (kind, external_id) = link.columns();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO work_link (work_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
+            .await
+    }
+
+    /// Remove a link from the work
+    pub async fn remove_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Work, url.clone());
+        let (kind, external_id) = link.columns();
+        // A generic URL binds the external id as NULL, so it can only be removed by its exact URL.
+        let result = sqlx::query!(
+            "DELETE FROM work_link
+             WHERE work_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
             .await
     }
 

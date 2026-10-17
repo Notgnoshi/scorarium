@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
+use url::Url;
 
 use crate::audit::Audited;
 use crate::external_id::{EntityKind, Link};
@@ -618,6 +619,45 @@ impl PublicationEdit<'_> {
         .await?;
         self.edit
             .record_if_changed(result, self.entity_ref(), Field::Tags)
+            .await
+    }
+
+    /// Add a link to the publication
+    pub async fn add_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Publication, url.clone());
+        let (kind, external_id) = link.columns();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_link (publication_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
+            .await
+    }
+
+    /// Remove a link from the publication
+    pub async fn remove_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Publication, url.clone());
+        let (kind, external_id) = link.columns();
+        // A generic URL binds the external id as NULL, so it can only be removed by its exact URL.
+        let result = sqlx::query!(
+            "DELETE FROM publication_link
+             WHERE publication_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
             .await
     }
 
