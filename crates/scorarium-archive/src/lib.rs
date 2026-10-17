@@ -117,6 +117,7 @@ pub struct ArchiveEdit {
     audited: audit::Audited<'static>,
     deleted_libraries: Vec<i64>,
     touched_libraries: BTreeSet<i64>,
+    merges: WorkMerges,
 }
 
 impl ArchiveEdit {
@@ -148,6 +149,9 @@ impl ArchiveEdit {
         // Drafts live outside the database, so they can only be dropped once the delete has been committed.
         for id in self.deleted_libraries {
             self.shared.drafts().drop_library(id);
+        }
+        if !self.merges.as_slice().is_empty() {
+            self.shared.drafts().relink_works(self.merges.as_slice());
         }
         Ok(())
     }
@@ -275,6 +279,7 @@ impl Archive {
             audited: self.shared.begin_edit().await?,
             deleted_libraries: Vec::new(),
             touched_libraries: BTreeSet::new(),
+            merges: WorkMerges::default(),
         })
     }
 
@@ -292,6 +297,7 @@ impl Archive {
 
 impl Archive {
     /// Point drafts that refer to a merged work at its survivor.
+    #[deprecated(note = "use LibraryEdit::merge_works")]
     pub fn relink_draft_works(&self, merges: WorkMerges) {
         if !merges.as_slice().is_empty() {
             self.shared.drafts().relink_works(merges.as_slice());

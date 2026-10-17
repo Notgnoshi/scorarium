@@ -1221,7 +1221,7 @@ async fn catalog_numbers_of(
 }
 
 /// The oldest other work sharing a composer and a catalog number with this one
-async fn find_duplicate(
+pub(crate) async fn find_duplicate(
     conn: &mut SqliteConnection,
     library_id: i64,
     work_id: i64,

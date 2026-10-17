@@ -174,6 +174,55 @@ impl LibraryEdit<'_> {
         Ok(())
     }
 
+    /// Find the oldest other work sharing a composer and a catalog number with the given work
+    ///
+    /// Returns a [NotFound] error if this library has no such work, and `None` for a work with no
+    /// catalog numbers.
+    pub async fn find_duplicate(&mut self, work_id: i64) -> Result<Option<i64>> {
+        if !work::work_exists(&mut self.edit.audited, self.id, work_id).await? {
+            return Err(NotFound.into());
+        }
+        work::find_duplicate(&mut self.edit.audited, self.id, work_id).await
+    }
+
+    /// Fold one work into another and delete it
+    ///
+    /// Returns a [NotFound] error unless both works are in this library.
+    pub async fn merge_works(&mut self, from: i64, into: i64) -> Result<()> {
+        let both = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM work WHERE library_id = ?1 AND id IN (?2, ?3)",
+            self.id,
+            from,
+            into
+        )
+        .fetch_one(&mut *self.edit.audited)
+        .await?;
+        if both != 2 {
+            return Err(NotFound.into());
+        }
+        work::merge_works(
+            &mut self.edit.audited,
+            self.id,
+            from,
+            into,
+            &mut self.edit.merges,
+        )
+        .await?;
+        let title = sqlx::query_scalar!("SELECT title FROM work WHERE id = ?", into)
+            .fetch_one(&mut *self.edit.audited)
+            .await?;
+        let survivor = EntityRef {
+            kind: AuditSubject::Work,
+            id: into,
+            library_id: Some(self.id),
+            label: title,
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Merged, Some(survivor), None)
+            .await
+    }
+
     /// Create a publication with its first holding, returning the ids of both
     ///
     /// The title must be trimmed and non-empty, and the location trimmed or `None`.
@@ -438,6 +487,7 @@ impl Library {
     /// Fold one work into another and delete it; the survivor is returned reloaded.
     ///
     /// Returns a [NotFound] error when either work is not in this library.
+    #[deprecated(note = "use LibraryEdit::merge_works")]
     pub async fn merge_works(&self, from: i64, into: i64) -> Result<(Work, WorkMerges)> {
         let mut merges = WorkMerges::default();
         let mut audited = self.archive.begin_write().await?;
