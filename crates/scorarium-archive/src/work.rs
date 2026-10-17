@@ -645,6 +645,49 @@ impl WorkEdit<'_> {
             .await
     }
 
+    /// Add a contributor with a role to the work
+    ///
+    /// The role must be trimmed and non-empty. Returns a [NotFound] error if this library has no
+    /// such person.
+    pub async fn add_contributor(&mut self, person_id: i64, role: &str) -> crate::Result<()> {
+        sqlx::query_scalar!(
+            "SELECT 1 FROM person WHERE id = ? AND library_id = ?",
+            person_id,
+            self.library_id
+        )
+        .fetch_optional(&mut *self.edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO work_contributor (library_id, work_id, person_id, role)
+             VALUES (?, ?, ?, ?)",
+            self.library_id,
+            self.id,
+            person_id,
+            role
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contributors)
+            .await
+    }
+
+    /// Remove a contributor with a role from the work
+    pub async fn remove_contributor(&mut self, person_id: i64, role: &str) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM work_contributor WHERE work_id = ? AND person_id = ? AND role = ?",
+            self.id,
+            person_id,
+            role
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contributors)
+            .await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Work,

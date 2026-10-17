@@ -1,8 +1,8 @@
 #![expect(deprecated)]
 
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRawInput, PersonRef,
-    PublicationRawInput, WorkRawInput,
+    Archive, ContributorInput, Field, HoldingKind, HoldingRawInput, NotFound, PersonRawInput,
+    PersonRef, PublicationRawInput, WorkRawInput,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
@@ -337,4 +337,52 @@ async fn new_contributors_sharing_a_name_become_one_person_per_submission() {
         .filter(|known| known.name == "Erik Satie")
         .count();
     assert_eq!(saties, 2);
+}
+
+/// Orphans are collected on commit, so test what happens when a person is created and *then* a
+/// contributor linking to that person is made from a single transaction.
+#[tokio::test]
+async fn a_person_credited_again_before_commit_survives() {
+    let archive = Archive::in_memory().await.unwrap();
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Scores", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let satie = library
+        .create_person("Erik Satie", "Satie, Erik")
+        .await
+        .unwrap();
+    let (id, _) = library
+        .create_publication("Gymnopedies", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let mut publication = library.publication(id).await.unwrap();
+    let error = publication
+        .add_contributor(999, "composer")
+        .await
+        .unwrap_err();
+    assert!(error.downcast_ref::<NotFound>().is_some(), "{error}");
+    publication
+        .add_contributor(satie, "composer")
+        .await
+        .unwrap();
+    publication
+        .remove_contributor(satie, "composer")
+        .await
+        .unwrap();
+    publication
+        .add_contributor(satie, "composer")
+        .await
+        .unwrap();
+    edit.commit().await.unwrap();
+
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    assert!(library.person(satie).await.unwrap().is_some());
+    assert_eq!(
+        archive.recent_fields(5).await.unwrap(),
+        [
+            Field::Contributors,
+            Field::Contributors,
+            Field::Contributors
+        ]
+    );
 }
