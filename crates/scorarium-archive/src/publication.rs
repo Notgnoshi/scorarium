@@ -704,6 +704,49 @@ impl PublicationEdit<'_> {
             .await
     }
 
+    /// Add an identifier to the publication
+    pub async fn add_identifier(
+        &mut self,
+        kind: identifier::Kind,
+        value: &identifier::Normalized,
+    ) -> crate::Result<()> {
+        let kind = kind.as_str();
+        let value = value.as_str();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_identifier (publication_id, kind, value)
+             VALUES (?, ?, ?)",
+            self.id,
+            kind,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Identifiers)
+            .await
+    }
+
+    /// Remove an identifier from the publication
+    pub async fn remove_identifier(
+        &mut self,
+        kind: identifier::Kind,
+        value: &identifier::Normalized,
+    ) -> crate::Result<()> {
+        let kind = kind.as_str();
+        let value = value.as_str();
+        let result = sqlx::query!(
+            "DELETE FROM publication_identifier WHERE publication_id = ? AND kind = ? AND value = ?",
+            self.id,
+            kind,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Identifiers)
+            .await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Publication,
