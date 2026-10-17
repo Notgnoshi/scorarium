@@ -37,7 +37,7 @@ pub use crate::holding::{
 };
 pub use crate::identifier::{Identifier, IdentifierRawInput};
 pub use crate::import::{Accepted, DraftPublication, Lookup, PendingImport};
-pub use crate::input::{ContributorInput, PersonRef, ValidationError, WorkRef};
+pub use crate::input::{ContributorInput, PersonRef, Stars, ValidationError, WorkRef};
 pub use crate::library::Library;
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
@@ -52,7 +52,7 @@ pub use crate::suggest::{
     DraftPersonSummary, DraftWorkSummary, SuggestField, Suggested, Suggestion,
 };
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
-pub use crate::tag::TagCount;
+pub use crate::tag::{Tag, TagCount};
 pub use crate::work::{
     CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost, WorkRawInput,
 };

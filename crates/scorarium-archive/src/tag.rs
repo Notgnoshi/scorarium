@@ -1,21 +1,54 @@
+use std::fmt;
+use std::str::FromStr;
+
 use sqlx::SqliteConnection;
 
 use crate::input::ValidationError;
 
-/// Split a tag field on whitespace and check each tag.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tag(String);
+
+impl Tag {
+    /// Return the tag as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for Tag {
+    type Err = ValidationError;
+
+    fn from_str(typed: &str) -> Result<Self, Self::Err> {
+        let tag = typed.to_ascii_lowercase();
+        if tag.is_empty()
+            || !tag
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            return Err(ValidationError::InvalidTag(typed.to_string()));
+        }
+        Ok(Self(tag))
+    }
+}
+
+impl AsRef<str> for Tag {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 pub(crate) fn parse_tags(field: &str) -> Result<Vec<String>, ValidationError> {
     let mut tags: Vec<String> = Vec::new();
     for typed in field.split_whitespace() {
-        let tag = typed.to_ascii_lowercase();
-        if !tag
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
-        {
-            // Named as it was typed, so the message points at what is on the screen
-            return Err(ValidationError::InvalidTag(typed.to_string()));
-        }
-        if !tags.contains(&tag) {
-            tags.push(tag);
+        let tag = typed.parse::<Tag>()?;
+        if !tags.iter().any(|existing| existing == tag.as_str()) {
+            tags.push(tag.as_str().to_string());
         }
     }
     Ok(tags)
@@ -162,6 +195,10 @@ mod tests {
         assert_eq!(
             parse_tags("Noël"),
             Err(ValidationError::InvalidTag("Noël".into()))
+        );
+        assert_eq!(
+            "".parse::<Tag>(),
+            Err(ValidationError::InvalidTag(String::new()))
         );
     }
 }

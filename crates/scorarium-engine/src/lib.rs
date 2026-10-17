@@ -6,9 +6,9 @@ pub mod archive {
         Field, HoldingErrors, HoldingKind, HoldingRawInput, IdentifierRawInput, Library, Lookup,
         NotFound, PasswordCheck, PendingImport, Person, PersonErrors, PersonName, PersonRawInput,
         PersonRef, PersonSummary, Publication, PublicationErrors, PublicationPost,
-        PublicationRawInput, Source, SuggestField, Suggested, Suggestion, ValidationError, Work,
-        WorkErrors, WorkPost, WorkRawInput, WorkRef, WorkSummary, identifier, parse_holdings,
-        same_name,
+        PublicationRawInput, Source, Stars, SuggestField, Suggested, Suggestion, Tag,
+        ValidationError, Work, WorkErrors, WorkPost, WorkRawInput, WorkRef, WorkSummary,
+        identifier, parse_holdings, same_name,
     };
 }
 
