@@ -1,18 +1,7 @@
-#![expect(deprecated)]
-
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
-    SuggestField, Suggested, Suggestion, WorkRawInput, WorkSummary,
+    Archive, CatalogNumber, HoldingKind, LibraryEdit, PersonRef, SuggestField, Suggested,
+    Suggestion, WorkSummary,
 };
-
-fn contributor(name: &str, role: &str) -> ContributorInput {
-    ContributorInput {
-        name: name.into(),
-        role: role.into(),
-        person: PersonRef::New,
-        external_person: None,
-    }
-}
 
 /// The work a suggestion offers, which every work suggestion here is expected to be
 fn work_of(suggestion: &Suggestion) -> &WorkSummary {
@@ -29,35 +18,62 @@ fn credited(work: &WorkSummary) -> Option<(&str, &str)> {
         .map(|person| (person.name.as_str(), person.role.as_str()))
 }
 
-fn holding(kind: HoldingKind, location: &str) -> HoldingRawInput {
-    HoldingRawInput {
-        id: None,
-        kind,
-        location: location.into(),
+/// Create a work by `composer` carrying `numbers`, and put it in `publication`
+async fn piece(
+    library: &mut LibraryEdit<'_>,
+    publication: i64,
+    title: &str,
+    composer: i64,
+    numbers: &[&str],
+) -> i64 {
+    let work = library.create_work(title).await.unwrap();
+    let mut edit = library.work(work).await.unwrap();
+    edit.add_contributor(composer, "composer").await.unwrap();
+    for number in numbers {
+        edit.add_catalog_number(&CatalogNumber::parse(number))
+            .await
+            .unwrap();
     }
+    library
+        .publication(publication)
+        .await
+        .unwrap()
+        .add_work(work)
+        .await
+        .unwrap();
+    work
 }
 
 #[tokio::test]
 async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let input = PublicationRawInput {
-        title: "Three gymnopedies".into(),
-        publisher: "Dover".into(),
-        holdings: vec![holding(HoldingKind::Physical, "Piano bench")],
-        contributors: vec![contributor("Bob", "editor")],
-        contents: vec![WorkRawInput {
-            title: "Gymnopedie No. 1".into(),
-            key: "G major".into(),
-            tags: "christmas".into(),
-            ..WorkRawInput::default()
-        }],
-        ..PublicationRawInput::default()
-    };
-    let _ = library
-        .create_publication(&input.parse().unwrap())
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Sheet music", false).await.unwrap();
+    let private_id = edit.create_library("Books", true).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let bob = library.create_person("Bob", "Bob").await.unwrap();
+    let (publication, _) = library
+        .create_publication(
+            "Three gymnopedies",
+            HoldingKind::Physical,
+            Some("Piano bench"),
+        )
         .await
         .unwrap();
+    let work = library.create_work("Gymnopedie No. 1").await.unwrap();
+    {
+        let mut edit = library.publication(publication).await.unwrap();
+        edit.set_publisher(Some("Dover")).await.unwrap();
+        edit.add_contributor(bob, "editor").await.unwrap();
+        edit.add_work(work).await.unwrap();
+    }
+    {
+        let mut edit = library.work(work).await.unwrap();
+        edit.set_key(Some("G major")).await.unwrap();
+        edit.add_tag(&"christmas".parse().unwrap()).await.unwrap();
+    }
+    edit.commit().await.unwrap();
+    let library = archive.library(library_id).await.unwrap().unwrap();
 
     let plain = |exact: bool, item: Suggested| Suggestion { exact, item };
     let roles = library
@@ -112,7 +128,7 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
             .is_empty()
     );
 
-    let private = archive.create_library("Books", true).await.unwrap();
+    let private = archive.library(private_id).await.unwrap().unwrap();
     assert!(
         private
             .suggest(SuggestField::Publisher, "", true, false)
@@ -125,55 +141,95 @@ async fn distinct_values_rank_by_match_and_list_whole_when_nothing_is_typed() {
 #[tokio::test]
 async fn entities_are_one_suggestion_each() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    // The editor is credited first, so only the lead rule puts the composer forward
-    let nocturne = |composer: &str, numbers: &[&str]| WorkRawInput {
-        title: "Nocturne".into(),
-        contributors: vec![
-            contributor("Sue", "editor"),
-            contributor(composer, "composer"),
-        ],
-        catalog_numbers: numbers.iter().map(|n| (*n).into()).collect(),
-        ..WorkRawInput::default()
-    };
-    let input = PublicationRawInput {
-        title: "Nocturnes".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        contributors: vec![contributor("Ann", "editor")],
-        contents: vec![
-            nocturne("Frederic Chopin", &["B. 49", "Op. 9 No. 2"]),
-            nocturne("Gabriel Faure", &["Op. 33 No. 1"]),
-        ],
-        ..PublicationRawInput::default()
-    };
-    let _ = library
-        .create_publication(&input.parse().unwrap())
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Sheet music", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let ann = library.create_person("Ann", "Ann").await.unwrap();
+    let sue = library.create_person("Sue", "Sue").await.unwrap();
+    let chopin = library
+        .create_person("Frederic Chopin", "Chopin, Frederic")
         .await
         .unwrap();
-    let book = PublicationRawInput {
-        title: "The Devil's Dictionary".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        contributors: vec![contributor("Ambrose Bierce", "author")],
-        ..PublicationRawInput::default()
-    };
-    let _ = library
-        .create_publication(&book.parse().unwrap())
+    let faure = library
+        .create_person("Gabriel Faure", "Faure, Gabriel")
         .await
         .unwrap();
-    let essays = PublicationRawInput {
-        title: "Essays: First Series".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        contents: vec![WorkRawInput {
-            title: "Self-Reliance".into(),
-            contributors: vec![contributor("Ralph Waldo Emerson", "author")],
-            ..WorkRawInput::default()
-        }],
-        ..PublicationRawInput::default()
-    };
-    let _ = library
-        .create_publication(&essays.parse().unwrap())
+    let bierce = library
+        .create_person("Ambrose Bierce", "Bierce, Ambrose")
         .await
         .unwrap();
+    let emerson = library
+        .create_person("Ralph Waldo Emerson", "Emerson, Ralph Waldo")
+        .await
+        .unwrap();
+
+    let (nocturnes, _) = library
+        .create_publication("Nocturnes", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    library
+        .publication(nocturnes)
+        .await
+        .unwrap()
+        .add_contributor(ann, "editor")
+        .await
+        .unwrap();
+    // The editor is a contributor first, so only the lead rule puts the composer forward
+    for (composer, numbers) in [
+        (chopin, &["B. 49", "Op. 9 No. 2"][..]),
+        (faure, &["Op. 33 No. 1"]),
+    ] {
+        let work = library.create_work("Nocturne").await.unwrap();
+        let mut edit = library.work(work).await.unwrap();
+        edit.add_contributor(sue, "editor").await.unwrap();
+        edit.add_contributor(composer, "composer").await.unwrap();
+        for number in numbers {
+            edit.add_catalog_number(&CatalogNumber::parse(number))
+                .await
+                .unwrap();
+        }
+        library
+            .publication(nocturnes)
+            .await
+            .unwrap()
+            .add_work(work)
+            .await
+            .unwrap();
+    }
+
+    let (dictionary, _) = library
+        .create_publication("The Devil's Dictionary", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    library
+        .publication(dictionary)
+        .await
+        .unwrap()
+        .add_contributor(bierce, "author")
+        .await
+        .unwrap();
+
+    let (essays, _) = library
+        .create_publication("Essays: First Series", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let reliance = library.create_work("Self-Reliance").await.unwrap();
+    library
+        .work(reliance)
+        .await
+        .unwrap()
+        .add_contributor(emerson, "author")
+        .await
+        .unwrap();
+    library
+        .publication(essays)
+        .await
+        .unwrap()
+        .add_work(reliance)
+        .await
+        .unwrap();
+    edit.commit().await.unwrap();
+    let library = archive.library(library_id).await.unwrap().unwrap();
 
     let works = library
         .suggest(SuggestField::Work, "nocturne", false, false)
@@ -239,60 +295,52 @@ async fn entities_are_one_suggestion_each() {
 #[tokio::test]
 async fn work_numbers_rank_exact_then_prefix_then_fuzzy() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let piece = |title: &str, composer: &str, number: &str| WorkRawInput {
-        title: title.into(),
-        contributors: vec![contributor(composer, "composer")],
-        catalog_numbers: vec![number.into()],
-        ..WorkRawInput::default()
-    };
-    let chopin = PublicationRawInput {
-        title: "Nocturnes".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        contents: vec![
-            piece("Nocturne in E-flat major", "Frederic Chopin", "Op. 9 No. 2"),
-            piece(
-                "Nocturne in C-sharp minor",
-                "Frederic Chopin",
-                "Op. 27 No. 2",
-            ),
-        ],
-        ..PublicationRawInput::default()
-    };
-    let _ = library
-        .create_publication(&chopin.parse().unwrap())
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Sheet music", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let chopin = library
+        .create_person("Frederic Chopin", "Chopin, Frederic")
         .await
         .unwrap();
-    let rachmaninoff = PublicationRawInput {
-        title: "Morceaux de fantaisie".into(),
-        holdings: vec![holding(HoldingKind::Physical, "")],
-        contents: vec![
-            piece(
-                "Prelude in C-sharp minor",
-                "Sergei Rachmaninoff",
-                "Op. 3 No. 2",
-            ),
-            WorkRawInput {
-                title: "Nocturne".into(),
-                contributors: vec![contributor("Sergei Rachmaninoff", "composer")],
-                ..WorkRawInput::default()
-            },
-        ],
-        ..PublicationRawInput::default()
-    };
-    // Every work above is credited to Rachmaninoff, so whichever work comes back first, its
-    // contributor is the id the filter should narrow to; the publication itself has no credits
-    // of its own to read the id from.
     let rachmaninoff = library
-        .create_publication(&rachmaninoff.parse().unwrap())
+        .create_person("Sergei Rachmaninoff", "Rachmaninoff, Sergei")
         .await
-        .unwrap()
-        .0
-        .works()
+        .unwrap();
+    let (nocturnes, _) = library
+        .create_publication("Nocturnes", HoldingKind::Physical, None)
         .await
-        .unwrap()[0]
-        .contributors[0]
-        .person_id;
+        .unwrap();
+    piece(
+        &mut library,
+        nocturnes,
+        "Nocturne in E-flat major",
+        chopin,
+        &["Op. 9 No. 2"],
+    )
+    .await;
+    piece(
+        &mut library,
+        nocturnes,
+        "Nocturne in C-sharp minor",
+        chopin,
+        &["Op. 27 No. 2"],
+    )
+    .await;
+    let (morceaux, _) = library
+        .create_publication("Morceaux de fantaisie", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    piece(
+        &mut library,
+        morceaux,
+        "Prelude in C-sharp minor",
+        rachmaninoff,
+        &["Op. 3 No. 2"],
+    )
+    .await;
+    piece(&mut library, morceaux, "Nocturne", rachmaninoff, &[]).await;
+    edit.commit().await.unwrap();
+    let library = archive.library(library_id).await.unwrap().unwrap();
 
     let numbers = |suggestions: &[Suggestion]| -> Vec<(bool, String, String)> {
         suggestions
