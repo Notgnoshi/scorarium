@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use std::io::Write;
 
 use scorarium_engine::archive::{Archive, Library};

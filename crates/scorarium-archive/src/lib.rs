@@ -104,6 +104,40 @@ pub struct Archive {
     shared: Arc<ArchiveInner>,
 }
 
+/// A write handle to edit something in the archive.
+///
+/// The edit is committed as a single transaction, and if dropped without being committed, will be
+/// rolled back.
+#[derive(Debug)]
+pub struct ArchiveEdit {
+    shared: Arc<ArchiveInner>,
+    audited: audit::Audited<'static>,
+}
+
+impl ArchiveEdit {
+    /// Create a library with the given name and visibility, returning its ID
+    ///
+    /// Names need not be unique.
+    pub async fn create_library(&mut self, name: &str, private: bool) -> Result<i64> {
+        let library =
+            library::create_library(&self.shared, &mut self.audited, name, private).await?;
+        self.audited
+            .record(
+                Source::User,
+                Action::Created,
+                Some(library.entity_ref()),
+                None,
+            )
+            .await?;
+        Ok(library.id)
+    }
+
+    /// Commit edits made through this write handle
+    pub async fn commit(self) -> Result<()> {
+        self.audited.commit().await
+    }
+}
+
 /// What the archive and every handle it hands out share.
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
@@ -130,6 +164,13 @@ impl ArchiveInner {
     /// [audit::Audited::record()] to record an audit log event for each transaction.
     pub(crate) async fn begin_write(&self) -> Result<audit::Audited<'_>> {
         Ok(audit::Audited::new(self.pool.begin().await?))
+    }
+
+    /// Open a write transaction that takes SQLite's write lock immediately.
+    pub(crate) async fn begin_edit(&self) -> Result<audit::Audited<'static>> {
+        Ok(audit::Audited::new(
+            self.pool.begin_with("BEGIN IMMEDIATE").await?,
+        ))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries
@@ -197,6 +238,14 @@ impl Archive {
         }
     }
 
+    /// Open a write handle
+    pub async fn edit(&self) -> Result<ArchiveEdit> {
+        Ok(ArchiveEdit {
+            shared: self.shared.clone(),
+            audited: self.shared.begin_edit().await?,
+        })
+    }
+
     /// Fill an empty archive with the demo libraries that `--demo` serves
     pub async fn populate_demo(&self) -> Result<()> {
         demo::populate(self).await?;
@@ -245,6 +294,7 @@ impl Archive {
     /// Create a library with the given name and visibility
     ///
     /// Names need not be unique.
+    #[deprecated(note = "use ArchiveEdit::create_library")]
     pub async fn create_library(&self, name: &str, private: bool) -> Result<Library> {
         let mut audited = self.shared.begin_write().await?;
         let library = library::create_library(&self.shared, &mut audited, name, private).await?;

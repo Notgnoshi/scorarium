@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use scorarium_archive::{Action, Archive, Field, NotFound};
 
 #[tokio::test]

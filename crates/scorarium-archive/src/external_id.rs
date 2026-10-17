@@ -575,6 +575,7 @@ fn number(text: &str) -> bool {
 }
 
 #[cfg(test)]
+#[expect(deprecated)]
 mod tests {
     use super::*;
     use crate::{Archive, HoldingKind, HoldingRawInput, PublicationRawInput, WorkRawInput};

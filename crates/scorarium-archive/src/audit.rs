@@ -194,6 +194,7 @@ pub struct AuditEntry {
 }
 
 /// A write transaction that records what it did before it commits.
+#[derive(Debug)]
 pub(crate) struct Audited<'a> {
     tx: Transaction<'a, Sqlite>,
 }

@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use url::Url;
 
 use crate::catalog::CatalogNumber;
