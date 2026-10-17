@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE holding SET location = ?1 WHERE id = ?2 AND location IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "fa1aab74c2b3bf8fdc48e1e3f3c82933aae33a3e839c30f951bb1a021170ba93"
+}

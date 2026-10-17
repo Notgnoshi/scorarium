@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE holding SET kind = ?1 WHERE id = ?2 AND kind IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "98681ac8749a52a5a8cf7bfbc74c71ad518ac2b4dff3cb03bc6ae36feb147555"
+}

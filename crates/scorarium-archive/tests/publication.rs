@@ -1,8 +1,8 @@
 #![expect(deprecated)]
 
 use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, Library, NotFound,
-    PersonRef, PublicationRawInput, WorkRawInput, WorkRef, identifier,
+    Archive, ContributorInput, Field, HoldingKind, HoldingRawInput, IdentifierRawInput, Library,
+    NotFound, PersonRef, PublicationRawInput, WorkRawInput, WorkRef, identifier,
 };
 
 fn contributor(name: &str, role: &str) -> ContributorInput {
@@ -469,4 +469,32 @@ async fn a_work_rebuilds_its_credits_in_input_order() {
     publication.delete().await.unwrap();
     let err = stale.update(&edit.parse().unwrap()).await.unwrap_err();
     assert!(err.downcast_ref::<NotFound>().is_some());
+}
+
+#[tokio::test]
+async fn a_publication_left_without_holdings_is_collected() {
+    let archive = Archive::in_memory().await.unwrap();
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Books", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let (id, first) = library
+        .create_publication("Gymnopedies", HoldingKind::Physical, Some("Shelf"))
+        .await
+        .unwrap();
+    let mut publication = library.publication(id).await.unwrap();
+    let second = publication
+        .add_holding(HoldingKind::Digital, None)
+        .await
+        .unwrap();
+    publication.remove_holding(first).await.unwrap();
+    publication.remove_holding(second).await.unwrap();
+    publication.remove_holding(second).await.unwrap();
+    edit.commit().await.unwrap();
+
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    assert!(library.publication(id).await.unwrap().is_none());
+    assert_eq!(
+        archive.recent_fields(5).await.unwrap(),
+        [Field::Holdings, Field::Holdings, Field::Holdings]
+    );
 }

@@ -339,6 +339,7 @@ impl Library {
     }
 
     /// Create a publication, with its identifiers, contributors, holdings and contents
+    #[deprecated(note = "use LibraryEdit::create_publication")]
     pub async fn create_publication(
         &self,
         input: &PublicationInput,

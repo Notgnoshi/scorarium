@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM holding WHERE id = ? AND publication_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "169347a090c20555fa0df344930060b4b6e4a460bded61bab3bdc5aace68f387"
+}

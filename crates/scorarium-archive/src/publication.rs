@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::audit::Audited;
 use crate::external_id::{EntityKind, Link};
-use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
+use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, Stars, ValidationError};
 use crate::person::{self, Contributor};
@@ -365,6 +365,7 @@ impl Publication {
     /// Apply an edited input, then collect whatever the edit left credited nowhere.
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
+    #[deprecated(note = "use PublicationEdit")]
     pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<WorkMerges> {
         let mut merges = WorkMerges::default();
         let mut audited = self.archive.begin_write().await?;
@@ -434,6 +435,7 @@ impl Publication {
     /// Delete the publication, then cleanup any orphans the deletion resulted in.
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
+    #[deprecated(note = "use PublicationEdit::delete")]
     pub async fn delete(self) -> crate::Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!(
@@ -784,6 +786,105 @@ impl PublicationEdit<'_> {
             .await
     }
 
+    /// Add a holding to the publication, returning its id
+    ///
+    /// The location must be trimmed or `None`. A digital holding needs a location, but the caller
+    /// is trusted to supply one.
+    pub async fn add_holding(
+        &mut self,
+        kind: HoldingKind,
+        location: Option<&str>,
+    ) -> crate::Result<i64> {
+        let kind = kind.as_str();
+        let id = sqlx::query!(
+            "INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)",
+            self.id,
+            kind,
+            location
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        self.edit
+            .audited
+            .record(
+                Source::User,
+                Action::Updated,
+                Some(self.entity_ref()),
+                Some(Field::Holdings),
+            )
+            .await?;
+        Ok(id)
+    }
+
+    /// Remove a holding from the publication
+    ///
+    /// Removing the last holding leaves the publication to be collected when the handle commits.
+    pub async fn remove_holding(&mut self, id: i64) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM holding WHERE id = ? AND publication_id = ?",
+            id,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    /// Set the kind of one of the publication's holdings
+    ///
+    /// Returns a [NotFound] error if the publication has no such holding.
+    pub async fn set_holding_kind(&mut self, id: i64, kind: HoldingKind) -> crate::Result<()> {
+        self.check_holding(id).await?;
+        let kind = kind.as_str();
+        let result = sqlx::query!(
+            "UPDATE holding SET kind = ?1 WHERE id = ?2 AND kind IS NOT ?1",
+            kind,
+            id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    /// Set the location of one of the publication's holdings
+    ///
+    /// The location must be trimmed or `None`. Returns a [NotFound] error if the publication has no
+    /// such holding.
+    pub async fn set_holding_location(
+        &mut self,
+        id: i64,
+        location: Option<&str>,
+    ) -> crate::Result<()> {
+        self.check_holding(id).await?;
+        let result = sqlx::query!(
+            "UPDATE holding SET location = ?1 WHERE id = ?2 AND location IS NOT ?1",
+            location,
+            id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    async fn check_holding(&mut self, id: i64) -> crate::Result<()> {
+        sqlx::query_scalar!(
+            "SELECT 1 FROM holding WHERE id = ? AND publication_id = ?",
+            id,
+            self.id
+        )
+        .fetch_optional(&mut *self.edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(())
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Publication,
@@ -1116,7 +1217,6 @@ async fn write_publication_contributors(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::holding::HoldingKind;
     use crate::input::WorkRef;
 
     fn contributor(name: &str, role: &str) -> ContributorInput {

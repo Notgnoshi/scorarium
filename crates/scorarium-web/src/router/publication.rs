@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
