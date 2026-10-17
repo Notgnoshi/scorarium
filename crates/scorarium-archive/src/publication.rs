@@ -747,6 +747,43 @@ impl PublicationEdit<'_> {
             .await
     }
 
+    /// Add a work to the publication
+    ///
+    /// Returns a [NotFound] error if this library has no such work.
+    pub async fn add_work(&mut self, work_id: i64) -> crate::Result<()> {
+        if !work::work_exists(&mut self.edit.audited, self.library_id, work_id).await? {
+            return Err(NotFound.into());
+        }
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_work (library_id, publication_id, work_id)
+             VALUES (?, ?, ?)",
+            self.library_id,
+            self.id,
+            work_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contents)
+            .await
+    }
+
+    /// Remove a work from the publication
+    ///
+    /// The work itself is collected upon commit if no publication refers to it.
+    pub async fn remove_work(&mut self, work_id: i64) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
+            self.id,
+            work_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contents)
+            .await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Publication,

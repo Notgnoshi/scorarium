@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO publication_work (library_id, publication_id, work_id)\n             VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f1e410fddbee9804f33aeda8a5531a88b199229b80e33290fc24853ed957f370"
+}
