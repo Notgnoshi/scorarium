@@ -10,6 +10,7 @@ use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput
 use crate::identifier::{self, Identifier, IdentifierRawInput};
 use crate::input::{self, ContributorInput, PersonRef, Stars, ValidationError};
 use crate::person::{self, Contributor};
+use crate::tag::Tag;
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkMerges, WorkPost, WorkRawInput};
 use crate::{
     Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library,
@@ -586,6 +587,37 @@ impl PublicationEdit<'_> {
         .await?;
         self.edit
             .record_if_changed(result, self.entity_ref(), Field::Note)
+            .await
+    }
+
+    /// Add a tag to the publication
+    pub async fn add_tag(&mut self, tag: &Tag) -> crate::Result<()> {
+        let tag = tag.as_str();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO tag (library_id, publication_id, tag) VALUES (?, ?, ?)",
+            self.library_id,
+            self.id,
+            tag
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Tags)
+            .await
+    }
+
+    /// Remove a tag from the publication
+    pub async fn remove_tag(&mut self, tag: &Tag) -> crate::Result<()> {
+        let tag = tag.as_str();
+        let result = sqlx::query!(
+            "DELETE FROM tag WHERE publication_id = ? AND tag = ?",
+            self.id,
+            tag
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Tags)
             .await
     }
 

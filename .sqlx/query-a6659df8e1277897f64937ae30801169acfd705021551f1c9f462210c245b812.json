@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM tag WHERE work_id = ? AND tag = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a6659df8e1277897f64937ae30801169acfd705021551f1c9f462210c245b812"
+}
