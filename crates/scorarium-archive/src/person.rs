@@ -9,7 +9,9 @@ use crate::fuzzy::normalize;
 use crate::input::{self, ContributorInput, PersonRef, ValidationError};
 use crate::publication::{self, Publication};
 use crate::summary::{self, PersonSummary};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source,
+};
 
 /// A person who contributed to a publication or work
 ///
@@ -457,10 +459,76 @@ pub(crate) async fn list_person_names(
 ///
 /// Compound surnames like "Ralph Vaughan Williams" come out wrong; that's acceptable for now. The
 /// heuristic only has to be right often enough that the user rarely types a name twice.
-fn sort_name(name: &str) -> String {
+//
+// TODO: This heuristic should be moved to the engine crate once it's no longer needed in the archive
+pub fn sort_name(name: &str) -> String {
     let mut parts: Vec<&str> = name.split_whitespace().collect();
     match parts.pop() {
         Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),
         _ => name.to_string(),
+    }
+}
+
+#[derive(Debug)]
+pub struct PersonEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    library_id: i64,
+    id: i64,
+    name: String,
+}
+
+impl<'a> PersonEdit<'a> {
+    /// Open a write handle to the given person in the given library
+    ///
+    /// Returns a [NotFound] error if the library does not have the person.
+    pub(crate) async fn open(
+        edit: &'a mut ArchiveEdit,
+        library_id: i64,
+        id: i64,
+    ) -> Result<PersonEdit<'a>> {
+        let name = sqlx::query_scalar!(
+            "SELECT name FROM person WHERE library_id = ? AND id = ?",
+            library_id,
+            id
+        )
+        .fetch_optional(&mut *edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(PersonEdit {
+            edit,
+            library_id,
+            id,
+            name,
+        })
+    }
+}
+
+impl PersonEdit<'_> {
+    /// Set the name and sort name of the person together
+    ///
+    /// Both must be trimmed and non-empty.
+    pub async fn rename(&mut self, name: &str, sort_name: &str) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE person SET name = ?1, sort_name = ?2
+             WHERE id = ?3 AND (name IS NOT ?1 OR sort_name IS NOT ?2)",
+            name,
+            sort_name,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.name = name.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Name)
+            .await
+    }
+
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Person,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.name.clone(),
+        }
     }
 }

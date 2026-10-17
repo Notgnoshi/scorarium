@@ -7,7 +7,7 @@ use crate::audit::Audited;
 use crate::holding::{HoldingInput, HoldingKind};
 use crate::import::{self, PendingImport};
 use crate::input::{ContributorInput, PersonRef};
-use crate::person::{self, Person, PersonName};
+use crate::person::{self, Person, PersonEdit, PersonName};
 use crate::publication::{self, Publication, PublicationEdit, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
@@ -219,6 +219,39 @@ impl LibraryEdit<'_> {
     /// Returns a [NotFound] error if this library does not have the publication.
     pub async fn publication(&mut self, id: i64) -> Result<PublicationEdit<'_>> {
         PublicationEdit::open(self.edit, self.id, id).await
+    }
+
+    /// Create a person in this library, returning its id
+    ///
+    /// The name and sort name must be trimmed and non-empty.
+    pub async fn create_person(&mut self, name: &str, sort_name: &str) -> Result<i64> {
+        let created = sqlx::query!(
+            "INSERT INTO person (library_id, name, sort_name) VALUES (?, ?, ?)",
+            self.id,
+            name,
+            sort_name
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        let id = created.last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Person,
+            id,
+            library_id: Some(self.id),
+            label: name.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok(id)
+    }
+
+    /// Edit the given person in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the person.
+    pub async fn person(&mut self, id: i64) -> Result<PersonEdit<'_>> {
+        PersonEdit::open(self.edit, self.id, id).await
     }
 
     pub(crate) fn entity_ref(&self) -> EntityRef {

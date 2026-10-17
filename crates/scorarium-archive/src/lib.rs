@@ -42,8 +42,8 @@ pub use crate::input::{ContributorInput, PersonRef, Stars, ValidationError, Work
 pub use crate::library::{Library, LibraryEdit};
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
-    Contributor, ExternalPerson, Person, PersonErrors, PersonInput, PersonName, PersonRawInput,
-    credit_priority,
+    Contributor, ExternalPerson, Person, PersonEdit, PersonErrors, PersonInput, PersonName,
+    PersonRawInput, credit_priority, sort_name,
 };
 pub use crate::publication::{
     Publication, PublicationEdit, PublicationErrors, PublicationInput, PublicationPost,
