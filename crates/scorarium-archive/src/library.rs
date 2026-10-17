@@ -13,7 +13,9 @@ use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
 use crate::work::{self, Work, WorkMerges};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source,
+};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -28,6 +30,7 @@ impl Library {
     /// Rename the library or change who can see it. Records one update naming what changed.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
+    #[deprecated(note = "use LibraryEdit")]
     pub async fn update(&mut self, name: &str, private: bool) -> Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let updated = sqlx::query!(
@@ -70,6 +73,7 @@ impl Library {
     /// Delete this library and everything in it.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
+    #[deprecated(note = "use LibraryEdit::delete")]
     pub async fn delete(self) -> Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
@@ -89,6 +93,86 @@ impl Library {
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Library,
+            id: self.id,
+            library_id: Some(self.id),
+            label: self.name.clone(),
+        }
+    }
+}
+
+/// A write handle to one library
+#[derive(Debug)]
+pub struct LibraryEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    id: i64,
+    name: String,
+}
+
+impl ArchiveEdit {
+    /// Edit the given library.
+    ///
+    /// Returns a [NotFound] error if the library does not exist.
+    pub async fn library(&mut self, id: i64) -> Result<LibraryEdit<'_>> {
+        let library = get_library(&self.shared, &mut self.audited, id)
+            .await?
+            .ok_or(NotFound)?;
+        Ok(LibraryEdit {
+            edit: self,
+            id,
+            name: library.name,
+        })
+    }
+}
+
+impl LibraryEdit<'_> {
+    /// Rename the library
+    ///
+    /// The name must be trimmed and non-empty.
+    pub async fn rename(&mut self, name: &str) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE library SET name = ?1 WHERE id = ?2 AND name IS NOT ?1",
+            name,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.name = name.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Name)
+            .await
+    }
+
+    /// Set the visibility of the library
+    pub async fn set_private(&mut self, private: bool) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE library SET private = ?1 WHERE id = ?2 AND private IS NOT ?1",
+            private,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Visibility)
+            .await
+    }
+
+    /// Delete the library and everything in it
+    pub async fn delete(self) -> Result<()> {
+        sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
+            .execute(&mut *self.edit.audited)
+            .await?;
+        self.edit
+            .audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
+        // TODO: This can be removed once the Archive is no longer aware of in-memory drafts
+        self.edit.deleted_libraries.push(self.id);
+        Ok(())
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Library,

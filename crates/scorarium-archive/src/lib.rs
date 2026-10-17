@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sqlx::pool::PoolConnection;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteQueryResult};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Field, Source};
@@ -38,7 +38,7 @@ pub use crate::holding::{
 pub use crate::identifier::{Identifier, IdentifierRawInput};
 pub use crate::import::{Accepted, DraftPublication, Lookup, PendingImport};
 pub use crate::input::{ContributorInput, PersonRef, Stars, ValidationError, WorkRef};
-pub use crate::library::Library;
+pub use crate::library::{Library, LibraryEdit};
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
     Contributor, ExternalPerson, Person, PersonErrors, PersonInput, PersonName, PersonRawInput,
@@ -112,6 +112,7 @@ pub struct Archive {
 pub struct ArchiveEdit {
     shared: Arc<ArchiveInner>,
     audited: audit::Audited<'static>,
+    deleted_libraries: Vec<i64>,
 }
 
 impl ArchiveEdit {
@@ -134,7 +135,27 @@ impl ArchiveEdit {
 
     /// Commit edits made through this write handle
     pub async fn commit(self) -> Result<()> {
-        self.audited.commit().await
+        self.audited.commit().await?;
+        // Drafts live outside the database, so they can only be dropped once the delete has been committed.
+        for id in self.deleted_libraries {
+            self.shared.drafts().drop_library(id);
+        }
+        Ok(())
+    }
+
+    /// Record an update to the field of the entity in the audit log, if the statement changed a row.
+    pub(crate) async fn record_if_changed(
+        &mut self,
+        result: SqliteQueryResult,
+        entity: EntityRef,
+        field: Field,
+    ) -> Result<()> {
+        if result.rows_affected() != 0 {
+            self.audited
+                .record(Source::User, Action::Updated, Some(entity), Some(field))
+                .await?;
+        }
+        Ok(())
     }
 }
 
@@ -243,6 +264,7 @@ impl Archive {
         Ok(ArchiveEdit {
             shared: self.shared.clone(),
             audited: self.shared.begin_edit().await?,
+            deleted_libraries: Vec::new(),
         })
     }
 
@@ -274,6 +296,16 @@ impl Archive {
     ) -> Result<Vec<AuditEntry>> {
         let mut conn = self.shared.acquire_read().await?;
         audit::load_entries(&mut conn, before, limit).await
+    }
+
+    /// Get the field of each of the `n` most recent per-field audit entries, newest first.
+    pub async fn recent_fields(&self, n: usize) -> Result<Vec<Field>> {
+        let entries = self.audit_log(None, None).await?;
+        Ok(entries
+            .into_iter()
+            .filter_map(|entry| entry.field)
+            .take(n)
+            .collect())
     }
 }
 
