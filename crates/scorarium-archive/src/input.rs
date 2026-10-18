@@ -250,14 +250,39 @@ pub(crate) fn valid_links(entity: EntityKind, raw: &[String]) -> Vec<Link> {
     }
 }
 
+/// A rating of 1 to 5 stars
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stars(i64);
+
+impl Stars {
+    /// Return the number of stars.
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl TryFrom<i64> for Stars {
+    type Error = ValidationError;
+
+    fn try_from(stars: i64) -> Result<Self, Self::Error> {
+        if (1..=5).contains(&stars) {
+            Ok(Self(stars))
+        } else {
+            Err(ValidationError::StarsInvalid)
+        }
+    }
+}
+
 /// Check a rating, which a publication and a work each carry
 pub(crate) fn parse_stars(raw: &str) -> Result<Option<i64>, ValidationError> {
     match raw.trim() {
         "" => Ok(None),
-        stars => match stars.parse::<i64>() {
-            Ok(stars) if (1..=5).contains(&stars) => Ok(Some(stars)),
-            _ => Err(ValidationError::StarsInvalid),
-        },
+        stars => {
+            let stars = stars
+                .parse::<i64>()
+                .map_err(|_| ValidationError::StarsInvalid)?;
+            Stars::try_from(stars).map(|stars| Some(stars.get()))
+        }
     }
 }
 
@@ -271,6 +296,14 @@ pub(crate) fn trimmed_or_none(value: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::summary::PersonSummary;
+
+    #[test]
+    fn stars_are_one_to_five() {
+        assert_eq!(Stars::try_from(1).map(Stars::get), Ok(1));
+        assert_eq!(Stars::try_from(5).map(Stars::get), Ok(5));
+        assert_eq!(Stars::try_from(0), Err(ValidationError::StarsInvalid));
+        assert_eq!(Stars::try_from(6), Err(ValidationError::StarsInvalid));
+    }
 
     #[test]
     fn a_name_resolves_only_when_it_matches_one_person() {

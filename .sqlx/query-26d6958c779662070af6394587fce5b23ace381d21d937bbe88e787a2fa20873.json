@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM publication_link\n             WHERE publication_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "26d6958c779662070af6394587fce5b23ace381d21d937bbe88e787a2fa20873"
+}

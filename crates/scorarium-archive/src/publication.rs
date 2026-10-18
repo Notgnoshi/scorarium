@@ -3,15 +3,20 @@ use std::sync::Arc;
 
 use comparable::{Changed, Comparable};
 use sqlx::SqliteConnection;
+use url::Url;
 
 use crate::audit::Audited;
 use crate::external_id::{EntityKind, Link};
-use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingRawInput};
+use crate::holding::{self, Holding, HoldingErrors, HoldingInput, HoldingKind, HoldingRawInput};
 use crate::identifier::{self, Identifier, IdentifierRawInput};
-use crate::input::{self, ContributorInput, PersonRef, ValidationError};
+use crate::input::{self, ContributorInput, PersonRef, Stars, ValidationError};
 use crate::person::{self, Contributor};
+use crate::tag::Tag;
 use crate::work::{self, Work, WorkErrors, WorkInput, WorkMerges, WorkPost, WorkRawInput};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library, tag};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Source, library,
+    tag,
+};
 
 /// A publication's editable fields as typed from the web form
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -360,6 +365,7 @@ impl Publication {
     /// Apply an edited input, then collect whatever the edit left credited nowhere.
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
+    #[deprecated(note = "use PublicationEdit")]
     pub async fn update(&mut self, input: &PublicationInput) -> crate::Result<WorkMerges> {
         let mut merges = WorkMerges::default();
         let mut audited = self.archive.begin_write().await?;
@@ -429,6 +435,7 @@ impl Publication {
     /// Delete the publication, then cleanup any orphans the deletion resulted in.
     ///
     /// Returns a [NotFound] error if the publication has since been deleted.
+    #[deprecated(note = "use PublicationEdit::delete")]
     pub async fn delete(self) -> crate::Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!(
@@ -451,6 +458,433 @@ impl Publication {
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Publication,
+            id: self.id,
+            library_id: Some(self.library_id),
+            label: self.title.clone(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PublicationEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    library_id: i64,
+    id: i64,
+    title: String,
+}
+
+impl<'a> PublicationEdit<'a> {
+    /// Open a write handle to the given publication in the given library
+    ///
+    /// Returns a [NotFound] error if the library does not have the publication.
+    pub(crate) async fn open(
+        edit: &'a mut ArchiveEdit,
+        library_id: i64,
+        id: i64,
+    ) -> crate::Result<PublicationEdit<'a>> {
+        let title = sqlx::query_scalar!(
+            "SELECT title FROM publication WHERE library_id = ? AND id = ?",
+            library_id,
+            id
+        )
+        .fetch_optional(&mut *edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(PublicationEdit {
+            edit,
+            library_id,
+            id,
+            title,
+        })
+    }
+}
+
+impl PublicationEdit<'_> {
+    /// Delete the publication
+    pub async fn delete(self) -> crate::Result<()> {
+        sqlx::query!(
+            "DELETE FROM publication WHERE library_id = ? AND id = ?",
+            self.library_id,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
+        Ok(())
+    }
+
+    /// Set the title of the publication
+    ///
+    /// The title must be trimmed and non-empty.
+    pub async fn set_title(&mut self, title: &str) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET title = ?1 WHERE id = ?2 AND title IS NOT ?1",
+            title,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.title = title.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Title)
+            .await
+    }
+
+    /// Set or clear the publisher of the publication
+    pub async fn set_publisher(&mut self, publisher: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET publisher = ?1 WHERE id = ?2 AND publisher IS NOT ?1",
+            publisher,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Publisher)
+            .await
+    }
+
+    /// Set or clear the year of the publication
+    pub async fn set_year(&mut self, year: Option<i64>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET year = ?1 WHERE id = ?2 AND year IS NOT ?1",
+            year,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Year)
+            .await
+    }
+
+    /// Set or clear the rating of the publication
+    pub async fn set_stars(&mut self, stars: Option<Stars>) -> crate::Result<()> {
+        let stars = stars.map(Stars::get);
+        let result = sqlx::query!(
+            "UPDATE publication SET stars = ?1 WHERE id = ?2 AND stars IS NOT ?1",
+            stars,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Stars)
+            .await
+    }
+
+    /// Set or clear the note on the publication
+    pub async fn set_note(&mut self, note: Option<&str>) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "UPDATE publication SET note = ?1 WHERE id = ?2 AND note IS NOT ?1",
+            note,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Note)
+            .await
+    }
+
+    /// Add a tag to the publication
+    pub async fn add_tag(&mut self, tag: &Tag) -> crate::Result<()> {
+        let tag = tag.as_str();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO tag (library_id, publication_id, tag) VALUES (?, ?, ?)",
+            self.library_id,
+            self.id,
+            tag
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Tags)
+            .await
+    }
+
+    /// Remove a tag from the publication
+    pub async fn remove_tag(&mut self, tag: &Tag) -> crate::Result<()> {
+        let tag = tag.as_str();
+        let result = sqlx::query!(
+            "DELETE FROM tag WHERE publication_id = ? AND tag = ?",
+            self.id,
+            tag
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Tags)
+            .await
+    }
+
+    /// Add a link to the publication
+    pub async fn add_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Publication, url.clone());
+        let (kind, external_id) = link.columns();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_link (publication_id, url, kind, external_id)
+             VALUES (?, ?, ?, ?)",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
+            .await
+    }
+
+    /// Remove a link from the publication
+    pub async fn remove_link(&mut self, url: &Url) -> crate::Result<()> {
+        let link = Link::new(EntityKind::Publication, url.clone());
+        let (kind, external_id) = link.columns();
+        // A generic URL binds the external id as NULL, so it can only be removed by its exact URL.
+        let result = sqlx::query!(
+            "DELETE FROM publication_link
+             WHERE publication_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+            self.id,
+            link.url,
+            kind,
+            external_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Links)
+            .await
+    }
+
+    /// Add a contributor with a role to the publication
+    ///
+    /// The role must be trimmed and non-empty. Returns a [NotFound] error if this library has no
+    /// such person.
+    pub async fn add_contributor(&mut self, person_id: i64, role: &str) -> crate::Result<()> {
+        sqlx::query_scalar!(
+            "SELECT 1 FROM person WHERE id = ? AND library_id = ?",
+            person_id,
+            self.library_id
+        )
+        .fetch_optional(&mut *self.edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_contributor (library_id, publication_id, person_id, role)
+             VALUES (?, ?, ?, ?)",
+            self.library_id,
+            self.id,
+            person_id,
+            role
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contributors)
+            .await
+    }
+
+    /// Remove a contributor with a role from the publication
+    pub async fn remove_contributor(&mut self, person_id: i64, role: &str) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM publication_contributor WHERE publication_id = ? AND person_id = ? AND role = ?",
+            self.id,
+            person_id,
+            role
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contributors)
+            .await
+    }
+
+    /// Add an identifier to the publication
+    pub async fn add_identifier(
+        &mut self,
+        kind: identifier::Kind,
+        value: &identifier::Normalized,
+    ) -> crate::Result<()> {
+        let kind = kind.as_str();
+        let value = value.as_str();
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_identifier (publication_id, kind, value)
+             VALUES (?, ?, ?)",
+            self.id,
+            kind,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Identifiers)
+            .await
+    }
+
+    /// Remove an identifier from the publication
+    pub async fn remove_identifier(
+        &mut self,
+        kind: identifier::Kind,
+        value: &identifier::Normalized,
+    ) -> crate::Result<()> {
+        let kind = kind.as_str();
+        let value = value.as_str();
+        let result = sqlx::query!(
+            "DELETE FROM publication_identifier WHERE publication_id = ? AND kind = ? AND value = ?",
+            self.id,
+            kind,
+            value
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Identifiers)
+            .await
+    }
+
+    /// Add a work to the publication
+    ///
+    /// Returns a [NotFound] error if this library has no such work.
+    pub async fn add_work(&mut self, work_id: i64) -> crate::Result<()> {
+        if !work::work_exists(&mut self.edit.audited, self.library_id, work_id).await? {
+            return Err(NotFound.into());
+        }
+        let result = sqlx::query!(
+            "INSERT OR IGNORE INTO publication_work (library_id, publication_id, work_id)
+             VALUES (?, ?, ?)",
+            self.library_id,
+            self.id,
+            work_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contents)
+            .await
+    }
+
+    /// Remove a work from the publication
+    ///
+    /// The work itself is collected upon commit if no publication refers to it.
+    pub async fn remove_work(&mut self, work_id: i64) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
+            self.id,
+            work_id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Contents)
+            .await
+    }
+
+    /// Add a holding to the publication, returning its id
+    ///
+    /// The location must be trimmed or `None`. A digital holding needs a location, but the caller
+    /// is trusted to supply one.
+    pub async fn add_holding(
+        &mut self,
+        kind: HoldingKind,
+        location: Option<&str>,
+    ) -> crate::Result<i64> {
+        let kind = kind.as_str();
+        let id = sqlx::query!(
+            "INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)",
+            self.id,
+            kind,
+            location
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        self.edit
+            .audited
+            .record(
+                Source::User,
+                Action::Updated,
+                Some(self.entity_ref()),
+                Some(Field::Holdings),
+            )
+            .await?;
+        Ok(id)
+    }
+
+    /// Remove a holding from the publication
+    ///
+    /// Removing the last holding leaves the publication to be collected when the handle commits.
+    pub async fn remove_holding(&mut self, id: i64) -> crate::Result<()> {
+        let result = sqlx::query!(
+            "DELETE FROM holding WHERE id = ? AND publication_id = ?",
+            id,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    /// Set the kind of one of the publication's holdings
+    ///
+    /// Returns a [NotFound] error if the publication has no such holding.
+    pub async fn set_holding_kind(&mut self, id: i64, kind: HoldingKind) -> crate::Result<()> {
+        self.check_holding(id).await?;
+        let kind = kind.as_str();
+        let result = sqlx::query!(
+            "UPDATE holding SET kind = ?1 WHERE id = ?2 AND kind IS NOT ?1",
+            kind,
+            id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    /// Set the location of one of the publication's holdings
+    ///
+    /// The location must be trimmed or `None`. Returns a [NotFound] error if the publication has no
+    /// such holding.
+    pub async fn set_holding_location(
+        &mut self,
+        id: i64,
+        location: Option<&str>,
+    ) -> crate::Result<()> {
+        self.check_holding(id).await?;
+        let result = sqlx::query!(
+            "UPDATE holding SET location = ?1 WHERE id = ?2 AND location IS NOT ?1",
+            location,
+            id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Holdings)
+            .await
+    }
+
+    async fn check_holding(&mut self, id: i64) -> crate::Result<()> {
+        sqlx::query_scalar!(
+            "SELECT 1 FROM holding WHERE id = ? AND publication_id = ?",
+            id,
+            self.id
+        )
+        .fetch_optional(&mut *self.edit.audited)
+        .await?
+        .ok_or(NotFound)?;
+        Ok(())
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Publication,
@@ -783,7 +1217,6 @@ async fn write_publication_contributors(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::holding::HoldingKind;
     use crate::input::WorkRef;
 
     fn contributor(name: &str, role: &str) -> ContributorInput {

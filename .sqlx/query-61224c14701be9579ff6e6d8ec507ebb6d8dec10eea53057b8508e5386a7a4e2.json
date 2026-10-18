@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET instrumentation = ?1 WHERE id = ?2 AND instrumentation IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "61224c14701be9579ff6e6d8ec507ebb6d8dec10eea53057b8508e5386a7a4e2"
+}

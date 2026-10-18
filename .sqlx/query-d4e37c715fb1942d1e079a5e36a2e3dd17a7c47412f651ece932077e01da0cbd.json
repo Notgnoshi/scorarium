@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE library SET private = ?1 WHERE id = ?2 AND private IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "d4e37c715fb1942d1e079a5e36a2e3dd17a7c47412f651ece932077e01da0cbd"
+}

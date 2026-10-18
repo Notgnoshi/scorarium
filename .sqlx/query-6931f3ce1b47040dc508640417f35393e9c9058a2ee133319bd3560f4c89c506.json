@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE library SET name = ?1 WHERE id = ?2 AND name IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6931f3ce1b47040dc508640417f35393e9c9058a2ee133319bd3560f4c89c506"
+}

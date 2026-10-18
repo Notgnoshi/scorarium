@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use axum::http::StatusCode;
 use scorarium_engine::archive::{
     ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput, WorkRawInput,

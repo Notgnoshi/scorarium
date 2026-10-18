@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work_catalog_number WHERE work_id = ? AND value = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f7f37508d5cc70337b25e31e17943989a67c30b74f39b7e6f3d0ecb559a4ee09"
+}

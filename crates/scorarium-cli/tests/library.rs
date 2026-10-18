@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use scorarium_engine::archive::Archive;
 
 async fn demo() -> Archive {

@@ -90,19 +90,29 @@ pub(crate) async fn create(
     visibility: Visibility,
 ) -> eyre::Result<()> {
     let private = matches!(visibility, Visibility::Private);
-    archive.create_library(validate_name(raw)?, private).await?;
+    let name = validate_name(raw)?;
+    let mut edit = archive.edit().await?;
+    edit.create_library(name, private).await?;
+    edit.commit().await?;
     Ok(())
 }
 
 /// Rename a library, keeping its visibility.
 pub(crate) async fn rename(archive: &Archive, reference: &str, raw: &str) -> eyre::Result<()> {
-    let mut library = resolve(archive, reference).await?;
-    let private = library.private;
-    library.update(validate_name(raw)?, private).await
+    let id = resolve(archive, reference).await?.id;
+    let name = validate_name(raw)?;
+    let mut edit = archive.edit().await?;
+    edit.library(id).await?.rename(name).await?;
+    edit.commit().await?;
+    Ok(())
 }
 
 pub(crate) async fn delete(archive: &Archive, reference: &str) -> eyre::Result<()> {
-    resolve(archive, reference).await?.delete().await
+    let id = resolve(archive, reference).await?.id;
+    let mut edit = archive.edit().await?;
+    edit.library(id).await?.delete().await?;
+    edit.commit().await?;
+    Ok(())
 }
 
 pub(crate) fn write_table<const N: usize>(

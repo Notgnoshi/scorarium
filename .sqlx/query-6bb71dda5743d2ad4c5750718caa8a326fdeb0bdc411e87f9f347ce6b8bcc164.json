@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET stars = ?1 WHERE id = ?2 AND stars IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6bb71dda5743d2ad4c5750718caa8a326fdeb0bdc411e87f9f347ce6b8bcc164"
+}

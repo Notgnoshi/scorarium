@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work_link\n             WHERE work_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2ca2e2996fa58d9e75fb0aa723ead54506e4184baa7e3af95cd3a65c49d5aab4"
+}

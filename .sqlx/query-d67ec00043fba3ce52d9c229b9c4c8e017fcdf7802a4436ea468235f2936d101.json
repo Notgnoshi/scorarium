@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM person_link\n             WHERE person_id = ?1 AND (url = ?2 OR (kind = ?3 AND external_id = ?4))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "d67ec00043fba3ce52d9c229b9c4c8e017fcdf7802a4436ea468235f2936d101"
+}

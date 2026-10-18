@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE publication SET publisher = ?1 WHERE id = ?2 AND publisher IS NOT ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "907e52c275d92f9bef0f696ae8f614bd339a433e4b55afe4f979adb38aa51cc9"
+}

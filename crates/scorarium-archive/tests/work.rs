@@ -1,256 +1,169 @@
-use scorarium_archive::{
-    Archive, ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput,
-    WorkRawInput,
-};
-
-fn composer(name: &str) -> ContributorInput {
-    ContributorInput {
-        name: name.into(),
-        role: "composer".into(),
-        person: PersonRef::New,
-        external_person: None,
-    }
-}
-
-fn shelf() -> HoldingRawInput {
-    HoldingRawInput {
-        id: None,
-        kind: HoldingKind::Physical,
-        location: "Shelf".into(),
-    }
-}
-
-/// A publication holding one work with the given catalog numbers
-fn album(title: &str, work: &str, numbers: &[&str]) -> PublicationRawInput {
-    PublicationRawInput {
-        title: title.into(),
-        holdings: vec![shelf()],
-        contents: vec![WorkRawInput {
-            title: work.into(),
-            contributors: vec![composer("Frederic Chopin")],
-            catalog_numbers: numbers.iter().map(|n| n.to_string()).collect(),
-            ..WorkRawInput::default()
-        }],
-        ..PublicationRawInput::default()
-    }
-}
+use scorarium_archive::{Archive, CatalogNumber, Field, HoldingKind, LibraryEdit, NotFound};
+use url::Url;
 
 fn values(work: &scorarium_archive::Work) -> Vec<&str> {
     work.catalog_numbers.iter().map(|n| n.as_str()).collect()
 }
 
-#[tokio::test]
-async fn catalog_numbers_round_trip_and_survive_publication_edits() {
-    let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let mut publication = library
-        .create_publication(
-            &album("Preludes", "Raindrop", &["Op. 28 No. 15", "B. 107"])
-                .parse()
-                .unwrap(),
-        )
+/// Create a work with one composer in a new publication
+async fn work_in_new_publication(
+    library: &mut LibraryEdit<'_>,
+    publication: &str,
+    title: &str,
+    composer: i64,
+) -> i64 {
+    let (publication, _) = library
+        .create_publication(publication, HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let work = library.create_work(title).await.unwrap();
+    library
+        .publication(publication)
         .await
         .unwrap()
-        .0;
-    let mut work = publication.works().await.unwrap().remove(0);
-    assert_eq!(values(&work), ["Op. 28 No. 15", "B. 107"]);
-
-    // Editing through the edit page's input replaces the list in input order
-    let mut input = work.raw_input();
-    input.catalog_numbers = vec!["Op. 28/15".into(), "KK IVb/1".into()];
-    let _ = work.update(&input.parse().unwrap()).await.unwrap();
-    assert_eq!(values(&work), ["Op. 28/15", "KK IVb/1"]);
-    let reloaded = library.work(work.id).await.unwrap().unwrap();
-    assert_eq!(values(&reloaded), ["Op. 28/15", "KK IVb/1"]);
-
-    // The publication form cannot show every number, so saving it through raw_input must keep them
-    let contents = publication.works().await.unwrap();
-    let mut input = publication.raw_input(&contents);
-    input.title = "24 Preludes".into();
-    let _ = publication.update(&input.parse().unwrap()).await.unwrap();
-    let reloaded = library.work(work.id).await.unwrap().unwrap();
-    assert_eq!(values(&reloaded), ["Op. 28/15", "KK IVb/1"]);
+        .add_work(work)
+        .await
+        .unwrap();
+    library
+        .work(work)
+        .await
+        .unwrap()
+        .add_contributor(composer, "composer")
+        .await
+        .unwrap();
+    work
 }
 
 #[tokio::test]
-async fn a_new_work_with_a_known_number_joins_the_existing_work() {
+async fn merge_works_folds_the_newer_work_into_the_older() {
     let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let mut preludes = album("Preludes", "Raindrop Prelude", &["Op. 28 No. 15"]);
-    preludes.contents[0].key = "D-flat major".into();
-    let preludes = library
-        .create_publication(&preludes.parse().unwrap())
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Sheet music", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let chopin = library
+        .create_person("Frederic Chopin", "Chopin, Frederic")
+        .await
+        .unwrap();
+    let sue = library.create_person("Sue", "Sue").await.unwrap();
+    let beethoven = library
+        .create_person("Ludwig van Beethoven", "Beethoven, Ludwig van")
+        .await
+        .unwrap();
+
+    let older = work_in_new_publication(&mut library, "Preludes", "Raindrop Prelude", chopin).await;
+    let mut work = library.work(older).await.unwrap();
+    work.set_key(Some("D-flat major")).await.unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("Op. 28 No. 15"))
+        .await
+        .unwrap();
+    work.add_link(&Url::parse("https://www.wikidata.org/wiki/Q255").unwrap())
+        .await
+        .unwrap();
+
+    let newer =
+        work_in_new_publication(&mut library, "Anthology", "Prelude in D-flat", chopin).await;
+    let mut work = library.work(newer).await.unwrap();
+    work.add_contributor(sue, "editor").await.unwrap();
+    for number in ["Op. 28/15", "B. 107"] {
+        work.add_catalog_number(&CatalogNumber::parse(number))
+            .await
+            .unwrap();
+    }
+    for link in [
+        "https://www.wikidata.org/entity/Q255",
+        "https://imslp.org/wiki/Preludes,_Op.28_(Chopin,_Frederic)",
+    ] {
+        work.add_link(&Url::parse(link).unwrap()).await.unwrap();
+    }
+
+    let other = work_in_new_publication(&mut library, "Sonatas", "Sonata", beethoven).await;
+    library
+        .work(other)
         .await
         .unwrap()
-        .0;
-    let raindrop = preludes.works().await.unwrap().remove(0);
-
-    // Same composer, same number in a different spelling, a blank key, and an extra credit
-    let mut anthology = album("Anthology", "Prelude in D-flat", &["Op. 28/15", "B. 107"]);
-    anthology.contents[0].contributors[0].person =
-        PersonRef::Linked(raindrop.contributors[0].person_id);
-    anthology.contents[0].contributors.push(ContributorInput {
-        name: "Sue".into(),
-        role: "editor".into(),
-        person: PersonRef::New,
-        external_person: None,
-    });
-    let anthology = library
-        .create_publication(&anthology.parse().unwrap())
+        .add_catalog_number(&CatalogNumber::parse("Op. 28 No. 15"))
         .await
-        .unwrap()
-        .0;
+        .unwrap();
 
-    let works = anthology.works().await.unwrap();
-    assert_eq!(works.len(), 1);
-    let merged = &works[0];
-    assert_eq!(
-        merged.id, raindrop.id,
-        "the existing work was linked, not a new one"
-    );
-    assert_eq!(
-        merged.title, "Raindrop Prelude",
-        "the survivor's title wins"
-    );
+    assert_eq!(library.find_duplicate(newer).await.unwrap(), Some(older));
+    assert_eq!(library.find_duplicate(other).await.unwrap(), None);
+
+    library.merge_works(newer, older).await.unwrap();
+    let err = library.merge_works(newer, older).await.unwrap_err();
+    assert!(err.downcast_ref::<NotFound>().is_some());
+    edit.commit().await.unwrap();
+
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    let merged = library.work(older).await.unwrap().unwrap();
+    assert_eq!(merged.title, "Raindrop Prelude");
     assert_eq!(merged.key.as_deref(), Some("D-flat major"));
-    assert_eq!(
-        values(merged),
-        ["Op. 28 No. 15", "B. 107"],
-        "a matching spelling is not added, a new number is"
-    );
-    let credits: Vec<(&str, &str)> = merged
+    assert_eq!(values(&merged), ["Op. 28 No. 15", "B. 107"]);
+    let contributors: Vec<(&str, &str)> = merged
         .contributors
         .iter()
         .map(|c| (c.name.as_str(), c.role.as_str()))
         .collect();
     assert_eq!(
-        credits,
+        contributors,
         [("Frederic Chopin", "composer"), ("Sue", "editor")]
     );
-    assert_eq!(merged.publications().await.unwrap().len(), 2);
-
-    // The same number under another composer is another work
-    let mut other = album("Sonatas", "Sonata", &["Op. 28 No. 15"]);
-    other.contents[0].contributors = vec![composer("Ludwig van Beethoven")];
-    let other = library
-        .create_publication(&other.parse().unwrap())
-        .await
-        .unwrap()
-        .0;
-    assert_ne!(other.works().await.unwrap()[0].id, raindrop.id);
-}
-
-#[tokio::test]
-async fn editing_a_number_into_a_collision_merges_into_the_older_work() {
-    let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let preludes = library
-        .create_publication(
-            &album("Preludes", "Raindrop Prelude", &["Op. 28 No. 15"])
-                .parse()
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-        .0;
-    let older = preludes.works().await.unwrap().remove(0);
-    // Works merge on a shared composer, so the second album credits the same Chopin
-    let mut anthology = album("Anthology", "Prelude in D-flat", &["B. 107"]);
-    anthology.contents[0].contributors[0].person =
-        PersonRef::Linked(older.contributors[0].person_id);
-    let anthology = library
-        .create_publication(&anthology.parse().unwrap())
-        .await
-        .unwrap()
-        .0;
-    let mut newer = anthology.works().await.unwrap().remove(0);
-    let newer_id = newer.id;
-
-    let mut input = newer.raw_input();
-    input.catalog_numbers.push("op. 28 no. 15".into());
-    input.title = "Retitled".into();
-    let _ = newer.update(&input.parse().unwrap()).await.unwrap();
-
-    assert_eq!(newer.id, older.id, "self is now the survivor");
-    assert_eq!(
-        newer.title, "Raindrop Prelude",
-        "the survivor's title wins over the edit"
-    );
-    assert_eq!(values(&newer), ["Op. 28 No. 15", "B. 107"]);
-    assert!(
-        library.work(newer_id).await.unwrap().is_none(),
-        "the edited work is gone"
-    );
-    assert_eq!(
-        anthology.works().await.unwrap()[0].id,
-        older.id,
-        "the anthology now contains the survivor"
-    );
-}
-
-#[tokio::test]
-async fn merge_works_is_available_directly() {
-    let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let a = library
-        .create_publication(&album("A", "Nocturne", &["Op. 9 No. 2"]).parse().unwrap())
-        .await
-        .unwrap()
-        .0;
-    let b = library
-        .create_publication(
-            &album("B", "Nocturne in E-flat", &["B. 54"])
-                .parse()
-                .unwrap(),
-        )
-        .await
-        .unwrap()
-        .0;
-    let into = a.works().await.unwrap()[0].id;
-    let from = b.works().await.unwrap()[0].id;
-
-    let (merged, _) = library.merge_works(from, into).await.unwrap();
-    assert_eq!(merged.id, into);
-    assert_eq!(values(&merged), ["Op. 9 No. 2", "B. 54"]);
-    assert_eq!(merged.publications().await.unwrap().len(), 2);
-    let err = library.merge_works(from, into).await.unwrap_err();
-    assert!(err.downcast_ref::<scorarium_archive::NotFound>().is_some());
-}
-
-#[tokio::test]
-async fn merging_keeps_the_survivors_url_for_a_shared_record() {
-    let archive = Archive::in_memory().await.unwrap();
-    let library = archive.create_library("Sheet music", false).await.unwrap();
-    let mut a = album("A", "Nocturne", &["Op. 9 No. 2"]);
-    a.contents[0].links = vec![
-        "https://www.wikidata.org/wiki/Q255".into(),
-        "https://en.wikipedia.org/wiki/Nocturnes,_Op._9_(Chopin)".into(),
-    ];
-    let mut b = album("B", "Nocturne in E-flat", &["B. 54"]);
-    b.contents[0].links = vec![
-        "https://www.wikidata.org/entity/Q255".into(),
-        "https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Frederic)".into(),
-    ];
-    let a = library
-        .create_publication(&a.parse().unwrap())
-        .await
-        .unwrap()
-        .0;
-    let b = library
-        .create_publication(&b.parse().unwrap())
-        .await
-        .unwrap()
-        .0;
-    let into = a.works().await.unwrap()[0].id;
-    let from = b.works().await.unwrap()[0].id;
-
-    let (merged, _) = library.merge_works(from, into).await.unwrap();
     assert_eq!(
         merged.links,
         [
             "https://www.wikidata.org/wiki/Q255",
-            "https://en.wikipedia.org/wiki/Nocturnes,_Op._9_(Chopin)",
-            "https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Frederic)",
+            "https://imslp.org/wiki/Preludes,_Op.28_(Chopin,_Frederic)",
+        ]
+    );
+    assert_eq!(merged.publications().await.unwrap().len(), 2);
+    assert!(library.work(newer).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn a_catalog_number_is_matched_however_it_is_spelled() {
+    let archive = Archive::in_memory().await.unwrap();
+    let mut edit = archive.edit().await.unwrap();
+    let library_id = edit.create_library("Scores", false).await.unwrap();
+    let mut library = edit.library(library_id).await.unwrap();
+    let (publication, _) = library
+        .create_publication("Sonatas", HoldingKind::Physical, None)
+        .await
+        .unwrap();
+    let id = library.create_work("Moonlight sonata").await.unwrap();
+    library
+        .publication(publication)
+        .await
+        .unwrap()
+        .add_work(id)
+        .await
+        .unwrap();
+    let mut work = library.work(id).await.unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("Op. 27 No. 2"))
+        .await
+        .unwrap();
+    work.add_catalog_number(&CatalogNumber::parse("op.27 no.2"))
+        .await
+        .unwrap();
+    work.remove_catalog_number(&CatalogNumber::parse("Opus 27 Number 2"))
+        .await
+        .unwrap();
+    edit.commit().await.unwrap();
+
+    let library = archive.library(library_id).await.unwrap().unwrap();
+    assert!(
+        library
+            .work(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .catalog_numbers
+            .is_empty()
+    );
+    assert_eq!(
+        archive.recent_fields(5).await.unwrap(),
+        [
+            Field::CatalogNumbers,
+            Field::CatalogNumbers,
+            Field::Contents
         ]
     );
 }

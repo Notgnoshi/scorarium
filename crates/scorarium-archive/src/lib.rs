@@ -22,12 +22,13 @@ mod summary;
 mod tag;
 mod work;
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sqlx::pool::PoolConnection;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteQueryResult};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool, Transaction};
 
 pub use crate::audit::{Action, AuditEntry, AuditSubject, EntityRef, Field, Source};
@@ -37,24 +38,26 @@ pub use crate::holding::{
 };
 pub use crate::identifier::{Identifier, IdentifierRawInput};
 pub use crate::import::{Accepted, DraftPublication, Lookup, PendingImport};
-pub use crate::input::{ContributorInput, PersonRef, ValidationError, WorkRef};
-pub use crate::library::Library;
+pub use crate::input::{ContributorInput, PersonRef, Stars, ValidationError, WorkRef};
+pub use crate::library::{Library, LibraryEdit};
 pub use crate::password::PasswordCheck;
 pub use crate::person::{
-    Contributor, ExternalPerson, Person, PersonErrors, PersonInput, PersonName, PersonRawInput,
-    credit_priority,
+    Contributor, ExternalPerson, Person, PersonEdit, PersonErrors, PersonInput, PersonName,
+    PersonRawInput, credit_priority, sort_name,
 };
 pub use crate::publication::{
-    Publication, PublicationErrors, PublicationInput, PublicationPost, PublicationRawInput,
+    Publication, PublicationEdit, PublicationErrors, PublicationInput, PublicationPost,
+    PublicationRawInput,
 };
 pub use crate::search::{Entity, SearchHit};
 pub use crate::suggest::{
     DraftPersonSummary, DraftWorkSummary, SuggestField, Suggested, Suggestion,
 };
 pub use crate::summary::{PersonSummary, PublicationSummary, WorkSummary, same_name};
-pub use crate::tag::TagCount;
+pub use crate::tag::{Tag, TagCount};
 pub use crate::work::{
-    CatalogNumberEntry, Work, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost, WorkRawInput,
+    CatalogNumberEntry, Work, WorkEdit, WorkErrors, WorkInput, WorkMerge, WorkMerges, WorkPost,
+    WorkRawInput,
 };
 
 pub type Result<T> = eyre::Result<T>;
@@ -104,6 +107,71 @@ pub struct Archive {
     shared: Arc<ArchiveInner>,
 }
 
+/// A write handle to edit something in the archive.
+///
+/// The edit is committed as a single transaction, and if dropped without being committed, will be
+/// rolled back.
+#[derive(Debug)]
+pub struct ArchiveEdit {
+    shared: Arc<ArchiveInner>,
+    audited: audit::Audited<'static>,
+    deleted_libraries: Vec<i64>,
+    touched_libraries: BTreeSet<i64>,
+    merges: WorkMerges,
+}
+
+impl ArchiveEdit {
+    /// Create a library with the given name and visibility, returning its ID
+    ///
+    /// Names need not be unique.
+    pub async fn create_library(&mut self, name: &str, private: bool) -> Result<i64> {
+        let library =
+            library::create_library(&self.shared, &mut self.audited, name, private).await?;
+        self.audited
+            .record(
+                Source::User,
+                Action::Created,
+                Some(library.entity_ref()),
+                None,
+            )
+            .await?;
+        Ok(library.id)
+    }
+
+    /// Commit edits made through this write handle
+    ///
+    /// Before committing, any orphans created by the edits will be deleted.
+    pub async fn commit(mut self) -> Result<()> {
+        for &id in &self.touched_libraries {
+            library::collect_orphans(&mut self.audited, id).await?;
+        }
+        self.audited.commit().await?;
+        // Drafts live outside the database, so they can only be dropped once the delete has been committed.
+        for id in self.deleted_libraries {
+            self.shared.drafts().drop_library(id);
+        }
+        if !self.merges.as_slice().is_empty() {
+            self.shared.drafts().relink_works(self.merges.as_slice());
+        }
+        Ok(())
+    }
+
+    /// Record an update to the field of the entity in the audit log, if the statement changed a row.
+    pub(crate) async fn record_if_changed(
+        &mut self,
+        result: SqliteQueryResult,
+        entity: EntityRef,
+        field: Field,
+    ) -> Result<()> {
+        if result.rows_affected() != 0 {
+            self.audited
+                .record(Source::User, Action::Updated, Some(entity), Some(field))
+                .await?;
+        }
+        Ok(())
+    }
+}
+
 /// What the archive and every handle it hands out share.
 #[derive(Debug)]
 pub(crate) struct ArchiveInner {
@@ -130,6 +198,13 @@ impl ArchiveInner {
     /// [audit::Audited::record()] to record an audit log event for each transaction.
     pub(crate) async fn begin_write(&self) -> Result<audit::Audited<'_>> {
         Ok(audit::Audited::new(self.pool.begin().await?))
+    }
+
+    /// Open a write transaction that takes SQLite's write lock immediately.
+    pub(crate) async fn begin_edit(&self) -> Result<audit::Audited<'static>> {
+        Ok(audit::Audited::new(
+            self.pool.begin_with("BEGIN IMMEDIATE").await?,
+        ))
     }
 
     /// An un-audited transaction for reads that need one snapshot across several queries
@@ -197,6 +272,17 @@ impl Archive {
         }
     }
 
+    /// Open a write handle
+    pub async fn edit(&self) -> Result<ArchiveEdit> {
+        Ok(ArchiveEdit {
+            shared: self.shared.clone(),
+            audited: self.shared.begin_edit().await?,
+            deleted_libraries: Vec::new(),
+            touched_libraries: BTreeSet::new(),
+            merges: WorkMerges::default(),
+        })
+    }
+
     /// Fill an empty archive with the demo libraries that `--demo` serves
     pub async fn populate_demo(&self) -> Result<()> {
         demo::populate(self).await?;
@@ -211,6 +297,7 @@ impl Archive {
 
 impl Archive {
     /// Point drafts that refer to a merged work at its survivor.
+    #[deprecated(note = "use LibraryEdit::merge_works")]
     pub fn relink_draft_works(&self, merges: WorkMerges) {
         if !merges.as_slice().is_empty() {
             self.shared.drafts().relink_works(merges.as_slice());
@@ -225,6 +312,16 @@ impl Archive {
     ) -> Result<Vec<AuditEntry>> {
         let mut conn = self.shared.acquire_read().await?;
         audit::load_entries(&mut conn, before, limit).await
+    }
+
+    /// Get the field of each of the `n` most recent per-field audit entries, newest first.
+    pub async fn recent_fields(&self, n: usize) -> Result<Vec<Field>> {
+        let entries = self.audit_log(None, None).await?;
+        Ok(entries
+            .into_iter()
+            .filter_map(|entry| entry.field)
+            .take(n)
+            .collect())
     }
 }
 
@@ -245,6 +342,7 @@ impl Archive {
     /// Create a library with the given name and visibility
     ///
     /// Names need not be unique.
+    #[deprecated(note = "use ArchiveEdit::create_library")]
     pub async fn create_library(&self, name: &str, private: bool) -> Result<Library> {
         let mut audited = self.shared.begin_write().await?;
         let library = library::create_library(&self.shared, &mut audited, name, private).await?;

@@ -4,16 +4,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::SqliteConnection;
 
 use crate::audit::Audited;
-use crate::holding::HoldingInput;
+use crate::holding::{HoldingInput, HoldingKind};
 use crate::import::{self, PendingImport};
 use crate::input::{ContributorInput, PersonRef};
-use crate::person::{self, Person, PersonName};
-use crate::publication::{self, Publication, PublicationInput};
+use crate::person::{self, Person, PersonEdit, PersonName};
+use crate::publication::{self, Publication, PublicationEdit, PublicationInput};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::summary::{self, PersonSummary};
 use crate::tag::{self, TagCount};
-use crate::work::{self, Work, WorkMerges};
-use crate::{Action, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source};
+use crate::work::{self, Work, WorkEdit, WorkMerges};
+use crate::{
+    Action, ArchiveEdit, ArchiveInner, AuditSubject, EntityRef, Field, NotFound, Result, Source,
+};
 
 /// A named container of publications.
 #[derive(Clone, Debug)]
@@ -28,6 +30,7 @@ impl Library {
     /// Rename the library or change who can see it. Records one update naming what changed.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
+    #[deprecated(note = "use LibraryEdit")]
     pub async fn update(&mut self, name: &str, private: bool) -> Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let updated = sqlx::query!(
@@ -70,6 +73,7 @@ impl Library {
     /// Delete this library and everything in it.
     ///
     /// Returns a [NotFound] error if the library this [Library] handle refers to has been deleted.
+    #[deprecated(note = "use LibraryEdit::delete")]
     pub async fn delete(self) -> Result<()> {
         let mut audited = self.archive.begin_write().await?;
         let result = sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
@@ -89,6 +93,248 @@ impl Library {
     }
 
     /// Get an EntityRef referring to this entity for use in the audit log
+    pub(crate) fn entity_ref(&self) -> EntityRef {
+        EntityRef {
+            kind: AuditSubject::Library,
+            id: self.id,
+            library_id: Some(self.id),
+            label: self.name.clone(),
+        }
+    }
+}
+
+/// A write handle to one library
+#[derive(Debug)]
+pub struct LibraryEdit<'a> {
+    edit: &'a mut ArchiveEdit,
+    id: i64,
+    name: String,
+}
+
+impl ArchiveEdit {
+    /// Edit the given library.
+    ///
+    /// Returns a [NotFound] error if the library does not exist.
+    pub async fn library(&mut self, id: i64) -> Result<LibraryEdit<'_>> {
+        let library = get_library(&self.shared, &mut self.audited, id)
+            .await?
+            .ok_or(NotFound)?;
+        self.touched_libraries.insert(id);
+        Ok(LibraryEdit {
+            edit: self,
+            id,
+            name: library.name,
+        })
+    }
+}
+
+impl LibraryEdit<'_> {
+    /// Rename the library
+    ///
+    /// The name must be trimmed and non-empty.
+    pub async fn rename(&mut self, name: &str) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE library SET name = ?1 WHERE id = ?2 AND name IS NOT ?1",
+            name,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.name = name.to_string();
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Name)
+            .await
+    }
+
+    /// Set the visibility of the library
+    pub async fn set_private(&mut self, private: bool) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE library SET private = ?1 WHERE id = ?2 AND private IS NOT ?1",
+            private,
+            self.id
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        self.edit
+            .record_if_changed(result, self.entity_ref(), Field::Visibility)
+            .await
+    }
+
+    /// Delete the library and everything in it
+    pub async fn delete(self) -> Result<()> {
+        sqlx::query!("DELETE FROM library WHERE id = ?", self.id)
+            .execute(&mut *self.edit.audited)
+            .await?;
+        self.edit
+            .audited
+            .record(Source::User, Action::Deleted, Some(self.entity_ref()), None)
+            .await?;
+        // TODO: This can be removed once the Archive is no longer aware of in-memory drafts
+        self.edit.deleted_libraries.push(self.id);
+        Ok(())
+    }
+
+    /// Find the oldest other work sharing a composer and a catalog number with the given work
+    ///
+    /// Returns a [NotFound] error if this library has no such work, and `None` for a work with no
+    /// catalog numbers.
+    pub async fn find_duplicate(&mut self, work_id: i64) -> Result<Option<i64>> {
+        if !work::work_exists(&mut self.edit.audited, self.id, work_id).await? {
+            return Err(NotFound.into());
+        }
+        work::find_duplicate(&mut self.edit.audited, self.id, work_id).await
+    }
+
+    /// Fold one work into another and delete it
+    ///
+    /// Returns a [NotFound] error unless both works are in this library.
+    pub async fn merge_works(&mut self, from: i64, into: i64) -> Result<()> {
+        let both = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM work WHERE library_id = ?1 AND id IN (?2, ?3)",
+            self.id,
+            from,
+            into
+        )
+        .fetch_one(&mut *self.edit.audited)
+        .await?;
+        if both != 2 {
+            return Err(NotFound.into());
+        }
+        work::merge_works(
+            &mut self.edit.audited,
+            self.id,
+            from,
+            into,
+            &mut self.edit.merges,
+        )
+        .await?;
+        let title = sqlx::query_scalar!("SELECT title FROM work WHERE id = ?", into)
+            .fetch_one(&mut *self.edit.audited)
+            .await?;
+        let survivor = EntityRef {
+            kind: AuditSubject::Work,
+            id: into,
+            library_id: Some(self.id),
+            label: title,
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Merged, Some(survivor), None)
+            .await
+    }
+
+    /// Create a publication with its first holding, returning the ids of both
+    ///
+    /// The title must be trimmed and non-empty, and the location trimmed or `None`.
+    pub async fn create_publication(
+        &mut self,
+        title: &str,
+        kind: HoldingKind,
+        location: Option<&str>,
+    ) -> Result<(i64, i64)> {
+        let id = sqlx::query!(
+            "INSERT INTO publication (library_id, title) VALUES (?, ?)",
+            self.id,
+            title
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        let kind = kind.as_str();
+        let holding_id = sqlx::query!(
+            "INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)",
+            id,
+            kind,
+            location
+        )
+        .execute(&mut *self.edit.audited)
+        .await?
+        .last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Publication,
+            id,
+            library_id: Some(self.id),
+            label: title.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok((id, holding_id))
+    }
+
+    /// Edit the given publication in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the publication.
+    pub async fn publication(&mut self, id: i64) -> Result<PublicationEdit<'_>> {
+        PublicationEdit::open(self.edit, self.id, id).await
+    }
+
+    /// Create a person in this library, returning its id
+    ///
+    /// The name and sort name must be trimmed and non-empty.
+    pub async fn create_person(&mut self, name: &str, sort_name: &str) -> Result<i64> {
+        let created = sqlx::query!(
+            "INSERT INTO person (library_id, name, sort_name) VALUES (?, ?, ?)",
+            self.id,
+            name,
+            sort_name
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        let id = created.last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Person,
+            id,
+            library_id: Some(self.id),
+            label: name.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok(id)
+    }
+
+    /// Edit the given person in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the person.
+    pub async fn person(&mut self, id: i64) -> Result<PersonEdit<'_>> {
+        PersonEdit::open(self.edit, self.id, id).await
+    }
+
+    /// Create a work in this library, returning its id
+    ///
+    /// The title must be trimmed and non-empty.
+    pub async fn create_work(&mut self, title: &str) -> Result<i64> {
+        let created = sqlx::query!(
+            "INSERT INTO work (library_id, title) VALUES (?, ?)",
+            self.id,
+            title
+        )
+        .execute(&mut *self.edit.audited)
+        .await?;
+        let id = created.last_insert_rowid();
+        let entity = EntityRef {
+            kind: AuditSubject::Work,
+            id,
+            library_id: Some(self.id),
+            label: title.to_string(),
+        };
+        self.edit
+            .audited
+            .record(Source::User, Action::Created, Some(entity), None)
+            .await?;
+        Ok(id)
+    }
+
+    /// Edit the given work in this library
+    ///
+    /// Returns a [NotFound] error if this library does not have the work.
+    pub async fn work(&mut self, id: i64) -> Result<WorkEdit<'_>> {
+        WorkEdit::open(self.edit, self.id, id).await
+    }
+
     pub(crate) fn entity_ref(&self) -> EntityRef {
         EntityRef {
             kind: AuditSubject::Library,
@@ -142,6 +388,7 @@ impl Library {
     }
 
     /// Create a publication, with its identifiers, contributors, holdings and contents
+    #[deprecated(note = "use LibraryEdit::create_publication")]
     pub async fn create_publication(
         &self,
         input: &PublicationInput,
@@ -240,6 +487,7 @@ impl Library {
     /// Fold one work into another and delete it; the survivor is returned reloaded.
     ///
     /// Returns a [NotFound] error when either work is not in this library.
+    #[deprecated(note = "use LibraryEdit::merge_works")]
     pub async fn merge_works(&self, from: i64, into: i64) -> Result<(Work, WorkMerges)> {
         let mut merges = WorkMerges::default();
         let mut audited = self.archive.begin_write().await?;
@@ -404,10 +652,27 @@ impl Library {
 }
 
 /// Delete what the library no longer has reachable links to.
-///
-/// The order matters: collecting a work takes its contributor links with it, and those links can
-/// be the last thing crediting a person.
 pub(crate) async fn collect_orphans(audited: &mut Audited<'_>, library_id: i64) -> Result<()> {
+    // NOTE: Order matters, because cleaning some orphans can result in new orphans.
+    let publications = sqlx::query!(
+        r#"DELETE FROM publication
+           WHERE library_id = ? AND id NOT IN (SELECT publication_id FROM holding)
+           RETURNING id AS "id!", title AS "title!""#,
+        library_id
+    )
+    .fetch_all(&mut **audited)
+    .await?;
+    for publication in publications {
+        let entity = EntityRef {
+            kind: AuditSubject::Publication,
+            id: publication.id,
+            library_id: Some(library_id),
+            label: publication.title,
+        };
+        audited
+            .record(Source::OrphanCleanup, Action::Deleted, Some(entity), None)
+            .await?;
+    }
     let works = sqlx::query!(
         r#"DELETE FROM work
            WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)

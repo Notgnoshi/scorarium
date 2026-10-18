@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use std::sync::Arc;
 
 use askama::Template;

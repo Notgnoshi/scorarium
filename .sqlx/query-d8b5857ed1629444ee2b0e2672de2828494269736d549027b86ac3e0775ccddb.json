@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE person SET name = ?1, sort_name = ?2\n             WHERE id = ?3 AND (name IS NOT ?1 OR sort_name IS NOT ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d8b5857ed1629444ee2b0e2672de2828494269736d549027b86ac3e0775ccddb"
+}

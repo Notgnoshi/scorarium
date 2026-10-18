@@ -1,3 +1,5 @@
+#![expect(deprecated)]
+
 use scorarium_archive::{
     Accepted, Action, Archive, AuditSubject, ContributorInput, DraftPublication, ExternalPerson,
     Field, HoldingKind, HoldingRawInput, Library, NotFound, PendingImport, Person, PersonRawInput,

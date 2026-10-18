@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO publication (library_id, title) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "15cf78e3aa1fedd42708e03f3c748b4e81ebcfb8df40fe6727f4c3d1f9ec9853"
+}
