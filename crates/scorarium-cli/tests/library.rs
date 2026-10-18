@@ -178,3 +178,21 @@ async fn work_show_resolves_by_title() {
          link           \t \thttps://www.wikidata.org/wiki/Q629711\n"
     );
 }
+
+#[tokio::test]
+async fn person_list_shows_everyone_credited() {
+    let archive = demo().await;
+    let (out, result) = run(&archive, "library books person list\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "4\tAmbrose Bierce\tThe Collected Writings of Ambrose Bierce +3\n\
+         2\tScott Chacon  \tPro Git\n\
+         1\tDrew Neil     \tPractical Vim\n\
+         3\tBen Straub    \tPro Git\n"
+    );
+
+    let (out, result) = run(&archive, "library books person list --role composer\n").await;
+    result.unwrap();
+    assert_eq!(out, "");
+}

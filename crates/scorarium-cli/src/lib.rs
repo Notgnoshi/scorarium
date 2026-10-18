@@ -3,6 +3,7 @@ mod completer;
 mod interactive;
 mod library;
 mod log;
+mod person;
 mod publication;
 mod reference;
 mod script;

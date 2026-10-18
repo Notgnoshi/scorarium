@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use scorarium_engine::archive::{Archive, Library, Tag, Work};
 
 use crate::library::{self, Visibility};
-use crate::{publication, reference, work};
+use crate::{person, publication, reference, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -90,6 +90,18 @@ enum LibraryCommand {
         #[command(subcommand)]
         command: WorkCommand,
     },
+    /// Manage persons
+    #[command(
+        subcommand_value_name = "command",
+        override_usage = "library <library> person <person> <command>\n       library <library> person list [--role <role>]"
+    )]
+    Person {
+        /// The person name or id
+        #[arg(value_name = "person", hide = true)]
+        person: Option<String>,
+        #[command(subcommand)]
+        command: PersonCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -111,6 +123,17 @@ enum WorkCommand {
     /// Show a work
     #[command(override_usage = "library <library> work <work> show")]
     Show,
+}
+
+#[derive(Debug, Subcommand)]
+enum PersonCommand {
+    /// List everyone credited in a library
+    #[command(override_usage = "library <library> person list [--role <role>]")]
+    List {
+        /// Keep only persons credited with this role
+        #[arg(long, value_name = "role")]
+        role: Option<String>,
+    },
 }
 
 /// Whether the shell keeps reading after a command.
@@ -272,6 +295,16 @@ impl Shell<'_> {
                                 |w| &w.title,
                             )?;
                             work::show(work, out).await?
+                        }
+                    }
+                }
+                LibraryCommand::Person { person, command } => {
+                    let library =
+                        library::resolve(self.archive, require(&library, "library")?).await?;
+                    match command {
+                        PersonCommand::List { role } => {
+                            reject(&person, "person", "list")?;
+                            person::list(&library, role.as_deref(), out).await?
                         }
                     }
                 }
