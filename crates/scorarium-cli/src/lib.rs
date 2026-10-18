@@ -7,6 +7,7 @@ mod person;
 mod publication;
 mod reference;
 mod script;
+mod tag;
 mod work;
 
 use std::io::{BufReader, IsTerminal};

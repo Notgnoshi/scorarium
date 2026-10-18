@@ -222,3 +222,18 @@ async fn person_show_lists_each_credit_once() {
          work       \t7 \tThe Isle of the Dead (composer)\n"
     );
 }
+
+#[tokio::test]
+async fn tag_list_orders_by_use_count() {
+    let (out, result) = run(&demo().await, "library 'sheet music' tag list\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "want-to-learn\t3\n\
+         russian      \t2\n\
+         anthology    \t1\n\
+         learning     \t1\n\
+         memorized    \t1\n\
+         transcription\t1\n"
+    );
+}

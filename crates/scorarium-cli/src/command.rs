@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use scorarium_engine::archive::{Archive, Library, Tag, Work};
 
 use crate::library::{self, Visibility};
-use crate::{person, publication, reference, work};
+use crate::{person, publication, reference, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -102,6 +102,15 @@ enum LibraryCommand {
         #[command(subcommand)]
         command: PersonCommand,
     },
+    /// Manage tags
+    #[command(
+        subcommand_value_name = "command",
+        override_usage = "library <library> tag <command>"
+    )]
+    Tag {
+        #[command(subcommand)]
+        command: TagCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -137,6 +146,13 @@ enum PersonCommand {
     /// Show a person
     #[command(override_usage = "library <library> person <person> show")]
     Show,
+}
+
+#[derive(Debug, Subcommand)]
+enum TagCommand {
+    /// List the tags in a library with their use counts
+    #[command(override_usage = "library <library> tag list")]
+    List,
 }
 
 /// Whether the shell keeps reading after a command.
@@ -323,6 +339,13 @@ impl Shell<'_> {
                             };
                             person::show(person, out).await?
                         }
+                    }
+                }
+                LibraryCommand::Tag { command } => {
+                    let library =
+                        library::resolve(self.archive, require(&library, "library")?).await?;
+                    match command {
+                        TagCommand::List => tag::list(&library, out).await?,
                     }
                 }
             },
