@@ -46,19 +46,19 @@ async fn library_show_rejects_an_ambiguous_reference() {
     let numeric = archive.create_library("1", false).await.unwrap();
     let duplicate = archive.create_library("books", false).await.unwrap();
 
-    let (out, result) = run(&archive, "library show 'sheet music'\n").await;
+    let (out, result) = run(&archive, "library 'sheet music' show\n").await;
     result.unwrap();
     assert_eq!(
         out,
         "id          \t2\nname        \tSheet music\nvisibility  \tpublic\npublications\t4\n"
     );
 
-    let (out, result) = run(&archive, "library show 2\n").await;
+    let (out, result) = run(&archive, "library 2 show\n").await;
     result.unwrap();
     assert!(out.contains("name        \tSheet music\n"), "{out}");
 
     // The library named "1" and the library with id 1 both match, in name order
-    let (_, result) = run(&archive, "library show 1\n").await;
+    let (_, result) = run(&archive, "library 1 show\n").await;
     let error = format!("{:#}", result.unwrap_err());
     assert_eq!(
         error,
@@ -68,7 +68,7 @@ async fn library_show_rejects_an_ambiguous_reference() {
         )
     );
 
-    let (_, result) = run(&archive, "library show Books\n").await;
+    let (_, result) = run(&archive, "library Books show\n").await;
     let error = format!("{:#}", result.unwrap_err());
     assert_eq!(
         error,
@@ -85,8 +85,8 @@ async fn library_create_rename_delete() {
     let script = "library create Magazines public\n\
                   library create 'Liner notes'\n\
                   library list\n\
-                  library rename Magazines Periodicals\n\
-                  library delete 'Liner notes'\n\
+                  library Magazines rename Periodicals\n\
+                  library 'Liner notes' delete\n\
                   library list\n";
     let (out, result) = run(&archive, script).await;
     result.unwrap();

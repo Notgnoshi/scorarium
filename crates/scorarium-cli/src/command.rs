@@ -23,6 +23,9 @@ enum Command {
     /// Manage libraries
     #[command(subcommand_value_name = "command")]
     Library {
+        /// The library name or id
+        #[arg(value_name = "library")]
+        library: Option<String>,
         #[command(subcommand)]
         command: LibraryCommand,
     },
@@ -36,11 +39,7 @@ enum LibraryCommand {
     /// List every library
     List,
     /// Show the contents of a library
-    Show {
-        /// The library name or id
-        #[arg(value_name = "library")]
-        library: String,
-    },
+    Show,
     /// Create a library
     Create {
         #[arg(value_name = "name")]
@@ -51,18 +50,11 @@ enum LibraryCommand {
     },
     /// Rename a library
     Rename {
-        /// The library name or id
-        #[arg(value_name = "library")]
-        library: String,
         #[arg(value_name = "new-name")]
         new_name: String,
     },
     /// Delete a library and everything in it
-    Delete {
-        /// The library name or id
-        #[arg(value_name = "library")]
-        library: String,
-    },
+    Delete,
 }
 
 /// Whether the shell keeps reading after a command.
@@ -91,18 +83,35 @@ pub(crate) async fn execute(
         Err(error) => return Err(error.into()),
     };
     match line.command {
-        Command::Library { command } => match command {
-            LibraryCommand::List => library::list(archive, out).await?,
-            LibraryCommand::Show { library } => library::show(archive, &library, out).await?,
+        Command::Library { library, command } => match command {
+            LibraryCommand::List => {
+                reject(&library, "list")?;
+                library::list(archive, out).await?
+            }
             LibraryCommand::Create { name, visibility } => {
+                reject(&library, "create")?;
                 library::create(archive, &name, visibility).await?
             }
-            LibraryCommand::Rename { library, new_name } => {
-                library::rename(archive, &library, &new_name).await?
+            LibraryCommand::Show => library::show(archive, require(&library)?, out).await?,
+            LibraryCommand::Rename { new_name } => {
+                library::rename(archive, require(&library)?, &new_name).await?
             }
-            LibraryCommand::Delete { library } => library::delete(archive, &library).await?,
+            LibraryCommand::Delete => library::delete(archive, require(&library)?).await?,
         },
         Command::Quit => return Ok(Flow::Quit),
     }
     Ok(Flow::Continue)
+}
+
+fn require(library: &Option<String>) -> eyre::Result<&str> {
+    library
+        .as_deref()
+        .ok_or_else(|| eyre::eyre!("library name required"))
+}
+
+fn reject(library: &Option<String>, verb: &str) -> eyre::Result<()> {
+    if library.is_some() {
+        eyre::bail!("'{verb}' takes no library");
+    }
+    Ok(())
 }

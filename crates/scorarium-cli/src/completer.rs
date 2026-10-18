@@ -101,7 +101,7 @@ mod tests {
                 .map(|s| (s.value.clone(), s.span.start))
                 .collect()
         };
-        assert_eq!(values("library s"), [("show".to_string(), 8)]);
+        assert_eq!(values("library l"), [("list".to_string(), 8)]);
         assert_eq!(
             values("library create 'my lib' p"),
             [("public".to_string(), 24), ("private".to_string(), 24)]
