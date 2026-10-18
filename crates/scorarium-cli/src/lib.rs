@@ -3,6 +3,7 @@ mod completer;
 mod interactive;
 mod library;
 mod log;
+mod publication;
 mod script;
 
 use std::io::{BufReader, IsTerminal};

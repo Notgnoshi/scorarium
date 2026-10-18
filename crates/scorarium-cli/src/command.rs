@@ -2,9 +2,10 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
-use scorarium_engine::archive::{Archive, Library};
+use scorarium_engine::archive::{Archive, Library, Tag};
 
 use crate::library::{self, Visibility};
+use crate::publication;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -65,6 +66,29 @@ enum LibraryCommand {
     Select,
     /// Clear the selected library
     Deselect,
+    /// Manage publications
+    #[command(
+        subcommand_value_name = "command",
+        override_usage = "library <library> publication <publication> <command>\n       library <library> publication list [--tag <tag>]..."
+    )]
+    Publication {
+        /// The publication title or id
+        #[arg(value_name = "publication", hide = true)]
+        publication: Option<String>,
+        #[command(subcommand)]
+        command: PublicationCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PublicationCommand {
+    /// List the publications in a library
+    #[command(override_usage = "library <library> publication list [--tag <tag>]...")]
+    List {
+        /// Keep only publications carrying this tag. Repeatable.
+        #[arg(long, value_name = "tag")]
+        tag: Vec<String>,
+    },
 }
 
 /// Whether the shell keeps reading after a command.
@@ -173,6 +197,22 @@ impl Shell<'_> {
                     reject(&library, "deselect")?;
                     self.selected = None;
                 }
+                LibraryCommand::Publication {
+                    publication,
+                    command,
+                } => {
+                    let library = library::resolve(self.archive, require(&library)?).await?;
+                    match command {
+                        PublicationCommand::List { tag } => {
+                            reject_publication(&publication, "list")?;
+                            let tags = tag
+                                .iter()
+                                .map(|tag| tag.parse::<Tag>().map_err(|e| eyre::eyre!("{e}")))
+                                .collect::<eyre::Result<Vec<_>>>()?;
+                            publication::list(&library, &tags, out).await?
+                        }
+                    }
+                }
             },
             Command::Quit => return Ok(Flow::Quit),
         }
@@ -189,6 +229,13 @@ fn require(library: &Option<String>) -> eyre::Result<&str> {
 fn reject(library: &Option<String>, verb: &str) -> eyre::Result<()> {
     if library.is_some() {
         eyre::bail!("'{verb}' takes no library");
+    }
+    Ok(())
+}
+
+fn reject_publication(publication: &Option<String>, verb: &str) -> eyre::Result<()> {
+    if publication.is_some() {
+        eyre::bail!("'{verb}' takes no publication");
     }
     Ok(())
 }
