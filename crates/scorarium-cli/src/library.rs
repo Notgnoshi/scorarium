@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_engine::archive::{Archive, Library};
+use scorarium_engine::archive::{Archive, Library, same_name};
 
 pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 3]> = archive
@@ -18,33 +18,31 @@ pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Resul
     write_table(out, &rows)
 }
 
-/// Find a library by its name, or by its id when no library has that name.
+/// Find a library by name or id
+///
+/// Fail if the given query is ambiguous, or a matching library does not exist.
 pub(crate) async fn resolve(archive: &Archive, reference: &str) -> eyre::Result<Library> {
-    let lowercase = reference.to_lowercase();
-    let mut named: Vec<Library> = archive
+    let id = reference.parse::<i64>();
+    let mut matches: Vec<Library> = archive
         .libraries()
         .await?
         .into_iter()
-        .filter(|library| library.name.to_lowercase() == lowercase)
+        .filter(|library| id == Ok(library.id) || same_name(&library.name, reference))
         .collect();
-    if named.len() > 1 {
-        let ids: Vec<String> = named.iter().map(|library| library.id.to_string()).collect();
-        eyre::bail!(
-            "{} libraries are named '{reference}': ids {}",
-            named.len(),
-            ids.join(", ")
-        );
+    match matches.len() {
+        0 => eyre::bail!("no library '{reference}'"),
+        1 => Ok(matches.remove(0)),
+        n => {
+            let candidates: Vec<String> = matches
+                .iter()
+                .map(|library| format!("  {}  {}", library.id, library.name))
+                .collect();
+            eyre::bail!(
+                "'{reference}' names {n} libraries:\n{}",
+                candidates.join("\n")
+            );
+        }
     }
-    if let Some(library) = named.pop() {
-        return Ok(library);
-    }
-    let Ok(id) = reference.parse::<i64>() else {
-        eyre::bail!("no library named '{reference}'");
-    };
-    archive
-        .library(id)
-        .await?
-        .ok_or_else(|| eyre::eyre!("no library {id}"))
 }
 
 pub(crate) async fn show(

@@ -40,7 +40,7 @@ async fn a_failing_script_stops_at_the_failing_line() {
 }
 
 #[tokio::test]
-async fn library_show_resolves_by_name_before_id() {
+async fn library_show_rejects_an_ambiguous_reference() {
     let archive = demo().await;
     // A library named after another library's id, and a second "Books" differing only in case
     let numeric = archive.create_library("1", false).await.unwrap();
@@ -57,12 +57,15 @@ async fn library_show_resolves_by_name_before_id() {
     result.unwrap();
     assert!(out.contains("name        \tSheet music\n"), "{out}");
 
-    // The name "1" wins over the id 1
-    let (out, result) = run(&archive, "library show 1\n").await;
-    result.unwrap();
-    assert!(
-        out.contains(&format!("id          \t{}\n", numeric.id)),
-        "{out}"
+    // The library named "1" and the library with id 1 both match, in name order
+    let (_, result) = run(&archive, "library show 1\n").await;
+    let error = format!("{:#}", result.unwrap_err());
+    assert_eq!(
+        error,
+        format!(
+            "line 1: '1' names 2 libraries:\n  {}  1\n  1  Books",
+            numeric.id
+        )
     );
 
     let (_, result) = run(&archive, "library show Books\n").await;
@@ -70,7 +73,7 @@ async fn library_show_resolves_by_name_before_id() {
     assert_eq!(
         error,
         format!(
-            "line 1: 2 libraries are named 'Books': ids 1, {}",
+            "line 1: 'Books' names 2 libraries:\n  1  Books\n  {}  books",
             duplicate.id
         )
     );
