@@ -2,10 +2,10 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
-use scorarium_engine::archive::{Archive, Library, Tag};
+use scorarium_engine::archive::{Archive, Library, Tag, Work};
 
 use crate::library::{self, Visibility};
-use crate::{publication, reference};
+use crate::{publication, reference, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -78,6 +78,18 @@ enum LibraryCommand {
         #[command(subcommand)]
         command: PublicationCommand,
     },
+    /// Manage works
+    #[command(
+        subcommand_value_name = "command",
+        override_usage = "library <library> work <work> <command>"
+    )]
+    Work {
+        /// The work title or id
+        #[arg(value_name = "work", hide = true)]
+        work: Option<String>,
+        #[command(subcommand)]
+        command: WorkCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -91,6 +103,13 @@ enum PublicationCommand {
     },
     /// Show a publication
     #[command(override_usage = "library <library> publication <publication> show")]
+    Show,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkCommand {
+    /// Show a work
+    #[command(override_usage = "library <library> work <work> show")]
     Show,
 }
 
@@ -228,6 +247,31 @@ impl Shell<'_> {
                                 |p| &p.title,
                             )?;
                             publication::show(publication, out).await?
+                        }
+                    }
+                }
+                LibraryCommand::Work { work, command } => {
+                    let library =
+                        library::resolve(self.archive, require(&library, "library")?).await?;
+                    match command {
+                        WorkCommand::Show => {
+                            let reference = require(&work, "work")?;
+                            let mut works = Vec::new();
+                            for publication in library.publications().await? {
+                                for candidate in publication.works().await? {
+                                    if !works.iter().any(|w: &Work| w.id == candidate.id) {
+                                        works.push(candidate);
+                                    }
+                                }
+                            }
+                            let work = reference::resolve(
+                                "work",
+                                reference,
+                                works,
+                                |w| w.id,
+                                |w| &w.title,
+                            )?;
+                            work::show(work, out).await?
                         }
                     }
                 }

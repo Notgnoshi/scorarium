@@ -150,3 +150,31 @@ async fn publication_show_resolves_by_title() {
          link       \t \thttps://git-scm.com/book/en/v2\n"
     );
 }
+
+#[tokio::test]
+async fn work_show_resolves_by_title() {
+    let (out, result) = run(
+        &demo().await,
+        "library 'sheet music' work 'the isle of the dead' show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "id             \t7\t\n\
+         title          \t \tThe Isle of the Dead\n\
+         key            \t \tA minor\n\
+         time signature \t \t5/8\n\
+         instrumentation\t \tpiano\n\
+         stars          \t \t4\n\
+         tags           \t \ttranscription, want-to-learn\n\
+         catalog number \t \tOp. 29\n\
+         contributor    \t \tSergei Rachmaninoff (composer)\n\
+         contributor    \t \tGeorgy Kirkor (arranger)\n\
+         publication    \t6\tThe Isle of the Dead\n\
+         link           \t \thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
+         link           \t \thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\
+         link           \t \thttps://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)\n\
+         link           \t \thttps://www.wikidata.org/wiki/Q629711\n"
+    );
+}

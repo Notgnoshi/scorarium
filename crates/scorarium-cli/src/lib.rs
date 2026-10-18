@@ -6,6 +6,7 @@ mod log;
 mod publication;
 mod reference;
 mod script;
+mod work;
 
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
