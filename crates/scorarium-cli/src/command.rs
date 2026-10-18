@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use scorarium_engine::archive::{Archive, Library, Tag};
 
 use crate::library::{self, Visibility};
-use crate::publication;
+use crate::{publication, reference};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -89,6 +89,9 @@ enum PublicationCommand {
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
     },
+    /// Show a publication
+    #[command(override_usage = "library <library> publication <publication> show")]
+    Show,
 }
 
 /// Whether the shell keeps reading after a command.
@@ -170,46 +173,61 @@ impl Shell<'_> {
         match line.command {
             Command::Library { library, command } => match command {
                 LibraryCommand::List => {
-                    reject(&library, "list")?;
+                    reject(&library, "library", "list")?;
                     library::list(self.archive, out).await?
                 }
                 LibraryCommand::Create { name, visibility } => {
-                    reject(&library, "create")?;
+                    reject(&library, "library", "create")?;
                     library::create(self.archive, &name, visibility).await?
                 }
                 LibraryCommand::Show => {
-                    library::show(self.archive, require(&library)?, out).await?
+                    library::show(self.archive, require(&library, "library")?, out).await?
                 }
                 LibraryCommand::Rename { new_name } => {
-                    library::rename(self.archive, require(&library)?, &new_name).await?
+                    library::rename(self.archive, require(&library, "library")?, &new_name).await?
                 }
                 LibraryCommand::Delete => {
-                    library::delete(self.archive, require(&library)?).await?;
+                    library::delete(self.archive, require(&library, "library")?).await?;
                     if self.selected.is_some() && self.selected().await?.is_none() {
                         self.selected = None;
                     }
                 }
                 LibraryCommand::Select => {
-                    self.selected =
-                        Some(library::resolve(self.archive, require(&library)?).await?.id);
+                    self.selected = Some(
+                        library::resolve(self.archive, require(&library, "library")?)
+                            .await?
+                            .id,
+                    );
                 }
                 LibraryCommand::Deselect => {
-                    reject(&library, "deselect")?;
+                    reject(&library, "library", "deselect")?;
                     self.selected = None;
                 }
                 LibraryCommand::Publication {
                     publication,
                     command,
                 } => {
-                    let library = library::resolve(self.archive, require(&library)?).await?;
+                    let library =
+                        library::resolve(self.archive, require(&library, "library")?).await?;
                     match command {
                         PublicationCommand::List { tag } => {
-                            reject_publication(&publication, "list")?;
+                            reject(&publication, "publication", "list")?;
                             let tags = tag
                                 .iter()
                                 .map(|tag| tag.parse::<Tag>().map_err(|e| eyre::eyre!("{e}")))
                                 .collect::<eyre::Result<Vec<_>>>()?;
                             publication::list(&library, &tags, out).await?
+                        }
+                        PublicationCommand::Show => {
+                            let reference = require(&publication, "publication")?;
+                            let publication = reference::resolve(
+                                "publication",
+                                reference,
+                                library.publications().await?,
+                                |p| p.id,
+                                |p| &p.title,
+                            )?;
+                            publication::show(publication, out).await?
                         }
                     }
                 }
@@ -220,22 +238,17 @@ impl Shell<'_> {
     }
 }
 
-fn require(library: &Option<String>) -> eyre::Result<&str> {
-    library
+/// Return the subject, or fail when the command was given none.
+fn require<'a>(subject: &'a Option<String>, kind: &str) -> eyre::Result<&'a str> {
+    subject
         .as_deref()
-        .ok_or_else(|| eyre::eyre!("library name required"))
+        .ok_or_else(|| eyre::eyre!("{kind} name required"))
 }
 
-fn reject(library: &Option<String>, verb: &str) -> eyre::Result<()> {
-    if library.is_some() {
-        eyre::bail!("'{verb}' takes no library");
-    }
-    Ok(())
-}
-
-fn reject_publication(publication: &Option<String>, verb: &str) -> eyre::Result<()> {
-    if publication.is_some() {
-        eyre::bail!("'{verb}' takes no publication");
+/// Fail when the command was given a subject it cannot use.
+fn reject(subject: &Option<String>, kind: &str, verb: &str) -> eyre::Result<()> {
+    if subject.is_some() {
+        eyre::bail!("'{verb}' takes no {kind}");
     }
     Ok(())
 }

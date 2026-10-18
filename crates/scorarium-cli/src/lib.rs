@@ -4,6 +4,7 @@ mod interactive;
 mod library;
 mod log;
 mod publication;
+mod reference;
 mod script;
 
 use std::io::{BufReader, IsTerminal};

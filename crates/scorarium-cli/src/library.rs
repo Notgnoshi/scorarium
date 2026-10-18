@@ -1,6 +1,8 @@
 use std::io::Write;
 
-use scorarium_engine::archive::{Archive, Library, same_name};
+use scorarium_engine::archive::{Archive, Library};
+
+use crate::reference;
 
 pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 3]> = archive
@@ -22,27 +24,13 @@ pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Resul
 ///
 /// Fail if the given query is ambiguous, or a matching library does not exist.
 pub(crate) async fn resolve(archive: &Archive, reference: &str) -> eyre::Result<Library> {
-    let id = reference.parse::<i64>();
-    let mut matches: Vec<Library> = archive
-        .libraries()
-        .await?
-        .into_iter()
-        .filter(|library| id == Ok(library.id) || same_name(&library.name, reference))
-        .collect();
-    match matches.len() {
-        0 => eyre::bail!("no library '{reference}'"),
-        1 => Ok(matches.remove(0)),
-        n => {
-            let candidates: Vec<String> = matches
-                .iter()
-                .map(|library| format!("  {}  {}", library.id, library.name))
-                .collect();
-            eyre::bail!(
-                "'{reference}' names {n} libraries:\n{}",
-                candidates.join("\n")
-            );
-        }
-    }
+    reference::resolve(
+        "library",
+        reference,
+        archive.libraries().await?,
+        |l| l.id,
+        |l| &l.name,
+    )
 }
 
 pub(crate) async fn show(

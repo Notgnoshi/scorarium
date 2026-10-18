@@ -129,3 +129,24 @@ async fn the_selected_library_fills_the_subject_slot() {
          id          \t1\nname        \tNovels\nvisibility  \tprivate\npublications\t3\n"
     );
 }
+
+#[tokio::test]
+async fn publication_show_resolves_by_title() {
+    let (out, result) = run(&demo().await, "library books publication 'pro git' show\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "id         \t2\t\n\
+         title      \t \tPro Git\n\
+         publisher  \t \tApress\n\
+         year       \t \t2014\n\
+         stars      \t \t3\n\
+         identifier \t \tisbn 978-1-4842-0077-3\n\
+         contributor\t \tScott Chacon (author)\n\
+         contributor\t \tBen Straub (author)\n\
+         holding    \t \tphysical\n\
+         holding    \t \tdigital: pro-git.pdf\n\
+         link       \t \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
+         link       \t \thttps://git-scm.com/book/en/v2\n"
+    );
+}
