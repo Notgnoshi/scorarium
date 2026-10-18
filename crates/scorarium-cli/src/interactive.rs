@@ -8,7 +8,7 @@ use reedline::{
 };
 use scorarium_engine::archive::Archive;
 
-use crate::command::{self, Flow};
+use crate::command::{Flow, Shell};
 use crate::completer::ShellCompleter;
 use crate::log::LogWriter;
 
@@ -41,22 +41,27 @@ pub(crate) async fn run(
         let history = FileBackedHistory::with_file(HIST_SIZE, path)?;
         editor = editor.with_history(Box::new(history));
     }
-    let mut prompt = DefaultPrompt::new(
-        DefaultPromptSegment::Basic("scorarium".into()),
-        DefaultPromptSegment::Empty,
-    );
+    let mut shell = Shell::new(archive);
     let mut stdout = std::io::stdout();
     loop {
+        let label = match shell.selected().await? {
+            Some(library) => format!("scorarium[{}]", library.name),
+            None => "scorarium".to_string(),
+        };
+        let prompt = DefaultPrompt::new(
+            DefaultPromptSegment::Basic(label),
+            DefaultPromptSegment::Empty,
+        );
         let signal;
         log.set_prompt_active(true);
-        (editor, prompt, signal) = tokio::task::spawn_blocking(move || {
+        (editor, signal) = tokio::task::spawn_blocking(move || {
             let signal = editor.read_line(&prompt);
-            (editor, prompt, signal)
+            (editor, signal)
         })
         .await?;
         log.set_prompt_active(false);
         match signal? {
-            Signal::Success(line) => match command::execute(archive, &line, &mut stdout).await {
+            Signal::Success(line) => match shell.execute(&line, &mut stdout).await {
                 Ok(Flow::Continue) => stdout.flush()?,
                 Ok(Flow::Quit) => break,
                 Err(error) => eprintln!("{error:#}"),

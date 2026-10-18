@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
-use scorarium_engine::archive::Archive;
+use scorarium_engine::archive::{Archive, Library};
 
 use crate::library::{self, Visibility};
 
@@ -60,6 +60,11 @@ enum LibraryCommand {
     /// Delete a library and everything in it
     #[command(override_usage = "library <library> delete")]
     Delete,
+    /// Select a library for the commands that follow
+    #[command(override_usage = "library <library> select")]
+    Select,
+    /// Clear the selected library
+    Deselect,
 }
 
 /// Whether the shell keeps reading after a command.
@@ -68,44 +73,76 @@ pub(crate) enum Flow {
     Quit,
 }
 
-pub(crate) async fn execute(
-    archive: &Archive,
-    line: &str,
-    out: &mut impl Write,
-) -> eyre::Result<Flow> {
-    let Some(words) = shlex::split(line) else {
-        eyre::bail!("unterminated quote");
-    };
-    if words.is_empty() {
-        return Ok(Flow::Continue);
+pub(crate) struct Shell<'a> {
+    archive: &'a Archive,
+    /// The selected library's id.
+    ///
+    /// The library name is queried before the prompt is displayed to capture any library renames.
+    selected: Option<i64>,
+}
+
+impl Shell<'_> {
+    /// Start a session with no library selected.
+    pub(crate) fn new(archive: &Archive) -> Shell<'_> {
+        Shell {
+            archive,
+            selected: None,
+        }
     }
-    let line = match Line::try_parse_from(&words) {
-        Ok(line) => line,
-        Err(error) if error.kind() == ErrorKind::DisplayHelp => {
-            write!(out, "{error}")?;
+
+    /// Look up the selected library, or nothing when none is selected or it has since been deleted.
+    pub(crate) async fn selected(&self) -> eyre::Result<Option<Library>> {
+        match self.selected {
+            Some(id) => Ok(self.archive.library(id).await?),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) async fn execute(&mut self, line: &str, out: &mut impl Write) -> eyre::Result<Flow> {
+        let Some(words) = shlex::split(line) else {
+            eyre::bail!("unterminated quote");
+        };
+        if words.is_empty() {
             return Ok(Flow::Continue);
         }
-        Err(error) => return Err(error.into()),
-    };
-    match line.command {
-        Command::Library { library, command } => match command {
-            LibraryCommand::List => {
-                reject(&library, "list")?;
-                library::list(archive, out).await?
+        let line = match Line::try_parse_from(&words) {
+            Ok(line) => line,
+            Err(error) if error.kind() == ErrorKind::DisplayHelp => {
+                write!(out, "{error}")?;
+                return Ok(Flow::Continue);
             }
-            LibraryCommand::Create { name, visibility } => {
-                reject(&library, "create")?;
-                library::create(archive, &name, visibility).await?
-            }
-            LibraryCommand::Show => library::show(archive, require(&library)?, out).await?,
-            LibraryCommand::Rename { new_name } => {
-                library::rename(archive, require(&library)?, &new_name).await?
-            }
-            LibraryCommand::Delete => library::delete(archive, require(&library)?).await?,
-        },
-        Command::Quit => return Ok(Flow::Quit),
+            Err(error) => return Err(error.into()),
+        };
+        match line.command {
+            Command::Library { library, command } => match command {
+                LibraryCommand::List => {
+                    reject(&library, "list")?;
+                    library::list(self.archive, out).await?
+                }
+                LibraryCommand::Create { name, visibility } => {
+                    reject(&library, "create")?;
+                    library::create(self.archive, &name, visibility).await?
+                }
+                LibraryCommand::Show => {
+                    library::show(self.archive, require(&library)?, out).await?
+                }
+                LibraryCommand::Rename { new_name } => {
+                    library::rename(self.archive, require(&library)?, &new_name).await?
+                }
+                LibraryCommand::Delete => library::delete(self.archive, require(&library)?).await?,
+                LibraryCommand::Select => {
+                    self.selected =
+                        Some(library::resolve(self.archive, require(&library)?).await?.id);
+                }
+                LibraryCommand::Deselect => {
+                    reject(&library, "deselect")?;
+                    self.selected = None;
+                }
+            },
+            Command::Quit => return Ok(Flow::Quit),
+        }
+        Ok(Flow::Continue)
     }
-    Ok(Flow::Continue)
 }
 
 fn require(library: &Option<String>) -> eyre::Result<&str> {
