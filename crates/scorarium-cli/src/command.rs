@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use clap::error::ErrorKind;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use scorarium_engine::archive::{Archive, Library};
 
 use crate::library::{self, Visibility};
@@ -79,14 +79,18 @@ pub(crate) struct Shell<'a> {
     ///
     /// The library name is queried before the prompt is displayed to capture any library renames.
     selected: Option<i64>,
+    tree: clap::Command,
 }
 
 impl Shell<'_> {
     /// Start a session with no library selected.
     pub(crate) fn new(archive: &Archive) -> Shell<'_> {
+        let mut tree = Line::command();
+        tree.build();
         Shell {
             archive,
             selected: None,
+            tree,
         }
     }
 
@@ -99,17 +103,43 @@ impl Shell<'_> {
     }
 
     pub(crate) async fn execute(&mut self, line: &str, out: &mut impl Write) -> eyre::Result<Flow> {
-        let Some(words) = shlex::split(line) else {
+        let Some(mut words) = shlex::split(line) else {
             eyre::bail!("unterminated quote");
         };
         if words.is_empty() {
             return Ok(Flow::Continue);
+        }
+        if let Some(id) = self.selected
+            && self.tree.find_subcommand(&words[0]).is_none()
+        {
+            if self.archive.library(id).await?.is_none() {
+                self.selected = None;
+                eyre::bail!("selected library {id} no longer exists; selection cleared");
+            }
+            // These verbs take no library, so prefixing the selection cannot make them valid.
+            if matches!(words[0].as_str(), "list" | "create" | "deselect") {
+                eyre::bail!(
+                    "'{0}' does not act on the selected library; use 'library {0}'",
+                    words[0]
+                );
+            }
+            words.splice(0..0, ["library".to_string(), id.to_string()]);
         }
         let line = match Line::try_parse_from(&words) {
             Ok(line) => line,
             Err(error) if error.kind() == ErrorKind::DisplayHelp => {
                 write!(out, "{error}")?;
                 return Ok(Flow::Continue);
+            }
+            Err(error)
+                if error.kind() == ErrorKind::InvalidSubcommand
+                    && self.selected.is_none()
+                    && self.tree.find_subcommand(&words[0]).is_none() =>
+            {
+                eyre::bail!(
+                    "{}\nselect a library to run its commands directly",
+                    error.to_string().trim_end()
+                );
             }
             Err(error) => return Err(error.into()),
         };
@@ -129,7 +159,12 @@ impl Shell<'_> {
                 LibraryCommand::Rename { new_name } => {
                     library::rename(self.archive, require(&library)?, &new_name).await?
                 }
-                LibraryCommand::Delete => library::delete(self.archive, require(&library)?).await?,
+                LibraryCommand::Delete => {
+                    library::delete(self.archive, require(&library)?).await?;
+                    if self.selected.is_some() && self.selected().await?.is_none() {
+                        self.selected = None;
+                    }
+                }
                 LibraryCommand::Select => {
                     self.selected =
                         Some(library::resolve(self.archive, require(&library)?).await?.id);

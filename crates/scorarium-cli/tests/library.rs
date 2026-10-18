@@ -111,3 +111,21 @@ async fn library_create_rename_delete() {
         "line 1: library name is empty"
     );
 }
+
+#[tokio::test]
+async fn the_selected_library_fills_the_subject_slot() {
+    let archive = demo().await;
+    let script = "library books select\nshow\nrename Novels\nshow\nlibrary deselect\nshow\n";
+    let (out, result) = run(&archive, script).await;
+    let error = format!("{:#}", result.unwrap_err());
+    assert!(error.starts_with("line 6: "), "{error}");
+    assert!(
+        error.ends_with("select a library to run its commands directly"),
+        "{error}"
+    );
+    assert_eq!(
+        out,
+        "id          \t1\nname        \tBooks\nvisibility  \tprivate\npublications\t3\n\
+         id          \t1\nname        \tNovels\nvisibility  \tprivate\npublications\t3\n"
+    );
+}
