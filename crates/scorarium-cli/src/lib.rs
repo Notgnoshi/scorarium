@@ -7,6 +7,7 @@ mod person;
 mod publication;
 mod reference;
 mod script;
+mod search;
 mod tag;
 mod work;
 

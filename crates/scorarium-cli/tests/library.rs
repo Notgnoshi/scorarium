@@ -237,3 +237,21 @@ async fn tag_list_orders_by_use_count() {
          transcription\t1\n"
     );
 }
+
+#[tokio::test]
+async fn search_prints_the_same_columns_for_every_kind() {
+    let (out, result) = run(
+        &demo().await,
+        "search polichinelle\nsearch 'pro git'\nsearch kirkor\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "work\t2\tSheet music\t6\tPolichinelle\tOp. 3 No. 4 by Sergei Rachmaninoff\n\
+         publication\t1\tBooks\t2\tPro Git\tScott Chacon, Ben Straub\n\
+         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tThe Isle of the Dead +1\n\
+         publication\t2\tSheet music\t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
+         work       \t2\tSheet music\t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n"
+    );
+}

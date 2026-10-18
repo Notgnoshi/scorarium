@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use scorarium_engine::archive::{Archive, Library, Tag, Work};
 
 use crate::library::{self, Visibility};
-use crate::{person, publication, reference, tag, work};
+use crate::{person, publication, reference, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -31,6 +31,12 @@ enum Command {
         library: Option<String>,
         #[command(subcommand)]
         command: LibraryCommand,
+    },
+    /// Search every library
+    Search {
+        /// The words to search for; quote more than one
+        #[arg(value_name = "query")]
+        query: String,
     },
     /// Exit the shell
     #[command(alias = "exit")]
@@ -349,6 +355,7 @@ impl Shell<'_> {
                     }
                 }
             },
+            Command::Search { query } => search::run(self.archive, &query, out).await?,
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)
