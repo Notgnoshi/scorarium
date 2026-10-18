@@ -9,7 +9,6 @@ use crate::library::{self, Visibility};
 #[derive(Debug, Parser)]
 #[command(
     multicall = true,
-    disable_help_flag = true,
     subcommand_value_name = "command",
     help_template = "{about-section}{usage-heading} {usage}\n\n{all-args}"
 )]
@@ -21,10 +20,13 @@ pub(crate) struct Line {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Manage libraries
-    #[command(subcommand_value_name = "command")]
+    #[command(
+        subcommand_value_name = "command",
+        override_usage = "library <library> <command>\n       library list|create ..."
+    )]
     Library {
         /// The library name or id
-        #[arg(value_name = "library")]
+        #[arg(value_name = "library", hide = true)]
         library: Option<String>,
         #[command(subcommand)]
         command: LibraryCommand,
@@ -39,6 +41,7 @@ enum LibraryCommand {
     /// List every library
     List,
     /// Show the contents of a library
+    #[command(override_usage = "library <library> show")]
     Show,
     /// Create a library
     Create {
@@ -49,11 +52,13 @@ enum LibraryCommand {
         visibility: Visibility,
     },
     /// Rename a library
+    #[command(override_usage = "library <library> rename <new-name>")]
     Rename {
         #[arg(value_name = "new-name")]
         new_name: String,
     },
     /// Delete a library and everything in it
+    #[command(override_usage = "library <library> delete")]
     Delete,
 }
 

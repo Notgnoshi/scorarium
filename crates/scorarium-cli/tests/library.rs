@@ -17,10 +17,14 @@ async fn run(archive: &Archive, script: &str) -> (String, eyre::Result<()>) {
 
 #[tokio::test]
 async fn a_script_runs_until_quit() {
-    let script = "# the demo libraries\n\nhelp library list\nlibrary list\nexit\nlibrary list\n";
+    let script =
+        "# the demo libraries\n\nlibrary books show --help\nlibrary list\nexit\nlibrary list\n";
     let (out, result) = run(&demo().await, script).await;
     result.unwrap();
-    assert!(out.starts_with("List every library\n"), "{out}");
+    assert!(
+        out.starts_with("Show the contents of a library\n\nUsage: library <library> show\n"),
+        "{out}"
+    );
     assert!(
         out.ends_with("1\tBooks      \tprivate\n2\tSheet music\tpublic\n"),
         "{out}"
