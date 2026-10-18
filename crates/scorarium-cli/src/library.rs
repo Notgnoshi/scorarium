@@ -52,7 +52,7 @@ pub(crate) async fn show(
     write_table(out, &rows)
 }
 
-fn visibility(private: bool) -> &'static str {
+pub(crate) fn visibility(private: bool) -> &'static str {
     if private { "private" } else { "public" }
 }
 

@@ -13,6 +13,7 @@ mod work;
 
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use scorarium_engine::archive::Archive;
 
@@ -31,6 +32,7 @@ pub async fn shell(
     history: Option<PathBuf>,
     log: LogWriter,
 ) -> eyre::Result<()> {
+    let archive = Arc::new(archive);
     let mut stdout = std::io::stdout();
     match args.script {
         Some(path) => {

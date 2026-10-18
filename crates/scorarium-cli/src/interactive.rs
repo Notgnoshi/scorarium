@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use reedline::{
     ColumnarMenu, DefaultHinter, DefaultPrompt, DefaultPromptSegment, Emacs, FileBackedHistory,
@@ -7,6 +8,7 @@ use reedline::{
     default_emacs_keybindings,
 };
 use scorarium_engine::archive::Archive;
+use tokio::runtime::Handle;
 
 use crate::command::{Flow, Shell};
 use crate::completer::ShellCompleter;
@@ -16,7 +18,7 @@ const HIST_SIZE: usize = 1000;
 
 /// Read and run commands from a line editor until `quit` or ctrl-d on an empty line.
 pub(crate) async fn run(
-    archive: &Archive,
+    archive: &Arc<Archive>,
     history: Option<PathBuf>,
     log: &LogWriter,
 ) -> eyre::Result<()> {
@@ -32,7 +34,6 @@ pub(crate) async fn run(
     let mut editor = Reedline::create()
         .with_hinter(Box::new(DefaultHinter::default()))
         .with_external_printer(log.take_printer())
-        .with_completer(Box::new(ShellCompleter::default()))
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(
             ColumnarMenu::default().with_name("completion"),
         )))
@@ -52,6 +53,11 @@ pub(crate) async fn run(
             DefaultPromptSegment::Basic(label),
             DefaultPromptSegment::Empty,
         );
+        editor = editor.with_completer(Box::new(ShellCompleter::new(
+            Arc::clone(archive),
+            Handle::current(),
+            shell.selection(),
+        )));
         let signal;
         log.set_prompt_active(true);
         (editor, signal) = tokio::task::spawn_blocking(move || {
