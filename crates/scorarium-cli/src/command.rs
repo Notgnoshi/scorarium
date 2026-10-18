@@ -134,6 +134,9 @@ enum PersonCommand {
         #[arg(long, value_name = "role")]
         role: Option<String>,
     },
+    /// Show a person
+    #[command(override_usage = "library <library> person <person> show")]
+    Show,
 }
 
 /// Whether the shell keeps reading after a command.
@@ -305,6 +308,20 @@ impl Shell<'_> {
                         PersonCommand::List { role } => {
                             reject(&person, "person", "list")?;
                             person::list(&library, role.as_deref(), out).await?
+                        }
+                        PersonCommand::Show => {
+                            let reference = require(&person, "person")?;
+                            let summary = reference::resolve(
+                                "person",
+                                reference,
+                                library.person_summaries(None).await?,
+                                |p| p.id,
+                                |p| &p.name,
+                            )?;
+                            let Some(person) = library.person(summary.id).await? else {
+                                eyre::bail!("no person '{reference}'");
+                            };
+                            person::show(person, out).await?
                         }
                     }
                 }

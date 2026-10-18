@@ -196,3 +196,29 @@ async fn person_list_shows_everyone_credited() {
     result.unwrap();
     assert_eq!(out, "");
 }
+
+#[tokio::test]
+async fn person_show_lists_each_credit_once() {
+    let (out, result) = run(
+        &demo().await,
+        "library 'sheet music' person 'sergei rachmaninoff' show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "id         \t10\t\n\
+         name       \t  \tSergei Rachmaninoff\n\
+         sort name  \t  \tRachmaninoff, Sergei\n\
+         link       \t  \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
+         link       \t  \thttps://en.wikipedia.org/wiki/Sergei_Rachmaninoff\n\
+         link       \t  \thttps://www.wikidata.org/wiki/Q131861\n\
+         publication\t5 \tRachmaninoff masterpieces for solo piano (composer)\n\
+         publication\t4 \tRussian piano album (composer)\n\
+         publication\t6 \tThe Isle of the Dead (composer)\n\
+         work       \t6 \tPolichinelle (composer)\n\
+         work       \t4 \tPrelude in C-sharp minor (composer)\n\
+         work       \t5 \tEtude-Tableau (composer)\n\
+         work       \t7 \tThe Isle of the Dead (composer)\n"
+    );
+}
