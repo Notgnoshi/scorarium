@@ -2,6 +2,8 @@ use std::io::Write;
 
 use scorarium_engine::archive::{Archive, Library};
 
+use crate::reference;
+
 pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 3]> = archive
         .libraries()
@@ -18,33 +20,17 @@ pub(crate) async fn list(archive: &Archive, out: &mut impl Write) -> eyre::Resul
     write_table(out, &rows)
 }
 
-/// Find a library by its name, or by its id when no library has that name.
+/// Find a library by name or id
+///
+/// Fail if the given query is ambiguous, or a matching library does not exist.
 pub(crate) async fn resolve(archive: &Archive, reference: &str) -> eyre::Result<Library> {
-    let lowercase = reference.to_lowercase();
-    let mut named: Vec<Library> = archive
-        .libraries()
-        .await?
-        .into_iter()
-        .filter(|library| library.name.to_lowercase() == lowercase)
-        .collect();
-    if named.len() > 1 {
-        let ids: Vec<String> = named.iter().map(|library| library.id.to_string()).collect();
-        eyre::bail!(
-            "{} libraries are named '{reference}': ids {}",
-            named.len(),
-            ids.join(", ")
-        );
-    }
-    if let Some(library) = named.pop() {
-        return Ok(library);
-    }
-    let Ok(id) = reference.parse::<i64>() else {
-        eyre::bail!("no library named '{reference}'");
-    };
-    archive
-        .library(id)
-        .await?
-        .ok_or_else(|| eyre::eyre!("no library {id}"))
+    reference::resolve(
+        "library",
+        reference,
+        archive.libraries().await?,
+        |l| l.id,
+        |l| &l.name,
+    )
 }
 
 pub(crate) async fn show(
@@ -66,7 +52,7 @@ pub(crate) async fn show(
     write_table(out, &rows)
 }
 
-fn visibility(private: bool) -> &'static str {
+pub(crate) fn visibility(private: bool) -> &'static str {
     if private { "private" } else { "public" }
 }
 
