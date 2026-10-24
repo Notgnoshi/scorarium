@@ -6,8 +6,9 @@
 physical or digital thing on the shelf. A work is an individual piece that a publication contains,
 and a person is anyone who contributed to a publication or a work. A **holding** is one copy of a
 publication that the user owns, physical or digital. Works, persons, and holdings never exist alone.
-Every work is contained in at least one publication, every person contributes to at least one
-publication or work, and every publication has at least one holding.
+Every work is contained in at least one publication or named by a proposal, every person contributes
+to at least one publication or work or is named by a proposal, and every publication has at least
+one holding.
 
 The diagram shows the catalog tables. The `password` and `audit_entry` tables, described below,
 stand apart from the catalog.
@@ -35,6 +36,13 @@ erDiagram
     person ||--o{ work_contributor : ""
     person ||--o{ person_link : ""
 
+    publication ||--o{ publication_proposal : ""
+    work ||--o{ work_proposal : ""
+    person ||--o{ person_proposal : ""
+    person ||--o{ publication_proposal : ""
+    person ||--o{ work_proposal : ""
+    work ||--o{ publication_proposal : ""
+
     library {
         text name
         bool private
@@ -45,6 +53,11 @@ erDiagram
         int year
         text note
         int stars
+        text cover
+        text kind
+        bool draft
+        int created_at
+        int last_modified_at
     }
     work {
         text title
@@ -53,10 +66,18 @@ erDiagram
         text instrumentation
         text note
         int stars
+        text kind
+        bool draft
+        int created_at
+        int last_modified_at
     }
     person {
         text name
         text sort_name
+        text profile
+        bool draft
+        int created_at
+        int last_modified_at
     }
     holding {
         text kind
@@ -94,6 +115,24 @@ erDiagram
     tag {
         text tag
     }
+    publication_proposal {
+        text field
+        text source
+        text proposed_value
+        int created_at
+    }
+    work_proposal {
+        text field
+        text source
+        text proposed_value
+        int created_at
+    }
+    person_proposal {
+        text field
+        text source
+        text proposed_value
+        int created_at
+    }
 ```
 
 ## Storage layout
@@ -106,18 +145,43 @@ configure, because the login password lives in the database.
 ```
 data/
     scorarium.db
+    assets/
+        publication/<id>/
+            cover.<ext>
+            <holding file>...
+        person/<id>/
+            profile.<ext>
 ```
 
 `scorarium.db` is a single SQLite database containing every table in this document, for all
 libraries.
 
+`assets/` holds files stored by the application. Each file is owned by exactly one entity, and is
+deleted (with confirmation in the case of digital holdings) when the owning entity is deleted.
+Directories are named by the owner's id, never by its title or name. Paths in the database are
+relative to the data directory.
+
+A holding file keeps the filename the user gave it, reduced to a single path component. A file
+fetched from a URL is ideally named from the URL's last path segment, then from the response's
+`Content-Disposition`, and otherwise `download.<counter>.<ext>` with the extension taken from the
+response's content type. Cover and profile images are always `cover.<ext>` and `profile.<ext>`. Any
+file may be uploaded or fetched once from a URL.
+
 ## Entities
 
-Every table has an integer primary key named `id`. The tables whose ids appear in URLs or in audit
-entries (`library`, `publication`, `work`, `person`, `tag`, and the link tables) never reuse an id
-after a row is deleted, so a stale link or an old audit entry cannot resolve to an unrelated row
-created later. The remaining tables are reached only through their parent and let SQLite reuse ids
-freely.
+Every table has an integer primary key named `id`. The tables whose ids appear in URLs, in forms, or
+in audit entries (`library`, `publication`, `work`, `person`, `tag`, the link tables, and the
+proposal tables) never reuse an id after a row is deleted, so a stale link, a stale review page, or
+an old audit entry cannot resolve to an unrelated row created later. The remaining tables are
+reached only through their parent and let SQLite reuse ids freely.
+
+The three entity tables (`publication`, `work`, and `person`) record when the row was created and
+when it was last modified. The review queue shows an import's age from `created_at`, and the
+timestamps give the user a way to find what they touched recently. Modification is scoped to the
+entity itself: editing a publication's title, identifiers, contributors, or holdings updates the
+publication's `last_modified_at`, but editing one of its works does not, and committing a draft or
+ruling on a proposal counts as a modification of the entity it changes. The application maintains
+both timestamps; the database only defaults them on insert.
 
 ### library
 
@@ -138,6 +202,11 @@ The edition-level record. Every other catalog entity exists because a publicatio
 * `year`: integer, nullable
 * `note`: text, nullable; freeform, edited in place, no history
 * `stars`: integer 1-5, nullable; null means unrated
+* `cover`: text, nullable; the path of the cover image, relative to the data directory.
+* `kind`: text, nullable, one of `music`, `prose`; null until classified. The classification is used
+  to choose what external APIs to use for metadata enrichment.
+* `draft`: boolean, default false; see "Drafts" below
+* `created_at`, `last_modified_at`: timestamps
 
 ### publication_identifier
 
@@ -176,6 +245,10 @@ in at least one publication, and the deletion semantics below maintain that inva
 * `instrumentation`: text, nullable
 * `note`: text, nullable
 * `stars`: integer 1-5, nullable
+* `kind`: text, nullable, one of `music`, `prose`. Works inherit their publication's classification
+  if not already set.
+* `draft`: boolean, default false; see "Drafts" below
+* `created_at`, `last_modified_at`: timestamps
 
 ### work_catalog_number
 
@@ -214,14 +287,17 @@ but sub-numbers keep numbered collections in printed order (Mikrokosmos No. 97 i
 
 A composer, editor, arranger, or any other contributor. Persons are first-class entities whose
 identity is resolved at import time like works: names are matched against existing persons before
-new rows are created. Residual duplicates, such as "Rachmaninoff" and "Rachmaninov"
-from two imports, can still arise, and the same future merge operation cleans them up.
+new rows are created. Residual duplicates, such as "Rachmaninoff" and "Rachmaninov" from two
+imports, can still arise, and the same future merge operation cleans them up.
 
 * `id`: integer primary key
 * `library_id`: references library
 * `name`: text, the display form
 * `sort_name`: text, the form that sorts by surname ("Satie, Erik"). It is filled at import time by
   heuristics and API lookups so the user never types the same name twice.
+* `profile`: text, nullable; the path of the profile image, relative to the data directory
+* `draft`: boolean, default false; see "Drafts" below
+* `created_at`, `last_modified_at`: timestamps
 
 ### publication_link, work_link, and person_link
 
@@ -275,8 +351,8 @@ application enforces this rather than the database.
 * `id`: integer primary key
 * `publication_id`: references publication
 * `kind`: text, CHECK one of `physical`, `digital`
-* `location`: text, nullable; freeform, such as "piano bench" for a physical copy or a path for a
-  digital one
+* `location`: text, nullable; for a `physical` holding, freeform text such as "piano bench". For a
+  `digital` holding, the `location` is a non-null path of its file relative to the data directory.
 * `loaned_to`: text, nullable; a name while this copy is lent out, null otherwise. It lives on the
   holding rather than the publication so that lending one of two copies is representable. It is
   mostly meaningful for physical copies, but nothing enforces that.
@@ -298,6 +374,67 @@ referenced by a composite (`id`, `library_id`) foreign key, so a tag's `library_
 parent's. An entity cannot carry the same tag twice. The table is indexed on (`library_id`, `tag`)
 for the tag listing and autocomplete.
 
+### publication_proposal, work_proposal, and person_proposal
+
+A proposal is one fact about an entity that a metadata source asserted and the user has not yet
+ruled on. Enrichment never edits an entity directly. It writes proposals, the review surfaces show
+them beside the fields they concern, and the user accepts or rejects each one. When two sources
+disagree about a title, each has its own proposal row, and the disagreement is visible rather than
+resolved by a merge policy.
+
+One row is one scalar value or one addition to a collection. A proposal never carries a whole list.
+A source that reports three catalog numbers for a work writes three rows.
+
+* `id`: integer primary key
+* `publication_id` / `work_id` / `person_id`: references the entity the proposal is about
+* `field`: text, which field of the entity the proposal concerns. The set is fixed per entity kind:
+  `title`, `publisher`, `year`, `identifier`, `contributor`, `contents`, `link`, and `cover` for
+  publications; `title`, `key`, `time_signature`, `instrumentation`, `catalog_number`,
+  `contributor`, and `link` for works; `name`, `sort_name`, `link`, and `profile` for persons. Tags,
+  notes, and stars are the user's own and are never proposed. A `cover` or `profile` proposal is an
+  image URL.
+* `source`: text, the metadata source that asserted the fact, named as in the link `kind` vocabulary
+* `created_at`: timestamp; when the proposal arrived.
+* `proposed_value`: text, nullable; the value in the canonical text form of the field's strong type,
+  so an identifier proposal holds the normalized identifier and a year proposal holds digits
+* `person_id`: references person, nullable; set only when `field` is `contributor`, and then
+  `proposed_value` holds the role
+* `work_id`: references work, nullable; set only when `field` is `contents`, and then
+  `proposed_value` is null
+
+Exactly one of the three value columns applies to a given field, and the database enforces which. A
+referenced person or work is matched against the library, drafts included, with the same rules that
+import uses, and only one that the library does not have is created as a draft, which the proposal
+then refers to. Such a draft is not an orphan while a proposal refers to it.
+
+The same source cannot propose the same value for the same field of the same entity twice, so a
+re-run of enrichment adds nothing it already proposed. The matching above makes a re-run land on the
+drafts the earlier run created, and a residual duplicate draft is cleaned up by the same future
+merge operation as any other duplicate. Deleting an entity deletes its proposals, and deleting a
+referenced draft person or work deletes the proposals that refer to it.
+
+Ruling on a proposal deletes its row. Accepting first applies the value to the entity: it sets the
+scalar field, adds the value to the collection, or creates the contributor or containment link.
+Rejecting applies nothing. Either way the proposal is gone, so an entity has pending proposals
+exactly when it has proposal rows, and nothing records what was accepted or rejected.
+
+Proposals are independent of the draft mark. A committed entity may have pending proposals, which is
+how on-demand enrichment of an existing entry works. Committing a draft deletes its pending
+proposals, and those of every draft the commit cascades to, on the grounds that committing means the
+user is done reviewing it; an enrichment run still in flight is not cancelled, and proposals it
+writes afterwards land on the committed entity like any on-demand result. The review queue lists
+every draft, of any kind, and any entity with pending proposals or a run in progress or failed.
+
+A proposal on a committed entity may refer to a draft person or work, because a proposal is a
+pending reference, not a catalog link. Accepting it creates the link and, per the Drafts section,
+commits the draft in the same transaction. Rejecting it deletes the proposal, and the draft is
+garbage-collected if nothing else refers to it.
+
+The proposals are the only durable trace of an enrichment run. Which sources were asked, which have
+answered, and whether the run was cancelled is application memory, and a restart forgets it. The
+proposals written before the restart survive, so an interrupted run looks like a finished one with
+fewer results, and re-running it adds only what the first run missed.
+
 ### password
 
 The login password, hashed with a standard password KDF. The table holds at most one row, which the
@@ -318,8 +455,8 @@ before it commits, so the log and the catalog never disagree.
 * `created_at`: timestamp
 * `source`: text, one of `user`, `orphan_cleanup`, `merge`, `link_recognition`; who or what caused
   the change
-* `action`: text, one of `created`, `updated`, `deleted`, `merged`, `import_accepted`,
-  `password_claimed`, `password_changed`
+* `action`: text, one of `created`, `updated`, `deleted`, `merged`, `committed`, `password_claimed`,
+  `password_changed`
 * `entity_kind`: text, nullable, one of `publication`, `work`, `person`, `library`
 * `entity_id`: integer, nullable
 * `entity_library_id`: integer, nullable
@@ -331,6 +468,40 @@ The entity columns are not foreign keys. An audit entry outlives the entity it d
 the point of recording the label. The password actions have no entity at all. The log is bounded:
 each commit trims the table to its most recent three thousand entries.
 
+## Drafts
+
+A draft is an entity that the user has not yet accepted into the catalog: a publication being
+imported, or a work or person that an import or an enrichment run proposes to create. Drafts share
+the catalog's tables rather than living in a separate structure, so that a draft publication's
+contributors, contents, and identifiers are ordinary rows, and the import review page edits them
+with the same code as the publication page. A draft publication carries its first holding from the
+moment it is created, like any other publication, so the holding invariant and the orphan collection
+that enforces it apply to drafts unchanged.
+
+Only `publication`, `work`, and `person` carry the `draft` column. Their dependent rows
+(identifiers, catalog numbers, contributors, containment links, holdings, tags, and links) are draft
+exactly when their parent is, and any query that must distinguish draft from committed data joins to
+the parent to find out.
+
+A committed entity never references a draft. A draft publication may contain a committed work and
+name a committed person, but a committed work cannot name a draft person as its composer, and a
+committed publication cannot contain a draft work. The rule is kept by one mechanism: whenever a
+transaction would leave a committed entity referencing a draft, that transaction also clears the
+draft's mark. Committing a draft publication therefore commits every draft reachable from it through
+its contents and contributors. Saving an edit to a committed work whose composer was picked from the
+draft suggestions commits that person. Accepting a proposal that names a draft commits the draft.
+
+Discarding a draft publication deletes it, and the ordinary deletion semantics take it from there:
+draft works and persons that nothing else needs are garbage-collected, and a draft that another
+draft or a proposal still references survives. Draft works and persons are never discarded directly,
+only collected.
+
+Drafts are private, even in a public library. To a logged-out visitor a draft does not exist: it is
+absent from listings, search results, and entity pages. Logged in, drafts appear only on the review
+surfaces: the review queue, the review page of a draft publication, and the proposals of whichever
+entity names them. Typeahead suggestions include drafts, so that two imports can share one draft
+person or work.
+
 ## Access control
 
 Visible to logged-out visitors, within a public library:
@@ -338,17 +509,20 @@ Visible to logged-out visitors, within a public library:
 * publications, works, and persons, with their contributors, identifiers, catalog numbers, and links
 * stars, on both publications and works
 * the existence and kind of holdings ("one physical copy, one PDF")
+* cover and profile images
 
 Requires login:
 
 * any and all modifications
 * libraries marked `private`, along with everything they contain
-* holding `location` and `loaned_to` values (shelf names, file paths, borrower names)
+* holding `location` and `loaned_to` values (shelf names, file paths, borrower names), and the files
+  behind digital holdings
 * tags and notes
 
 The `private` flag lives on libraries only, and a library is private until the user says otherwise.
-Within a public library, everything is visible except for the field-level rules above. All access
-control is enforced by the application; the database does not care.
+Within a public library, everything committed is visible except for the field-level rules above.
+Drafts are never visible to logged-out visitors, and the Drafts section says where they appear once
+logged in. All access control is enforced by the application; the database does not care.
 
 ## Deletion semantics
 
@@ -356,17 +530,19 @@ This is a library of publications: publications are deleted deliberately, and ev
 or dies by whether a publication still needs it.
 
 Deleting a **publication** deletes its dependent rows (identifiers, links, holdings, contributors,
-tags, containment links), then garbage-collects:
+tags, containment links, proposals), then garbage-collects:
 
-* **works** no longer contained in any publication, along with everything on them (catalog numbers,
-  contributors, tags, links, notes, stars)
-* **persons** no longer referenced by any contributor, along with their links
+* **works** no longer contained in any publication and not named by any proposal, along with
+  everything on them (catalog numbers, contributors, tags, links, notes, stars, proposals)
+* **persons** no longer referenced by any contributor or proposal, along with their links and
+  proposals
 
 Works still contained in another publication survive, as do persons still contributing anywhere.
 Garbage collection is silent by design, because the user cares about publications, not orphan
 management.
 
-Deleting a publication's **last holding** deletes the publication, with everything above.
+Deleting a publication's **last holding** deletes the publication, with everything above. Discarding
+a **draft publication** is a publication deletion with the same semantics.
 
 Works and persons are not deleted directly. Editing a publication's contents removes containment
 links, and the same garbage collection applies. A future merge operation, not deletion, is the tool
@@ -374,20 +550,28 @@ for cleaning up duplicate works and persons.
 
 Deleting a **library** deletes everything in it.
 
+A **file** is deleted with its owner. Removing a digital holding deletes its file, replacing a cover
+or profile image deletes the old one, deleting a publication removes its directory under `assets/`,
+and deleting a library removes the directories of everything it contained. The application is
+expected to ask the user for confirmation before any deletion that would remove files.
+
 ## Queries this model must be able to answer
 
 The model is validated by checking the questions it exists to answer.
 
 * **"Do I have the sheet music for this piece?"** Search matches the work by title, catalog number,
-  or composer. `publication_work` lists the publications containing it,
-  and their holdings say whether each is held physically, digitally, or both.
+  or composer. `publication_work` lists the publications containing it, and their holdings say
+  whether each is held physically, digitally, or both.
 * **"What is in this volume?"** `publication_work` lists the publication's works, sorted by catalog
   number.
-* **"What do I own by this composer?"** Resolve the name to a person, then follow
-  `work_contributor` and `publication_contributor` to their works and publications.
+* **"What do I own by this composer?"** Resolve the name to a person, then follow `work_contributor`
+  and `publication_contributor` to their works and publications.
 * **"Where is my copy?"** The publication's holdings carry `location` values (logged in).
 * **"What did I tag 'christmas'?"** The tag table lists publications and works together (logged in).
 * **"Is this volume in my library already?"** Normalize the number in hand and look it up in
   `publication_identifier.value`, falling back to a title search.
 * **"Who did I lend it to?"** Join holdings with a non-null `loaned_to` to their publications
   (logged in).
+* **"What is waiting for me?"** Every draft publication, work, and person, plus any entity with a
+  proposal row, across all libraries. Runs in progress or failed are engine memory and join the
+  answer from there.
