@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clap::{Arg, Command, CommandFactory};
 use reedline::{Completer, CompletionResult, Span, Suggestion};
-use scorarium_engine::archive::{Archive, Entity, SuggestField, Suggested};
+use scorarium_engine::legacy::archive::{Archive, Entity, SuggestField, Suggested};
 use tokio::runtime::Handle;
 
 use crate::command::{LIBRARY_COMMANDS_WITHOUT_SUBJECT, Line};

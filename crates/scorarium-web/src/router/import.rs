@@ -4,12 +4,12 @@ use askama::Template;
 use axum::extract::{Path, Query, RawForm, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::{
     Accepted, DraftPublication, HoldingErrors, HoldingKind, HoldingRawInput, Library, Lookup,
     PendingImport, PublicationErrors, PublicationRawInput, ValidationError, WorkRawInput, WorkRef,
     parse_holdings,
 };
-use scorarium_engine::enrich;
+use scorarium_engine::legacy::enrich;
 use serde::Deserialize;
 
 use super::work::WorkPost;

@@ -7,7 +7,7 @@ use reedline::{
     KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
     default_emacs_keybindings,
 };
-use scorarium_engine::archive::Archive;
+use scorarium_engine::legacy::archive::Archive;
 use tokio::runtime::Handle;
 
 use crate::command::{Flow, Shell};

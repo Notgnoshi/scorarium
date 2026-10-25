@@ -5,7 +5,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, Query, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_engine::archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
+use scorarium_engine::legacy::archive::{Library, Publication, Work, WorkErrors, WorkRawInput};
 use serde::Deserialize;
 
 use super::{

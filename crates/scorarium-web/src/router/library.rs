@@ -6,7 +6,7 @@ use askama::Template;
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_engine::archive::{Library, Publication};
+use scorarium_engine::legacy::archive::{Library, Publication};
 use serde::Deserialize;
 
 use super::{AppError, BaseContext, Crumb, OrNotFound, Session, index};

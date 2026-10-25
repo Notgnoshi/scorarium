@@ -6,7 +6,7 @@ use axum::Form;
 use axum::extract::{Query, State};
 use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::{
     Action, AuditEntry, AuditSubject, CatalogNumberEntry, EntityRef, Field, NotFound, PasswordCheck,
 };
 use serde::Deserialize;
@@ -294,7 +294,7 @@ fn settings(
 
 #[cfg(test)]
 mod tests {
-    use scorarium_engine::archive::Source;
+    use scorarium_engine::legacy::archive::Source;
 
     use super::*;
 

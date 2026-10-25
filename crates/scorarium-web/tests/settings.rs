@@ -1,7 +1,7 @@
 #![expect(deprecated)]
 
 use axum::http::StatusCode;
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::{
     ContributorInput, HoldingKind, HoldingRawInput, PersonRef, PublicationRawInput, WorkRawInput,
 };
 use scorarium_tests::{TestDb, browser, demo_login};

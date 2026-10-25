@@ -6,7 +6,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::{Path, RawForm, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::{
     Library, Publication, PublicationErrors, PublicationRawInput, Work, WorkRef,
 };
 

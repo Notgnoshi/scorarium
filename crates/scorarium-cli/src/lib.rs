@@ -15,7 +15,7 @@ use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use scorarium_engine::archive::Archive;
+use scorarium_engine::legacy::archive::Archive;
 
 pub use crate::log::LogWriter;
 pub use crate::script::run_script;

@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use scorarium_engine::archive::identifier::{self, Kind};
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::identifier::{self, Kind};
+use scorarium_engine::legacy::archive::{
     CatalogNumber, DraftWorkSummary, Entity, NotFound, PersonRef, SuggestField, Suggested,
     Suggestion, WorkRef,
 };
-use scorarium_engine::client::WorkHit;
-use scorarium_engine::enrich::open_library;
+use scorarium_engine::legacy::client::WorkHit;
+use scorarium_engine::legacy::enrich::open_library;
 use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 

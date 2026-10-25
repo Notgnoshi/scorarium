@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::io::Write;
 
-use scorarium_engine::archive::Library;
+use scorarium_engine::legacy::archive::Library;
 
 use crate::library::write_table;
 

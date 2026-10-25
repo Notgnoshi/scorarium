@@ -1,4 +1,4 @@
-use scorarium_engine::archive::same_name;
+use scorarium_engine::legacy::archive::same_name;
 
 /// Find the one entity a reference names, by id or by name.
 ///

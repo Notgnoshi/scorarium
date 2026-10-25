@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_engine::archive::{Archive, Library};
+use scorarium_engine::legacy::archive::{Archive, Library};
 
 use crate::reference;
 

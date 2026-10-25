@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
-use scorarium_engine::archive::{Archive, Library, Tag, Work};
+use scorarium_engine::legacy::archive::{Archive, Library, Tag, Work};
 
 use crate::library::{self, Visibility};
 use crate::{person, publication, reference, search, tag, work};

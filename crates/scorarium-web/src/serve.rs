@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use scorarium_engine::archive::Archive;
-use scorarium_engine::client::{Client, UserAgent};
+use scorarium_engine::legacy::archive::Archive;
+use scorarium_engine::legacy::client::{Client, UserAgent};
 
 use crate::{AppState, router};
 
