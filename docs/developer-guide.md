@@ -34,19 +34,23 @@ cargo upgrade --dry-run --incompatible
 
 ## Database
 
-Database queries use sqlx's compile-time checked macros. Normal builds need no database: the macros
-read the query metadata checked in under `.sqlx/`. When you add or change a query or a migration,
-regenerate that metadata against a migrated dev database and check in the result:
+Database queries use sqlx's compile-time checked macros, which read the query metadata checked in
+under each crate's `.sqlx/`, so normal builds need no database.
+
+Each crate with queries has its own `migrations/` and `.sqlx/`. When you add or change a query or a
+migration, regenerate that crate's metadata from the workspace root and check in the result:
 
 ```sh
 cargo install sqlx-cli --no-default-features --features sqlite
-export DATABASE_URL=sqlite://target/dev.db
-cargo sqlx database reset -y --source crates/scorarium-archive/migrations
-cargo sqlx prepare --workspace -- --all-targets --all-features
+crate=scorarium-archive
+url="sqlite://$PWD/target/$crate.db"
+cd "crates/$crate"
+cargo sqlx database reset -y --source migrations --database-url "$url"
+cargo sqlx prepare --database-url "$url" -- --all-targets --all-features
 ```
 
-While `DATABASE_URL` is exported, the macros check queries against that live database instead of
-`.sqlx/`, so schema mistakes surface immediately during development.
+The database URL is absolute because a relative SQLite path resolves against the directory the
+compiler runs in.
 
 ## API fixtures
 

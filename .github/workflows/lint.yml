@@ -67,11 +67,15 @@ jobs:
             # 'cargo sqlx prepare' overrides SQLX_OFFLINE, so this checks the .sqlx/ metadata
             # against the database
             - name: Check .sqlx query metadata freshness
-              env:
-                DATABASE_URL: sqlite://target/dev.db
               run: |
-                  sqlx database setup --source crates/scorarium-archive/migrations
-                  cargo sqlx prepare --check --workspace -- --all-targets --all-features
+                  for crate in scorarium-archive; do
+                      url="sqlite://$PWD/target/$crate.db"
+                      (
+                          cd "crates/$crate"
+                          sqlx database setup --source migrations --database-url "$url"
+                          cargo sqlx prepare --check --database-url "$url" -- --all-targets --all-features
+                      )
+                  done
 
     test:
         runs-on: ubuntu-latest
