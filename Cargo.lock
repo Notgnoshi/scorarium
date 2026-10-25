@@ -2458,8 +2458,13 @@ dependencies = [
 name = "scorarium-engine"
 version = "0.1.0"
 dependencies = [
+ "eyre",
+ "log",
  "scorarium-archive",
  "scorarium-client",
+ "sqlx",
+ "tempfile",
+ "thiserror",
  "tokio",
 ]
 
