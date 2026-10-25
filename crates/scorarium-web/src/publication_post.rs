@@ -1,4 +1,4 @@
-use scorarium_engine::archive::{
+use scorarium_engine::legacy::archive::{
     ContributorInput, HoldingKind, HoldingRawInput, IdentifierRawInput, PersonRef, PublicationPost,
     WorkPost, WorkRef,
 };

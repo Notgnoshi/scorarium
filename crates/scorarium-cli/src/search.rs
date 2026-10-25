@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_engine::archive::{Archive, Entity};
+use scorarium_engine::legacy::archive::{Archive, Entity};
 
 use crate::library::write_table;
 use crate::person;

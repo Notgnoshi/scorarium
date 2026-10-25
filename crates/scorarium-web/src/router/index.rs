@@ -3,7 +3,7 @@ use std::sync::Arc;
 use askama::Template;
 use axum::extract::State;
 use axum::response::Html;
-use scorarium_engine::archive::Library;
+use scorarium_engine::legacy::archive::Library;
 
 use super::{AppError, BaseContext};
 use crate::AppState;

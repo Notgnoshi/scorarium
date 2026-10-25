@@ -1,6 +1,6 @@
 #![expect(deprecated)]
 
-use scorarium_engine::archive::Archive;
+use scorarium_engine::legacy::archive::Archive;
 
 async fn demo() -> Archive {
     let archive = Archive::in_memory().await.unwrap();
