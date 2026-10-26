@@ -115,6 +115,55 @@ impl FromStr for Classification {
     }
 }
 
+/// A non-empty lowercase ASCII slug
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Tag(String);
+
+impl Tag {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for Tag {
+    type Err = Error;
+
+    fn from_str(input: &str) -> Result<Tag> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(Error::InvalidValue("A tag cannot be empty.".to_string()));
+        }
+        let tag = input.to_ascii_lowercase();
+        if !tag
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            return Err(Error::InvalidValue(format!(
+                "'{input}' contains invalid characters for a tag."
+            )));
+        }
+        Ok(Tag(tag))
+    }
+}
+
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Parse a whitespace separated list of tags
+pub fn parse_tags(input: &str) -> Result<Vec<Tag>> {
+    let mut tags: Vec<Tag> = Vec::new();
+    for input in input.split_whitespace() {
+        let tag = input.parse::<Tag>()?;
+        if !tags.contains(&tag) {
+            tags.push(tag);
+        }
+    }
+    Ok(tags)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +182,31 @@ mod tests {
             " MUSIC ".parse::<Classification>().unwrap(),
             Classification::Music
         );
+    }
+
+    fn parsed(input: &str) -> Vec<String> {
+        parse_tags(input)
+            .unwrap()
+            .iter()
+            .map(|t| t.as_str().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn tags_are_slugs() {
+        assert_eq!(
+            parsed("Christmas PIANO duet"),
+            ["christmas", "piano", "duet"]
+        );
+        assert_eq!(parsed("christmas christmas"), ["christmas"]);
+        assert_eq!(parsed("  \n "), [] as [String; 0]);
+        assert_eq!(parsed("want-to_learn2"), ["want-to_learn2"]);
+        assert_eq!(" Piano ".parse::<Tag>().unwrap().as_str(), "piano");
+        assert!(matches!(
+            parse_tags("christmas christmas!"),
+            Err(Error::InvalidValue(_))
+        ));
+        assert!(matches!("Noël".parse::<Tag>(), Err(Error::InvalidValue(_))));
+        assert!(matches!("".parse::<Tag>(), Err(Error::InvalidValue(_))));
     }
 }
