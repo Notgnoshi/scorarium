@@ -6,6 +6,7 @@ pub mod entity;
 pub mod library;
 pub mod publication;
 pub mod value;
+pub mod work;
 
 mod engine;
 mod error;
