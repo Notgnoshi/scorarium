@@ -2,6 +2,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A value that failed validation
+    #[error("{0}")]
+    InvalidValue(String),
+    /// Generic catch-all error for cases that don't need to be distinguished
     #[error(transparent)]
     Generic(#[from] eyre::Report),
 }
