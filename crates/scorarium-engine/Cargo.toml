@@ -8,6 +8,7 @@ description = "The high level operations shared between the web server and CLI"
 [dependencies]
 chrono.workspace = true
 eyre.workspace = true
+isbn.workspace = true
 log.workspace = true
 scorarium-archive.workspace = true
 scorarium-client.workspace = true
