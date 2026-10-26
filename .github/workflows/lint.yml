@@ -65,17 +65,20 @@ jobs:
               with:
                 tool: sqlx-cli
             # 'cargo sqlx prepare' overrides SQLX_OFFLINE, so this checks the .sqlx/ metadata
-            # against the database
+            # against the database. Each crate reads its own database URL variable from sqlx.toml
             - name: Check .sqlx query metadata freshness
               run: |
-                  for crate in scorarium-archive; do
-                      url="sqlite://$PWD/target/$crate.db"
+                  check_queries() {
+                      url="sqlite://$PWD/target/$1.db"
                       (
-                          cd "crates/$crate"
-                          sqlx database setup --source migrations --database-url "$url"
-                          cargo sqlx prepare --check --database-url "$url" -- --all-targets --all-features
+                          cd "crates/$1"
+                          export "$2=$url"
+                          sqlx database setup --source migrations
+                          cargo sqlx prepare --check -- --all-targets --all-features
                       )
-                  done
+                  }
+                  check_queries scorarium-archive SCORARIUM_ARCHIVE_DATABASE_URL
+                  check_queries scorarium-engine SCORARIUM_ENGINE_DATABASE_URL
 
     test:
         runs-on: ubuntu-latest

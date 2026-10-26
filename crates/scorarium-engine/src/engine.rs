@@ -19,12 +19,12 @@ pub struct EngineOptions {
 
 #[derive(Clone, Debug)]
 pub struct Engine {
-    inner: Arc<EngineInner>,
+    pub(crate) inner: Arc<EngineInner>,
 }
 
 #[derive(Debug)]
 pub(crate) struct EngineInner {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
     _temp_dir: Option<tempfile::TempDir>,
 }
 

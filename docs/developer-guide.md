@@ -37,20 +37,17 @@ cargo upgrade --dry-run --incompatible
 Database queries use sqlx's compile-time checked macros, which read the query metadata checked in
 under each crate's `.sqlx/`, so normal builds need no database.
 
-Each crate with queries has its own `migrations/` and `.sqlx/`. When you add or change a query or a
-migration, regenerate that crate's metadata from the workspace root and check in the result:
+Each crate with queries has its own `migrations/` and `.sqlx/`, and its `sqlx.toml`. When you add or
+change a query or a migration, regenerate that crate's metadata from the workspace root and check in
+the result:
 
 ```sh
-cargo install sqlx-cli --no-default-features --features sqlite
-crate=scorarium-archive
-url="sqlite://$PWD/target/$crate.db"
-cd "crates/$crate"
-cargo sqlx database reset -y --source migrations --database-url "$url"
-cargo sqlx prepare --database-url "$url" -- --all-targets --all-features
+cargo install sqlx-cli --no-default-features --features sqlite,sqlx-toml
+export SCORARIUM_ENGINE_DATABASE_URL="sqlite://$PWD/target/scorarium-engine.db"
+cd crates/scorarium-engine
+cargo sqlx database reset -y --source migrations
+cargo sqlx prepare -- --all-targets --all-features
 ```
-
-The database URL is absolute because a relative SQLite path resolves against the directory the
-compiler runs in.
 
 ## API fixtures
 

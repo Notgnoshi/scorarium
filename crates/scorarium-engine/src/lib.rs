@@ -1,6 +1,10 @@
 // TODO: Remove once scorarium-web migrates fully to the new scorarium-engine API
 pub mod legacy;
 
+pub mod audit;
+pub mod entity;
+pub mod library;
+
 mod engine;
 mod error;
 
