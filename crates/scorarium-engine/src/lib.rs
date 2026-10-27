@@ -4,6 +4,7 @@ pub mod legacy;
 pub mod audit;
 pub mod entity;
 pub mod library;
+pub mod link;
 pub mod publication;
 pub mod value;
 pub mod work;
