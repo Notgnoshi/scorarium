@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT name FROM library WHERE id = ?",
+  "query": "DELETE FROM library WHERE id = ? RETURNING name",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "823812efc65ab81205949f4f2079f7bfe3803ff5e44e248d3a3646352b56466a"
+  "hash": "bd5ec3dd9600fc508376b12d8b96967ebfb843d4bf3d05b90a3a6d9217479c42"
 }

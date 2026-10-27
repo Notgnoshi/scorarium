@@ -2,6 +2,8 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use sqlx::SqliteConnection;
+
 use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::{Engine, Error, Result};
 
@@ -43,20 +45,28 @@ impl Library {
         self.private
     }
 
-    fn audit_subject(&self) -> AuditSubject {
-        AuditSubject::Library {
-            id: self.id,
-            label: self.name.clone(),
-        }
-    }
-
     /// Re-read the library from the database
     ///
     /// Returns [Error::NotFound] if the library has been deleted.
     pub async fn reload(&mut self) -> Result<()> {
-        let fresh = self.engine.library(self.id).await?.ok_or(Error::NotFound)?;
-        self.name = fresh.name;
-        self.private = fresh.private;
+        let mut conn = self.engine.inner.pool.acquire().await?;
+        self.refresh(&mut conn).await
+    }
+
+    /// Overwrite the cached fields with the row as `conn` sees it
+    ///
+    /// Mutators call this inside their write transaction so that the unchanged-edit check and the
+    /// audit label come from the locked row rather than from a stale handle.
+    async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
+        let row = sqlx::query!(
+            r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
+            self.id.0
+        )
+        .fetch_optional(conn)
+        .await?
+        .ok_or(Error::NotFound)?;
+        self.name = row.name;
+        self.private = row.private;
         Ok(())
     }
 
@@ -66,11 +76,8 @@ impl Library {
     pub async fn rename(&mut self, name: impl AsRef<str>) -> Result<()> {
         let name = clean_name(name.as_ref())?;
         let mut tx = self.engine.begin_write().await?;
-        let current = sqlx::query_scalar!("SELECT name FROM library WHERE id = ?", self.id.0)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or(Error::NotFound)?;
-        if current == name {
+        self.refresh(&mut tx).await?;
+        if self.name == name {
             return Ok(());
         }
         sqlx::query!("UPDATE library SET name = ? WHERE id = ?", name, self.id.0)
@@ -79,7 +86,7 @@ impl Library {
         tx.record(
             AuditSource::User,
             Action::Updated,
-            Some(&self.audit_subject()),
+            Some(&audit_subject(self.id, &self.name)),
             Some("name"),
         )
         .await?
@@ -94,14 +101,8 @@ impl Library {
     /// Returns [Error::NotFound] if the library has been deleted.
     pub async fn set_private(&mut self, private: bool) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
-        let current = sqlx::query_scalar!(
-            r#"SELECT private AS "private: bool" FROM library WHERE id = ?"#,
-            self.id.0
-        )
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(Error::NotFound)?;
-        if current == private {
+        self.refresh(&mut tx).await?;
+        if self.private == private {
             return Ok(());
         }
         sqlx::query!(
@@ -114,7 +115,7 @@ impl Library {
         tx.record(
             AuditSource::User,
             Action::Updated,
-            Some(&self.audit_subject()),
+            Some(&audit_subject(self.id, &self.name)),
             Some("visibility"),
         )
         .await?
@@ -129,21 +130,27 @@ impl Library {
     /// Returns [Error::NotFound] if the library has already been deleted.
     pub async fn delete(self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
-        let deleted = sqlx::query!("DELETE FROM library WHERE id = ?", self.id.0)
-            .execute(&mut *tx)
-            .await?;
-        if deleted.rows_affected() == 0 {
-            return Err(Error::NotFound);
-        }
+        let name =
+            sqlx::query_scalar!("DELETE FROM library WHERE id = ? RETURNING name", self.id.0)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(Error::NotFound)?;
         tx.record(
             AuditSource::User,
             Action::Deleted,
-            Some(&self.audit_subject()),
+            Some(&audit_subject(self.id, &name)),
             None,
         )
         .await?
         .commit()
         .await
+    }
+}
+
+fn audit_subject(id: LibraryId, label: &str) -> AuditSubject {
+    AuditSubject::Library {
+        id,
+        label: label.to_string(),
     }
 }
 
@@ -215,7 +222,7 @@ impl Engine {
         tx.record(
             AuditSource::User,
             Action::Created,
-            Some(&library.audit_subject()),
+            Some(&audit_subject(library.id, &library.name)),
             None,
         )
         .await?
