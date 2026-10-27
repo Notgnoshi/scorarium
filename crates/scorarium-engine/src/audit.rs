@@ -9,7 +9,6 @@ use crate::entity::{EntityKind, Timestamp};
 use crate::library::LibraryId;
 use crate::{Engine, Error, Result};
 
-#[cfg_attr(not(test), expect(dead_code))]
 const MAX_EVENTS: usize = 3_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -129,12 +128,10 @@ pub struct AuditEvent {
     pub field: Option<String>,
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) struct Audited<'a> {
     tx: Transaction<'a, Sqlite>,
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 impl<'a> Audited<'a> {
     /// Record the audit log event.
     ///
@@ -151,13 +148,12 @@ impl<'a> Audited<'a> {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) struct Recorded<'a> {
     tx: Transaction<'a, Sqlite>,
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 impl<'a> Recorded<'a> {
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn record(
         mut self,
         source: AuditSource,
@@ -211,7 +207,6 @@ impl DerefMut for Recorded<'_> {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 async fn insert(
     tx: &mut SqliteConnection,
     source: AuditSource,
