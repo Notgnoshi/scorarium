@@ -1,0 +1,2 @@
+[common]
+database-url-var = "SCORARIUM_ENGINE_DATABASE_URL"

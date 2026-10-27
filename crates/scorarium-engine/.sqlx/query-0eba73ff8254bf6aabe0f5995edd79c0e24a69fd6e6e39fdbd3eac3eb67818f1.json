@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM audit_entry\n             WHERE id NOT IN (SELECT id FROM audit_entry ORDER BY id DESC LIMIT ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0eba73ff8254bf6aabe0f5995edd79c0e24a69fd6e6e39fdbd3eac3eb67818f1"
+}

@@ -1,0 +1,5 @@
+CREATE TABLE library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK (name <> ''),
+    private INTEGER NOT NULL DEFAULT 1 CHECK (private IN (0, 1))
+) STRICT;
