@@ -256,11 +256,10 @@ async fn insert(
 }
 
 impl Engine {
-    /// Begin a write transaction that must record an audit event the transaction can be committed
-    #[cfg_attr(not(test), expect(dead_code))]
-    pub(crate) async fn begin_write(&self) -> Result<Audited<'_>> {
+    /// Begin a write transaction that must record an audit event before it can be committed
+    pub(crate) async fn begin_write(&self) -> Result<Audited<'static>> {
         Ok(Audited {
-            tx: self.inner.pool.begin().await?,
+            tx: self.inner.pool.begin_with("BEGIN IMMEDIATE").await?,
         })
     }
 
