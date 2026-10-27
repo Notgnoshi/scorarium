@@ -49,7 +49,7 @@ impl Library {
     ///
     /// Returns [Error::NotFound] if the library has been deleted.
     pub async fn reload(&mut self) -> Result<()> {
-        let mut conn = self.engine.inner.pool.acquire().await?;
+        let mut conn = self.engine.begin_read().await?;
         self.refresh(&mut conn).await
     }
 
@@ -167,7 +167,7 @@ fn clean_name(name: &str) -> Result<&str> {
 impl Engine {
     /// List every library, oldest first
     pub async fn libraries(&self) -> Result<Vec<Library>> {
-        let mut conn = self.inner.pool.acquire().await?;
+        let mut conn = self.begin_read().await?;
         let rows =
             sqlx::query!(r#"SELECT id, name, private AS "private: bool" FROM library ORDER BY id"#)
                 .fetch_all(&mut *conn)
@@ -185,7 +185,7 @@ impl Engine {
 
     /// Load the library with the given id, if it exists
     pub async fn library(&self, id: LibraryId) -> Result<Option<Library>> {
-        let mut conn = self.inner.pool.acquire().await?;
+        let mut conn = self.begin_read().await?;
         let row = sqlx::query!(
             r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
             id.0

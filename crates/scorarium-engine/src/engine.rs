@@ -2,10 +2,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use sqlx::{ConnectOptions, SqlitePool};
+use sqlx::{ConnectOptions, Sqlite, SqlitePool};
 
 use crate::Result;
+use crate::audit::Audited;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
@@ -19,12 +21,12 @@ pub struct EngineOptions {
 
 #[derive(Clone, Debug)]
 pub struct Engine {
-    pub(crate) inner: Arc<EngineInner>,
+    inner: Arc<EngineInner>,
 }
 
 #[derive(Debug)]
-pub(crate) struct EngineInner {
-    pub pool: SqlitePool,
+struct EngineInner {
+    pool: SqlitePool,
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -69,6 +71,20 @@ impl Engine {
                 _temp_dir: temp_dir,
             }),
         })
+    }
+
+    /// Acquire a read-only connection for queries
+    pub(crate) async fn begin_read(&self) -> Result<PoolConnection<Sqlite>> {
+        // read-only is by convention. It's possible to enforce, but that'd require per-transaction
+        // pragmas, or multiple pools.
+        Ok(self.inner.pool.acquire().await?)
+    }
+
+    /// Begin a write transaction that must record an audit event before it can be committed
+    pub(crate) async fn begin_write(&self) -> Result<Audited<'static>> {
+        Ok(Audited::new(
+            self.inner.pool.begin_with("BEGIN IMMEDIATE").await?,
+        ))
     }
 }
 

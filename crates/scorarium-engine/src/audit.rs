@@ -133,6 +133,10 @@ pub(crate) struct Audited<'a> {
 }
 
 impl<'a> Audited<'a> {
+    pub(crate) fn new(tx: Transaction<'a, Sqlite>) -> Audited<'a> {
+        Audited { tx }
+    }
+
     /// Record the audit log event.
     ///
     /// Returns a [Recorded] typestate that allows committing the transaction.
@@ -251,13 +255,6 @@ async fn insert(
 }
 
 impl Engine {
-    /// Begin a write transaction that must record an audit event before it can be committed
-    pub(crate) async fn begin_write(&self) -> Result<Audited<'static>> {
-        Ok(Audited {
-            tx: self.inner.pool.begin_with("BEGIN IMMEDIATE").await?,
-        })
-    }
-
     /// Read audit events newest first, below `before` when given, at most `limit`
     pub async fn audit_log(
         &self,
@@ -267,7 +264,7 @@ impl Engine {
         let before = before.map(|id| id.0);
         // SQLite reads a negative LIMIT as unlimited, which a wrapping cast of a huge limit yields.
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-        let mut conn = self.inner.pool.acquire().await?;
+        let mut conn = self.begin_read().await?;
         let rows = sqlx::query!(
             r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
                       entity_kind, entity_id, entity_library_id, entity_label, field
