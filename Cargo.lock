@@ -2462,6 +2462,7 @@ dependencies = [
  "eyre",
  "isbn",
  "log",
+ "percent-encoding",
  "scorarium-archive",
  "scorarium-client",
  "sqlx",

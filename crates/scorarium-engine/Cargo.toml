@@ -10,6 +10,7 @@ chrono.workspace = true
 eyre.workspace = true
 isbn.workspace = true
 log.workspace = true
+percent-encoding.workspace = true
 scorarium-archive.workspace = true
 scorarium-client.workspace = true
 sqlx.workspace = true
