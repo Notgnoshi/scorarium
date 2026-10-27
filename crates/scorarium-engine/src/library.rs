@@ -24,6 +24,7 @@ impl FromStr for LibraryId {
 
 #[derive(Clone, Debug)]
 pub struct Library {
+    engine: Engine,
     id: LibraryId,
     name: String,
     private: bool,
@@ -48,6 +49,102 @@ impl Library {
             label: self.name.clone(),
         }
     }
+
+    /// Re-read the library from the database
+    ///
+    /// Returns [Error::NotFound] if the library has been deleted.
+    pub async fn reload(&mut self) -> Result<()> {
+        let fresh = self.engine.library(self.id).await?.ok_or(Error::NotFound)?;
+        self.name = fresh.name;
+        self.private = fresh.private;
+        Ok(())
+    }
+
+    /// Rename the library
+    ///
+    /// Returns [Error::NotFound] if the library has been deleted.
+    pub async fn rename(&mut self, name: impl AsRef<str>) -> Result<()> {
+        let name = clean_name(name.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        let current = sqlx::query_scalar!("SELECT name FROM library WHERE id = ?", self.id.0)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(Error::NotFound)?;
+        if current == name {
+            return Ok(());
+        }
+        sqlx::query!("UPDATE library SET name = ? WHERE id = ?", name, self.id.0)
+            .execute(&mut *tx)
+            .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some("name"),
+        )
+        .await?
+        .commit()
+        .await?;
+        self.name = name.to_string();
+        Ok(())
+    }
+
+    /// Hide the library from unauthenticated users, or show it
+    ///
+    /// Returns [Error::NotFound] if the library has been deleted.
+    pub async fn set_private(&mut self, private: bool) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        let current = sqlx::query_scalar!(
+            r#"SELECT private AS "private: bool" FROM library WHERE id = ?"#,
+            self.id.0
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound)?;
+        if current == private {
+            return Ok(());
+        }
+        sqlx::query!(
+            "UPDATE library SET private = ? WHERE id = ?",
+            private,
+            self.id.0
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some("visibility"),
+        )
+        .await?
+        .commit()
+        .await?;
+        self.private = private;
+        Ok(())
+    }
+
+    /// Delete the library and everything in it
+    ///
+    /// Returns [Error::NotFound] if the library has already been deleted.
+    pub async fn delete(self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        let deleted = sqlx::query!("DELETE FROM library WHERE id = ?", self.id.0)
+            .execute(&mut *tx)
+            .await?;
+        if deleted.rows_affected() == 0 {
+            return Err(Error::NotFound);
+        }
+        tx.record(
+            AuditSource::User,
+            Action::Deleted,
+            Some(&self.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await
+    }
 }
 
 fn clean_name(name: &str) -> Result<&str> {
@@ -71,6 +168,7 @@ impl Engine {
         Ok(rows
             .into_iter()
             .map(|row| Library {
+                engine: self.clone(),
                 id: LibraryId(row.id),
                 name: row.name,
                 private: row.private,
@@ -88,6 +186,7 @@ impl Engine {
         .fetch_optional(&mut *conn)
         .await?;
         Ok(row.map(|row| Library {
+            engine: self.clone(),
             id,
             name: row.name,
             private: row.private,
@@ -108,6 +207,7 @@ impl Engine {
         .fetch_one(&mut *tx)
         .await?;
         let library = Library {
+            engine: self.clone(),
             id: LibraryId(id),
             name: name.to_string(),
             private,
@@ -127,6 +227,7 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
+    use crate::audit::{Action, AuditSubject};
     use crate::{Engine, Error};
 
     #[tokio::test]
@@ -140,5 +241,37 @@ mod tests {
             engine.create_library("   ", false).await,
             Err(Error::InvalidValue(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn edits_audit_once_per_change() {
+        let engine = Engine::demo().await.unwrap();
+        let mut library = engine.create_library("Scores", false).await.unwrap();
+        library.rename("Scores").await.unwrap();
+        library.rename("Music").await.unwrap();
+        library.set_private(true).await.unwrap();
+        library.delete().await.unwrap();
+
+        let events: Vec<_> = engine
+            .audit_log(None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| {
+                let Some(AuditSubject::Library { label, .. }) = e.subject else {
+                    panic!("not a library event");
+                };
+                (e.action, label, e.field)
+            })
+            .collect();
+        assert_eq!(
+            events,
+            [
+                (Action::Deleted, "Music".into(), None),
+                (Action::Updated, "Music".into(), Some("visibility".into())),
+                (Action::Updated, "Scores".into(), Some("name".into())),
+                (Action::Created, "Scores".into(), None),
+            ]
+        );
     }
 }
