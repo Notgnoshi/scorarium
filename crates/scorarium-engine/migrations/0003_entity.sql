@@ -99,3 +99,12 @@ CREATE TABLE tag (
     UNIQUE (work_id, tag)
 ) STRICT;
 CREATE INDEX tag_library_tag ON tag(library_id, tag);
+
+CREATE TABLE publication_identifier (
+    id INTEGER PRIMARY KEY,
+    publication_id INTEGER NOT NULL REFERENCES publication(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('isbn', 'ismn', 'publisher_number', 'plate_number')),
+    value TEXT NOT NULL,
+    UNIQUE (publication_id, kind, value)
+) STRICT;
+CREATE INDEX publication_identifier_value ON publication_identifier(value);

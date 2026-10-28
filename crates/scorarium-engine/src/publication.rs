@@ -47,6 +47,8 @@ impl FromStr for PublicationId {
 pub enum ImportSeed {
     /// A user-entered title
     Title(String),
+    /// An identifier printed on the publication
+    Identifier(Identifier),
 }
 
 /// The fields of a publication
@@ -122,6 +124,7 @@ pub struct Publication {
     note: Option<String>,
     classification: Option<Classification>,
     tags: Vec<Tag>,
+    identifiers: Vec<Identifier>,
     contributors: Vec<Contributor>,
     holdings: Vec<Holding>,
 }
@@ -172,6 +175,11 @@ impl Publication {
         &self.tags
     }
 
+    /// List the publication's identifiers by kind, then by value
+    pub fn identifiers(&self) -> &[Identifier] {
+        &self.identifiers
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
@@ -194,6 +202,16 @@ impl Publication {
         .iter()
         .map(|tag| tag.parse())
         .collect::<Result<_>>()?;
+        let mut identifiers = sqlx::query!(
+            "SELECT kind, value FROM publication_identifier WHERE publication_id = ?",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|identifier| Identifier::new(identifier.kind.parse()?, &identifier.value))
+        .collect::<Result<Vec<_>>>()?;
+        identifiers.sort();
         let contributors = sqlx::query!(
             "SELECT publication_contributor.person_id, person.name, publication_contributor.role
              FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
@@ -245,6 +263,7 @@ impl Publication {
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
             tags,
+            identifiers,
             contributors,
             holdings,
         })
@@ -279,12 +298,20 @@ impl Publication {
         Ok(())
     }
 
+    /// Name the publication by its title, or by its first identifier when it has no title
+    fn label(&self) -> String {
+        self.title
+            .clone()
+            .or_else(|| self.identifiers.first().map(Identifier::to_string))
+            .unwrap_or_default()
+    }
+
     fn audit_subject(&self) -> AuditSubject {
         AuditSubject::Entity {
             kind: EntityKind::Publication,
             id: self.id.get(),
             library: self.library,
-            label: self.title.clone().unwrap_or_default(),
+            label: self.label(),
         }
     }
 
@@ -519,6 +546,68 @@ impl Publication {
         .await?;
         self.commit_update(tx, Field::Tags).await?;
         self.tags.remove(position);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Add an identifier to the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn add_identifier(&mut self, identifier: Identifier) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Err(position) = self.identifiers.binary_search(&identifier) else {
+            return Ok(());
+        };
+        let kind = identifier.kind().to_string();
+        sqlx::query!(
+            "INSERT INTO publication_identifier (publication_id, kind, value) VALUES (?, ?, ?)",
+            self.id.get(),
+            kind,
+            identifier.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Identifiers).await?;
+        self.identifiers.insert(position, identifier);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove an identifier from the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_identifier(&mut self, identifier: &Identifier) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Ok(position) = self.identifiers.binary_search(identifier) else {
+            return Ok(());
+        };
+        let kind = identifier.kind().to_string();
+        sqlx::query!(
+            "DELETE FROM publication_identifier WHERE publication_id = ? AND kind = ? AND value = ?",
+            self.id.get(),
+            kind,
+            identifier.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Identifiers).await?;
+        self.identifiers.remove(position);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -883,13 +972,10 @@ impl Publication {
     /// Returns [Error::NotFound] if the publication has already been deleted.
     pub async fn delete(mut self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
-        self.title = sqlx::query_scalar!(
-            "DELETE FROM publication WHERE id = ? RETURNING title",
-            self.id.get()
-        )
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(Error::NotFound)?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM publication WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
         let works = work::collect_orphan_works(&mut tx, self.library).await?;
         let people = person::collect_orphan_people(&mut tx, self.library).await?;
         let mut tx = tx
@@ -1016,8 +1102,10 @@ pub(crate) async fn create(
     seed: ImportSeed,
     holding: NewHolding<'_>,
 ) -> Result<Publication> {
-    let ImportSeed::Title(title) = seed;
-    let title = clean_title(&title)?;
+    let (title, identifier) = match &seed {
+        ImportSeed::Title(title) => (Some(clean_title(title)?), None),
+        ImportSeed::Identifier(identifier) => (None, Some(identifier)),
+    };
     let NewHolding::Physical { location } = holding;
     let location = clean_text(location);
     let mut tx = engine.begin_write().await?;
@@ -1029,6 +1117,17 @@ pub(crate) async fn create(
     )
     .fetch_one(&mut *tx)
     .await?;
+    if let Some(identifier) = identifier {
+        let kind = identifier.kind().to_string();
+        sqlx::query!(
+            "INSERT INTO publication_identifier (publication_id, kind, value) VALUES (?, ?, ?)",
+            id,
+            kind,
+            identifier.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query!(
         "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)",
         id,
@@ -1168,7 +1267,7 @@ fn clean_title(title: &str) -> Result<&str> {
 }
 
 /// The kinds of identifier printed on a publication
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IdentifierKind {
     Isbn,
     /// Like an ISBN, but for music
@@ -1217,7 +1316,7 @@ impl FromStr for IdentifierKind {
 }
 
 /// An identifier printed on a publication, parsed into its canonical form
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Identifier {
     kind: IdentifierKind,
     text: String,
@@ -1637,6 +1736,51 @@ mod tests {
         publication.remove_tag(&duet).await.unwrap();
         publication.reload().await.unwrap();
         assert_eq!(publication.tags(), [piano]);
+    }
+
+    #[tokio::test]
+    async fn identifier_seed() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-1-68050-127-8").unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Identifier(isbn.clone()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let events: Vec<_> = publication
+            .audit_log(None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.action, e.subject))
+            .collect();
+        assert_eq!(
+            events,
+            [(
+                Action::Created,
+                Some(AuditSubject::Entity {
+                    kind: EntityKind::Publication,
+                    id: publication.id().get(),
+                    library: library.id(),
+                    label: "978-1-68050-127-8".into(),
+                })
+            )]
+        );
+        assert!(matches!(
+            publication.commit().await,
+            Err(Error::InvalidValue(_))
+        ));
+
+        publication.set_title("Practical Vim").await.unwrap();
+        publication.reload().await.unwrap();
+        assert_eq!(publication.identifiers(), [isbn]);
+        assert_eq!(publication.title(), Some("Practical Vim"));
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {

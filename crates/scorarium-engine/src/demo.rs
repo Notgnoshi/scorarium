@@ -2,7 +2,8 @@ use crate::entity::Entity;
 use crate::holding::NewHolding;
 use crate::library::Library;
 use crate::person::PersonId;
-use crate::publication::{ImportSeed, Publication};
+use crate::publication::IdentifierKind::{Isbn, PlateNumber, PublisherNumber};
+use crate::publication::{Identifier, ImportSeed, Publication};
 use crate::value::Classification::{self, Music, Prose};
 use crate::value::{Stars, Year};
 use crate::work::Work;
@@ -14,6 +15,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     let sheet_music = engine.create_library("Sheet music", false).await?;
 
     let mut practical_vim = create(&books, "Practical Vim", Some("Desk"), Prose).await?;
+    practical_vim
+        .add_identifier(Identifier::new(Isbn, "978-1-68050-127-8")?)
+        .await?;
     practical_vim
         .set_publisher(Some("Pragmatic Bookshelf"))
         .await?;
@@ -32,6 +36,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     }
 
     let mut pro_git = create(&books, "Pro Git", None, Prose).await?;
+    pro_git
+        .add_identifier(Identifier::new(Isbn, "978-1-4842-0077-3")?)
+        .await?;
     pro_git.set_publisher(Some("Apress")).await?;
     pro_git.set_year(Some(Year::try_from(2014)?)).await?;
     pro_git.set_stars(Some(Stars::try_from(3)?)).await?;
@@ -45,6 +52,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         Prose,
     )
     .await?;
+    bierce
+        .add_identifier(Identifier::new(Isbn, "0-8065-0180-4")?)
+        .await?;
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
     let ambrose_bierce = bierce
@@ -61,6 +71,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     }
 
     let mut russian_album = create(&sheet_music, "Russian piano album", None, Music).await?;
+    russian_album
+        .add_identifier(Identifier::new(Isbn, "978-1-4950-0871-9")?)
+        .await?;
+    russian_album
+        .add_identifier(Identifier::new(PublisherNumber, "Vol 2115")?)
+        .await?;
     russian_album.set_publisher(Some("Schirmer")).await?;
     russian_album.set_stars(Some(Stars::try_from(4)?)).await?;
     for tag in ["anthology", "russian"] {
@@ -118,6 +134,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         Music,
     )
     .await?;
+    masterpieces
+        .add_identifier(Identifier::new(Isbn, "0-486-43122-3")?)
+        .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
     masterpieces
         .add_contributor(rachmaninoff, "composer")
@@ -133,6 +152,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
 
     let mut isle_of_the_dead = create(&sheet_music, "The Isle of the Dead", None, Music).await?;
+    isle_of_the_dead
+        .add_identifier(Identifier::new(PlateNumber, "M 26277")?)
+        .await?;
     isle_of_the_dead
         .set_publisher(Some("State Music Publishers"))
         .await?;
@@ -164,6 +186,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         Music,
     )
     .await?;
+    gymnopedies
+        .add_identifier(Identifier::new(Isbn, "978-0-7935-2590-4")?)
+        .await?;
+    gymnopedies
+        .add_identifier(Identifier::new(PublisherNumber, "Vol 1869")?)
+        .await?;
     gymnopedies.set_publisher(Some("Schirmer")).await?;
     gymnopedies.set_stars(Some(Stars::try_from(4)?)).await?;
     let satie = gymnopedies
