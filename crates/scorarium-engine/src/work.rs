@@ -111,6 +111,7 @@ pub struct Work {
     note: Option<String>,
     classification: Option<Classification>,
     tags: Vec<Tag>,
+    catalog_numbers: Vec<CatalogNumber>,
     contributors: Vec<Contributor>,
 }
 
@@ -164,6 +165,11 @@ impl Work {
         &self.tags
     }
 
+    /// List the work's catalog numbers in catalog order
+    pub fn catalog_numbers(&self) -> &[CatalogNumber] {
+        &self.catalog_numbers
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
@@ -176,6 +182,16 @@ impl Work {
                 .iter()
                 .map(|tag| tag.parse())
                 .collect::<Result<_>>()?;
+        let mut catalog_numbers = sqlx::query_scalar!(
+            "SELECT value FROM work_catalog_number WHERE work_id = ?",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .iter()
+        .map(|value| value.parse())
+        .collect::<Result<Vec<CatalogNumber>>>()?;
+        catalog_numbers.sort();
         let contributors = sqlx::query!(
             "SELECT work_contributor.person_id, person.name, work_contributor.role
              FROM work_contributor JOIN person ON person.id = work_contributor.person_id
@@ -207,6 +223,7 @@ impl Work {
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
             tags,
+            catalog_numbers,
             contributors,
         })
     }
@@ -479,6 +496,64 @@ impl Work {
         .await?;
         self.commit_update(tx, Field::Tags).await?;
         self.tags.remove(position);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Add a catalog number to the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn add_catalog_number(&mut self, number: CatalogNumber) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Err(position) = self.catalog_numbers.binary_search(&number) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "INSERT INTO work_catalog_number (work_id, value) VALUES (?, ?)",
+            self.id.get(),
+            number.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::CatalogNumbers).await?;
+        self.catalog_numbers.insert(position, number);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove the catalog number equal to `number` from the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn remove_catalog_number(&mut self, number: &CatalogNumber) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Ok(position) = self.catalog_numbers.binary_search(number) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "DELETE FROM work_catalog_number WHERE work_id = ? AND value = ?",
+            self.id.get(),
+            self.catalog_numbers[position].as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::CatalogNumbers).await?;
+        self.catalog_numbers.remove(position);
         self.last_modified_at = last_modified_at;
         Ok(())
     }

@@ -109,6 +109,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         None,
     )
     .await?;
+    prelude.add_catalog_number("Op. 3 No. 2".parse()?).await?;
     prelude.set_stars(Some(Stars::try_from(5)?)).await?;
     prelude
         .set_note(Some(
@@ -118,7 +119,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     for tag in ["learning", "russian"] {
         prelude.add_tag(tag.parse()?).await?;
     }
-    piano_piece(
+    let mut etude_tableau = piano_piece(
         &mut russian_album,
         rachmaninoff,
         "Etude-Tableau",
@@ -126,6 +127,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         None,
     )
     .await?;
+    etude_tableau
+        .add_catalog_number("Op. 39 No. 2".parse()?)
+        .await?;
 
     let mut masterpieces = create(
         &sheet_music,
@@ -142,7 +146,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_contributor(rachmaninoff, "composer")
         .await?;
     masterpieces.add_work(prelude.id()).await?;
-    piano_piece(
+    let mut polichinelle = piano_piece(
         &mut masterpieces,
         rachmaninoff,
         "Polichinelle",
@@ -150,6 +154,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         None,
     )
     .await?;
+    polichinelle
+        .add_catalog_number("Op. 3 No. 4".parse()?)
+        .await?;
 
     let mut isle_of_the_dead = create(&sheet_music, "The Isle of the Dead", None, Music).await?;
     isle_of_the_dead
@@ -174,6 +181,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     )
     .await?;
     tone_poem.add_contributor(kirkor, "arranger").await?;
+    tone_poem.add_catalog_number("Op. 29".parse()?).await?;
     tone_poem.set_stars(Some(Stars::try_from(5)?)).await?;
     for tag in ["transcription", "want-to-learn"] {
         tone_poem.add_tag(tag.parse()?).await?;

@@ -108,3 +108,10 @@ CREATE TABLE publication_identifier (
     UNIQUE (publication_id, kind, value)
 ) STRICT;
 CREATE INDEX publication_identifier_value ON publication_identifier(value);
+
+CREATE TABLE work_catalog_number (
+    id INTEGER PRIMARY KEY,
+    work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+    value TEXT NOT NULL CHECK (value <> ''),
+    UNIQUE (work_id, value)
+) STRICT;
