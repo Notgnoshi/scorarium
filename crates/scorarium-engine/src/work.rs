@@ -9,6 +9,7 @@ use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audit
 use crate::contributor::{Contributor, clean_role};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::value::{Classification, Stars, Tag, clean_text};
@@ -112,6 +113,7 @@ pub struct Work {
     classification: Option<Classification>,
     tags: Vec<Tag>,
     catalog_numbers: Vec<CatalogNumber>,
+    links: Vec<Link>,
     contributors: Vec<Contributor>,
 }
 
@@ -170,6 +172,11 @@ impl Work {
         &self.catalog_numbers
     }
 
+    /// List the work's links in the order they were added
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
@@ -192,6 +199,15 @@ impl Work {
         .map(|value| value.parse())
         .collect::<Result<Vec<CatalogNumber>>>()?;
         catalog_numbers.sort();
+        let links = sqlx::query!(
+            "SELECT id, url, kind, external_id FROM work_link WHERE work_id = ? ORDER BY id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
+        .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
             "SELECT work_contributor.person_id, person.name, work_contributor.role
              FROM work_contributor JOIN person ON person.id = work_contributor.person_id
@@ -224,6 +240,7 @@ impl Work {
             classification: row.kind.as_deref().map(str::parse).transpose()?,
             tags,
             catalog_numbers,
+            links,
             contributors,
         })
     }
@@ -554,6 +571,83 @@ impl Work {
         .await?;
         self.commit_update(tx, Field::CatalogNumbers).await?;
         self.catalog_numbers.remove(position);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Link the work to `url`
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn add_link(&mut self, url: HttpUrl) -> Result<()> {
+        let record = ExternalRecord::recognize(EntityKind::Work, &url);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self
+            .links
+            .iter()
+            .any(|link| link.url == url || (link.record.is_some() && link.record == record))
+        {
+            return Ok(());
+        }
+        let kind = record
+            .as_ref()
+            .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
+        let external_id = record.as_ref().map(ExternalRecord::id);
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO work_link (work_id, url, kind, external_id) VALUES (?, ?, ?, ?)
+               RETURNING id AS "id!""#,
+            self.id.get(),
+            url.as_url().as_str(),
+            kind,
+            external_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.push(Link {
+            id: LinkId::new(id),
+            url,
+            record,
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a link from the work
+    ///
+    /// Do nothing if the work has no link with the id `link`.
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn remove_link(&mut self, link: LinkId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM work_link WHERE id = ? AND work_id = ?",
+            link.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.retain(|existing| existing.id != link);
         self.last_modified_at = last_modified_at;
         Ok(())
     }

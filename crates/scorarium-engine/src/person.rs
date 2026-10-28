@@ -7,6 +7,7 @@ use sqlx::SqliteConnection;
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -78,6 +79,7 @@ pub struct Person {
     last_modified_at: Timestamp,
     name: String,
     sort_name: String,
+    links: Vec<Link>,
 }
 
 /// A POD type to serialize a person from the database into
@@ -100,8 +102,26 @@ impl Person {
         &self.sort_name
     }
 
-    fn from_row(engine: &Engine, row: PersonRow) -> Person {
-        Person {
+    /// List the person's links in the order they were added
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
+    async fn from_row(
+        engine: &Engine,
+        conn: &mut SqliteConnection,
+        row: PersonRow,
+    ) -> Result<Person> {
+        let links = sqlx::query!(
+            "SELECT id, url, kind, external_id FROM person_link WHERE person_id = ? ORDER BY id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
+        .collect::<Result<_>>()?;
+        Ok(Person {
             engine: engine.clone(),
             id: PersonId::new(row.id),
             library: LibraryId::new(row.library_id),
@@ -110,7 +130,8 @@ impl Person {
             last_modified_at: row.last_modified_at,
             name: row.name,
             sort_name: row.sort_name,
-        }
+            links,
+        })
     }
 
     async fn fetch(
@@ -128,7 +149,10 @@ impl Person {
         )
         .fetch_optional(&mut *conn)
         .await?;
-        Ok(row.map(|row| Person::from_row(engine, row)))
+        match row {
+            Some(row) => Ok(Some(Person::from_row(engine, conn, row).await?)),
+            None => Ok(None),
+        }
     }
 
     async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
@@ -184,6 +208,81 @@ impl Person {
         self.commit_update(tx, Field::Name).await?;
         self.name = name.to_string();
         self.sort_name = sort_name.to_string();
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Link the person to `url`
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn add_link(&mut self, url: HttpUrl) -> Result<()> {
+        let record = ExternalRecord::recognize(EntityKind::Person, &url);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self
+            .links
+            .iter()
+            .any(|link| link.url == url || (link.record.is_some() && link.record == record))
+        {
+            return Ok(());
+        }
+        let kind = record
+            .as_ref()
+            .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
+        let external_id = record.as_ref().map(ExternalRecord::id);
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)
+               RETURNING id AS "id!""#,
+            self.id.get(),
+            url.as_url().as_str(),
+            kind,
+            external_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.push(Link {
+            id: LinkId::new(id),
+            url,
+            record,
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a link from the person
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn remove_link(&mut self, link: LinkId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM person_link WHERE id = ? AND person_id = ?",
+            link.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.retain(|existing| existing.id != link);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -356,10 +455,11 @@ pub(crate) async fn in_library(
             .await?
         }
     };
-    Ok(rows
-        .into_iter()
-        .map(|row| Person::from_row(engine, row))
-        .collect())
+    let mut people = Vec::with_capacity(rows.len());
+    for row in rows {
+        people.push(Person::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(people)
 }
 
 /// Clear the draft mark of every draft person named as a contributor of `publication`
@@ -475,5 +575,53 @@ fn sort_name(name: &str) -> String {
     match parts.pop() {
         Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),
         _ => name.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::EngineOptions;
+    use crate::holding::NewHolding;
+    use crate::link::LinkKind;
+    use crate::publication::ImportSeed;
+
+    #[tokio::test]
+    async fn links_collapse_on_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Russian piano album".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut person = publication
+            .create_contributor("Sergei Rachmaninoff", "composer")
+            .await
+            .unwrap();
+        for url in [
+            "https://www.wikidata.org/wiki/Q131861",
+            "https://m.wikidata.org/wiki/Q131861",
+        ] {
+            person.add_link(url.parse().unwrap()).await.unwrap();
+        }
+        person.reload().await.unwrap();
+
+        let [link] = person.links() else {
+            panic!("expected one link, got {:?}", person.links());
+        };
+        assert_eq!(
+            link.url.to_string(),
+            "https://www.wikidata.org/wiki/Q131861"
+        );
+        assert_eq!(
+            link.record,
+            Some(ExternalRecord::new(LinkKind::Wikidata, "Q131861"))
+        );
     }
 }

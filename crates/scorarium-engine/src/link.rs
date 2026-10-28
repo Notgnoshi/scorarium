@@ -54,7 +54,6 @@ impl fmt::Display for HttpUrl {
 pub struct LinkId(i64);
 
 impl LinkId {
-    #[expect(dead_code)]
     pub(crate) fn new(id: i64) -> LinkId {
         LinkId(id)
     }
@@ -156,6 +155,13 @@ pub struct ExternalRecord {
 }
 
 impl ExternalRecord {
+    pub(crate) fn new(kind: LinkKind, id: impl Into<String>) -> ExternalRecord {
+        ExternalRecord {
+            kind,
+            id: id.into(),
+        }
+    }
+
     /// Try to parse the given URL into an external record
     pub fn recognize(entity: EntityKind, url: &HttpUrl) -> Option<ExternalRecord> {
         use EntityKind::*;
@@ -204,7 +210,7 @@ impl ExternalRecord {
             "librivox.org" if entity == Person => (LinkKind::Librivox, librivox(&segments)?),
             _ => return None,
         };
-        Some(ExternalRecord { kind, id })
+        Some(ExternalRecord::new(kind, id))
     }
 
     pub fn kind(&self) -> LinkKind {
@@ -275,6 +281,20 @@ pub struct Link {
     pub id: LinkId,
     pub url: HttpUrl,
     pub record: Option<ExternalRecord>,
+}
+
+impl Link {
+    pub(crate) fn new(id: i64, url: &str, kind: &str, external_id: Option<String>) -> Result<Link> {
+        let record = match external_id {
+            Some(external_id) => Some(ExternalRecord::new(kind.parse()?, external_id)),
+            None => None,
+        };
+        Ok(Link {
+            id: LinkId::new(id),
+            url: url.parse()?,
+            record,
+        })
+    }
 }
 
 /// https://www.wikidata.org/wiki/Property:P648

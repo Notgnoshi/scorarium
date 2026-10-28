@@ -34,6 +34,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     for tag in ["editor", "reference"] {
         practical_vim.add_tag(tag.parse()?).await?;
     }
+    for url in [
+        "https://openlibrary.org/books/OL27196589M/Practical_Vim",
+        "https://www.goodreads.com/book/show/42854052-practical-vim",
+    ] {
+        practical_vim.add_link(url.parse()?).await?;
+    }
 
     let mut pro_git = create(&books, "Pro Git", None, Prose).await?;
     pro_git
@@ -44,6 +50,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     pro_git.set_stars(Some(Stars::try_from(3)?)).await?;
     pro_git.create_contributor("Scott Chacon", "author").await?;
     pro_git.create_contributor("Ben Straub", "author").await?;
+    for url in [
+        "https://openlibrary.org/books/OL26372169M/Pro_Git",
+        "https://git-scm.com/book/en/v2",
+    ] {
+        pro_git.add_link(url.parse()?).await?;
+    }
 
     let mut bierce = create(
         &books,
@@ -57,17 +69,30 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .await?;
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
-    let ambrose_bierce = bierce
+    let mut ambrose_bierce = bierce
         .create_contributor("Ambrose Bierce", "author")
-        .await?
-        .id();
+        .await?;
+    for url in [
+        "https://www.wikidata.org/wiki/Q191050",
+        "https://d-nb.info/gnd/115511474",
+        "https://www.goodreads.com/author/show/14403",
+    ] {
+        ambrose_bierce.add_link(url.parse()?).await?;
+    }
     for title in [
         "In the Midst of Life",
         "The Devil's Dictionary",
         "The Parenticide Club",
     ] {
         let mut writing = bierce.create_work(title).await?;
-        writing.add_contributor(ambrose_bierce, "author").await?;
+        writing
+            .add_contributor(ambrose_bierce.id(), "author")
+            .await?;
+        if title == "The Devil's Dictionary" {
+            writing
+                .add_link("https://www.gutenberg.org/ebooks/972".parse()?)
+                .await?;
+        }
     }
 
     let mut russian_album = create(&sheet_music, "Russian piano album", None, Music).await?;
@@ -94,16 +119,22 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             .create_contributor(composer, "composer")
             .await?;
     }
-    let rachmaninoff = sheet_music
+    let mut rachmaninoff = sheet_music
         .people(Some("composer"))
         .await?
         .into_iter()
         .find(|person| person.name() == "Sergei Rachmaninoff")
-        .map(|person| person.id())
         .ok_or(Error::NotFound)?;
+    for url in [
+        "https://imslp.org/wiki/Category:Rachmaninoff,_Sergei",
+        "https://en.wikipedia.org/wiki/Sergei_Rachmaninoff",
+        "https://www.wikidata.org/wiki/Q131861",
+    ] {
+        rachmaninoff.add_link(url.parse()?).await?;
+    }
     let mut prelude = piano_piece(
         &mut russian_album,
-        rachmaninoff,
+        rachmaninoff.id(),
         "Prelude in C-sharp minor",
         "C-sharp minor",
         None,
@@ -121,7 +152,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     }
     let mut etude_tableau = piano_piece(
         &mut russian_album,
-        rachmaninoff,
+        rachmaninoff.id(),
         "Etude-Tableau",
         "A minor",
         None,
@@ -143,12 +174,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
     masterpieces
-        .add_contributor(rachmaninoff, "composer")
+        .add_contributor(rachmaninoff.id(), "composer")
         .await?;
     masterpieces.add_work(prelude.id()).await?;
     let mut polichinelle = piano_piece(
         &mut masterpieces,
-        rachmaninoff,
+        rachmaninoff.id(),
         "Polichinelle",
         "F-sharp minor",
         None,
@@ -166,25 +197,38 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .set_publisher(Some("State Music Publishers"))
         .await?;
     isle_of_the_dead
-        .add_contributor(rachmaninoff, "composer")
+        .add_contributor(rachmaninoff.id(), "composer")
         .await?;
-    let kirkor = isle_of_the_dead
+    let mut kirkor = isle_of_the_dead
         .create_contributor("Georgy Kirkor", "arranger")
-        .await?
-        .id();
+        .await?;
+    for url in [
+        "https://imslp.org/wiki/Category:Kirkor,_Georgy",
+        "https://www.wikidata.org/wiki/Q23656067",
+    ] {
+        kirkor.add_link(url.parse()?).await?;
+    }
     let mut tone_poem = piano_piece(
         &mut isle_of_the_dead,
-        rachmaninoff,
+        rachmaninoff.id(),
         "The Isle of the Dead",
         "A minor",
         Some("5/8"),
     )
     .await?;
-    tone_poem.add_contributor(kirkor, "arranger").await?;
+    tone_poem.add_contributor(kirkor.id(), "arranger").await?;
     tone_poem.add_catalog_number("Op. 29".parse()?).await?;
     tone_poem.set_stars(Some(Stars::try_from(5)?)).await?;
     for tag in ["transcription", "want-to-learn"] {
         tone_poem.add_tag(tag.parse()?).await?;
+    }
+    for url in [
+        "https://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)",
+        "https://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637",
+        "https://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)",
+        "https://www.wikidata.org/wiki/Q629711",
+    ] {
+        tone_poem.add_link(url.parse()?).await?;
     }
 
     let mut gymnopedies = create(
@@ -202,6 +246,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .await?;
     gymnopedies.set_publisher(Some("Schirmer")).await?;
     gymnopedies.set_stars(Some(Stars::try_from(4)?)).await?;
+    gymnopedies
+        .add_link("https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)".parse()?)
+        .await?;
     let satie = gymnopedies
         .create_contributor("Erik Satie", "composer")
         .await?

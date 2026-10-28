@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO publication_link (publication_id, url, kind, external_id)\n               VALUES (?, ?, ?, ?) RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "2477e05d347f5088ad4ead81f4595a45e7016365b2af477b6c7b08fb5c297583"
+}

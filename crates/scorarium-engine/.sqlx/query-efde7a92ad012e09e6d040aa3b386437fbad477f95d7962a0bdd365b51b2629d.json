@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, url, kind, external_id FROM publication_link\n             WHERE publication_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_link",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "efde7a92ad012e09e6d040aa3b386437fbad477f95d7962a0bdd365b51b2629d"
+}

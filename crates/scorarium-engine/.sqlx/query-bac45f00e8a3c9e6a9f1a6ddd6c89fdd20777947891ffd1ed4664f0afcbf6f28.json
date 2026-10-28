@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE person SET last_modified_at = unixepoch() WHERE id = ?\n               RETURNING last_modified_at AS \"last_modified_at: Timestamp\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_modified_at: Timestamp",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "last_modified_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bac45f00e8a3c9e6a9f1a6ddd6c89fdd20777947891ffd1ed4664f0afcbf6f28"
+}

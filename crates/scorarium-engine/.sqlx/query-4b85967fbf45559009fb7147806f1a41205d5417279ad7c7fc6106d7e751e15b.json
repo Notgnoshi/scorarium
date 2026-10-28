@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, url, kind, external_id FROM person_link WHERE person_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "external_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_link",
+            "name": "external_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "4b85967fbf45559009fb7147806f1a41205d5417279ad7c7fc6106d7e751e15b"
+}

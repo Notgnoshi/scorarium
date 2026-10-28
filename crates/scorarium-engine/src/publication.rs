@@ -10,6 +10,7 @@ use crate::contributor::{Contributor, clean_role};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
 use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
@@ -125,6 +126,7 @@ pub struct Publication {
     classification: Option<Classification>,
     tags: Vec<Tag>,
     identifiers: Vec<Identifier>,
+    links: Vec<Link>,
     contributors: Vec<Contributor>,
     holdings: Vec<Holding>,
 }
@@ -180,6 +182,11 @@ impl Publication {
         &self.identifiers
     }
 
+    /// List the publication's links in the order they were added
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
@@ -212,6 +219,16 @@ impl Publication {
         .map(|identifier| Identifier::new(identifier.kind.parse()?, &identifier.value))
         .collect::<Result<Vec<_>>>()?;
         identifiers.sort();
+        let links = sqlx::query!(
+            "SELECT id, url, kind, external_id FROM publication_link
+             WHERE publication_id = ? ORDER BY id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
+        .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
             "SELECT publication_contributor.person_id, person.name, publication_contributor.role
              FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
@@ -264,6 +281,7 @@ impl Publication {
             classification: row.kind.as_deref().map(str::parse).transpose()?,
             tags,
             identifiers,
+            links,
             contributors,
             holdings,
         })
@@ -608,6 +626,81 @@ impl Publication {
         .await?;
         self.commit_update(tx, Field::Identifiers).await?;
         self.identifiers.remove(position);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Link the publication to `url`
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn add_link(&mut self, url: HttpUrl) -> Result<()> {
+        let record = ExternalRecord::recognize(EntityKind::Publication, &url);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self
+            .links
+            .iter()
+            .any(|link| link.url == url || (link.record.is_some() && link.record == record))
+        {
+            return Ok(());
+        }
+        let kind = record
+            .as_ref()
+            .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
+        let external_id = record.as_ref().map(ExternalRecord::id);
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO publication_link (publication_id, url, kind, external_id)
+               VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
+            self.id.get(),
+            url.as_url().as_str(),
+            kind,
+            external_id
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.push(Link {
+            id: LinkId::new(id),
+            url,
+            record,
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a link from the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_link(&mut self, link: LinkId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM publication_link WHERE id = ? AND publication_id = ?",
+            link.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Links).await?;
+        self.links.retain(|existing| existing.id != link);
         self.last_modified_at = last_modified_at;
         Ok(())
     }

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO work_link (work_id, url, kind, external_id) VALUES (?, ?, ?, ?)\n               RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_link",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1216c5d9396cbc0296a74d4f13cecbd768d677300a3c7e4881c50ddfd4834410"
+}

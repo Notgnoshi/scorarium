@@ -115,3 +115,39 @@ CREATE TABLE work_catalog_number (
     value TEXT NOT NULL CHECK (value <> ''),
     UNIQUE (work_id, value)
 ) STRICT;
+
+CREATE TABLE publication_link (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    publication_id INTEGER NOT NULL REFERENCES publication(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    external_id TEXT,
+    CHECK ((kind = 'generic') = (external_id IS NULL)),
+    UNIQUE (publication_id, url),
+    UNIQUE (publication_id, kind, external_id)
+) STRICT;
+CREATE INDEX publication_link_kind_external_id ON publication_link(kind, external_id);
+
+CREATE TABLE work_link (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL REFERENCES work(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    external_id TEXT,
+    CHECK ((kind = 'generic') = (external_id IS NULL)),
+    UNIQUE (work_id, url),
+    UNIQUE (work_id, kind, external_id)
+) STRICT;
+CREATE INDEX work_link_kind_external_id ON work_link(kind, external_id);
+
+CREATE TABLE person_link (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    external_id TEXT,
+    CHECK ((kind = 'generic') = (external_id IS NULL)),
+    UNIQUE (person_id, url),
+    UNIQUE (person_id, kind, external_id)
+) STRICT;
+CREATE INDEX person_link_kind_external_id ON person_link(kind, external_id);
