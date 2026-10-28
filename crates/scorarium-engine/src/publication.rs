@@ -705,6 +705,112 @@ impl Publication {
         Ok(())
     }
 
+    /// Add a holding for another copy the library owns, treating a blank location as none
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn add_holding(&mut self, holding: NewHolding<'_>) -> Result<HoldingId> {
+        let NewHolding::Physical { location } = holding;
+        let location = clean_text(location);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)
+               RETURNING id AS "id!""#,
+            self.id.get(),
+            location
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Holdings).await?;
+        let id = HoldingId::new(id);
+        self.holdings.push(Holding {
+            id,
+            kind: HoldingKind::Physical {
+                location: location.map(str::to_string),
+            },
+            loaned_to: None,
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(id)
+    }
+
+    /// Remove a copy of the publication
+    ///
+    /// Returns [Error::InvalidValue] if it is the publication's only holding, and
+    /// [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_holding(&mut self, holding: HoldingId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Some(position) = self.holdings.iter().position(|h| h.id == holding) else {
+            return Ok(());
+        };
+        if self.holdings.len() == 1 {
+            return Err(Error::InvalidValue(
+                "A publication needs at least one holding.".into(),
+            ));
+        }
+        sqlx::query!("DELETE FROM holding WHERE id = ?", holding.get())
+            .execute(&mut *tx)
+            .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Holdings).await?;
+        self.holdings.remove(position);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Lend a copy of the publication to `loaned_to`, or mark it returned with none
+    ///
+    /// Treat a blank name as none, and do nothing if the loan is unchanged.
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted or has no such holding.
+    pub async fn set_holding_loaned_to(
+        &mut self,
+        holding: HoldingId,
+        loaned_to: Option<&str>,
+    ) -> Result<()> {
+        let loaned_to = clean_text(loaned_to);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Some(position) = self.holdings.iter().position(|h| h.id == holding) else {
+            return Err(Error::NotFound);
+        };
+        if self.holdings[position].loaned_to.as_deref() == loaned_to {
+            return Ok(());
+        }
+        sqlx::query!(
+            "UPDATE holding SET loaned_to = ? WHERE id = ?",
+            loaned_to,
+            holding.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Holdings).await?;
+        self.holdings[position].loaned_to = loaned_to.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
     /// Create a work in the publication with the owning publication's draft state and classification
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
