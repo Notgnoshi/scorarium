@@ -313,10 +313,14 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EngineOptions;
 
     #[tokio::test]
     async fn audit_events_round_trip() {
-        let engine = Engine::demo().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
         let library = AuditSubject::Library {
             id: LibraryId(1),
             label: "Scores".into(),

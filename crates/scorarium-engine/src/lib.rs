@@ -9,6 +9,7 @@ pub mod publication;
 pub mod value;
 pub mod work;
 
+mod demo;
 mod engine;
 mod error;
 

@@ -235,11 +235,14 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
-    use crate::{Engine, Error};
+    use crate::{Engine, EngineOptions, Error};
 
     #[tokio::test]
     async fn create_and_load() {
-        let engine = Engine::demo().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
         let created = engine.create_library("  Scores ", true).await.unwrap();
         let loaded = engine.library(created.id()).await.unwrap().unwrap();
         assert_eq!(loaded.name(), "Scores");
@@ -252,7 +255,10 @@ mod tests {
 
     #[tokio::test]
     async fn edits_audit_once_per_change() {
-        let engine = Engine::demo().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
         let mut library = engine.create_library("Scores", false).await.unwrap();
         library.rename("Scores").await.unwrap();
         library.rename("Music").await.unwrap();
