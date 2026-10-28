@@ -88,6 +88,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     )
     .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
+    masterpieces.add_work(prelude.id()).await?;
     piano_piece(&mut masterpieces, "Polichinelle", "F-sharp minor", None).await?;
 
     let mut isle_of_the_dead = create(&sheet_music, "The Isle of the Dead", None, Music).await?;

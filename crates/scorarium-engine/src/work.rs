@@ -572,6 +572,22 @@ pub(crate) async fn insert(
         .ok_or(Error::NotFound)
 }
 
+/// Check whether `library` has a work with the id `work`
+pub(crate) async fn exists(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    work: WorkId,
+) -> Result<bool> {
+    let row = sqlx::query_scalar!(
+        "SELECT id FROM work WHERE id = ? AND library_id = ?",
+        work.get(),
+        library.get()
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.is_some())
+}
+
 /// Give the unclassified works in `publication` its `classification`
 ///
 /// Return the audit subject of each work changed, in id order.

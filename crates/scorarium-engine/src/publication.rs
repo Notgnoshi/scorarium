@@ -499,6 +499,130 @@ impl Publication {
         Ok(work)
     }
 
+    /// Add a work from the publication's library to the publication
+    ///
+    /// Commit the work and its contributors if the publication is committed, and give an
+    /// unclassified work the publication's classification.
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
+    /// work.
+    pub async fn add_work(&mut self, work: WorkId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if !work::exists(&mut tx, self.library, work).await? {
+            return Err(Error::NotFound);
+        }
+        let inserted = sqlx::query!(
+            "INSERT INTO publication_work (library_id, publication_id, work_id) VALUES (?, ?, ?)
+             ON CONFLICT (publication_id, work_id) DO NOTHING",
+            self.library.get(),
+            self.id.get(),
+            work.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if inserted == 0 {
+            return Ok(());
+        }
+        let mut committed = Vec::new();
+        if !self.draft {
+            committed.extend(work::commit_works_of(&mut tx, self.id).await?);
+            committed.extend(person::commit_contributors_of_work(&mut tx, work).await?);
+        }
+        let classified = match self.classification {
+            Some(classification) => {
+                work::inherit_classification(&mut tx, self.id, classification).await?
+            }
+            None => Vec::new(),
+        };
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contents.to_string()),
+            )
+            .await?;
+        for subject in committed {
+            tx = tx
+                .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        let field = work::Field::Classification.to_string();
+        for subject in classified {
+            tx = tx
+                .record(
+                    AuditSource::User,
+                    Action::Updated,
+                    Some(&subject),
+                    Some(&field),
+                )
+                .await?;
+        }
+        tx.commit().await?;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a work from the publication along with any orphaned works and people
+    ///
+    /// Do nothing if the publication does not contain the work.
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_work(&mut self, work: WorkId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM publication_work WHERE publication_id = ? AND work_id = ?",
+            self.id.get(),
+            work.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let works = work::collect_orphan_works(&mut tx, self.library).await?;
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contents.to_string()),
+            )
+            .await?;
+        for subject in works.iter().chain(&people) {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await?;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
     /// List every work in the publication
     pub async fn works(&self) -> Result<Vec<Work>> {
         work::in_publication(&self.engine, self.id).await
@@ -1170,25 +1294,51 @@ mod tests {
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
-        let mut publication = library
+        let mut album = library
             .create_publication(
-                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                ImportSeed::Title("Russian piano album".into()),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
-        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
-        let person = work
-            .create_contributor("Erik Satie", "composer")
+        let mut prelude = album.create_work("Prelude in C-sharp minor").await.unwrap();
+        let composer = prelude
+            .create_contributor("Sergei Rachmaninoff", "composer")
             .await
             .unwrap();
-        let id = publication.id();
+        let editor = album
+            .create_contributor("Alexander Siloti", "editor")
+            .await
+            .unwrap();
+        let mut masterpieces = library
+            .create_publication(
+                ImportSeed::Title("Rachmaninoff masterpieces for solo piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        masterpieces.add_work(prelude.id()).await.unwrap();
 
-        publication.delete().await.unwrap();
+        album.delete().await.unwrap();
 
-        assert!(Publication::load(&engine, id).await.unwrap().is_none());
-        assert!(Work::load(&engine, work.id()).await.unwrap().is_none());
-        assert!(Person::load(&engine, person.id()).await.unwrap().is_none());
+        assert!(Person::load(&engine, editor.id()).await.unwrap().is_none());
+        assert!(Work::load(&engine, prelude.id()).await.unwrap().is_some());
+        assert!(
+            Person::load(&engine, composer.id())
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        masterpieces.remove_work(prelude.id()).await.unwrap();
+
+        assert!(Work::load(&engine, prelude.id()).await.unwrap().is_none());
+        assert!(
+            Person::load(&engine, composer.id())
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {
