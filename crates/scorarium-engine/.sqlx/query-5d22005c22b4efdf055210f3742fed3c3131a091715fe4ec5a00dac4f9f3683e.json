@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE work SET key = ?, last_modified_at = unixepoch() WHERE id = ?\n               RETURNING last_modified_at AS \"last_modified_at: Timestamp\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_modified_at: Timestamp",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "last_modified_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5d22005c22b4efdf055210f3742fed3c3131a091715fe4ec5a00dac4f9f3683e"
+}

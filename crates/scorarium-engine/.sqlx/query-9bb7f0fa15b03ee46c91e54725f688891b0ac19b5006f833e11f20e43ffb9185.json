@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9bb7f0fa15b03ee46c91e54725f688891b0ac19b5006f833e11f20e43ffb9185"
+}

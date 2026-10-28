@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT work_contributor.person_id, person.name, work_contributor.role\n             FROM work_contributor JOIN person ON person.id = work_contributor.person_id\n             WHERE work_contributor.work_id = ?\n             ORDER BY work_contributor.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "person_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "role",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f475d55f8838ad929d041f7a7b2bc1bad46ae5bfc085ade859220e1c8593d6a9"
+}

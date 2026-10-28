@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work_link WHERE id = ? AND work_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "697df177a7ba0d022dd560cfc2af34328b628e9d4a59fef911dd957b857a1e94"
+}

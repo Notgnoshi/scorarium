@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM work_contributor WHERE work_id = ? AND person_id = ? AND role = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a2548dea87df77fcb633d9caf125a2559a68e28b4c309ddce52471a65fd419bd"
+}

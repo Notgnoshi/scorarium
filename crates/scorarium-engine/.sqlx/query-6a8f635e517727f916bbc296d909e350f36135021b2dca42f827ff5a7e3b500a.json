@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT tag.tag, COUNT(*) AS \"count: u32\"\n               FROM tag\n               LEFT JOIN publication ON publication.id = tag.publication_id\n               LEFT JOIN work ON work.id = tag.work_id\n               WHERE tag.library_id = ?\n                 AND (? OR COALESCE(publication.draft, work.draft) = 0)\n               GROUP BY tag.tag\n               ORDER BY tag.tag",
+  "describe": {
+    "columns": [
+      {
+        "name": "tag",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tag",
+            "name": "tag"
+          }
+        }
+      },
+      {
+        "name": "count: u32",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6a8f635e517727f916bbc296d909e350f36135021b2dca42f827ff5a7e3b500a"
+}

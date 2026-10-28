@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM publication_identifier WHERE publication_id = ? AND kind = ? AND value = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "8272759e4c5715ea0dcbc9bd2526545647c9825e5824e8ae6bf29513b354dc66"
+}

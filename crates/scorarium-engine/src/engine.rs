@@ -38,11 +38,16 @@ impl Engine {
         Engine::new(data_dir, options.migrate_on_startup, None).await
     }
 
-    /// Open a fresh engine in a temporary directory that is cleaned up on shutdown
-    pub async fn demo() -> Result<Engine> {
+    /// Open a temporary engine filled with the demo libraries
+    ///
+    /// The temporary directory is cleaned up on shutdown. A fresh database is always migrated, so
+    /// [EngineOptions::migrate_on_startup] has no effect.
+    pub async fn demo(_options: EngineOptions) -> Result<Engine> {
         let dir = tempfile::tempdir()?;
         let data_dir = dir.path().to_path_buf();
-        Engine::new(&data_dir, true, Some(dir)).await
+        let engine = Engine::new(&data_dir, true, Some(dir)).await?;
+        crate::demo::populate(&engine).await?;
+        Ok(engine)
     }
 
     async fn new(

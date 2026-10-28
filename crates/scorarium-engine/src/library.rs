@@ -5,10 +5,25 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
+use crate::holding::NewHolding;
+use crate::person::{self, Person};
+use crate::publication::{self, ImportSeed, Publication};
+use crate::value::Tag;
+use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LibraryId(pub(crate) i64);
+pub struct LibraryId(i64);
+
+impl LibraryId {
+    pub(crate) fn new(id: i64) -> LibraryId {
+        LibraryId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
 
 impl fmt::Display for LibraryId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -60,7 +75,7 @@ impl Library {
     async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
         let row = sqlx::query!(
             r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
-            self.id.0
+            self.id.get()
         )
         .fetch_optional(conn)
         .await?
@@ -80,9 +95,13 @@ impl Library {
         if self.name == name {
             return Ok(());
         }
-        sqlx::query!("UPDATE library SET name = ? WHERE id = ?", name, self.id.0)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "UPDATE library SET name = ? WHERE id = ?",
+            name,
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
         tx.record(
             AuditSource::User,
             Action::Updated,
@@ -108,7 +127,7 @@ impl Library {
         sqlx::query!(
             "UPDATE library SET private = ? WHERE id = ?",
             private,
-            self.id.0
+            self.id.get()
         )
         .execute(&mut *tx)
         .await?;
@@ -130,11 +149,13 @@ impl Library {
     /// Returns [Error::NotFound] if the library has already been deleted.
     pub async fn delete(self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
-        let name =
-            sqlx::query_scalar!("DELETE FROM library WHERE id = ? RETURNING name", self.id.0)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or(Error::NotFound)?;
+        let name = sqlx::query_scalar!(
+            "DELETE FROM library WHERE id = ? RETURNING name",
+            self.id.get()
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound)?;
         tx.record(
             AuditSource::User,
             Action::Deleted,
@@ -144,6 +165,63 @@ impl Library {
         .await?
         .commit()
         .await
+    }
+}
+
+impl Library {
+    /// Create a draft publication from `seed` with its first holding
+    pub async fn create_publication(
+        &self,
+        seed: ImportSeed,
+        holding: NewHolding<'_>,
+    ) -> Result<Publication> {
+        publication::create(&self.engine, self.id, seed, holding).await
+    }
+
+    /// List every publication in the library, drafts included, oldest first
+    pub async fn publications(&self) -> Result<Vec<Publication>> {
+        publication::in_library(&self.engine, self.id).await
+    }
+
+    /// List every work in the library
+    pub async fn works(&self) -> Result<Vec<Work>> {
+        work::in_library(&self.engine, self.id).await
+    }
+
+    /// List people in the library with the given role
+    pub async fn people(&self, role: Option<&str>) -> Result<Vec<Person>> {
+        person::in_library(&self.engine, self.id, role).await
+    }
+
+    /// Count the publications and works with each tag in the library, alphabetically by tag
+    ///
+    /// Leave drafts out of the counts unless `include_drafts` is set.
+    pub async fn tags(&self, include_drafts: bool) -> Result<Vec<(Tag, usize)>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query!(
+            r#"SELECT tag.tag, COUNT(*) AS "count: u32"
+               FROM tag
+               LEFT JOIN publication ON publication.id = tag.publication_id
+               LEFT JOIN work ON work.id = tag.work_id
+               WHERE tag.library_id = ?
+                 AND (? OR COALESCE(publication.draft, work.draft) = 0)
+               GROUP BY tag.tag
+               ORDER BY tag.tag"#,
+            self.id.get(),
+            include_drafts
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.into_iter()
+            .map(|row| Ok((row.tag.parse()?, row.count as usize)))
+            .collect()
+    }
+
+    /// List the publications and works in the library tagged `tag`, oldest first
+    pub async fn tagged_with(&self, tag: &Tag) -> Result<(Vec<Publication>, Vec<Work>)> {
+        let publications = publication::tagged(&self.engine, self.id, tag).await?;
+        let works = work::tagged(&self.engine, self.id, tag).await?;
+        Ok((publications, works))
     }
 }
 
@@ -176,7 +254,7 @@ impl Engine {
             .into_iter()
             .map(|row| Library {
                 engine: self.clone(),
-                id: LibraryId(row.id),
+                id: LibraryId::new(row.id),
                 name: row.name,
                 private: row.private,
             })
@@ -188,7 +266,7 @@ impl Engine {
         let mut conn = self.begin_read().await?;
         let row = sqlx::query!(
             r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
-            id.0
+            id.get()
         )
         .fetch_optional(&mut *conn)
         .await?;
@@ -215,7 +293,7 @@ impl Engine {
         .await?;
         let library = Library {
             engine: self.clone(),
-            id: LibraryId(id),
+            id: LibraryId::new(id),
             name: name.to_string(),
             private,
         };
@@ -235,11 +313,14 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
-    use crate::{Engine, Error};
+    use crate::{Engine, EngineOptions, Error};
 
     #[tokio::test]
     async fn create_and_load() {
-        let engine = Engine::demo().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
         let created = engine.create_library("  Scores ", true).await.unwrap();
         let loaded = engine.library(created.id()).await.unwrap().unwrap();
         assert_eq!(loaded.name(), "Scores");
@@ -252,7 +333,10 @@ mod tests {
 
     #[tokio::test]
     async fn edits_audit_once_per_change() {
-        let engine = Engine::demo().await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
         let mut library = engine.create_library("Scores", false).await.unwrap();
         library.rename("Scores").await.unwrap();
         library.rename("Music").await.unwrap();
