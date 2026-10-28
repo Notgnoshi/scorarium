@@ -7,8 +7,8 @@ use sqlx::SqliteConnection;
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
-use crate::publication::{self, Publication};
-use crate::work::{self, Work};
+use crate::publication::{self, Publication, PublicationId};
+use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -139,12 +139,7 @@ impl Person {
     }
 
     pub(crate) fn audit_subject(&self) -> AuditSubject {
-        AuditSubject::Entity {
-            kind: EntityKind::Person,
-            id: self.id.get(),
-            library: self.library,
-            label: self.name.clone(),
-        }
+        audit_subject(self.id, self.library, &self.name)
     }
 
     async fn commit_update(&self, tx: Audited<'_>, field: Field) -> Result<()> {
@@ -349,6 +344,75 @@ pub(crate) async fn in_library(
         .into_iter()
         .map(|row| Person::from_row(engine, row))
         .collect())
+}
+
+/// Clear the draft mark of every draft person named as a contributor of `publication`
+///
+/// Return the audit subject of each person committed, in id order.
+pub(crate) async fn commit_contributors_of_publication(
+    conn: &mut SqliteConnection,
+    publication: PublicationId,
+) -> Result<Vec<AuditSubject>> {
+    let mut people = sqlx::query!(
+        "UPDATE person SET draft = 0, last_modified_at = unixepoch()
+         WHERE draft = 1
+           AND id IN (SELECT person_id FROM publication_contributor WHERE publication_id = ?)
+         RETURNING id, library_id, name",
+        publication.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    people.sort_by_key(|person| person.id);
+    Ok(people
+        .into_iter()
+        .map(|person| {
+            audit_subject(
+                PersonId::new(person.id),
+                LibraryId::new(person.library_id),
+                &person.name,
+            )
+        })
+        .collect())
+}
+
+/// Clear the draft mark of every draft person named as a contributor of `work`
+///
+/// Return the audit subject of each person committed, in id order.
+pub(crate) async fn commit_contributors_of_work(
+    conn: &mut SqliteConnection,
+    work: WorkId,
+) -> Result<Vec<AuditSubject>> {
+    let mut people = sqlx::query!(
+        "UPDATE person SET draft = 0, last_modified_at = unixepoch()
+         WHERE draft = 1
+           AND id IN (SELECT person_id FROM work_contributor WHERE work_id = ?)
+         RETURNING id, library_id, name",
+        work.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    people.sort_by_key(|person| person.id);
+    Ok(people
+        .into_iter()
+        .map(|person| {
+            audit_subject(
+                PersonId::new(person.id),
+                LibraryId::new(person.library_id),
+                &person.name,
+            )
+        })
+        .collect())
+}
+
+fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
+    AuditSubject::Entity {
+        kind: EntityKind::Person,
+        id: id.get(),
+        library,
+        label: name.to_string(),
+    }
 }
 
 pub(crate) fn clean_name(name: &str) -> Result<&str> {

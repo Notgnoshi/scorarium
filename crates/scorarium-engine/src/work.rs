@@ -523,15 +523,21 @@ impl Entity for Work {
         )
         .fetch_one(&mut *tx)
         .await?;
-        tx.record(
-            AuditSource::User,
-            Action::Committed,
-            Some(&self.audit_subject()),
-            None,
-        )
-        .await?
-        .commit()
-        .await?;
+        let people = person::commit_contributors_of_work(&mut tx, self.id).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Committed,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in people {
+            tx = tx
+                .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        tx.commit().await?;
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
@@ -581,6 +587,36 @@ pub(crate) async fn inherit_classification(
            AND id IN (SELECT work_id FROM publication_work WHERE publication_id = ?)
          RETURNING id, library_id, title",
         kind,
+        publication.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    works.sort_by_key(|work| work.id);
+    Ok(works
+        .into_iter()
+        .map(|work| {
+            audit_subject(
+                WorkId::new(work.id),
+                LibraryId::new(work.library_id),
+                &work.title,
+            )
+        })
+        .collect())
+}
+
+/// Clear the draft mark of every draft work in `publication`
+///
+/// Return the audit subject of each work committed, in id order.
+pub(crate) async fn commit_works_of(
+    conn: &mut SqliteConnection,
+    publication: PublicationId,
+) -> Result<Vec<AuditSubject>> {
+    let mut works = sqlx::query!(
+        "UPDATE work SET draft = 0, last_modified_at = unixepoch()
+         WHERE draft = 1
+           AND id IN (SELECT work_id FROM publication_work WHERE publication_id = ?)
+         RETURNING id, library_id, title",
         publication.get()
     )
     .fetch_all(conn)

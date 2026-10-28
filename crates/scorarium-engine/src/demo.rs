@@ -1,3 +1,4 @@
+use crate::entity::Entity;
 use crate::holding::NewHolding;
 use crate::library::Library;
 use crate::publication::{ImportSeed, Publication};
@@ -122,6 +123,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         let mut gymnopedie = piano_piece(&mut gymnopedies, &title, key, Some("3/4")).await?;
         if number == 1 {
             gymnopedie.set_stars(Some(Stars::try_from(5)?)).await?;
+        }
+    }
+
+    for library in [&books, &sheet_music] {
+        for mut publication in library.publications().await? {
+            publication.commit().await?;
         }
     }
 

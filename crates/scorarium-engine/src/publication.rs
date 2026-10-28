@@ -612,6 +612,11 @@ impl Entity for Publication {
         if !self.draft {
             return Ok(());
         }
+        if self.title.is_none() {
+            return Err(Error::InvalidValue(
+                "A publication needs a title before it can be committed.".into(),
+            ));
+        }
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET draft = 0, last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -619,15 +624,31 @@ impl Entity for Publication {
         )
         .fetch_one(&mut *tx)
         .await?;
-        tx.record(
-            AuditSource::User,
-            Action::Committed,
-            Some(&self.audit_subject()),
-            None,
+        let mut subjects = work::commit_works_of(&mut tx, self.id).await?;
+        let works = sqlx::query_scalar!(
+            "SELECT work_id FROM publication_work WHERE publication_id = ? ORDER BY work_id",
+            self.id.get()
         )
-        .await?
-        .commit()
+        .fetch_all(&mut *tx)
         .await?;
+        for work in works {
+            subjects.extend(person::commit_contributors_of_work(&mut tx, WorkId::new(work)).await?);
+        }
+        subjects.extend(person::commit_contributors_of_publication(&mut tx, self.id).await?);
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Committed,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in subjects {
+            tx = tx
+                .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        tx.commit().await?;
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
@@ -1067,6 +1088,44 @@ mod tests {
                 location: Some("Desk".into())
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn commit_cascades_through_works_to_people() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
+        let person = work
+            .create_contributor("Erik Satie", "composer")
+            .await
+            .unwrap();
+        let editor = publication
+            .create_contributor("Isidor Philipp", "editor")
+            .await
+            .unwrap();
+        assert!(publication.is_draft());
+        assert!(work.is_draft());
+        assert!(person.is_draft());
+        assert!(editor.is_draft());
+
+        publication.commit().await.unwrap();
+
+        let work = Work::load(&engine, work.id()).await.unwrap().unwrap();
+        let person = Person::load(&engine, person.id()).await.unwrap().unwrap();
+        let editor = Person::load(&engine, editor.id()).await.unwrap().unwrap();
+        assert!(!work.is_draft());
+        assert!(!person.is_draft());
+        assert!(!editor.is_draft());
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {
