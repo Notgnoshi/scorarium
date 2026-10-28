@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)\n             VALUES (?, ?, ?, ?)\n             ON CONFLICT (publication_id, person_id, role) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2111efcead658785d0fc065998d1ee99db99bbb4318dd2b7f1cd7730a009f47d"
+}

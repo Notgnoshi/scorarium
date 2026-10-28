@@ -1,11 +1,12 @@
 use crate::entity::Entity;
 use crate::holding::NewHolding;
 use crate::library::Library;
+use crate::person::PersonId;
 use crate::publication::{ImportSeed, Publication};
 use crate::value::Classification::{self, Music, Prose};
 use crate::value::{Stars, Year};
 use crate::work::Work;
-use crate::{Engine, Result};
+use crate::{Engine, Error, Result};
 
 /// Populate a demo database intended to exercise several different aspects of Scorarium's data model
 pub(crate) async fn populate(engine: &Engine) -> Result<()> {
@@ -43,12 +44,18 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
-    bierce
+    let ambrose_bierce = bierce
         .create_contributor("Ambrose Bierce", "author")
-        .await?;
-    bierce.create_work("In the Midst of Life").await?;
-    bierce.create_work("The Devil's Dictionary").await?;
-    bierce.create_work("The Parenticide Club").await?;
+        .await?
+        .id();
+    for title in [
+        "In the Midst of Life",
+        "The Devil's Dictionary",
+        "The Parenticide Club",
+    ] {
+        let mut writing = bierce.create_work(title).await?;
+        writing.add_contributor(ambrose_bierce, "author").await?;
+    }
 
     let mut russian_album = create(&sheet_music, "Russian piano album", None, Music).await?;
     russian_album.set_publisher(Some("Schirmer")).await?;
@@ -65,8 +72,16 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             .create_contributor(composer, "composer")
             .await?;
     }
+    let rachmaninoff = sheet_music
+        .people(Some("composer"))
+        .await?
+        .into_iter()
+        .find(|person| person.name() == "Sergei Rachmaninoff")
+        .map(|person| person.id())
+        .ok_or(Error::NotFound)?;
     let mut prelude = piano_piece(
         &mut russian_album,
+        rachmaninoff,
         "Prelude in C-sharp minor",
         "C-sharp minor",
         None,
@@ -78,7 +93,14 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             "The big chords at the end need the whole arm, not the fingers.",
         ))
         .await?;
-    piano_piece(&mut russian_album, "Etude-Tableau", "A minor", None).await?;
+    piano_piece(
+        &mut russian_album,
+        rachmaninoff,
+        "Etude-Tableau",
+        "A minor",
+        None,
+    )
+    .await?;
 
     let mut masterpieces = create(
         &sheet_music,
@@ -88,23 +110,39 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     )
     .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
+    masterpieces
+        .add_contributor(rachmaninoff, "composer")
+        .await?;
     masterpieces.add_work(prelude.id()).await?;
-    piano_piece(&mut masterpieces, "Polichinelle", "F-sharp minor", None).await?;
+    piano_piece(
+        &mut masterpieces,
+        rachmaninoff,
+        "Polichinelle",
+        "F-sharp minor",
+        None,
+    )
+    .await?;
 
     let mut isle_of_the_dead = create(&sheet_music, "The Isle of the Dead", None, Music).await?;
     isle_of_the_dead
         .set_publisher(Some("State Music Publishers"))
         .await?;
     isle_of_the_dead
-        .create_contributor("Georgy Kirkor", "arranger")
+        .add_contributor(rachmaninoff, "composer")
         .await?;
+    let kirkor = isle_of_the_dead
+        .create_contributor("Georgy Kirkor", "arranger")
+        .await?
+        .id();
     let mut tone_poem = piano_piece(
         &mut isle_of_the_dead,
+        rachmaninoff,
         "The Isle of the Dead",
         "A minor",
         Some("5/8"),
     )
     .await?;
+    tone_poem.add_contributor(kirkor, "arranger").await?;
     tone_poem.set_stars(Some(Stars::try_from(5)?)).await?;
 
     let mut gymnopedies = create(
@@ -116,12 +154,13 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
     gymnopedies.set_publisher(Some("Schirmer")).await?;
     gymnopedies.set_stars(Some(Stars::try_from(4)?)).await?;
-    gymnopedies
+    let satie = gymnopedies
         .create_contributor("Erik Satie", "composer")
-        .await?;
+        .await?
+        .id();
     for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
         let title = format!("Gymnopedie No. {number}");
-        let mut gymnopedie = piano_piece(&mut gymnopedies, &title, key, Some("3/4")).await?;
+        let mut gymnopedie = piano_piece(&mut gymnopedies, satie, &title, key, Some("3/4")).await?;
         if number == 1 {
             gymnopedie.set_stars(Some(Stars::try_from(5)?)).await?;
         }
@@ -153,9 +192,10 @@ async fn create(
     Ok(publication)
 }
 
-/// Create a piece for solo piano in `publication`
+/// Create a piece for solo piano by `composer` in `publication`
 async fn piano_piece(
     publication: &mut Publication,
+    composer: PersonId,
     title: &str,
     key: &str,
     time_signature: Option<&str>,
@@ -164,5 +204,6 @@ async fn piano_piece(
     work.set_key(Some(key)).await?;
     work.set_time_signature(time_signature).await?;
     work.set_instrumentation(Some("piano")).await?;
+    work.add_contributor(composer, "composer").await?;
     Ok(work)
 }

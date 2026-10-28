@@ -468,6 +468,124 @@ impl Work {
         self.last_modified_at = last_modified_at;
         Ok(person)
     }
+
+    /// Add a person from the work's library as a contributor in `role`
+    ///
+    /// Commit the person if it is a draft and the work is committed.
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted or its library has no such person.
+    pub async fn add_contributor(&mut self, person: PersonId, role: impl AsRef<str>) -> Result<()> {
+        let role = clean_role(role.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let name = person::name(&mut tx, self.library, person)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let inserted = sqlx::query!(
+            "INSERT INTO work_contributor (library_id, work_id, person_id, role)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (work_id, person_id, role) DO NOTHING",
+            self.library.get(),
+            self.id.get(),
+            person.get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if inserted == 0 {
+            return Ok(());
+        }
+        let committed = if self.draft {
+            Vec::new()
+        } else {
+            person::commit_contributors_of_work(&mut tx, self.id).await?
+        };
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contributors.to_string()),
+            )
+            .await?;
+        for subject in committed {
+            tx = tx
+                .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        tx.commit().await?;
+        self.contributors.push(Contributor {
+            person,
+            name,
+            role: role.to_string(),
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a contributor from the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn remove_contributor(
+        &mut self,
+        person: PersonId,
+        role: impl AsRef<str>,
+    ) -> Result<()> {
+        let role = role.as_ref().trim();
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM work_contributor WHERE work_id = ? AND person_id = ? AND role = ?",
+            self.id.get(),
+            person.get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contributors.to_string()),
+            )
+            .await?;
+        for subject in people {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await?;
+        self.contributors
+            .retain(|contributor| !(contributor.person == person && contributor.role == role));
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
 }
 
 impl Entity for Work {

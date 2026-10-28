@@ -298,6 +298,22 @@ pub(crate) async fn insert(
         .ok_or(Error::NotFound)
 }
 
+/// Get the name of the person with the id `person`, or none if `library` has no such person
+pub(crate) async fn name(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    person: PersonId,
+) -> Result<Option<String>> {
+    let name = sqlx::query_scalar!(
+        "SELECT name FROM person WHERE id = ? AND library_id = ?",
+        person.get(),
+        library.get()
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(name)
+}
+
 /// List the people with the given `role` in `library`
 pub(crate) async fn in_library(
     engine: &Engine,

@@ -683,6 +683,126 @@ impl Publication {
         Ok(person)
     }
 
+    /// Name a person from the publication's library as a contributor in `role`
+    ///
+    /// Commit the person if it is a draft and the publication is committed.
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
+    /// person.
+    pub async fn add_contributor(&mut self, person: PersonId, role: impl AsRef<str>) -> Result<()> {
+        let role = clean_role(role.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let name = person::name(&mut tx, self.library, person)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let inserted = sqlx::query!(
+            "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (publication_id, person_id, role) DO NOTHING",
+            self.library.get(),
+            self.id.get(),
+            person.get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if inserted == 0 {
+            return Ok(());
+        }
+        let committed = if self.draft {
+            Vec::new()
+        } else {
+            person::commit_contributors_of_publication(&mut tx, self.id).await?
+        };
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contributors.to_string()),
+            )
+            .await?;
+        for subject in committed {
+            tx = tx
+                .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        tx.commit().await?;
+        self.contributors.push(Contributor {
+            person,
+            name,
+            role: role.to_string(),
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a contributor from the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_contributor(
+        &mut self,
+        person: PersonId,
+        role: impl AsRef<str>,
+    ) -> Result<()> {
+        let role = role.as_ref().trim();
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let removed = sqlx::query!(
+            "DELETE FROM publication_contributor
+             WHERE publication_id = ? AND person_id = ? AND role = ?",
+            self.id.get(),
+            person.get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if removed == 0 {
+            return Ok(());
+        }
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Contributors.to_string()),
+            )
+            .await?;
+        for subject in people {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await?;
+        self.contributors
+            .retain(|contributor| !(contributor.person == person && contributor.role == role));
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
     /// Delete the publication along with any orphaned works and people
     ///
     /// Returns [Error::NotFound] if the publication has already been deleted.
@@ -1339,6 +1459,51 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn contributors_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let satie = publication
+            .create_contributor("Erik Satie", "composer")
+            .await
+            .unwrap()
+            .id();
+        publication.add_contributor(satie, "editor").await.unwrap();
+        publication.reload().await.unwrap();
+        let contributor = |role: &str| Contributor {
+            person: satie,
+            name: "Erik Satie".into(),
+            role: role.into(),
+        };
+        assert_eq!(
+            publication.contributors(),
+            [contributor("composer"), contributor("editor")]
+        );
+
+        publication
+            .remove_contributor(satie, "composer")
+            .await
+            .unwrap();
+        publication.reload().await.unwrap();
+        assert_eq!(publication.contributors(), [contributor("editor")]);
+
+        publication
+            .remove_contributor(satie, "editor")
+            .await
+            .unwrap();
+        assert!(Person::load(&engine, satie).await.unwrap().is_none());
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {
