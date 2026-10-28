@@ -6,10 +6,12 @@ use isbn::{Isbn, Isbn13, IsbnError};
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::contributor::{Contributor, clean_role};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
-use crate::value::{Classification, Stars, Year};
+use crate::person::{self, Person, PersonId};
+use crate::value::{Classification, Stars, Year, clean_text};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -119,6 +121,7 @@ pub struct Publication {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    contributors: Vec<Contributor>,
     holdings: Vec<Holding>,
 }
 
@@ -163,6 +166,10 @@ impl Publication {
         self.classification
     }
 
+    pub fn contributors(&self) -> &[Contributor] {
+        &self.contributors
+    }
+
     pub fn holdings(&self) -> &[Holding] {
         &self.holdings
     }
@@ -172,6 +179,22 @@ impl Publication {
         conn: &mut SqliteConnection,
         row: PublicationRow,
     ) -> Result<Publication> {
+        let contributors = sqlx::query!(
+            "SELECT publication_contributor.person_id, person.name, publication_contributor.role
+             FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
+             WHERE publication_contributor.publication_id = ?
+             ORDER BY publication_contributor.id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|contributor| Contributor {
+            person: PersonId::new(contributor.person_id),
+            name: contributor.name,
+            role: contributor.role,
+        })
+        .collect();
         let holdings = sqlx::query!(
             "SELECT id, kind, location, loaned_to FROM holding WHERE publication_id = ? ORDER BY id",
             row.id
@@ -206,6 +229,7 @@ impl Publication {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            contributors,
             holdings,
         })
     }
@@ -479,6 +503,61 @@ impl Publication {
     pub async fn works(&self) -> Result<Vec<Work>> {
         work::in_publication(&self.engine, self.id).await
     }
+
+    /// Create a person with the owning publication's draft state
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn create_contributor(
+        &mut self,
+        name: impl AsRef<str>,
+        role: impl AsRef<str>,
+    ) -> Result<Person> {
+        let name = person::clean_name(name.as_ref())?;
+        let role = clean_role(role.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
+        sqlx::query!(
+            "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)
+             VALUES (?, ?, ?, ?)",
+            self.library.get(),
+            self.id.get(),
+            person.id().get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Created,
+            Some(&person.audit_subject()),
+            None,
+        )
+        .await?
+        .record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some(&Field::Contributors.to_string()),
+        )
+        .await?
+        .commit()
+        .await?;
+        self.contributors.push(Contributor {
+            person: person.id(),
+            name: person.name().to_string(),
+            role: role.to_string(),
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(person)
+    }
 }
 
 impl Entity for Publication {
@@ -644,6 +723,34 @@ pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publ
     Ok(publications)
 }
 
+/// List every publication that names `person` as a contributor
+pub(crate) async fn with_contributor(
+    engine: &Engine,
+    person: PersonId,
+) -> Result<Vec<Publication>> {
+    let mut conn = engine.begin_read().await?;
+    let person = person.get();
+    // A person can contribute in several roles, so a join would repeat the publication
+    let rows = sqlx::query_as!(
+        PublicationRow,
+        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+                  note, kind, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM publication
+           WHERE id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?)
+           ORDER BY id"#,
+        person
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut publications = Vec::with_capacity(rows.len());
+    for row in rows {
+        publications.push(Publication::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(publications)
+}
+
 fn clean_title(title: &str) -> Result<&str> {
     let title = title.trim();
     if title.is_empty() {
@@ -652,11 +759,6 @@ fn clean_title(title: &str) -> Result<&str> {
         ));
     }
     Ok(title)
-}
-
-/// Trim optional text, treating blank text as none
-pub(crate) fn clean_text(text: Option<&str>) -> Option<&str> {
-    text.map(str::trim).filter(|text| !text.is_empty())
 }
 
 /// The kinds of identifier printed on a publication

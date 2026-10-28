@@ -49,3 +49,39 @@ CREATE TABLE publication_work (
     UNIQUE (publication_id, work_id)
 ) STRICT;
 CREATE INDEX publication_work_work ON publication_work(work_id);
+
+CREATE TABLE person (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    library_id INTEGER NOT NULL REFERENCES library(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    sort_name TEXT NOT NULL,
+    profile TEXT,
+    draft INTEGER NOT NULL DEFAULT 0 CHECK (draft IN (0, 1)),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    last_modified_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    UNIQUE (library_id, id)
+) STRICT;
+
+CREATE TABLE publication_contributor (
+    id INTEGER PRIMARY KEY,
+    library_id INTEGER NOT NULL,
+    publication_id INTEGER NOT NULL,
+    person_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role <> ''),
+    FOREIGN KEY (publication_id, library_id) REFERENCES publication(id, library_id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id, library_id) REFERENCES person(id, library_id) ON DELETE CASCADE,
+    UNIQUE (publication_id, person_id, role)
+) STRICT;
+CREATE INDEX publication_contributor_person ON publication_contributor(person_id);
+
+CREATE TABLE work_contributor (
+    id INTEGER PRIMARY KEY,
+    library_id INTEGER NOT NULL,
+    work_id INTEGER NOT NULL,
+    person_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role <> ''),
+    FOREIGN KEY (work_id, library_id) REFERENCES work(id, library_id) ON DELETE CASCADE,
+    FOREIGN KEY (person_id, library_id) REFERENCES person(id, library_id) ON DELETE CASCADE,
+    UNIQUE (work_id, person_id, role)
+) STRICT;
+CREATE INDEX work_contributor_person ON work_contributor(person_id);

@@ -6,6 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::holding::NewHolding;
+use crate::person::{self, Person};
 use crate::publication::{self, ImportSeed, Publication};
 use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
@@ -184,6 +185,11 @@ impl Library {
     /// List every work in the library
     pub async fn works(&self) -> Result<Vec<Work>> {
         work::in_library(&self.engine, self.id).await
+    }
+
+    /// List people in the library with the given role
+    pub async fn people(&self, role: Option<&str>) -> Result<Vec<Person>> {
+        person::in_library(&self.engine, self.id, role).await
     }
 }
 

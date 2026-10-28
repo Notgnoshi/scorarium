@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, library_id, name, sort_name, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person\n                   WHERE library_id = ?\n                     AND (EXISTS (SELECT 1 FROM publication_contributor\n                                  WHERE person_id = person.id AND role = ?)\n                          OR EXISTS (SELECT 1 FROM work_contributor\n                                     WHERE person_id = person.id AND role = ?))\n                   ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "library_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "sort_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "sort_name"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "draft"
+          }
+        }
+      },
+      {
+        "name": "created_at: Timestamp",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "last_modified_at: Timestamp",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "last_modified_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e2a346ddedbd21c8474e7d74a5e32332555b231df2e58553617a94d48a46d591"
+}

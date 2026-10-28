@@ -2,10 +2,12 @@
 pub mod legacy;
 
 pub mod audit;
+pub mod contributor;
 pub mod entity;
 pub mod holding;
 pub mod library;
 pub mod link;
+pub mod person;
 pub mod publication;
 pub mod value;
 pub mod work;

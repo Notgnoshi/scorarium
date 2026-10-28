@@ -164,6 +164,10 @@ pub fn parse_tags(input: &str) -> Result<Vec<Tag>> {
     Ok(tags)
 }
 
+pub(crate) fn clean_text(text: Option<&str>) -> Option<&str> {
+    text.map(str::trim).filter(|text| !text.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

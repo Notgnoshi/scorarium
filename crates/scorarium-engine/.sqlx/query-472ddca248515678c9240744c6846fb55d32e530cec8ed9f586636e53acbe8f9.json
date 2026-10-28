@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, library_id, title, key, time_signature, instrumentation,\n                  stars AS \"stars: u8\", note, kind, draft AS \"draft: bool\",\n                  created_at AS \"created_at: Timestamp\",\n                  last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM work\n           WHERE id IN (SELECT work_id FROM work_contributor WHERE person_id = ?)\n           ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "library_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "library_id"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "key",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "name": "time_signature",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "time_signature"
+          }
+        }
+      },
+      {
+        "name": "instrumentation",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "instrumentation"
+          }
+        }
+      },
+      {
+        "name": "stars: u8",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "stars"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "draft"
+          }
+        }
+      },
+      {
+        "name": "created_at: Timestamp",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "last_modified_at: Timestamp",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "last_modified_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "472ddca248515678c9240744c6846fb55d32e530cec8ed9f586636e53acbe8f9"
+}

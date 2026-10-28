@@ -6,10 +6,12 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::contributor::{Contributor, clean_role};
 use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
-use crate::publication::{self, Publication, PublicationId, clean_text};
-use crate::value::{Classification, Stars};
+use crate::person::{self, Person, PersonId};
+use crate::publication::{self, Publication, PublicationId};
+use crate::value::{Classification, Stars, clean_text};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -108,6 +110,7 @@ pub struct Work {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    contributors: Vec<Contributor>,
 }
 
 /// A POD type to serialize a work from the database into
@@ -155,7 +158,27 @@ impl Work {
         self.classification
     }
 
-    fn from_row(engine: &Engine, row: WorkRow) -> Result<Work> {
+    pub fn contributors(&self) -> &[Contributor] {
+        &self.contributors
+    }
+
+    async fn from_row(engine: &Engine, conn: &mut SqliteConnection, row: WorkRow) -> Result<Work> {
+        let contributors = sqlx::query!(
+            "SELECT work_contributor.person_id, person.name, work_contributor.role
+             FROM work_contributor JOIN person ON person.id = work_contributor.person_id
+             WHERE work_contributor.work_id = ?
+             ORDER BY work_contributor.id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|contributor| Contributor {
+            person: PersonId::new(contributor.person_id),
+            name: contributor.name,
+            role: contributor.role,
+        })
+        .collect();
         Ok(Work {
             engine: engine.clone(),
             id: WorkId::new(row.id),
@@ -170,6 +193,7 @@ impl Work {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            contributors,
         })
     }
 
@@ -189,7 +213,10 @@ impl Work {
         )
         .fetch_optional(&mut *conn)
         .await?;
-        row.map(|row| Work::from_row(engine, row)).transpose()
+        match row {
+            Some(row) => Ok(Some(Work::from_row(engine, conn, row).await?)),
+            None => Ok(None),
+        }
     }
 
     async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
@@ -387,6 +414,60 @@ impl Work {
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::containing(&self.engine, self.id).await
     }
+
+    /// Create a person with the owning work's draft state
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn create_contributor(
+        &mut self,
+        name: impl AsRef<str>,
+        role: impl AsRef<str>,
+    ) -> Result<Person> {
+        let name = person::clean_name(name.as_ref())?;
+        let role = clean_role(role.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
+        sqlx::query!(
+            "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
+            self.library.get(),
+            self.id.get(),
+            person.id().get(),
+            role
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Created,
+            Some(&person.audit_subject()),
+            None,
+        )
+        .await?
+        .record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some(&Field::Contributors.to_string()),
+        )
+        .await?
+        .commit()
+        .await?;
+        self.contributors.push(Contributor {
+            person: person.id(),
+            name: person.name().to_string(),
+            role: role.to_string(),
+        });
+        self.last_modified_at = last_modified_at;
+        Ok(person)
+    }
 }
 
 impl Entity for Work {
@@ -522,7 +603,7 @@ pub(crate) async fn inherit_classification(
 pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Vec<Work>> {
     let mut conn = engine.begin_read().await?;
     let library = library.get();
-    sqlx::query_as!(
+    let rows = sqlx::query_as!(
         WorkRow,
         r#"SELECT id, library_id, title, key, time_signature, instrumentation,
                   stars AS "stars: u8", note, kind, draft AS "draft: bool",
@@ -532,10 +613,12 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
         library
     )
     .fetch_all(&mut *conn)
-    .await?
-    .into_iter()
-    .map(|row| Work::from_row(engine, row))
-    .collect()
+    .await?;
+    let mut works = Vec::with_capacity(rows.len());
+    for row in rows {
+        works.push(Work::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(works)
 }
 
 /// List every work in `publication`
@@ -545,7 +628,7 @@ pub(crate) async fn in_publication(
 ) -> Result<Vec<Work>> {
     let mut conn = engine.begin_read().await?;
     let publication = publication.get();
-    sqlx::query_as!(
+    let rows = sqlx::query_as!(
         WorkRow,
         r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
                   work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
@@ -558,10 +641,37 @@ pub(crate) async fn in_publication(
         publication
     )
     .fetch_all(&mut *conn)
-    .await?
-    .into_iter()
-    .map(|row| Work::from_row(engine, row))
-    .collect()
+    .await?;
+    let mut works = Vec::with_capacity(rows.len());
+    for row in rows {
+        works.push(Work::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(works)
+}
+
+/// List every work that names `person` as a contributor
+pub(crate) async fn with_contributor(engine: &Engine, person: PersonId) -> Result<Vec<Work>> {
+    let mut conn = engine.begin_read().await?;
+    let person = person.get();
+    // A person can contribute in several roles, so a join would repeat the work
+    let rows = sqlx::query_as!(
+        WorkRow,
+        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+                  stars AS "stars: u8", note, kind, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM work
+           WHERE id IN (SELECT work_id FROM work_contributor WHERE person_id = ?)
+           ORDER BY id"#,
+        person
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut works = Vec::with_capacity(rows.len());
+    for row in rows {
+        works.push(Work::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(works)
 }
 
 fn audit_subject(id: WorkId, library: LibraryId, title: &str) -> AuditSubject {
