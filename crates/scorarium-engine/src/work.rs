@@ -635,6 +635,29 @@ pub(crate) async fn commit_works_of(
         .collect())
 }
 
+/// Delete every work in `library` that no publication contains
+///
+/// Return the audit subject of each work deleted, in id order.
+pub(crate) async fn collect_orphan_works(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+) -> Result<Vec<AuditSubject>> {
+    let mut works = sqlx::query!(
+        "DELETE FROM work
+         WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)
+         RETURNING id AS \"id!\", title",
+        library.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    works.sort_by_key(|work| work.id);
+    Ok(works
+        .into_iter()
+        .map(|work| audit_subject(WorkId::new(work.id), library, &work.title))
+        .collect())
+}
+
 /// List every work in `library`
 pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Vec<Work>> {
     let mut conn = engine.begin_read().await?;

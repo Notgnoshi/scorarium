@@ -406,6 +406,31 @@ pub(crate) async fn commit_contributors_of_work(
         .collect())
 }
 
+/// Delete every person in `library` that no publication or work names as a contributor
+///
+/// Return the audit subject of each person deleted, in id order.
+pub(crate) async fn collect_orphan_people(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+) -> Result<Vec<AuditSubject>> {
+    let mut people = sqlx::query!(
+        "DELETE FROM person
+         WHERE library_id = ?
+           AND id NOT IN (SELECT person_id FROM publication_contributor)
+           AND id NOT IN (SELECT person_id FROM work_contributor)
+         RETURNING id AS \"id!\", name",
+        library.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    people.sort_by_key(|person| person.id);
+    Ok(people
+        .into_iter()
+        .map(|person| audit_subject(PersonId::new(person.id), library, &person.name))
+        .collect())
+}
+
 fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
     AuditSubject::Entity {
         kind: EntityKind::Person,

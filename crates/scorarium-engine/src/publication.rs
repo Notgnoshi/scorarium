@@ -558,6 +558,41 @@ impl Publication {
         self.last_modified_at = last_modified_at;
         Ok(person)
     }
+
+    /// Delete the publication along with any orphaned works and people
+    ///
+    /// Returns [Error::NotFound] if the publication has already been deleted.
+    pub async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.title = sqlx::query_scalar!(
+            "DELETE FROM publication WHERE id = ? RETURNING title",
+            self.id.get()
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound)?;
+        let works = work::collect_orphan_works(&mut tx, self.library).await?;
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Deleted,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in works.iter().chain(&people) {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await
+    }
 }
 
 impl Entity for Publication {
@@ -1126,6 +1161,34 @@ mod tests {
         assert!(!work.is_draft());
         assert!(!person.is_draft());
         assert!(!editor.is_draft());
+    }
+
+    #[tokio::test]
+    async fn delete_collects_orphans() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
+        let person = work
+            .create_contributor("Erik Satie", "composer")
+            .await
+            .unwrap();
+        let id = publication.id();
+
+        publication.delete().await.unwrap();
+
+        assert!(Publication::load(&engine, id).await.unwrap().is_none());
+        assert!(Work::load(&engine, work.id()).await.unwrap().is_none());
+        assert!(Person::load(&engine, person.id()).await.unwrap().is_none());
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {
