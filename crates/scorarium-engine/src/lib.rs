@@ -3,6 +3,7 @@ pub mod legacy;
 
 pub mod audit;
 pub mod entity;
+pub mod holding;
 pub mod library;
 pub mod link;
 pub mod publication;

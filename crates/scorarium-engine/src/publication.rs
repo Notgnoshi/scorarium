@@ -1,9 +1,561 @@
 use std::fmt;
+use std::num::ParseIntError;
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
+use sqlx::SqliteConnection;
 
-use crate::{Error, Result};
+use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::entity::{Entity, EntityKind, Timestamp};
+use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
+use crate::library::LibraryId;
+use crate::value::{Classification, Stars, Year};
+use crate::{Engine, Error, Result};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PublicationId(i64);
+
+impl PublicationId {
+    pub(crate) fn new(id: i64) -> PublicationId {
+        PublicationId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl fmt::Display for PublicationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for PublicationId {
+    type Err = ParseIntError;
+
+    fn from_str(text: &str) -> std::result::Result<PublicationId, ParseIntError> {
+        text.parse().map(PublicationId)
+    }
+}
+
+/// The different inputs that can be used to import a draft publication
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportSeed {
+    /// A user-entered title
+    Title(String),
+}
+
+/// The fields of a publication
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Field {
+    Title,
+    Publisher,
+    Year,
+    Stars,
+    Note,
+    Classification,
+    Tags,
+    Identifiers,
+    Links,
+    Contributors,
+    Contents,
+    Holdings,
+}
+
+impl fmt::Display for Field {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Field::Title => "title",
+            Field::Publisher => "publisher",
+            Field::Year => "year",
+            Field::Stars => "stars",
+            Field::Note => "note",
+            Field::Classification => "classification",
+            Field::Tags => "tags",
+            Field::Identifiers => "identifiers",
+            Field::Links => "links",
+            Field::Contributors => "contributors",
+            Field::Contents => "contents",
+            Field::Holdings => "holdings",
+        })
+    }
+}
+
+impl FromStr for Field {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Field> {
+        Ok(match text {
+            "title" => Field::Title,
+            "publisher" => Field::Publisher,
+            "year" => Field::Year,
+            "stars" => Field::Stars,
+            "note" => Field::Note,
+            "classification" => Field::Classification,
+            "tags" => Field::Tags,
+            "identifiers" => Field::Identifiers,
+            "links" => Field::Links,
+            "contributors" => Field::Contributors,
+            "contents" => Field::Contents,
+            "holdings" => Field::Holdings,
+            other => return Err(eyre::eyre!("unknown publication field {other:?}").into()),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Publication {
+    engine: Engine,
+    id: PublicationId,
+    library: LibraryId,
+    draft: bool,
+    created_at: Timestamp,
+    last_modified_at: Timestamp,
+    title: Option<String>,
+    publisher: Option<String>,
+    year: Option<Year>,
+    stars: Option<Stars>,
+    note: Option<String>,
+    classification: Option<Classification>,
+    holdings: Vec<Holding>,
+}
+
+/// A POD type that can be deserialized into by sqlx
+struct PublicationRow {
+    id: i64,
+    library_id: i64,
+    title: Option<String>,
+    publisher: Option<String>,
+    year: Option<u16>,
+    stars: Option<u8>,
+    note: Option<String>,
+    kind: Option<String>,
+    draft: bool,
+    created_at: Timestamp,
+    last_modified_at: Timestamp,
+}
+
+impl Publication {
+    /// Only a draft publication is allowed to be missing a title
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn publisher(&self) -> Option<&str> {
+        self.publisher.as_deref()
+    }
+
+    pub fn year(&self) -> Option<Year> {
+        self.year
+    }
+
+    pub fn stars(&self) -> Option<Stars> {
+        self.stars
+    }
+
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
+    }
+
+    pub fn classification(&self) -> Option<Classification> {
+        self.classification
+    }
+
+    pub fn holdings(&self) -> &[Holding] {
+        &self.holdings
+    }
+
+    async fn from_row(
+        engine: &Engine,
+        conn: &mut SqliteConnection,
+        row: PublicationRow,
+    ) -> Result<Publication> {
+        let holdings = sqlx::query!(
+            "SELECT id, kind, location, loaned_to FROM holding WHERE publication_id = ? ORDER BY id",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|holding| {
+            let kind = match holding.kind.as_str() {
+                "physical" => HoldingKind::Physical {
+                    location: holding.location,
+                },
+                other => return Err(eyre::eyre!("unsupported holding kind {other:?}").into()),
+            };
+            Ok(Holding {
+                id: HoldingId::new(holding.id),
+                kind,
+                loaned_to: holding.loaned_to,
+            })
+        })
+        .collect::<Result<_>>()?;
+        Ok(Publication {
+            engine: engine.clone(),
+            id: PublicationId::new(row.id),
+            library: LibraryId::new(row.library_id),
+            draft: row.draft,
+            created_at: row.created_at,
+            last_modified_at: row.last_modified_at,
+            title: row.title,
+            publisher: row.publisher,
+            year: row.year.map(Year::try_from).transpose()?,
+            stars: row.stars.map(Stars::try_from).transpose()?,
+            note: row.note,
+            classification: row.kind.as_deref().map(str::parse).transpose()?,
+            holdings,
+        })
+    }
+
+    async fn fetch(
+        engine: &Engine,
+        conn: &mut SqliteConnection,
+        id: PublicationId,
+    ) -> Result<Option<Publication>> {
+        let row = sqlx::query_as!(
+            PublicationRow,
+            r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+                      note, kind, draft AS "draft: bool",
+                      created_at AS "created_at: Timestamp",
+                      last_modified_at AS "last_modified_at: Timestamp"
+               FROM publication WHERE id = ?"#,
+            id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(Publication::from_row(engine, conn, row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
+        *self = Publication::fetch(&self.engine, conn, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        Ok(())
+    }
+
+    fn audit_subject(&self) -> AuditSubject {
+        AuditSubject::Entity {
+            kind: EntityKind::Publication,
+            id: self.id.get(),
+            library: self.library,
+            label: self.title.clone().unwrap_or_default(),
+        }
+    }
+
+    async fn commit_update(&self, tx: Audited<'_>, field: Field) -> Result<()> {
+        tx.record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some(&field.to_string()),
+        )
+        .await?
+        .commit()
+        .await
+    }
+
+    /// Retitle the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_title(&mut self, title: impl AsRef<str>) -> Result<()> {
+        let title = clean_title(title.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.title.as_deref() == Some(title) {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET title = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            title,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Title).await?;
+        self.title = Some(title.to_string());
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the publisher, treating a blank name as none
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_publisher(&mut self, publisher: Option<&str>) -> Result<()> {
+        let publisher = clean_text(publisher);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.publisher.as_deref() == publisher {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET publisher = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            publisher,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Publisher).await?;
+        self.publisher = publisher.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the year of publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_year(&mut self, year: Option<Year>) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.year == year {
+            return Ok(());
+        }
+        let value = year.map(Year::get);
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET year = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            value,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Year).await?;
+        self.year = year;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the rating
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_stars(&mut self, stars: Option<Stars>) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.stars == stars {
+            return Ok(());
+        }
+        let value = stars.map(Stars::get);
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET stars = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            value,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Stars).await?;
+        self.stars = stars;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the note, treating a blank note as none
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_note(&mut self, note: Option<&str>) -> Result<()> {
+        let note = clean_text(note);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.note.as_deref() == note {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET note = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            note,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Note).await?;
+        self.note = note.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Classify the publication as music or prose
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_classification(&mut self, classification: Classification) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.classification == Some(classification) {
+            return Ok(());
+        }
+        let kind = classification.to_string();
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET kind = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            kind,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Classification).await?;
+        self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+}
+
+impl Entity for Publication {
+    type Id = PublicationId;
+    type Field = Field;
+
+    async fn load(engine: &Engine, id: PublicationId) -> Result<Option<Publication>> {
+        let mut conn = engine.begin_read().await?;
+        Publication::fetch(engine, &mut conn, id).await
+    }
+
+    async fn reload(&mut self) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        self.refresh(&mut conn).await
+    }
+
+    fn id(&self) -> PublicationId {
+        self.id
+    }
+
+    fn library(&self) -> LibraryId {
+        self.library
+    }
+
+    fn is_draft(&self) -> bool {
+        self.draft
+    }
+
+    fn created_at(&self) -> Timestamp {
+        self.created_at
+    }
+
+    fn last_modified_at(&self) -> Timestamp {
+        self.last_modified_at
+    }
+
+    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+        self.engine
+            .entity_audit_log(
+                EntityKind::Publication,
+                self.id.get(),
+                self.library,
+                before,
+                limit,
+            )
+            .await
+    }
+
+    async fn commit(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if !self.draft {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET draft = 0, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Committed,
+            Some(&self.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        self.draft = false;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+}
+
+/// Create a draft publication in `library` from `seed` with its first holding
+pub(crate) async fn create(
+    engine: &Engine,
+    library: LibraryId,
+    seed: ImportSeed,
+    holding: NewHolding<'_>,
+) -> Result<Publication> {
+    let ImportSeed::Title(title) = seed;
+    let title = clean_title(&title)?;
+    let NewHolding::Physical { location } = holding;
+    let location = clean_text(location);
+    let mut tx = engine.begin_write().await?;
+    let library = library.get();
+    let id = sqlx::query_scalar!(
+        "INSERT INTO publication (library_id, title, draft) VALUES (?, ?, 1) RETURNING id AS \"id!\"",
+        library,
+        title
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query!(
+        "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)",
+        id,
+        location
+    )
+    .execute(&mut *tx)
+    .await?;
+    let publication = Publication::fetch(engine, &mut tx, PublicationId::new(id))
+        .await?
+        .ok_or(Error::NotFound)?;
+    tx.record(
+        AuditSource::User,
+        Action::Created,
+        Some(&publication.audit_subject()),
+        None,
+    )
+    .await?
+    .commit()
+    .await?;
+    Ok(publication)
+}
+
+/// List every publication in `library`, drafts included, oldest first
+pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Vec<Publication>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    let rows = sqlx::query_as!(
+        PublicationRow,
+        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+                  note, kind, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM publication WHERE library_id = ? ORDER BY id"#,
+        library
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut publications = Vec::with_capacity(rows.len());
+    for row in rows {
+        publications.push(Publication::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(publications)
+}
+
+fn clean_title(title: &str) -> Result<&str> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(Error::InvalidValue(
+            "A publication title cannot be blank.".into(),
+        ));
+    }
+    Ok(title)
+}
+
+/// Trim optional text, treating blank text as none
+fn clean_text(text: Option<&str>) -> Option<&str> {
+    text.map(str::trim).filter(|text| !text.is_empty())
+}
 
 /// The kinds of identifier printed on a publication
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -228,6 +780,90 @@ fn normalize_ismn(text: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EngineOptions;
+
+    #[tokio::test]
+    async fn publication_edits_audit_once_per_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Pro Git".into()),
+                NewHolding::Physical {
+                    location: Some("Desk"),
+                },
+            )
+            .await
+            .unwrap();
+        publication.set_publisher(Some("Apress")).await.unwrap();
+        publication.set_publisher(Some("Apress")).await.unwrap();
+        publication
+            .set_stars(Some(Stars::try_from(3).unwrap()))
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+
+        let subject = Some(AuditSubject::Entity {
+            kind: EntityKind::Publication,
+            id: publication.id().get(),
+            library: library.id(),
+            label: "Pro Git".into(),
+        });
+        let events: Vec<_> = publication
+            .audit_log(None, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.action, e.subject, e.field))
+            .collect();
+        assert_eq!(
+            events,
+            [
+                (Action::Committed, subject.clone(), None),
+                (Action::Updated, subject.clone(), Some("stars".into())),
+                (Action::Updated, subject.clone(), Some("publisher".into())),
+                (Action::Created, subject, None),
+            ]
+        );
+
+        let loaded = Publication::load(&engine, publication.id())
+            .await
+            .unwrap()
+            .unwrap();
+        let scalars = |p: &Publication| {
+            (
+                p.title().map(str::to_string),
+                p.publisher().map(str::to_string),
+                p.year(),
+                p.stars(),
+                p.note().map(str::to_string),
+                p.classification(),
+            )
+        };
+        assert_eq!(scalars(&loaded), scalars(&publication));
+        assert_eq!(
+            scalars(&loaded),
+            (
+                Some("Pro Git".into()),
+                Some("Apress".into()),
+                None,
+                Some(Stars::try_from(3).unwrap()),
+                None,
+                None,
+            )
+        );
+        assert!(!loaded.is_draft());
+        let holdings: Vec<_> = loaded.holdings().iter().map(|h| &h.kind).collect();
+        assert_eq!(
+            holdings,
+            [&HoldingKind::Physical {
+                location: Some("Desk".into())
+            }]
+        );
+    }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {
         Identifier::new(kind, value).map(|id| id.as_str().to_string())

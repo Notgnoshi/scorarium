@@ -14,6 +14,16 @@ const MAX_EVENTS: usize = 3_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AuditId(i64);
 
+impl AuditId {
+    pub(crate) fn new(id: i64) -> AuditId {
+        AuditId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
 impl fmt::Display for AuditId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
@@ -220,9 +230,12 @@ async fn insert(
 ) -> Result<()> {
     let (kind, id, library, label) = match subject {
         None => (None, None, None, None),
-        Some(AuditSubject::Library { id, label }) => {
-            (Some("library".to_string()), Some(id.0), None, Some(label))
-        }
+        Some(AuditSubject::Library { id, label }) => (
+            Some("library".to_string()),
+            Some(id.get()),
+            None,
+            Some(label),
+        ),
         Some(AuditSubject::Entity {
             kind,
             id,
@@ -231,7 +244,7 @@ async fn insert(
         }) => (
             Some(kind.to_string()),
             Some(*id),
-            Some(library.0),
+            Some(library.get()),
             Some(label),
         ),
     };
@@ -254,6 +267,53 @@ async fn insert(
     Ok(())
 }
 
+struct AuditRow {
+    id: i64,
+    created_at: Timestamp,
+    source: String,
+    action: String,
+    entity_kind: Option<String>,
+    entity_id: Option<i64>,
+    entity_library_id: Option<i64>,
+    entity_label: Option<String>,
+    field: Option<String>,
+}
+
+impl AuditRow {
+    fn into_event(self) -> Result<AuditEvent> {
+        let missing = |column| eyre::eyre!("audit event {} has no {column}", self.id);
+        let label = self.entity_label.unwrap_or_default();
+        let subject = match self.entity_kind.as_deref() {
+            None => None,
+            Some("library") => Some(AuditSubject::Library {
+                id: LibraryId::new(self.entity_id.ok_or_else(|| missing("entity_id"))?),
+                label,
+            }),
+            Some(kind) => Some(AuditSubject::Entity {
+                kind: kind.parse()?,
+                id: self.entity_id.ok_or_else(|| missing("entity_id"))?,
+                library: LibraryId::new(
+                    self.entity_library_id
+                        .ok_or_else(|| missing("entity_library_id"))?,
+                ),
+                label,
+            }),
+        };
+        Ok(AuditEvent {
+            id: AuditId::new(self.id),
+            created_at: self.created_at,
+            source: self.source.parse()?,
+            action: self.action.parse()?,
+            subject,
+            field: self.field,
+        })
+    }
+}
+
+fn size_to_id(limit: usize) -> i64 {
+    i64::try_from(limit).unwrap_or(i64::MAX)
+}
+
 impl Engine {
     /// Read audit events newest first, below `before` when given, at most `limit`
     pub async fn audit_log(
@@ -262,10 +322,10 @@ impl Engine {
         limit: usize,
     ) -> Result<Vec<AuditEvent>> {
         let before = before.map(|id| id.0);
-        // SQLite reads a negative LIMIT as unlimited, which a wrapping cast of a huge limit yields.
-        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
-        let rows = sqlx::query!(
+        let rows = sqlx::query_as!(
+            AuditRow,
             r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
                       entity_kind, entity_id, entity_library_id, entity_label, field
                FROM audit_entry
@@ -277,36 +337,40 @@ impl Engine {
         )
         .fetch_all(&mut *conn)
         .await?;
-        rows.into_iter()
-            .map(|row| {
-                let missing = |column| eyre::eyre!("audit event {} has no {column}", row.id);
-                let label = row.entity_label.unwrap_or_default();
-                let subject = match row.entity_kind.as_deref() {
-                    None => None,
-                    Some("library") => Some(AuditSubject::Library {
-                        id: LibraryId(row.entity_id.ok_or_else(|| missing("entity_id"))?),
-                        label,
-                    }),
-                    Some(kind) => Some(AuditSubject::Entity {
-                        kind: kind.parse()?,
-                        id: row.entity_id.ok_or_else(|| missing("entity_id"))?,
-                        library: LibraryId(
-                            row.entity_library_id
-                                .ok_or_else(|| missing("entity_library_id"))?,
-                        ),
-                        label,
-                    }),
-                };
-                Ok(AuditEvent {
-                    id: AuditId(row.id),
-                    created_at: row.created_at,
-                    source: row.source.parse()?,
-                    action: row.action.parse()?,
-                    subject,
-                    field: row.field,
-                })
-            })
-            .collect()
+        rows.into_iter().map(AuditRow::into_event).collect()
+    }
+
+    /// Read an entities audit log, paginated as [Engine::audit_log]
+    pub(crate) async fn entity_audit_log(
+        &self,
+        kind: EntityKind,
+        id: i64,
+        library: LibraryId,
+        before: Option<AuditId>,
+        limit: usize,
+    ) -> Result<Vec<AuditEvent>> {
+        let kind = kind.to_string();
+        let before = before.map(|id| id.0);
+        let limit = size_to_id(limit);
+        let mut conn = self.begin_read().await?;
+        let rows = sqlx::query_as!(
+            AuditRow,
+            r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
+                      entity_kind, entity_id, entity_library_id, entity_label, field
+               FROM audit_entry
+               WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3
+                 AND (?4 IS NULL OR id < ?4)
+               ORDER BY id DESC
+               LIMIT ?5"#,
+            kind,
+            id,
+            library.get(),
+            before,
+            limit
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.into_iter().map(AuditRow::into_event).collect()
     }
 }
 
@@ -322,13 +386,13 @@ mod tests {
             .await
             .unwrap();
         let library = AuditSubject::Library {
-            id: LibraryId(1),
+            id: LibraryId::new(1),
             label: "Scores".into(),
         };
         let work = AuditSubject::Entity {
             kind: EntityKind::Work,
             id: 7,
-            library: LibraryId(1),
+            library: LibraryId::new(1),
             label: "Sonata".into(),
         };
         let tx = engine.begin_write().await.unwrap();

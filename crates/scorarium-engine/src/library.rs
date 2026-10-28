@@ -5,10 +5,22 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
+use crate::holding::NewHolding;
+use crate::publication::{self, ImportSeed, Publication};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LibraryId(pub(crate) i64);
+pub struct LibraryId(i64);
+
+impl LibraryId {
+    pub(crate) fn new(id: i64) -> LibraryId {
+        LibraryId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
 
 impl fmt::Display for LibraryId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -60,7 +72,7 @@ impl Library {
     async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
         let row = sqlx::query!(
             r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
-            self.id.0
+            self.id.get()
         )
         .fetch_optional(conn)
         .await?
@@ -80,9 +92,13 @@ impl Library {
         if self.name == name {
             return Ok(());
         }
-        sqlx::query!("UPDATE library SET name = ? WHERE id = ?", name, self.id.0)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "UPDATE library SET name = ? WHERE id = ?",
+            name,
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
         tx.record(
             AuditSource::User,
             Action::Updated,
@@ -108,7 +124,7 @@ impl Library {
         sqlx::query!(
             "UPDATE library SET private = ? WHERE id = ?",
             private,
-            self.id.0
+            self.id.get()
         )
         .execute(&mut *tx)
         .await?;
@@ -130,11 +146,13 @@ impl Library {
     /// Returns [Error::NotFound] if the library has already been deleted.
     pub async fn delete(self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
-        let name =
-            sqlx::query_scalar!("DELETE FROM library WHERE id = ? RETURNING name", self.id.0)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or(Error::NotFound)?;
+        let name = sqlx::query_scalar!(
+            "DELETE FROM library WHERE id = ? RETURNING name",
+            self.id.get()
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound)?;
         tx.record(
             AuditSource::User,
             Action::Deleted,
@@ -144,6 +162,22 @@ impl Library {
         .await?
         .commit()
         .await
+    }
+}
+
+impl Library {
+    /// Create a draft publication from `seed` with its first holding
+    pub async fn create_publication(
+        &self,
+        seed: ImportSeed,
+        holding: NewHolding<'_>,
+    ) -> Result<Publication> {
+        publication::create(&self.engine, self.id, seed, holding).await
+    }
+
+    /// List every publication in the library, drafts included, oldest first
+    pub async fn publications(&self) -> Result<Vec<Publication>> {
+        publication::in_library(&self.engine, self.id).await
     }
 }
 
@@ -176,7 +210,7 @@ impl Engine {
             .into_iter()
             .map(|row| Library {
                 engine: self.clone(),
-                id: LibraryId(row.id),
+                id: LibraryId::new(row.id),
                 name: row.name,
                 private: row.private,
             })
@@ -188,7 +222,7 @@ impl Engine {
         let mut conn = self.begin_read().await?;
         let row = sqlx::query!(
             r#"SELECT name, private AS "private: bool" FROM library WHERE id = ?"#,
-            id.0
+            id.get()
         )
         .fetch_optional(&mut *conn)
         .await?;
@@ -215,7 +249,7 @@ impl Engine {
         .await?;
         let library = Library {
             engine: self.clone(),
-            id: LibraryId(id),
+            id: LibraryId::new(id),
             name: name.to_string(),
             private,
         };

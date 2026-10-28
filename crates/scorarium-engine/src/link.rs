@@ -51,7 +51,18 @@ impl fmt::Display for HttpUrl {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LinkId(pub(crate) i64);
+pub struct LinkId(i64);
+
+impl LinkId {
+    #[expect(dead_code)]
+    pub(crate) fn new(id: i64) -> LinkId {
+        LinkId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
 
 impl fmt::Display for LinkId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
