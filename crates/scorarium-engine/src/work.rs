@@ -1,8 +1,585 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::num::ParseIntError;
 use std::str::FromStr;
 
-use crate::{Error, Result};
+use sqlx::SqliteConnection;
+
+use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::entity::{Entity, EntityKind, Timestamp};
+use crate::library::LibraryId;
+use crate::publication::{self, Publication, PublicationId, clean_text};
+use crate::value::{Classification, Stars};
+use crate::{Engine, Error, Result};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorkId(i64);
+
+impl WorkId {
+    pub(crate) fn new(id: i64) -> WorkId {
+        WorkId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl fmt::Display for WorkId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for WorkId {
+    type Err = ParseIntError;
+
+    fn from_str(text: &str) -> std::result::Result<WorkId, ParseIntError> {
+        text.parse().map(WorkId)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Field {
+    Title,
+    Key,
+    TimeSignature,
+    Instrumentation,
+    Stars,
+    Note,
+    Classification,
+    Tags,
+    CatalogNumbers,
+    Links,
+    Contributors,
+}
+
+impl fmt::Display for Field {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Field::Title => "title",
+            Field::Key => "key",
+            Field::TimeSignature => "time_signature",
+            Field::Instrumentation => "instrumentation",
+            Field::Stars => "stars",
+            Field::Note => "note",
+            Field::Classification => "classification",
+            Field::Tags => "tags",
+            Field::CatalogNumbers => "catalog_numbers",
+            Field::Links => "links",
+            Field::Contributors => "contributors",
+        })
+    }
+}
+
+impl FromStr for Field {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Field> {
+        Ok(match text {
+            "title" => Field::Title,
+            "key" => Field::Key,
+            "time_signature" => Field::TimeSignature,
+            "instrumentation" => Field::Instrumentation,
+            "stars" => Field::Stars,
+            "note" => Field::Note,
+            "classification" => Field::Classification,
+            "tags" => Field::Tags,
+            "catalog_numbers" => Field::CatalogNumbers,
+            "links" => Field::Links,
+            "contributors" => Field::Contributors,
+            other => return Err(eyre::eyre!("unknown work field {other:?}").into()),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Work {
+    engine: Engine,
+    id: WorkId,
+    library: LibraryId,
+    draft: bool,
+    created_at: Timestamp,
+    last_modified_at: Timestamp,
+    title: String,
+    key: Option<String>,
+    time_signature: Option<String>,
+    instrumentation: Option<String>,
+    stars: Option<Stars>,
+    note: Option<String>,
+    classification: Option<Classification>,
+}
+
+/// A POD type to serialize a work from the database into
+struct WorkRow {
+    id: i64,
+    library_id: i64,
+    title: String,
+    key: Option<String>,
+    time_signature: Option<String>,
+    instrumentation: Option<String>,
+    stars: Option<u8>,
+    note: Option<String>,
+    kind: Option<String>,
+    draft: bool,
+    created_at: Timestamp,
+    last_modified_at: Timestamp,
+}
+
+impl Work {
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn key(&self) -> Option<&str> {
+        self.key.as_deref()
+    }
+
+    pub fn time_signature(&self) -> Option<&str> {
+        self.time_signature.as_deref()
+    }
+
+    pub fn instrumentation(&self) -> Option<&str> {
+        self.instrumentation.as_deref()
+    }
+
+    pub fn stars(&self) -> Option<Stars> {
+        self.stars
+    }
+
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
+    }
+
+    pub fn classification(&self) -> Option<Classification> {
+        self.classification
+    }
+
+    fn from_row(engine: &Engine, row: WorkRow) -> Result<Work> {
+        Ok(Work {
+            engine: engine.clone(),
+            id: WorkId::new(row.id),
+            library: LibraryId::new(row.library_id),
+            draft: row.draft,
+            created_at: row.created_at,
+            last_modified_at: row.last_modified_at,
+            title: row.title,
+            key: row.key,
+            time_signature: row.time_signature,
+            instrumentation: row.instrumentation,
+            stars: row.stars.map(Stars::try_from).transpose()?,
+            note: row.note,
+            classification: row.kind.as_deref().map(str::parse).transpose()?,
+        })
+    }
+
+    async fn fetch(
+        engine: &Engine,
+        conn: &mut SqliteConnection,
+        id: WorkId,
+    ) -> Result<Option<Work>> {
+        let row = sqlx::query_as!(
+            WorkRow,
+            r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+                      stars AS "stars: u8", note, kind, draft AS "draft: bool",
+                      created_at AS "created_at: Timestamp",
+                      last_modified_at AS "last_modified_at: Timestamp"
+               FROM work WHERE id = ?"#,
+            id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.map(|row| Work::from_row(engine, row)).transpose()
+    }
+
+    async fn refresh(&mut self, conn: &mut SqliteConnection) -> Result<()> {
+        *self = Work::fetch(&self.engine, conn, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        Ok(())
+    }
+
+    pub(crate) fn audit_subject(&self) -> AuditSubject {
+        audit_subject(self.id, self.library, &self.title)
+    }
+
+    async fn commit_update(&self, tx: Audited<'_>, field: Field) -> Result<()> {
+        tx.record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some(&field.to_string()),
+        )
+        .await?
+        .commit()
+        .await
+    }
+
+    /// Retitle the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_title(&mut self, title: impl AsRef<str>) -> Result<()> {
+        let title = clean_title(title.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.title == title {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET title = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            title,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Title).await?;
+        self.title = title.to_string();
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the key, treating a blank key as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_key(&mut self, key: Option<&str>) -> Result<()> {
+        let key = clean_text(key);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.key.as_deref() == key {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET key = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            key,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Key).await?;
+        self.key = key.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the time signature, treating a blank time signature as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_time_signature(&mut self, time_signature: Option<&str>) -> Result<()> {
+        let time_signature = clean_text(time_signature);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.time_signature.as_deref() == time_signature {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET time_signature = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            time_signature,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::TimeSignature).await?;
+        self.time_signature = time_signature.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the instrumentation, treating a blank instrumentation as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_instrumentation(&mut self, instrumentation: Option<&str>) -> Result<()> {
+        let instrumentation = clean_text(instrumentation);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.instrumentation.as_deref() == instrumentation {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET instrumentation = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            instrumentation,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Instrumentation).await?;
+        self.instrumentation = instrumentation.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the rating
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_stars(&mut self, stars: Option<Stars>) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.stars == stars {
+            return Ok(());
+        }
+        let value = stars.map(Stars::get);
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET stars = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            value,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Stars).await?;
+        self.stars = stars;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the note, treating a blank note as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_note(&mut self, note: Option<&str>) -> Result<()> {
+        let note = clean_text(note);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.note.as_deref() == note {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET note = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            note,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Note).await?;
+        self.note = note.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Classify the work as music or prose
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_classification(&mut self, classification: Classification) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.classification == Some(classification) {
+            return Ok(());
+        }
+        let kind = classification.to_string();
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET kind = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            kind,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Classification).await?;
+        self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// List every publication that contains the work
+    pub async fn publications(&self) -> Result<Vec<Publication>> {
+        publication::containing(&self.engine, self.id).await
+    }
+}
+
+impl Entity for Work {
+    type Id = WorkId;
+    type Field = Field;
+
+    async fn load(engine: &Engine, id: WorkId) -> Result<Option<Work>> {
+        let mut conn = engine.begin_read().await?;
+        Work::fetch(engine, &mut conn, id).await
+    }
+
+    async fn reload(&mut self) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        self.refresh(&mut conn).await
+    }
+
+    fn id(&self) -> WorkId {
+        self.id
+    }
+
+    fn library(&self) -> LibraryId {
+        self.library
+    }
+
+    fn is_draft(&self) -> bool {
+        self.draft
+    }
+
+    fn created_at(&self) -> Timestamp {
+        self.created_at
+    }
+
+    fn last_modified_at(&self) -> Timestamp {
+        self.last_modified_at
+    }
+
+    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+        self.engine
+            .entity_audit_log(EntityKind::Work, self.id.get(), self.library, before, limit)
+            .await
+    }
+
+    async fn commit(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if !self.draft {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET draft = 0, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Committed,
+            Some(&self.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        self.draft = false;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+}
+
+/// Insert a work in `library` and load it
+///
+/// The caller owns the transaction and links the work to whatever references it.
+pub(crate) async fn insert(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    title: &str,
+    draft: bool,
+    classification: Option<Classification>,
+) -> Result<Work> {
+    let library = library.get();
+    let kind = classification.map(|classification| classification.to_string());
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO work (library_id, title, kind, draft) VALUES (?, ?, ?, ?)
+           RETURNING id AS "id!""#,
+        library,
+        title,
+        kind,
+        draft
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    Work::fetch(engine, conn, WorkId::new(id))
+        .await?
+        .ok_or(Error::NotFound)
+}
+
+/// Give the unclassified works in `publication` its `classification`
+///
+/// Return the audit subject of each work changed, in id order.
+pub(crate) async fn inherit_classification(
+    conn: &mut SqliteConnection,
+    publication: PublicationId,
+    classification: Classification,
+) -> Result<Vec<AuditSubject>> {
+    let kind = classification.to_string();
+    let mut works = sqlx::query!(
+        "UPDATE work SET kind = ?, last_modified_at = unixepoch()
+         WHERE kind IS NULL
+           AND id IN (SELECT work_id FROM publication_work WHERE publication_id = ?)
+         RETURNING id, library_id, title",
+        kind,
+        publication.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    // SQLite does not define the order of RETURNING rows
+    works.sort_by_key(|work| work.id);
+    Ok(works
+        .into_iter()
+        .map(|work| {
+            audit_subject(
+                WorkId::new(work.id),
+                LibraryId::new(work.library_id),
+                &work.title,
+            )
+        })
+        .collect())
+}
+
+/// List every work in `library`
+pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Vec<Work>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    sqlx::query_as!(
+        WorkRow,
+        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+                  stars AS "stars: u8", note, kind, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM work WHERE library_id = ? ORDER BY id"#,
+        library
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Work::from_row(engine, row))
+    .collect()
+}
+
+/// List every work in `publication`
+pub(crate) async fn in_publication(
+    engine: &Engine,
+    publication: PublicationId,
+) -> Result<Vec<Work>> {
+    let mut conn = engine.begin_read().await?;
+    let publication = publication.get();
+    sqlx::query_as!(
+        WorkRow,
+        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+                  work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
+                  work.draft AS "draft: bool",
+                  work.created_at AS "created_at: Timestamp",
+                  work.last_modified_at AS "last_modified_at: Timestamp"
+           FROM work JOIN publication_work ON publication_work.work_id = work.id
+           WHERE publication_work.publication_id = ?
+           ORDER BY work.id"#,
+        publication
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .map(|row| Work::from_row(engine, row))
+    .collect()
+}
+
+fn audit_subject(id: WorkId, library: LibraryId, title: &str) -> AuditSubject {
+    AuditSubject::Entity {
+        kind: EntityKind::Work,
+        id: id.get(),
+        library,
+        label: title.to_string(),
+    }
+}
+
+pub(crate) fn clean_title(title: &str) -> Result<&str> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(Error::InvalidValue("A work title cannot be blank.".into()));
+    }
+    Ok(title)
+}
 
 /// A catalog numbering scheme that scorarium knows how to parse
 struct Scheme {

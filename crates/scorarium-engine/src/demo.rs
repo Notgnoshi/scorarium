@@ -3,6 +3,7 @@ use crate::library::Library;
 use crate::publication::{ImportSeed, Publication};
 use crate::value::Classification::{self, Music, Prose};
 use crate::value::{Stars, Year};
+use crate::work::Work;
 use crate::{Engine, Result};
 
 /// Populate a demo database intended to exercise several different aspects of Scorarium's data model
@@ -36,10 +37,27 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
+    bierce.create_work("In the Midst of Life").await?;
+    bierce.create_work("The Devil's Dictionary").await?;
+    bierce.create_work("The Parenticide Club").await?;
 
     let mut russian_album = create(&sheet_music, "Russian piano album", None, Music).await?;
     russian_album.set_publisher(Some("Schirmer")).await?;
     russian_album.set_stars(Some(Stars::try_from(4)?)).await?;
+    let mut prelude = piano_piece(
+        &mut russian_album,
+        "Prelude in C-sharp minor",
+        "C-sharp minor",
+        None,
+    )
+    .await?;
+    prelude.set_stars(Some(Stars::try_from(5)?)).await?;
+    prelude
+        .set_note(Some(
+            "The big chords at the end need the whole arm, not the fingers.",
+        ))
+        .await?;
+    piano_piece(&mut russian_album, "Etude-Tableau", "A minor", None).await?;
 
     let mut masterpieces = create(
         &sheet_music,
@@ -49,11 +67,20 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     )
     .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
+    piano_piece(&mut masterpieces, "Polichinelle", "F-sharp minor", None).await?;
 
     let mut isle_of_the_dead = create(&sheet_music, "The Isle of the Dead", None, Music).await?;
     isle_of_the_dead
         .set_publisher(Some("State Music Publishers"))
         .await?;
+    let mut tone_poem = piano_piece(
+        &mut isle_of_the_dead,
+        "The Isle of the Dead",
+        "A minor",
+        Some("5/8"),
+    )
+    .await?;
+    tone_poem.set_stars(Some(Stars::try_from(4)?)).await?;
 
     let mut gymnopedies = create(
         &sheet_music,
@@ -64,6 +91,13 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
     gymnopedies.set_publisher(Some("Schirmer")).await?;
     gymnopedies.set_stars(Some(Stars::try_from(4)?)).await?;
+    for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
+        let title = format!("Gymnopedie No. {number}");
+        let mut gymnopedie = piano_piece(&mut gymnopedies, &title, key, Some("3/4")).await?;
+        if number == 1 {
+            gymnopedie.set_stars(Some(Stars::try_from(5)?)).await?;
+        }
+    }
 
     Ok(())
 }
@@ -83,4 +117,18 @@ async fn create(
         .await?;
     publication.set_classification(classification).await?;
     Ok(publication)
+}
+
+/// Create a piece for solo piano in `publication`
+async fn piano_piece(
+    publication: &mut Publication,
+    title: &str,
+    key: &str,
+    time_signature: Option<&str>,
+) -> Result<Work> {
+    let mut work = publication.create_work(title).await?;
+    work.set_key(Some(key)).await?;
+    work.set_time_signature(time_signature).await?;
+    work.set_instrumentation(Some("piano")).await?;
+    Ok(work)
 }

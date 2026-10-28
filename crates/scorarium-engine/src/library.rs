@@ -7,6 +7,7 @@ use sqlx::SqliteConnection;
 use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::holding::NewHolding;
 use crate::publication::{self, ImportSeed, Publication};
+use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -178,6 +179,11 @@ impl Library {
     /// List every publication in the library, drafts included, oldest first
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::in_library(&self.engine, self.id).await
+    }
+
+    /// List every work in the library
+    pub async fn works(&self) -> Result<Vec<Work>> {
+        work::in_library(&self.engine, self.id).await
     }
 }
 

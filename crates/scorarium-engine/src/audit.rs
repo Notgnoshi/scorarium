@@ -167,7 +167,6 @@ pub(crate) struct Recorded<'a> {
 }
 
 impl<'a> Recorded<'a> {
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn record(
         mut self,
         source: AuditSource,

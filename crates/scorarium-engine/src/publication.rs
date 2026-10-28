@@ -10,6 +10,7 @@ use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::value::{Classification, Stars, Year};
+use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -397,10 +398,86 @@ impl Publication {
         )
         .fetch_one(&mut *tx)
         .await?;
-        self.commit_update(tx, Field::Classification).await?;
+        let works = work::inherit_classification(&mut tx, self.id, classification).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Updated,
+                Some(&self.audit_subject()),
+                Some(&Field::Classification.to_string()),
+            )
+            .await?;
+        let field = work::Field::Classification.to_string();
+        for subject in works {
+            tx = tx
+                .record(
+                    AuditSource::User,
+                    Action::Updated,
+                    Some(&subject),
+                    Some(&field),
+                )
+                .await?;
+        }
+        tx.commit().await?;
         self.classification = Some(classification);
         self.last_modified_at = last_modified_at;
         Ok(())
+    }
+
+    /// Create a work in the publication with the owning publication's draft state and classification
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn create_work(&mut self, title: impl AsRef<str>) -> Result<Work> {
+        let title = work::clean_title(title.as_ref())?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let work = work::insert(
+            &self.engine,
+            &mut tx,
+            self.library,
+            title,
+            self.draft,
+            self.classification,
+        )
+        .await?;
+        sqlx::query!(
+            "INSERT INTO publication_work (library_id, publication_id, work_id) VALUES (?, ?, ?)",
+            self.library.get(),
+            self.id.get(),
+            work.id().get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Created,
+            Some(&work.audit_subject()),
+            None,
+        )
+        .await?
+        .record(
+            AuditSource::User,
+            Action::Updated,
+            Some(&self.audit_subject()),
+            Some(&Field::Contents.to_string()),
+        )
+        .await?
+        .commit()
+        .await?;
+        self.last_modified_at = last_modified_at;
+        Ok(work)
+    }
+
+    /// List every work in the publication
+    pub async fn works(&self) -> Result<Vec<Work>> {
+        work::in_publication(&self.engine, self.id).await
     }
 }
 
@@ -542,6 +619,31 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     Ok(publications)
 }
 
+/// List every publication that contains `work`
+pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publication>> {
+    let mut conn = engine.begin_read().await?;
+    let work = work.get();
+    let rows = sqlx::query_as!(
+        PublicationRow,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+                  publication.year AS "year: u16", publication.stars AS "stars: u8",
+                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.created_at AS "created_at: Timestamp",
+                  publication.last_modified_at AS "last_modified_at: Timestamp"
+           FROM publication JOIN publication_work ON publication_work.publication_id = publication.id
+           WHERE publication_work.work_id = ?
+           ORDER BY publication.id"#,
+        work
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut publications = Vec::with_capacity(rows.len());
+    for row in rows {
+        publications.push(Publication::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(publications)
+}
+
 fn clean_title(title: &str) -> Result<&str> {
     let title = title.trim();
     if title.is_empty() {
@@ -553,7 +655,7 @@ fn clean_title(title: &str) -> Result<&str> {
 }
 
 /// Trim optional text, treating blank text as none
-fn clean_text(text: Option<&str>) -> Option<&str> {
+pub(crate) fn clean_text(text: Option<&str>) -> Option<&str> {
     text.map(str::trim).filter(|text| !text.is_empty())
 }
 
