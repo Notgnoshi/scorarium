@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO tag (library_id, publication_id, tag) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "cd46a81d89ba6c1f9416013b7aeeb5c85b7f2c8d4baafbe90f7817e9c964bc67"
+}

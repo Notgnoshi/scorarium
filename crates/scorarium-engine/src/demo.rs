@@ -27,6 +27,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     practical_vim
         .create_contributor("Drew Neil", "author")
         .await?;
+    for tag in ["editor", "reference"] {
+        practical_vim.add_tag(tag.parse()?).await?;
+    }
 
     let mut pro_git = create(&books, "Pro Git", None, Prose).await?;
     pro_git.set_publisher(Some("Apress")).await?;
@@ -60,6 +63,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     let mut russian_album = create(&sheet_music, "Russian piano album", None, Music).await?;
     russian_album.set_publisher(Some("Schirmer")).await?;
     russian_album.set_stars(Some(Stars::try_from(4)?)).await?;
+    for tag in ["anthology", "russian"] {
+        russian_album.add_tag(tag.parse()?).await?;
+    }
     for composer in [
         "Dmitri Kabalevsky",
         "Modest Mussorgsky",
@@ -93,6 +99,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             "The big chords at the end need the whole arm, not the fingers.",
         ))
         .await?;
+    for tag in ["learning", "russian"] {
+        prelude.add_tag(tag.parse()?).await?;
+    }
     piano_piece(
         &mut russian_album,
         rachmaninoff,
@@ -144,6 +153,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     .await?;
     tone_poem.add_contributor(kirkor, "arranger").await?;
     tone_poem.set_stars(Some(Stars::try_from(5)?)).await?;
+    for tag in ["transcription", "want-to-learn"] {
+        tone_poem.add_tag(tag.parse()?).await?;
+    }
 
     let mut gymnopedies = create(
         &sheet_music,
@@ -163,6 +175,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         let mut gymnopedie = piano_piece(&mut gymnopedies, satie, &title, key, Some("3/4")).await?;
         if number == 1 {
             gymnopedie.set_stars(Some(Stars::try_from(5)?)).await?;
+            gymnopedie.add_tag("memorized".parse()?).await?;
+        } else {
+            gymnopedie.add_tag("want-to-learn".parse()?).await?;
         }
     }
 

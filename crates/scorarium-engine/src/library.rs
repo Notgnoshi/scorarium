@@ -8,6 +8,7 @@ use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::holding::NewHolding;
 use crate::person::{self, Person};
 use crate::publication::{self, ImportSeed, Publication};
+use crate::value::Tag;
 use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
 
@@ -190,6 +191,37 @@ impl Library {
     /// List people in the library with the given role
     pub async fn people(&self, role: Option<&str>) -> Result<Vec<Person>> {
         person::in_library(&self.engine, self.id, role).await
+    }
+
+    /// Count the publications and works with each tag in the library, alphabetically by tag
+    ///
+    /// Leave drafts out of the counts unless `include_drafts` is set.
+    pub async fn tags(&self, include_drafts: bool) -> Result<Vec<(Tag, usize)>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query!(
+            r#"SELECT tag.tag, COUNT(*) AS "count: u32"
+               FROM tag
+               LEFT JOIN publication ON publication.id = tag.publication_id
+               LEFT JOIN work ON work.id = tag.work_id
+               WHERE tag.library_id = ?
+                 AND (? OR COALESCE(publication.draft, work.draft) = 0)
+               GROUP BY tag.tag
+               ORDER BY tag.tag"#,
+            self.id.get(),
+            include_drafts
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.into_iter()
+            .map(|row| Ok((row.tag.parse()?, row.count as usize)))
+            .collect()
+    }
+
+    /// List the publications and works in the library tagged `tag`, oldest first
+    pub async fn tagged_with(&self, tag: &Tag) -> Result<(Vec<Publication>, Vec<Work>)> {
+        let publications = publication::tagged(&self.engine, self.id, tag).await?;
+        let works = work::tagged(&self.engine, self.id, tag).await?;
+        Ok((publications, works))
     }
 }
 

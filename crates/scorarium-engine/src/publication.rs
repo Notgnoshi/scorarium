@@ -11,7 +11,7 @@ use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
-use crate::value::{Classification, Stars, Year, clean_text};
+use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -121,6 +121,7 @@ pub struct Publication {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    tags: Vec<Tag>,
     contributors: Vec<Contributor>,
     holdings: Vec<Holding>,
 }
@@ -166,6 +167,11 @@ impl Publication {
         self.classification
     }
 
+    /// List the publication's tags alphabetically
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
@@ -179,6 +185,15 @@ impl Publication {
         conn: &mut SqliteConnection,
         row: PublicationRow,
     ) -> Result<Publication> {
+        let tags = sqlx::query_scalar!(
+            "SELECT tag FROM tag WHERE publication_id = ? ORDER BY tag",
+            row.id
+        )
+        .fetch_all(&mut *conn)
+        .await?
+        .iter()
+        .map(|tag| tag.parse())
+        .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
             "SELECT publication_contributor.person_id, person.name, publication_contributor.role
              FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
@@ -229,6 +244,7 @@ impl Publication {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            tags,
             contributors,
             holdings,
         })
@@ -444,6 +460,65 @@ impl Publication {
         }
         tx.commit().await?;
         self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Tag the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn add_tag(&mut self, tag: Tag) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Err(position) = self.tags.binary_search(&tag) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "INSERT INTO tag (library_id, publication_id, tag) VALUES (?, ?, ?)",
+            self.library.get(),
+            self.id.get(),
+            tag.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Tags).await?;
+        self.tags.insert(position, tag);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a tag from the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn remove_tag(&mut self, tag: &Tag) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Ok(position) = self.tags.binary_search(tag) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "DELETE FROM tag WHERE publication_id = ? AND tag = ?",
+            self.id.get(),
+            tag.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Tags).await?;
+        self.tags.remove(position);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1051,6 +1126,37 @@ pub(crate) async fn with_contributor(
     Ok(publications)
 }
 
+/// List every publication in `library` tagged `tag`
+pub(crate) async fn tagged(
+    engine: &Engine,
+    library: LibraryId,
+    tag: &Tag,
+) -> Result<Vec<Publication>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    let tag = tag.as_str();
+    let rows = sqlx::query_as!(
+        PublicationRow,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+                  publication.year AS "year: u16", publication.stars AS "stars: u8",
+                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.created_at AS "created_at: Timestamp",
+                  publication.last_modified_at AS "last_modified_at: Timestamp"
+           FROM publication JOIN tag ON tag.publication_id = publication.id
+           WHERE tag.library_id = ? AND tag.tag = ?
+           ORDER BY publication.id"#,
+        library,
+        tag
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut publications = Vec::with_capacity(rows.len());
+    for row in rows {
+        publications.push(Publication::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(publications)
+}
+
 fn clean_title(title: &str) -> Result<&str> {
     let title = title.trim();
     if title.is_empty() {
@@ -1504,6 +1610,33 @@ mod tests {
             .await
             .unwrap();
         assert!(Person::load(&engine, satie).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn tags_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let piano: Tag = "piano".parse().unwrap();
+        let duet: Tag = "duet".parse().unwrap();
+        publication.add_tag(piano.clone()).await.unwrap();
+        publication.add_tag(duet.clone()).await.unwrap();
+        assert_eq!(publication.tags(), [duet.clone(), piano.clone()]);
+        publication.reload().await.unwrap();
+        assert_eq!(publication.tags(), [duet.clone(), piano.clone()]);
+
+        publication.remove_tag(&duet).await.unwrap();
+        publication.reload().await.unwrap();
+        assert_eq!(publication.tags(), [piano]);
     }
 
     fn n(kind: IdentifierKind, value: &str) -> Result<String> {

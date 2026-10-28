@@ -11,7 +11,7 @@ use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
-use crate::value::{Classification, Stars, clean_text};
+use crate::value::{Classification, Stars, Tag, clean_text};
 use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -110,6 +110,7 @@ pub struct Work {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    tags: Vec<Tag>,
     contributors: Vec<Contributor>,
 }
 
@@ -158,11 +159,23 @@ impl Work {
         self.classification
     }
 
+    /// List the work's tags alphabetically
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
     pub fn contributors(&self) -> &[Contributor] {
         &self.contributors
     }
 
     async fn from_row(engine: &Engine, conn: &mut SqliteConnection, row: WorkRow) -> Result<Work> {
+        let tags =
+            sqlx::query_scalar!("SELECT tag FROM tag WHERE work_id = ? ORDER BY tag", row.id)
+                .fetch_all(&mut *conn)
+                .await?
+                .iter()
+                .map(|tag| tag.parse())
+                .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
             "SELECT work_contributor.person_id, person.name, work_contributor.role
              FROM work_contributor JOIN person ON person.id = work_contributor.person_id
@@ -193,6 +206,7 @@ impl Work {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            tags,
             contributors,
         })
     }
@@ -406,6 +420,65 @@ impl Work {
         .await?;
         self.commit_update(tx, Field::Classification).await?;
         self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Tag the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn add_tag(&mut self, tag: Tag) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Err(position) = self.tags.binary_search(&tag) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "INSERT INTO tag (library_id, work_id, tag) VALUES (?, ?, ?)",
+            self.library.get(),
+            self.id.get(),
+            tag.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Tags).await?;
+        self.tags.insert(position, tag);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Remove a tag from the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn remove_tag(&mut self, tag: &Tag) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Ok(position) = self.tags.binary_search(tag) else {
+            return Ok(());
+        };
+        sqlx::query!(
+            "DELETE FROM tag WHERE work_id = ? AND tag = ?",
+            self.id.get(),
+            tag.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Tags).await?;
+        self.tags.remove(position);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -857,6 +930,33 @@ pub(crate) async fn with_contributor(engine: &Engine, person: PersonId) -> Resul
            WHERE id IN (SELECT work_id FROM work_contributor WHERE person_id = ?)
            ORDER BY id"#,
         person
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut works = Vec::with_capacity(rows.len());
+    for row in rows {
+        works.push(Work::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(works)
+}
+
+/// List every work in `library` tagged `tag`
+pub(crate) async fn tagged(engine: &Engine, library: LibraryId, tag: &Tag) -> Result<Vec<Work>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    let tag = tag.as_str();
+    let rows = sqlx::query_as!(
+        WorkRow,
+        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+                  work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
+                  work.draft AS "draft: bool",
+                  work.created_at AS "created_at: Timestamp",
+                  work.last_modified_at AS "last_modified_at: Timestamp"
+           FROM work JOIN tag ON tag.work_id = work.id
+           WHERE tag.library_id = ? AND tag.tag = ?
+           ORDER BY work.id"#,
+        library,
+        tag
     )
     .fetch_all(&mut *conn)
     .await?;

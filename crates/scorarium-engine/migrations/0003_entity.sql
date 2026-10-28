@@ -85,3 +85,17 @@ CREATE TABLE work_contributor (
     UNIQUE (work_id, person_id, role)
 ) STRICT;
 CREATE INDEX work_contributor_person ON work_contributor(person_id);
+
+CREATE TABLE tag (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    library_id INTEGER NOT NULL,
+    publication_id INTEGER,
+    work_id INTEGER,
+    tag TEXT NOT NULL CHECK (tag <> ''),
+    CHECK ((publication_id IS NULL) <> (work_id IS NULL)),
+    FOREIGN KEY (publication_id, library_id) REFERENCES publication(id, library_id) ON DELETE CASCADE,
+    FOREIGN KEY (work_id, library_id) REFERENCES work(id, library_id) ON DELETE CASCADE,
+    UNIQUE (publication_id, tag),
+    UNIQUE (work_id, tag)
+) STRICT;
+CREATE INDEX tag_library_tag ON tag(library_id, tag);
