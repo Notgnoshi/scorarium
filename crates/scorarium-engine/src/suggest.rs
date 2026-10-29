@@ -11,6 +11,10 @@ use crate::{Engine, Result};
 pub enum SuggestField {
     Publication,
     Work,
+    /// Catalog numbers, narrowed to the works `composer` composed when given
+    WorkNumber {
+        composer: Option<PersonId>,
+    },
     Person,
     Role,
     Publisher,
@@ -60,7 +64,10 @@ pub(crate) async fn suggest(
     if normalize(query).is_empty()
         && matches!(
             field,
-            SuggestField::Publication | SuggestField::Work | SuggestField::Person
+            SuggestField::Publication
+                | SuggestField::Work
+                | SuggestField::WorkNumber { .. }
+                | SuggestField::Person
         )
     {
         return Ok(Vec::new());
@@ -87,6 +94,49 @@ pub(crate) async fn suggest(
             for (id, exact) in ranked_candidates(query, candidates, limit) {
                 if let Some(work) = Work::fetch(engine, &mut conn, WorkId::new(id)).await? {
                     let item = Suggested::Work { work, number: None };
+                    suggestions.push(Suggestion { exact, item });
+                }
+            }
+            suggestions
+        }
+        SuggestField::WorkNumber { composer } => {
+            let wanted: CatalogNumber = query.parse()?;
+            let candidates = work::number_candidates(&mut conn, library, composer).await?;
+            let (mut same, rest): (Vec<_>, Vec<_>) = candidates
+                .into_iter()
+                .partition(|candidate| candidate.number == wanted);
+            let (mut begun, other): (Vec<_>, Vec<_>) = rest
+                .into_iter()
+                .partition(|candidate| candidate.number.starts_with(&wanted));
+            for tier in [&mut same, &mut begun] {
+                tier.sort_by(|a, b| a.number.cmp(&b.number).then_with(|| a.title.cmp(&b.title)));
+            }
+            let texts: Vec<&str> = other
+                .iter()
+                .map(|candidate| candidate.text.as_str())
+                .collect();
+            let fuzzy: Vec<(WorkId, CatalogNumber, bool)> = rank(query, &texts)
+                .into_iter()
+                .map(|i| (other[i].work, other[i].number.clone(), false))
+                .collect();
+            let mut hits: Vec<(WorkId, CatalogNumber, bool)> = same
+                .into_iter()
+                .map(|candidate| (candidate.work, candidate.number, true))
+                .chain(
+                    begun
+                        .into_iter()
+                        .map(|candidate| (candidate.work, candidate.number, false)),
+                )
+                .chain(fuzzy)
+                .collect();
+            hits.truncate(limit);
+            let mut suggestions = Vec::new();
+            for (id, number, exact) in hits {
+                if let Some(work) = Work::fetch(engine, &mut conn, id).await? {
+                    let item = Suggested::Work {
+                        work,
+                        number: Some(number),
+                    };
                     suggestions.push(Suggestion { exact, item });
                 }
             }
@@ -281,6 +331,19 @@ mod tests {
             .collect()
     }
 
+    fn numbers(suggestions: &[Suggestion]) -> Vec<(&str, bool)> {
+        suggestions
+            .iter()
+            .map(|suggestion| match &suggestion.item {
+                Suggested::Work {
+                    number: Some(number),
+                    ..
+                } => (number.as_str(), suggestion.exact),
+                other => panic!("unexpected suggestion {other:?}"),
+            })
+            .collect()
+    }
+
     #[tokio::test]
     async fn vocabulary_lists_alphabetically_and_exact_first() {
         let dir = tempfile::tempdir().unwrap();
@@ -421,5 +484,65 @@ mod tests {
             panic!("Chopin not suggested exactly: {people:?}");
         };
         assert_eq!(person.id(), chopin.id());
+    }
+
+    #[tokio::test]
+    async fn work_numbers_tier_and_narrow_by_composer() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut album = library
+            .create_publication(
+                ImportSeed::Title("Romantic piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let chopin = album
+            .create_contributor("Frederic Chopin", "composer")
+            .await
+            .unwrap();
+        let beethoven = album
+            .create_contributor("Ludwig van Beethoven", "Composer")
+            .await
+            .unwrap();
+        for (title, number, composer) in [
+            ("Nocturne in E-flat major", "Op. 9 No. 2", chopin.id()),
+            ("Nocturne in B-flat minor", "Op. 9 No. 1", chopin.id()),
+            ("Ballade", "Op. 23", chopin.id()),
+            ("Septet", "Op. 20", beethoven.id()),
+        ] {
+            let mut work = album.create_work(title).await.unwrap();
+            work.add_contributor(composer, "Composer").await.unwrap();
+            work.add_catalog_number(number.parse().unwrap())
+                .await
+                .unwrap();
+            if title == "Ballade" {
+                work.add_contributor(beethoven.id(), "arranger")
+                    .await
+                    .unwrap();
+            }
+        }
+
+        let everyone = SuggestField::WorkNumber { composer: None };
+
+        // Prefix tier only: the typed 9 allows no typos, so Op. 23 and Op. 20 are not reached
+        let begun = library.suggest(everyone, "Op. 9", 10).await.unwrap();
+        assert_eq!(
+            numbers(&begun),
+            [("Op. 9 No. 1", false), ("Op. 9 No. 2", false)]
+        );
+
+        let same = library.suggest(everyone, "Op. 9/2", 10).await.unwrap();
+        assert_eq!(numbers(&same)[0], ("Op. 9 No. 2", true));
+
+        // The "Composer" spelling counts; the arranger role on the Ballade does not
+        let only_beethoven = SuggestField::WorkNumber {
+            composer: Some(beethoven.id()),
+        };
+        let narrowed = library.suggest(only_beethoven, "op", 10).await.unwrap();
+        assert_eq!(numbers(&narrowed), [("Op. 20", false)]);
     }
 }

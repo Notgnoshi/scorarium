@@ -1095,6 +1095,50 @@ pub(crate) async fn candidates(
     Ok(candidates)
 }
 
+/// A catalog number search candidate
+pub(crate) struct NumberCandidate {
+    pub work: WorkId,
+    pub number: CatalogNumber,
+    pub title: String,
+    /// The number, the title, and the contributor names
+    pub text: String,
+}
+
+pub(crate) async fn number_candidates(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    composer: Option<PersonId>,
+) -> Result<Vec<NumberCandidate>> {
+    let rows = sqlx::query!(
+        r#"SELECT n.work_id, n.value, w.title,
+                  n.value || ' ' || w.title || ' '
+                  || coalesce((SELECT group_concat(person.name, ' ')
+                               FROM work_contributor c JOIN person ON person.id = c.person_id
+                               WHERE c.work_id = w.id), '')
+                  AS "text!: String"
+           FROM work_catalog_number n JOIN work w ON w.id = n.work_id
+           WHERE w.library_id = ?1
+             AND (?2 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c
+                                        WHERE c.work_id = w.id AND c.person_id = ?2
+                                          AND lower(c.role) = 'composer'))
+           ORDER BY n.id"#,
+        library.get(),
+        composer.map(PersonId::get)
+    )
+    .fetch_all(conn)
+    .await?;
+    let mut candidates = Vec::with_capacity(rows.len());
+    for row in rows {
+        candidates.push(NumberCandidate {
+            work: WorkId::new(row.work_id),
+            number: row.value.parse()?,
+            title: row.title,
+            text: row.text,
+        });
+    }
+    Ok(candidates)
+}
+
 /// List every work in `publication`
 pub(crate) async fn in_publication(
     engine: &Engine,
@@ -1301,6 +1345,18 @@ impl CatalogNumber {
     /// Whether the parser knows the scheme this number is written in
     pub fn is_recognized(&self) -> bool {
         self.scheme.is_some()
+    }
+
+    /// Whether this number begins with `prefix`: "Op. 27 No. 2" begins with "Op. 27"
+    ///
+    /// Only recognized numbers of one scheme can begin one another.
+    pub(crate) fn starts_with(&self, prefix: &CatalogNumber) -> bool {
+        match (self.scheme, prefix.scheme) {
+            (Some(mine), Some(theirs)) => {
+                mine == theirs && self.numbers.starts_with(&prefix.numbers)
+            }
+            _ => false,
+        }
     }
 
     /// Get an [Ord]-safe sort key for [CatalogNumber]
