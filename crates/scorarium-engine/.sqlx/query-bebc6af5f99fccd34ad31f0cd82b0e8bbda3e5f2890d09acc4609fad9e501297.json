@@ -1,0 +1,40 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id AS \"id!\", coalesce(p.title, '') AS \"name!: String\",\n                  coalesce(p.title, '') || ' '\n                  || coalesce((SELECT group_concat(person.name, ' ')\n                               FROM publication_contributor c JOIN person ON person.id = c.person_id\n                               WHERE c.publication_id = p.id), '') || ' '\n                  || coalesce((SELECT group_concat(value || ' ' || replace(value, '-', ''), ' ')\n                               FROM publication_identifier WHERE publication_id = p.id), '')\n                  AS \"text!: String\"\n           FROM publication p WHERE p.library_id = ? ORDER BY p.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name!: String",
+        "ordinal": 1,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "text!: String",
+        "ordinal": 2,
+        "type_info": "Null",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "bebc6af5f99fccd34ad31f0cd82b0e8bbda3e5f2890d09acc4609fad9e501297"
+}

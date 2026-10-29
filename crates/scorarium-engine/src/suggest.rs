@@ -1,11 +1,17 @@
 use scorarium_archive::fuzzy::{normalize, rank};
 
 use crate::library::{self, LibraryId};
+use crate::person::{self, Person, PersonId};
+use crate::publication::{self, Publication, PublicationId};
 use crate::value::Tag;
+use crate::work::{self, CatalogNumber, Work, WorkId};
 use crate::{Engine, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SuggestField {
+    Publication,
+    Work,
+    Person,
     Role,
     Publisher,
     Tag,
@@ -17,9 +23,18 @@ pub enum SuggestField {
 
 #[derive(Clone, Debug)]
 pub enum Suggested {
+    Publication(Publication),
+    Work {
+        work: Work,
+        number: Option<CatalogNumber>,
+    },
+    Person(Person),
     Role(String),
     Publisher(String),
-    Tag { tag: Tag, count: usize },
+    Tag {
+        tag: Tag,
+        count: usize,
+    },
     Key(String),
     TimeSignature(String),
     Instrumentation(String),
@@ -42,8 +57,52 @@ pub(crate) async fn suggest(
     query: &str,
     limit: usize,
 ) -> Result<Vec<Suggestion>> {
+    if normalize(query).is_empty()
+        && matches!(
+            field,
+            SuggestField::Publication | SuggestField::Work | SuggestField::Person
+        )
+    {
+        return Ok(Vec::new());
+    }
     let mut conn = engine.begin_read().await?;
+    // The entity arms rank and load in separate statements, so an entity deleted in between is
+    // left out rather than failing the call.
     let mut suggestions = match field {
+        SuggestField::Publication => {
+            let candidates = publication::candidates(&mut conn, library).await?;
+            let mut suggestions = Vec::new();
+            for (id, exact) in ranked_candidates(query, candidates, limit) {
+                let id = PublicationId::new(id);
+                if let Some(publication) = Publication::fetch(engine, &mut conn, id).await? {
+                    let item = Suggested::Publication(publication);
+                    suggestions.push(Suggestion { exact, item });
+                }
+            }
+            suggestions
+        }
+        SuggestField::Work => {
+            let candidates = work::candidates(&mut conn, library).await?;
+            let mut suggestions = Vec::new();
+            for (id, exact) in ranked_candidates(query, candidates, limit) {
+                if let Some(work) = Work::fetch(engine, &mut conn, WorkId::new(id)).await? {
+                    let item = Suggested::Work { work, number: None };
+                    suggestions.push(Suggestion { exact, item });
+                }
+            }
+            suggestions
+        }
+        SuggestField::Person => {
+            let candidates = person::candidates(&mut conn, library).await?;
+            let mut suggestions = Vec::new();
+            for (id, exact) in ranked_candidates(query, candidates, limit) {
+                if let Some(person) = Person::fetch(engine, &mut conn, PersonId::new(id)).await? {
+                    let item = Suggested::Person(person);
+                    suggestions.push(Suggestion { exact, item });
+                }
+            }
+            suggestions
+        }
         SuggestField::Role => {
             let stored = sqlx::query_scalar!(
                 r#"SELECT DISTINCT role AS "role!" FROM (
@@ -174,10 +233,38 @@ fn ranked<T>(
     suggestions
 }
 
+/// The searchable text from an entity
+pub(crate) struct Candidate {
+    pub id: i64,
+    /// The title or name, which decides an exact match; empty for an untitled draft
+    pub name: String,
+    /// The name followed by every other word the entity is found by
+    pub text: String,
+}
+
+fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> Vec<(i64, bool)> {
+    let query_normalized = normalize(query);
+    let texts: Vec<&str> = candidates
+        .iter()
+        .map(|candidate| candidate.text.as_str())
+        .collect();
+    let mut hits: Vec<(i64, bool)> = rank(query, &texts)
+        .into_iter()
+        .map(|i| {
+            let candidate = &candidates[i];
+            (candidate.id, normalize(&candidate.name) == query_normalized)
+        })
+        .collect();
+    hits.sort_by_key(|&(_, exact)| !exact);
+    hits.truncate(limit);
+    hits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::EngineOptions;
+    use crate::entity::Entity;
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
@@ -252,5 +339,87 @@ mod tests {
                 ("translator", false),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn entity_suggestions_put_exact_first_and_include_drafts() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut nocturnes = library
+            .create_publication(
+                ImportSeed::Title("Chopin Nocturnes".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let chopin = nocturnes
+            .create_contributor("Frederic Chopin", "composer")
+            .await
+            .unwrap();
+        let mut nocturne = nocturnes.create_work("Nocturne").await.unwrap();
+        nocturne
+            .add_contributor(chopin.id(), "composer")
+            .await
+            .unwrap();
+        nocturne
+            .add_catalog_number("Op. 9 No. 2".parse().unwrap())
+            .await
+            .unwrap();
+        nocturnes.commit().await.unwrap();
+        library
+            .create_publication(
+                ImportSeed::Title("Nocturne album".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        for query in ["nocturne", "op9no2"] {
+            let works = library
+                .suggest(SuggestField::Work, query, 10)
+                .await
+                .unwrap();
+            let Some(Suggestion {
+                exact,
+                item: Suggested::Work { work, number },
+            }) = works.first()
+            else {
+                panic!("no work suggested for {query:?}");
+            };
+            assert_eq!(work.title(), "Nocturne");
+            assert_eq!(*exact, query == "nocturne");
+            assert!(number.is_none());
+        }
+
+        let publications = library
+            .suggest(SuggestField::Publication, "nocturne", 10)
+            .await
+            .unwrap();
+        // Neither title is exact, so the order is by score; both must be offered
+        let mut drafts: Vec<bool> = publications
+            .iter()
+            .map(|suggestion| match &suggestion.item {
+                Suggested::Publication(publication) => publication.is_draft(),
+                other => panic!("unexpected suggestion {other:?}"),
+            })
+            .collect();
+        drafts.sort();
+        assert_eq!(drafts, [false, true]);
+
+        let people = library
+            .suggest(SuggestField::Person, "Frederic Chopin", 10)
+            .await
+            .unwrap();
+        let Some(Suggestion {
+            exact: true,
+            item: Suggested::Person(person),
+        }) = people.first()
+        else {
+            panic!("Chopin not suggested exactly: {people:?}");
+        };
+        assert_eq!(person.id(), chopin.id());
     }
 }

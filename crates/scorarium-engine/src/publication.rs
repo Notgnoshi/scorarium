@@ -12,6 +12,7 @@ use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
+use crate::suggest::Candidate;
 use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -287,7 +288,7 @@ impl Publication {
         })
     }
 
-    async fn fetch(
+    pub(crate) async fn fetch(
         engine: &Engine,
         conn: &mut SqliteConnection,
         id: PublicationId,
@@ -1369,6 +1370,35 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
         publications.push(Publication::from_row(engine, &mut conn, row).await?);
     }
     Ok(publications)
+}
+
+/// Get publication search candidates
+pub(crate) async fn candidates(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+) -> Result<Vec<Candidate>> {
+    let rows = sqlx::query!(
+        r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
+                  coalesce(p.title, '') || ' '
+                  || coalesce((SELECT group_concat(person.name, ' ')
+                               FROM publication_contributor c JOIN person ON person.id = c.person_id
+                               WHERE c.publication_id = p.id), '') || ' '
+                  || coalesce((SELECT group_concat(value || ' ' || replace(value, '-', ''), ' ')
+                               FROM publication_identifier WHERE publication_id = p.id), '')
+                  AS "text!: String"
+           FROM publication p WHERE p.library_id = ? ORDER BY p.id"#,
+        library.get()
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Candidate {
+            id: row.id,
+            name: row.name,
+            text: row.text,
+        })
+        .collect())
 }
 
 /// List every publication that contains `work`
