@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT time_signature AS \"value!\" FROM work\n                   WHERE library_id = ? AND time_signature IS NOT NULL ORDER BY time_signature",
+  "describe": {
+    "columns": [
+      {
+        "name": "value!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "time_signature"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "828d5f2522a5c385d8a0f99f5f47e7d78978ffd291eca979dabda3fb9673653a"
+}

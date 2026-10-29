@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT \"key\" AS \"value!\" FROM work\n                   WHERE library_id = ? AND \"key\" IS NOT NULL ORDER BY \"key\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "value!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "21a1ecb46f3c4fca6fec31be35eb8a36654548806c1ba6e61eeac4ac6a9972a7"
+}

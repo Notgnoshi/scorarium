@@ -7,7 +7,8 @@ mod catalog;
 mod demo;
 mod draft;
 pub mod external_id;
-mod fuzzy;
+// TODO: Move into scorarium-engine once the archive is deleted
+pub mod fuzzy;
 mod holding;
 pub mod identifier;
 mod import;

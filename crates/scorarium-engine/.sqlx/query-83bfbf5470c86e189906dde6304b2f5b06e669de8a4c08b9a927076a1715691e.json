@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT tag.tag, COUNT(*) AS \"count: u32\"\n               FROM tag\n               LEFT JOIN publication ON publication.id = tag.publication_id\n               LEFT JOIN work ON work.id = tag.work_id\n               WHERE tag.library_id = ?\n                 AND (? OR COALESCE(publication.draft, work.draft) = 0)\n               GROUP BY tag.tag\n               ORDER BY tag.tag",
+  "query": "SELECT tag.tag, COUNT(*) AS \"count: u32\"\n           FROM tag\n           LEFT JOIN publication ON publication.id = tag.publication_id\n           LEFT JOIN work ON work.id = tag.work_id\n           WHERE tag.library_id = ?\n             AND (? OR COALESCE(publication.draft, work.draft) = 0)\n           GROUP BY tag.tag\n           ORDER BY tag.tag",
   "describe": {
     "columns": [
       {
@@ -29,5 +29,5 @@
       false
     ]
   },
-  "hash": "6a8f635e517727f916bbc296d909e350f36135021b2dca42f827ff5a7e3b500a"
+  "hash": "83bfbf5470c86e189906dde6304b2f5b06e669de8a4c08b9a927076a1715691e"
 }
