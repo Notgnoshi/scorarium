@@ -12,7 +12,7 @@ use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
-use crate::suggest::Candidate;
+use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, clean_text};
 use crate::{Engine, Error, Result};
 
@@ -1060,8 +1060,9 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
 /// Get work search candidates for the given library
 pub(crate) async fn candidates(
     conn: &mut SqliteConnection,
-    library: LibraryId,
+    scope: CandidateScope,
 ) -> Result<Vec<Candidate>> {
+    let (library, include_drafts, include_private) = scope.binds();
     let rows = sqlx::query!(
         r#"SELECT w.id AS "id!", w.title AS name,
                   w.title || ' '
@@ -1071,8 +1072,12 @@ pub(crate) async fn candidates(
                   AS "text!: String",
                   (SELECT group_concat(value, char(10)) FROM work_catalog_number
                    WHERE work_id = w.id) AS "numbers: String"
-           FROM work w WHERE w.library_id = ? ORDER BY w.id"#,
-        library.get()
+           FROM work w JOIN library l ON l.id = w.library_id
+           WHERE (?1 IS NULL OR w.library_id = ?1) AND (?2 OR w.draft = 0) AND (?3 OR l.private = 0)
+           ORDER BY w.id"#,
+        library,
+        include_drafts,
+        include_private
     )
     .fetch_all(conn)
     .await?;

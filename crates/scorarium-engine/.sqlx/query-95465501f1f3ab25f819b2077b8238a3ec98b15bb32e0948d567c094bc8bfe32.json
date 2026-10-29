@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name, name AS text FROM person WHERE library_id = ? ORDER BY id",
+  "query": "SELECT id, name, private AS \"private: bool\" FROM library",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "person",
+            "table": "library",
             "name": "id"
           }
         }
@@ -20,25 +20,25 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "person",
+            "table": "library",
             "name": "name"
           }
         }
       },
       {
-        "name": "text",
+        "name": "private: bool",
         "ordinal": 2,
-        "type_info": "Text",
+        "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "person",
-            "name": "name"
+            "table": "library",
+            "name": "private"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "feba652577ac070372f85ce7ef3750530ad3f2dc88eb2f61bcb2dbd9a13cf037"
+  "hash": "95465501f1f3ab25f819b2077b8238a3ec98b15bb32e0948d567c094bc8bfe32"
 }

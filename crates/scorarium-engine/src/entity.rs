@@ -5,6 +5,9 @@ use std::str::FromStr;
 
 use crate::audit::{AuditEvent, AuditId};
 use crate::library::LibraryId;
+use crate::person::Person;
+use crate::publication::Publication;
+use crate::work::Work;
 use crate::{Engine, Error, Result};
 
 pub type Timestamp = chrono::DateTime<chrono::Utc>;
@@ -37,6 +40,13 @@ impl FromStr for EntityKind {
             other => return Err(eyre::eyre!("unknown entity kind {other:?}").into()),
         })
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum AnyEntity {
+    Publication(Publication),
+    Work(Work),
+    Person(Person),
 }
 
 /// A trait to define the common bits of what it means to be an entity in the scorarium database.

@@ -77,7 +77,8 @@ pub(crate) async fn suggest(
     // left out rather than failing the call.
     let mut suggestions = match field {
         SuggestField::Publication => {
-            let candidates = publication::candidates(&mut conn, library).await?;
+            let candidates =
+                publication::candidates(&mut conn, CandidateScope::Library(library)).await?;
             let mut suggestions = Vec::new();
             for (id, exact) in ranked_candidates(query, candidates, limit) {
                 let id = PublicationId::new(id);
@@ -89,7 +90,7 @@ pub(crate) async fn suggest(
             suggestions
         }
         SuggestField::Work => {
-            let candidates = work::candidates(&mut conn, library).await?;
+            let candidates = work::candidates(&mut conn, CandidateScope::Library(library)).await?;
             let mut suggestions = Vec::new();
             for (id, exact) in ranked_candidates(query, candidates, limit) {
                 if let Some(work) = Work::fetch(engine, &mut conn, WorkId::new(id)).await? {
@@ -143,7 +144,8 @@ pub(crate) async fn suggest(
             suggestions
         }
         SuggestField::Person => {
-            let candidates = person::candidates(&mut conn, library).await?;
+            let candidates =
+                person::candidates(&mut conn, CandidateScope::Library(library)).await?;
             let mut suggestions = Vec::new();
             for (id, exact) in ranked_candidates(query, candidates, limit) {
                 if let Some(person) = Person::fetch(engine, &mut conn, PersonId::new(id)).await? {
@@ -290,6 +292,24 @@ pub(crate) struct Candidate {
     pub name: String,
     /// The name followed by every other word the entity is found by
     pub text: String,
+}
+
+/// Which entities to get search candidates from
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CandidateScope {
+    /// Every entity in the specified library
+    Library(LibraryId),
+    /// Non-draft entities in every library
+    Committed { include_private: bool },
+}
+
+impl CandidateScope {
+    pub(crate) fn binds(self) -> (Option<i64>, bool, bool) {
+        match self {
+            CandidateScope::Library(library) => (Some(library.get()), true, true),
+            CandidateScope::Committed { include_private } => (None, false, include_private),
+        }
+    }
 }
 
 fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> Vec<(i64, bool)> {
