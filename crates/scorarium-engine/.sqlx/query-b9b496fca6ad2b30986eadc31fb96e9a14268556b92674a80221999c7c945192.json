@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT role AS \"role!\" FROM (\n                       SELECT role FROM publication_contributor WHERE library_id = ?1\n                       UNION\n                       SELECT role FROM work_contributor WHERE library_id = ?1\n                   )",
+  "describe": {
+    "columns": [
+      {
+        "name": "role!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b9b496fca6ad2b30986eadc31fb96e9a14268556b92674a80221999c7c945192"
+}

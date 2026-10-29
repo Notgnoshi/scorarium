@@ -9,6 +9,7 @@ use crate::entity::{Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
+use crate::suggest::{Candidate, CandidateScope};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -134,7 +135,7 @@ impl Person {
         })
     }
 
-    async fn fetch(
+    pub(crate) async fn fetch(
         engine: &Engine,
         conn: &mut SqliteConnection,
         id: PersonId,
@@ -460,6 +461,33 @@ pub(crate) async fn in_library(
         people.push(Person::from_row(engine, &mut conn, row).await?);
     }
     Ok(people)
+}
+
+/// Get person search candidates from the given library
+pub(crate) async fn candidates(
+    conn: &mut SqliteConnection,
+    scope: CandidateScope,
+) -> Result<Vec<Candidate>> {
+    let (library, include_drafts, include_private) = scope.binds();
+    let rows = sqlx::query!(
+        r#"SELECT p.id, p.name, p.name AS text
+           FROM person p JOIN library l ON l.id = p.library_id
+           WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 OR p.draft = 0) AND (?3 OR l.private = 0)
+           ORDER BY p.id"#,
+        library,
+        include_drafts,
+        include_private
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Candidate {
+            id: row.id,
+            name: row.name,
+            text: row.text,
+        })
+        .collect())
 }
 
 /// Clear the draft mark of every draft person named as a contributor of `publication`

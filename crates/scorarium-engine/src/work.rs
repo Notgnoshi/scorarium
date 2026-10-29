@@ -12,6 +12,7 @@ use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
+use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, clean_text};
 use crate::{Engine, Error, Result};
 
@@ -245,7 +246,7 @@ impl Work {
         })
     }
 
-    async fn fetch(
+    pub(crate) async fn fetch(
         engine: &Engine,
         conn: &mut SqliteConnection,
         id: WorkId,
@@ -1056,6 +1057,93 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     Ok(works)
 }
 
+/// Get work search candidates for the given library
+pub(crate) async fn candidates(
+    conn: &mut SqliteConnection,
+    scope: CandidateScope,
+) -> Result<Vec<Candidate>> {
+    let (library, include_drafts, include_private) = scope.binds();
+    let rows = sqlx::query!(
+        r#"SELECT w.id AS "id!", w.title AS name,
+                  w.title || ' '
+                  || coalesce((SELECT group_concat(person.name, ' ')
+                               FROM work_contributor c JOIN person ON person.id = c.person_id
+                               WHERE c.work_id = w.id), '')
+                  AS "text!: String",
+                  (SELECT group_concat(value, char(10)) FROM work_catalog_number
+                   WHERE work_id = w.id) AS "numbers: String"
+           FROM work w JOIN library l ON l.id = w.library_id
+           WHERE (?1 IS NULL OR w.library_id = ?1) AND (?2 OR w.draft = 0) AND (?3 OR l.private = 0)
+           ORDER BY w.id"#,
+        library,
+        include_drafts,
+        include_private
+    )
+    .fetch_all(conn)
+    .await?;
+    let mut candidates = Vec::with_capacity(rows.len());
+    for row in rows {
+        let mut text = row.text;
+        for line in row.numbers.as_deref().unwrap_or_default().lines() {
+            let number: CatalogNumber = line.parse()?;
+            text.push(' ');
+            text.push_str(number.as_str());
+            text.push(' ');
+            text.push_str(&number.squashed());
+        }
+        candidates.push(Candidate {
+            id: row.id,
+            name: row.name,
+            text,
+        });
+    }
+    Ok(candidates)
+}
+
+/// A catalog number search candidate
+pub(crate) struct NumberCandidate {
+    pub work: WorkId,
+    pub number: CatalogNumber,
+    pub title: String,
+    /// The number, the title, and the contributor names
+    pub text: String,
+}
+
+pub(crate) async fn number_candidates(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    composer: Option<PersonId>,
+) -> Result<Vec<NumberCandidate>> {
+    let rows = sqlx::query!(
+        r#"SELECT n.work_id, n.value, w.title,
+                  n.value || ' ' || w.title || ' '
+                  || coalesce((SELECT group_concat(person.name, ' ')
+                               FROM work_contributor c JOIN person ON person.id = c.person_id
+                               WHERE c.work_id = w.id), '')
+                  AS "text!: String"
+           FROM work_catalog_number n JOIN work w ON w.id = n.work_id
+           WHERE w.library_id = ?1
+             AND (?2 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c
+                                        WHERE c.work_id = w.id AND c.person_id = ?2
+                                          AND lower(c.role) = 'composer'))
+           ORDER BY n.id"#,
+        library.get(),
+        composer.map(PersonId::get)
+    )
+    .fetch_all(conn)
+    .await?;
+    let mut candidates = Vec::with_capacity(rows.len());
+    for row in rows {
+        candidates.push(NumberCandidate {
+            work: WorkId::new(row.work_id),
+            number: row.value.parse()?,
+            title: row.title,
+            text: row.text,
+        });
+    }
+    Ok(candidates)
+}
+
 /// List every work in `publication`
 pub(crate) async fn in_publication(
     engine: &Engine,
@@ -1248,9 +1336,32 @@ impl CatalogNumber {
         &self.text
     }
 
+    /// The catalog number with everything but its letters and digits removed: "Op. 9 No. 2" is "op9no2"
+    ///
+    /// This is useful for adding the catalog number to the search corpus
+    pub(crate) fn squashed(&self) -> String {
+        self.text
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
+    }
+
     /// Whether the parser knows the scheme this number is written in
     pub fn is_recognized(&self) -> bool {
         self.scheme.is_some()
+    }
+
+    /// Whether this number begins with `prefix`: "Op. 27 No. 2" begins with "Op. 27"
+    ///
+    /// Only recognized numbers of one scheme can begin one another.
+    pub(crate) fn starts_with(&self, prefix: &CatalogNumber) -> bool {
+        match (self.scheme, prefix.scheme) {
+            (Some(mine), Some(theirs)) => {
+                mine == theirs && self.numbers.starts_with(&prefix.numbers)
+            }
+            _ => false,
+        }
     }
 
     /// Get an [Ord]-safe sort key for [CatalogNumber]
@@ -1278,6 +1389,11 @@ impl FromStr for CatalogNumber {
         if text.is_empty() {
             return Err(Error::InvalidValue(
                 "A catalog number cannot be empty.".to_string(),
+            ));
+        }
+        if text.contains(['\n', '\r']) {
+            return Err(Error::InvalidValue(
+                "A catalog number cannot span multiple lines.".to_string(),
             ));
         }
         let (scheme, numbers) = match recognize(text) {

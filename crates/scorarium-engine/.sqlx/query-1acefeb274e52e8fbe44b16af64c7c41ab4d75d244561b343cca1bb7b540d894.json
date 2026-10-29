@@ -1,0 +1,52 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT w.id AS \"id!\", w.title AS name,\n                  w.title || ' '\n                  || coalesce((SELECT group_concat(person.name, ' ')\n                               FROM work_contributor c JOIN person ON person.id = c.person_id\n                               WHERE c.work_id = w.id), '')\n                  AS \"text!: String\",\n                  (SELECT group_concat(value, char(10)) FROM work_catalog_number\n                   WHERE work_id = w.id) AS \"numbers: String\"\n           FROM work w JOIN library l ON l.id = w.library_id\n           WHERE (?1 IS NULL OR w.library_id = ?1) AND (?2 OR w.draft = 0) AND (?3 OR l.private = 0)\n           ORDER BY w.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "text!: String",
+        "ordinal": 2,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "numbers: String",
+        "ordinal": 3,
+        "type_info": "Null",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      null,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "1acefeb274e52e8fbe44b16af64c7c41ab4d75d244561b343cca1bb7b540d894"
+}

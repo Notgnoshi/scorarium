@@ -8,6 +8,7 @@ use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::holding::NewHolding;
 use crate::person::{self, Person};
 use crate::publication::{self, ImportSeed, Publication};
+use crate::suggest::{self, SuggestField, Suggestion};
 use crate::value::Tag;
 use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
@@ -198,23 +199,7 @@ impl Library {
     /// Leave drafts out of the counts unless `include_drafts` is set.
     pub async fn tags(&self, include_drafts: bool) -> Result<Vec<(Tag, usize)>> {
         let mut conn = self.engine.begin_read().await?;
-        let rows = sqlx::query!(
-            r#"SELECT tag.tag, COUNT(*) AS "count: u32"
-               FROM tag
-               LEFT JOIN publication ON publication.id = tag.publication_id
-               LEFT JOIN work ON work.id = tag.work_id
-               WHERE tag.library_id = ?
-                 AND (? OR COALESCE(publication.draft, work.draft) = 0)
-               GROUP BY tag.tag
-               ORDER BY tag.tag"#,
-            self.id.get(),
-            include_drafts
-        )
-        .fetch_all(&mut *conn)
-        .await?;
-        rows.into_iter()
-            .map(|row| Ok((row.tag.parse()?, row.count as usize)))
-            .collect()
+        tag_counts(&mut conn, self.id, include_drafts).await
     }
 
     /// List the publications and works in the library tagged `tag`, oldest first
@@ -223,6 +208,41 @@ impl Library {
         let works = work::tagged(&self.engine, self.id, tag).await?;
         Ok((publications, works))
     }
+
+    /// Offer suggested values for a field from what the library already holds, best match first
+    pub async fn suggest(
+        &self,
+        field: SuggestField,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Suggestion>> {
+        suggest::suggest(&self.engine, self.id, field, query, limit).await
+    }
+}
+
+/// Count the publications and works with each tag in `library`, alphabetically by tag
+pub(crate) async fn tag_counts(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    include_drafts: bool,
+) -> Result<Vec<(Tag, usize)>> {
+    let rows = sqlx::query!(
+        r#"SELECT tag.tag, COUNT(*) AS "count: u32"
+           FROM tag
+           LEFT JOIN publication ON publication.id = tag.publication_id
+           LEFT JOIN work ON work.id = tag.work_id
+           WHERE tag.library_id = ?
+             AND (? OR COALESCE(publication.draft, work.draft) = 0)
+           GROUP BY tag.tag
+           ORDER BY tag.tag"#,
+        library.get(),
+        include_drafts
+    )
+    .fetch_all(conn)
+    .await?;
+    rows.into_iter()
+        .map(|row| Ok((row.tag.parse()?, row.count as usize)))
+        .collect()
 }
 
 fn audit_subject(id: LibraryId, label: &str) -> AuditSubject {

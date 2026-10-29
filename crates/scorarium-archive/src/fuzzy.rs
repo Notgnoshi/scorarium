@@ -1,7 +1,7 @@
 use frizbee::{CaseMatching, Config, Matcher, SortStrategy, UnicodeMatching};
 
 /// Normalize unicode text with punctuation into search tokens
-pub(crate) fn normalize(text: &str) -> String {
+pub fn normalize(text: &str) -> String {
     let ascii = deunicode::deunicode(text).to_ascii_lowercase();
     let mut normalized = String::with_capacity(ascii.len());
     for word in ascii
@@ -32,7 +32,7 @@ fn typo_budget(word: &str) -> u16 {
 }
 
 /// Return indices of the candidates that fuzzily match the typed text, best first.
-pub(crate) fn rank<S: AsRef<str>>(typed: &str, candidates: &[S]) -> Vec<usize> {
+pub fn rank<S: AsRef<str>>(typed: &str, candidates: &[S]) -> Vec<usize> {
     let typed = normalize(typed);
     if typed.is_empty() {
         return Vec::new();

@@ -12,6 +12,7 @@ use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
+use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -287,7 +288,7 @@ impl Publication {
         })
     }
 
-    async fn fetch(
+    pub(crate) async fn fetch(
         engine: &Engine,
         conn: &mut SqliteConnection,
         id: PublicationId,
@@ -1371,6 +1372,40 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     Ok(publications)
 }
 
+/// Get publication search candidates
+pub(crate) async fn candidates(
+    conn: &mut SqliteConnection,
+    scope: CandidateScope,
+) -> Result<Vec<Candidate>> {
+    let (library, include_drafts, include_private) = scope.binds();
+    let rows = sqlx::query!(
+        r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
+                  coalesce(p.title, '') || ' '
+                  || coalesce((SELECT group_concat(person.name, ' ')
+                               FROM publication_contributor c JOIN person ON person.id = c.person_id
+                               WHERE c.publication_id = p.id), '') || ' '
+                  || coalesce((SELECT group_concat(value || ' ' || replace(value, '-', ''), ' ')
+                               FROM publication_identifier WHERE publication_id = p.id), '')
+                  AS "text!: String"
+           FROM publication p JOIN library l ON l.id = p.library_id
+           WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 OR p.draft = 0) AND (?3 OR l.private = 0)
+           ORDER BY p.id"#,
+        library,
+        include_drafts,
+        include_private
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Candidate {
+            id: row.id,
+            name: row.name,
+            text: row.text,
+        })
+        .collect())
+}
+
 /// List every publication that contains `work`
 pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publication>> {
     let mut conn = engine.begin_read().await?;
@@ -1551,6 +1586,11 @@ impl Identifier {
 
     pub fn as_str(&self) -> &str {
         &self.text
+    }
+
+    /// Get a compact form of the identifier
+    pub fn compact(&self) -> String {
+        self.text.replace('-', "")
     }
 }
 

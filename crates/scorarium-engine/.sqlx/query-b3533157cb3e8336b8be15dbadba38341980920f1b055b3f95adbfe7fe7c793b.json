@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT holding.location AS \"value!\" FROM holding\n                   JOIN publication ON publication.id = holding.publication_id\n                   WHERE publication.library_id = ? AND holding.kind = 'physical'\n                     AND holding.location IS NOT NULL\n                   ORDER BY holding.location",
+  "describe": {
+    "columns": [
+      {
+        "name": "value!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "holding",
+            "name": "location"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "b3533157cb3e8336b8be15dbadba38341980920f1b055b3f95adbfe7fe7c793b"
+}
