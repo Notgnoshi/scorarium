@@ -5,7 +5,7 @@ use scorarium_archive::fuzzy::{normalize, rank};
 use crate::entity::{AnyEntity, Entity, EntityKind};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
-use crate::publication::{self, Publication, PublicationId};
+use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Result};
@@ -29,6 +29,8 @@ impl Engine {
         if limit == 0 || normalize(query).is_empty() {
             return Ok(Vec::new());
         }
+        let canonical = parse_identifier(query).map(|identifier| identifier.compact());
+        let query = canonical.as_deref().unwrap_or(query);
         let mut conn = self.begin_read().await?;
         let scope = CandidateScope::Committed { include_private };
         let mut candidates: Vec<(EntityKind, Candidate)> = Vec::new();
@@ -95,6 +97,13 @@ impl Engine {
     }
 }
 
+/// Parse the whole query as an ISBN, or failing that an ISMN
+fn parse_identifier(query: &str) -> Option<Identifier> {
+    Identifier::new(IdentifierKind::Isbn, query)
+        .or_else(|_| Identifier::new(IdentifierKind::Ismn, query))
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +161,24 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn search_finds_a_publication_by_either_isbn_form() {
+        let engine = Engine::demo(EngineOptions::default()).await.unwrap();
+        // Imported as the ISBN-10 0-8065-0180-4 and stored as 978-0-8065-0180-2
+        for query in ["0-8065-0180-4", "ISBN 0806501804", "9780806501802"] {
+            let hits = engine.search(query, true, 10).await.unwrap();
+            let [hit] = hits.as_slice() else {
+                panic!("expected one hit for {query:?}, got {hits:?}");
+            };
+            let AnyEntity::Publication(publication) = &hit.entity else {
+                panic!("expected a publication for {query:?}, got {hit:?}");
+            };
+            assert_eq!(
+                publication.title(),
+                Some("The Collected Writings of Ambrose Bierce")
+            );
+        }
     }
 }

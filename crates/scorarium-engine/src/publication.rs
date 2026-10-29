@@ -1587,6 +1587,11 @@ impl Identifier {
     pub fn as_str(&self) -> &str {
         &self.text
     }
+
+    /// Get a compact form of the identifier
+    pub fn compact(&self) -> String {
+        self.text.replace('-', "")
+    }
 }
 
 impl fmt::Display for Identifier {
