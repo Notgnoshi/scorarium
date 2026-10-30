@@ -3,6 +3,7 @@ use scorarium_archive::fuzzy::{normalize, rank};
 use crate::library::{self, LibraryId};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
+use crate::search::same_name;
 use crate::value::Tag;
 use crate::work::{self, CatalogNumber, Work, WorkId};
 use crate::{Engine, Result};
@@ -276,7 +277,7 @@ fn ranked<T>(
         .map(|i| {
             let item = items[i].take().expect("each index is ranked once");
             Suggestion {
-                exact: normalize(value(&item)) == normalize(query),
+                exact: same_name(value(&item), query),
                 item: wrap(item),
             }
         })
@@ -313,7 +314,6 @@ impl CandidateScope {
 }
 
 fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> Vec<(i64, bool)> {
-    let query_normalized = normalize(query);
     let texts: Vec<&str> = candidates
         .iter()
         .map(|candidate| candidate.text.as_str())
@@ -322,7 +322,7 @@ fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> V
         .into_iter()
         .map(|i| {
             let candidate = &candidates[i];
-            (candidate.id, normalize(&candidate.name) == query_normalized)
+            (candidate.id, same_name(&candidate.name, query))
         })
         .collect();
     hits.sort_by_key(|&(_, exact)| !exact);

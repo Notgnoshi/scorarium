@@ -97,6 +97,11 @@ impl Engine {
     }
 }
 
+/// Check whether two names are the same after normalization
+pub fn same_name(one: &str, other: &str) -> bool {
+    normalize(one) == normalize(other)
+}
+
 /// Parse the whole query as an ISBN, or failing that an ISMN
 fn parse_identifier(query: &str) -> Option<Identifier> {
     Identifier::new(IdentifierKind::Isbn, query)
@@ -180,5 +185,14 @@ mod tests {
                 Some("The Collected Writings of Ambrose Bierce")
             );
         }
+    }
+
+    #[test]
+    fn same_name_ignores_case_diacritics_and_punctuation() {
+        assert!(same_name("Etude-Tableau", "etude tableau"));
+        assert!(same_name("Gymnopédie No. 1", "gymnopedie no 1"));
+        // Word order still matters, unlike the fuzzy ranker
+        assert!(!same_name("Rachmaninoff, Sergei", "sergei rachmaninoff"));
+        assert!(!same_name("Op. 3 No. 2", "Op. 3 No. 4"));
     }
 }
