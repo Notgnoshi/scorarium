@@ -1,9 +1,8 @@
 use std::io::Write;
 
-use scorarium_engine::legacy::archive::{Archive, Entity};
+use scorarium_engine::legacy::archive::{Archive, Entity, sort_name};
 
 use crate::library::write_table;
-use crate::person;
 
 pub(crate) async fn run(archive: &Archive, query: &str, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 6]> = archive
@@ -42,6 +41,6 @@ pub(crate) fn context(entity: &Entity) -> String {
                 (None, None) => String::new(),
             }
         }
-        Entity::Person(person) => person::disambiguator(person),
+        Entity::Person(person) => sort_name(&person.name),
     }
 }

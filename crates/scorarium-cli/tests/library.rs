@@ -186,10 +186,10 @@ async fn person_list_shows_everyone_credited() {
     result.unwrap();
     assert_eq!(
         out,
-        "4\tAmbrose Bierce\tThe Collected Writings of Ambrose Bierce +3\n\
-         2\tScott Chacon  \tPro Git\n\
-         1\tDrew Neil     \tPractical Vim\n\
-         3\tBen Straub    \tPro Git\n"
+        "4\tAmbrose Bierce\tBierce, Ambrose\n\
+         2\tScott Chacon  \tChacon, Scott\n\
+         1\tDrew Neil     \tNeil, Drew\n\
+         3\tBen Straub    \tStraub, Ben\n"
     );
 
     let (out, result) = run(&archive, "library books person list --role composer\n").await;
@@ -250,7 +250,7 @@ async fn search_prints_the_same_columns_for_every_kind() {
         out,
         "work\t2\tSheet music\t6\tPolichinelle\tOp. 3 No. 4 by Sergei Rachmaninoff\n\
          publication\t1\tBooks\t2\tPro Git\tScott Chacon, Ben Straub\n\
-         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tThe Isle of the Dead +1\n\
+         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tKirkor, Georgy\n\
          publication\t2\tSheet music\t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
          work       \t2\tSheet music\t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n"
     );

@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_engine::legacy::archive::{Library, Person, PersonSummary};
+use scorarium_engine::legacy::archive::{Library, Person, sort_name};
 
 use crate::library::write_table;
 
@@ -15,20 +15,11 @@ pub(crate) async fn list(
         .await?
         .into_iter()
         .map(|person| {
-            let title = disambiguator(&person);
-            [person.id.to_string(), person.name, title]
+            let sort_name = sort_name(&person.name);
+            [person.id.to_string(), person.name, sort_name]
         })
         .collect();
     write_table(out, &rows)
-}
-
-/// Format the title of a person's work, with a count of their other credits when there are any.
-pub(crate) fn disambiguator(person: &PersonSummary) -> String {
-    if person.others > 0 {
-        format!("{} +{}", person.title, person.others)
-    } else {
-        person.title.clone()
-    }
 }
 
 /// Show a person with the publications and works crediting them.
