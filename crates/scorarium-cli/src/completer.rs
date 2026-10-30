@@ -1,8 +1,9 @@
-use std::sync::Arc;
-
 use clap::{Arg, Command, CommandFactory};
 use reedline::{Completer, CompletionResult, Span, Suggestion};
-use scorarium_engine::legacy::archive::{Archive, Entity, SuggestField, Suggested};
+use scorarium_engine::Engine;
+use scorarium_engine::entity::AnyEntity;
+use scorarium_engine::library::LibraryId;
+use scorarium_engine::suggest::{SuggestField, Suggested};
 use tokio::runtime::Handle;
 
 use crate::command::{LIBRARY_COMMANDS_WITHOUT_SUBJECT, Line};
@@ -71,19 +72,19 @@ fn field_for(value_name: &str) -> Option<SuggestField> {
 
 pub(crate) struct ShellCompleter {
     tree: Command,
-    archive: Arc<Archive>,
+    engine: Engine,
     handle: Handle,
-    selected: Option<i64>,
+    selected: Option<LibraryId>,
 }
 
 impl ShellCompleter {
-    /// Complete against `archive`, rewriting lines for the `selected` library as the shell does.
+    /// Complete against `engine`, rewriting lines for the `selected` library as the shell does.
     ///
-    /// `handle` runs archive queries, so the completer must be called off the runtime's threads.
-    pub(crate) fn new(archive: Arc<Archive>, handle: Handle, selected: Option<i64>) -> Self {
+    /// `handle` runs engine queries, so the completer must be called off the runtime's threads.
+    pub(crate) fn new(engine: Engine, handle: Handle, selected: Option<LibraryId>) -> Self {
         ShellCompleter {
             tree: tree(),
-            archive,
+            engine,
             handle,
             selected,
         }
@@ -166,17 +167,18 @@ impl ShellCompleter {
     /// List the libraries whose names start with `typed`, quoted for the shell.
     fn libraries(&self, typed: &str) -> Vec<(String, Option<String>)> {
         // There is nowhere to show an error mid-keystroke
-        let Ok(libraries) = self.handle.block_on(self.archive.libraries()) else {
+        let Ok(libraries) = self.handle.block_on(self.engine.libraries()) else {
             return Vec::new();
         };
         // The shell resolves library names regardless of case
         let typed = typed.to_lowercase();
         libraries
             .into_iter()
-            .filter(|library| library.name.to_lowercase().starts_with(&typed))
+            .filter(|library| library.name().to_lowercase().starts_with(&typed))
             .filter_map(|library| {
-                let name = shlex::try_quote(&library.name).ok()?.into_owned();
-                let description = format!("id {}, {}", library.id, visibility(library.private));
+                let name = shlex::try_quote(library.name()).ok()?.into_owned();
+                let description =
+                    format!("id {}, {}", library.id(), visibility(library.is_private()));
                 Some((name, Some(description)))
             })
             .collect()
@@ -189,8 +191,8 @@ impl ShellCompleter {
         typed: &str,
     ) -> Vec<(String, Option<String>)> {
         let found = self.handle.block_on(async {
-            let library = library::resolve(&self.archive, library).await?;
-            eyre::Ok(library.suggest(field, typed, false, false).await?)
+            let library = library::resolve(&self.engine, library).await?;
+            eyre::Ok(library.suggest(field, typed, 10).await?)
         });
         let Ok(found) = found else {
             return Vec::new();
@@ -200,25 +202,26 @@ impl ShellCompleter {
             .filter_map(|suggestion| {
                 let (value, description) = match suggestion.item {
                     Suggested::Publication(publication) => {
-                        let title = publication.title.clone();
-                        (title, Some(context(&Entity::Publication(publication))))
+                        let title = publication.title().unwrap_or_default().to_string();
+                        (title, Some(context(&AnyEntity::Publication(publication))))
                     }
                     Suggested::Work { work, .. } => {
-                        let title = work.title.clone();
-                        (title, Some(context(&Entity::Work(work))))
+                        let title = work.title().to_string();
+                        (title, Some(context(&AnyEntity::Work(work))))
                     }
                     Suggested::Person(person) => {
-                        let name = person.name.clone();
-                        (name, Some(context(&Entity::Person(person))))
+                        let name = person.name().to_string();
+                        (name, Some(context(&AnyEntity::Person(person))))
                     }
-                    Suggested::Tag { name, count } => (name, Some(format!("{count} tagged"))),
+                    Suggested::Tag { tag, count } => {
+                        (tag.to_string(), Some(format!("{count} tagged")))
+                    }
                     Suggested::Role(role) => (role, None),
                     _ => return None,
                 };
                 let value = shlex::try_quote(&value).ok()?.into_owned();
                 Some((value, description))
             })
-            .take(10)
             .collect()
     }
 }
@@ -265,16 +268,17 @@ impl Completer for ShellCompleter {
 
 #[cfg(test)]
 mod tests {
+    use scorarium_engine::EngineOptions;
+
     use super::*;
 
     #[tokio::test]
     async fn completion_follows_the_grammar() {
-        let archive = Arc::new(Archive::in_memory().await.unwrap());
-        archive.populate_demo().await.unwrap();
+        let engine = Engine::demo(EngineOptions::default()).await.unwrap();
         let handle = Handle::current();
         tokio::task::spawn_blocking(move || {
-            let values = |selected: Option<i64>, line: &str| -> Vec<(String, usize)> {
-                ShellCompleter::new(Arc::clone(&archive), handle.clone(), selected)
+            let values = |selected: Option<LibraryId>, line: &str| -> Vec<(String, usize)> {
+                ShellCompleter::new(engine.clone(), handle.clone(), selected)
                     .complete(line, line.len())
                     .suggestions()
                     .iter()
@@ -308,7 +312,7 @@ mod tests {
                 )
             );
             assert_eq!(
-                values(Some(1), "p"),
+                values(Some("1".parse().unwrap()), "p"),
                 expected(&["publication", "person"], 0)
             );
             assert_eq!(

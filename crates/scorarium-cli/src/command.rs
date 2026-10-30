@@ -2,7 +2,10 @@ use std::io::Write;
 
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
-use scorarium_engine::legacy::archive::{Archive, Library, Tag, Work};
+use scorarium_engine::Engine;
+use scorarium_engine::entity::Entity;
+use scorarium_engine::library::{Library, LibraryId};
+use scorarium_engine::value::Tag;
 
 use crate::library::{self, Visibility};
 use crate::{person, publication, reference, search, tag, work};
@@ -170,36 +173,36 @@ pub(crate) enum Flow {
     Quit,
 }
 
-pub(crate) struct Shell<'a> {
-    archive: &'a Archive,
+pub(crate) struct Shell {
+    engine: Engine,
     /// The selected library's id.
     ///
     /// The library name is queried before the prompt is displayed to capture any library renames.
-    selected: Option<i64>,
+    selected: Option<LibraryId>,
     tree: clap::Command,
 }
 
-impl Shell<'_> {
+impl Shell {
     /// Start a session with no library selected.
-    pub(crate) fn new(archive: &Archive) -> Shell<'_> {
+    pub(crate) fn new(engine: Engine) -> Shell {
         let mut tree = Line::command();
         tree.build();
         Shell {
-            archive,
+            engine,
             selected: None,
             tree,
         }
     }
 
     /// Return the id of the selected library, if any.
-    pub(crate) fn selection(&self) -> Option<i64> {
+    pub(crate) fn selection(&self) -> Option<LibraryId> {
         self.selected
     }
 
     /// Look up the selected library, or nothing when none is selected or it has since been deleted.
     pub(crate) async fn selected(&self) -> eyre::Result<Option<Library>> {
         match self.selected {
-            Some(id) => Ok(self.archive.library(id).await?),
+            Some(id) => Ok(self.engine.library(id).await?),
             None => Ok(None),
         }
     }
@@ -214,7 +217,7 @@ impl Shell<'_> {
         if let Some(id) = self.selected
             && self.tree.find_subcommand(&words[0]).is_none()
         {
-            if self.archive.library(id).await?.is_none() {
+            if self.engine.library(id).await?.is_none() {
                 self.selected = None;
                 eyre::bail!("selected library {id} no longer exists; selection cleared");
             }
@@ -249,29 +252,29 @@ impl Shell<'_> {
             Command::Library { library, command } => match command {
                 LibraryCommand::List => {
                     reject(&library, "library", "list")?;
-                    library::list(self.archive, out).await?
+                    library::list(&self.engine, out).await?
                 }
                 LibraryCommand::Create { name, visibility } => {
                     reject(&library, "library", "create")?;
-                    library::create(self.archive, &name, visibility).await?
+                    library::create(&self.engine, &name, visibility).await?
                 }
                 LibraryCommand::Show => {
-                    library::show(self.archive, require(&library, "library")?, out).await?
+                    library::show(&self.engine, require(&library, "library")?, out).await?
                 }
                 LibraryCommand::Rename { new_name } => {
-                    library::rename(self.archive, require(&library, "library")?, &new_name).await?
+                    library::rename(&self.engine, require(&library, "library")?, &new_name).await?
                 }
                 LibraryCommand::Delete => {
-                    library::delete(self.archive, require(&library, "library")?).await?;
+                    library::delete(&self.engine, require(&library, "library")?).await?;
                     if self.selected.is_some() && self.selected().await?.is_none() {
                         self.selected = None;
                     }
                 }
                 LibraryCommand::Select => {
                     self.selected = Some(
-                        library::resolve(self.archive, require(&library, "library")?)
+                        library::resolve(&self.engine, require(&library, "library")?)
                             .await?
-                            .id,
+                            .id(),
                     );
                 }
                 LibraryCommand::Deselect => {
@@ -283,14 +286,14 @@ impl Shell<'_> {
                     command,
                 } => {
                     let library =
-                        library::resolve(self.archive, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(&library, "library")?).await?;
                     match command {
                         PublicationCommand::List { tag } => {
                             reject(&publication, "publication", "list")?;
                             let tags = tag
                                 .iter()
-                                .map(|tag| tag.parse::<Tag>().map_err(|e| eyre::eyre!("{e}")))
-                                .collect::<eyre::Result<Vec<_>>>()?;
+                                .map(|tag| tag.parse())
+                                .collect::<Result<Vec<Tag>, _>>()?;
                             publication::list(&library, &tags, out).await?
                         }
                         PublicationCommand::Show => {
@@ -299,8 +302,8 @@ impl Shell<'_> {
                                 "publication",
                                 reference,
                                 library.publications().await?,
-                                |p| p.id,
-                                |p| &p.title,
+                                |p| p.id(),
+                                |p| p.title().unwrap_or_default(),
                             )?;
                             publication::show(publication, out).await?
                         }
@@ -308,24 +311,16 @@ impl Shell<'_> {
                 }
                 LibraryCommand::Work { work, command } => {
                     let library =
-                        library::resolve(self.archive, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(&library, "library")?).await?;
                     match command {
                         WorkCommand::Show => {
                             let reference = require(&work, "work")?;
-                            let mut works = Vec::new();
-                            for publication in library.publications().await? {
-                                for candidate in publication.works().await? {
-                                    if !works.iter().any(|w: &Work| w.id == candidate.id) {
-                                        works.push(candidate);
-                                    }
-                                }
-                            }
                             let work = reference::resolve(
                                 "work",
                                 reference,
-                                works,
-                                |w| w.id,
-                                |w| &w.title,
+                                library.works().await?,
+                                |w| w.id(),
+                                |w| w.title(),
                             )?;
                             work::show(work, out).await?
                         }
@@ -333,7 +328,7 @@ impl Shell<'_> {
                 }
                 LibraryCommand::Person { person, command } => {
                     let library =
-                        library::resolve(self.archive, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(&library, "library")?).await?;
                     match command {
                         PersonCommand::List { role } => {
                             reject(&person, "person", "list")?;
@@ -341,29 +336,26 @@ impl Shell<'_> {
                         }
                         PersonCommand::Show => {
                             let reference = require(&person, "person")?;
-                            let summary = reference::resolve(
+                            let person = reference::resolve(
                                 "person",
                                 reference,
-                                library.person_summaries(None).await?,
-                                |p| p.id,
-                                |p| &p.name,
+                                library.people(None).await?,
+                                |p| p.id(),
+                                |p| p.name(),
                             )?;
-                            let Some(person) = library.person(summary.id).await? else {
-                                eyre::bail!("no person '{reference}'");
-                            };
                             person::show(person, out).await?
                         }
                     }
                 }
                 LibraryCommand::Tag { command } => {
                     let library =
-                        library::resolve(self.archive, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(&library, "library")?).await?;
                     match command {
                         TagCommand::List => tag::list(&library, out).await?,
                     }
                 }
             },
-            Command::Search { query } => search::run(self.archive, &query, out).await?,
+            Command::Search { query } => search::run(&self.engine, &query, out).await?,
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)

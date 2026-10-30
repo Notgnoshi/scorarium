@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use scorarium_cli::{LogWriter, ShellArgs};
 use scorarium_engine::legacy::archive::Archive;
+use scorarium_engine::{Engine, EngineOptions};
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -49,7 +50,7 @@ enum Command {
 }
 
 /// Open the archive the global flags point at.
-async fn open_archive(data_dir: &Path, demo: bool, migrate: bool) -> color_eyre::Result<Archive> {
+async fn open_archive(data_dir: &Path, demo: bool) -> color_eyre::Result<Archive> {
     if demo {
         tracing::info!("using an in-memory demo library");
         let archive = Archive::in_memory().await?;
@@ -57,7 +58,7 @@ async fn open_archive(data_dir: &Path, demo: bool, migrate: bool) -> color_eyre:
         Ok(archive)
     } else {
         tracing::info!(data_dir = %data_dir.display(), "opening library");
-        Ok(Archive::open(data_dir, migrate).await?)
+        Ok(Archive::open(data_dir, true).await?)
     }
 }
 
@@ -72,7 +73,7 @@ async fn main() -> color_eyre::Result<()> {
     match args.command {
         Command::Serve(serve) => {
             tracing_subscriber::fmt().with_env_filter(filter).init();
-            let archive = open_archive(&args.data_dir, args.demo, true).await?;
+            let archive = open_archive(&args.data_dir, args.demo).await?;
             scorarium_web::serve(serve, archive, args.demo, args.contact.as_deref()).await?;
         }
         Command::Shell(shell) => {
@@ -91,11 +92,23 @@ async fn main() -> color_eyre::Result<()> {
                     args.data_dir.display()
                 );
             }
-            // The shell shares the database with a running server, so it never migrates it.
-            let archive = open_archive(&args.data_dir, args.demo, false).await?;
+            let engine = if args.demo {
+                tracing::info!("using an in-memory demo library");
+                Engine::demo(EngineOptions::default()).await?
+            } else {
+                tracing::info!(data_dir = %args.data_dir.display(), "opening library");
+                // The shell may share the database with a running server, so it never migrates it.
+                Engine::open(
+                    &args.data_dir,
+                    EngineOptions {
+                        migrate_on_startup: false,
+                    },
+                )
+                .await?
+            };
             // The demo library is throwaway, so its history is too
             let history = (!args.demo).then(|| args.data_dir.join(".shell_history"));
-            scorarium_cli::shell(shell, archive, history, log).await?;
+            scorarium_cli::shell(shell, engine, history, log).await?;
         }
     }
     Ok(())
