@@ -1,17 +1,17 @@
 use std::io::{BufRead, Write};
 
 use eyre::WrapErr;
-use scorarium_engine::legacy::archive::Archive;
+use scorarium_engine::Engine;
 
 use crate::command::{Flow, Shell};
 
 /// Run the given scorarium script, writing its output to the given writer.
 pub async fn run_script(
-    archive: &Archive,
+    engine: &Engine,
     source: impl BufRead,
     out: &mut impl Write,
 ) -> eyre::Result<()> {
-    let mut shell = Shell::new(archive);
+    let mut shell = Shell::new(engine.clone());
     for (index, line) in source.lines().enumerate() {
         let line = line?;
         let flow = shell

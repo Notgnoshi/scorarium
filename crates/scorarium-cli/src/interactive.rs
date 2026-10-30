@@ -1,13 +1,12 @@
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use reedline::{
     ColumnarMenu, DefaultHinter, DefaultPrompt, DefaultPromptSegment, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
     default_emacs_keybindings,
 };
-use scorarium_engine::legacy::archive::Archive;
+use scorarium_engine::Engine;
 use tokio::runtime::Handle;
 
 use crate::command::{Flow, Shell};
@@ -18,7 +17,7 @@ const HIST_SIZE: usize = 1000;
 
 /// Read and run commands from a line editor until `quit` or ctrl-d on an empty line.
 pub(crate) async fn run(
-    archive: &Arc<Archive>,
+    engine: &Engine,
     history: Option<PathBuf>,
     log: &LogWriter,
 ) -> eyre::Result<()> {
@@ -42,11 +41,11 @@ pub(crate) async fn run(
         let history = FileBackedHistory::with_file(HIST_SIZE, path)?;
         editor = editor.with_history(Box::new(history));
     }
-    let mut shell = Shell::new(archive);
+    let mut shell = Shell::new(engine.clone());
     let mut stdout = std::io::stdout();
     loop {
         let label = match shell.selected().await? {
-            Some(library) => format!("scorarium[{}]", library.name),
+            Some(library) => format!("scorarium[{}]", library.name()),
             None => "scorarium".to_string(),
         };
         let prompt = DefaultPrompt::new(
@@ -54,7 +53,7 @@ pub(crate) async fn run(
             DefaultPromptSegment::Empty,
         );
         editor = editor.with_completer(Box::new(ShellCompleter::new(
-            Arc::clone(archive),
+            engine.clone(),
             Handle::current(),
             shell.selection(),
         )));

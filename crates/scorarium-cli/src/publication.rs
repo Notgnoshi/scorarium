@@ -1,6 +1,10 @@
 use std::io::Write;
 
-use scorarium_engine::legacy::archive::{Library, Publication, Tag};
+use scorarium_engine::entity::Entity;
+use scorarium_engine::holding::HoldingKind;
+use scorarium_engine::library::Library;
+use scorarium_engine::publication::Publication;
+use scorarium_engine::value::Tag;
 
 use crate::library::write_table;
 
@@ -10,31 +14,35 @@ pub(crate) async fn list(
     tags: &[Tag],
     out: &mut impl Write,
 ) -> eyre::Result<()> {
-    let rows: Vec<[String; 5]> = library
+    let rows: Vec<[String; 6]> = library
         .publications()
         .await?
         .into_iter()
-        .filter(|publication| {
-            tags.iter()
-                .all(|tag| publication.tags.iter().any(|t| t == tag.as_str()))
-        })
+        .filter(|publication| tags.iter().all(|tag| publication.tags().contains(tag)))
         .map(|publication| {
             let contributors: Vec<&str> = publication
-                .contributors
+                .contributors()
                 .iter()
                 .map(|contributor| contributor.name.as_str())
                 .collect();
             let holdings: Vec<&str> = publication
-                .holdings
+                .holdings()
                 .iter()
-                .map(|holding| holding.kind.as_str())
+                .map(|holding| match holding.kind {
+                    HoldingKind::Physical { .. } => "physical",
+                })
                 .collect();
             [
-                publication.id.to_string(),
-                publication.title,
+                publication.id().to_string(),
+                if publication.is_draft() {
+                    "draft".to_string()
+                } else {
+                    String::new()
+                },
+                publication.title().unwrap_or_default().to_string(),
                 contributors.join(", "),
                 publication
-                    .year
+                    .year()
                     .map(|year| year.to_string())
                     .unwrap_or_default(),
                 holdings.join(", "),
@@ -46,44 +54,52 @@ pub(crate) async fn list(
 
 pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
-    let mut rows = vec![
-        row("id", publication.id.to_string(), String::new()),
-        row("title", String::new(), publication.title.clone()),
-    ];
+    let mut rows = vec![row("id", publication.id().to_string(), String::new())];
+    if publication.is_draft() {
+        rows.push(row("draft", String::new(), String::new()));
+    }
+    rows.push(row(
+        "title",
+        String::new(),
+        publication.title().unwrap_or_default().to_string(),
+    ));
     let optional = [
-        ("publisher", publication.publisher.clone()),
-        ("year", publication.year.map(|year| year.to_string())),
-        ("stars", publication.stars.map(|stars| stars.to_string())),
-        ("note", publication.note.clone()),
+        ("publisher", publication.publisher().map(str::to_string)),
+        ("year", publication.year().map(|year| year.to_string())),
+        ("stars", publication.stars().map(|stars| stars.to_string())),
+        ("note", publication.note().map(str::to_string)),
     ];
     for (label, value) in optional {
         if let Some(value) = value {
             rows.push(row(label, String::new(), value));
         }
     }
-    if !publication.tags.is_empty() {
-        rows.push(row("tags", String::new(), publication.tags.join(", ")));
+    if !publication.tags().is_empty() {
+        let tags: Vec<&str> = publication.tags().iter().map(Tag::as_str).collect();
+        rows.push(row("tags", String::new(), tags.join(", ")));
     }
-    for identifier in &publication.identifiers {
-        let value = format!("{} {}", identifier.kind.as_str(), identifier.value);
+    for identifier in publication.identifiers() {
+        let value = format!("{} {}", identifier.kind(), identifier);
         rows.push(row("identifier", String::new(), value));
     }
-    for contributor in &publication.contributors {
+    for contributor in publication.contributors() {
         let value = format!("{} ({})", contributor.name, contributor.role);
         rows.push(row("contributor", String::new(), value));
     }
-    for holding in &publication.holdings {
-        let value = match &holding.location {
-            Some(location) => format!("{}: {location}", holding.kind.as_str()),
-            None => holding.kind.as_str().to_string(),
+    for holding in publication.holdings() {
+        let value = match &holding.kind {
+            HoldingKind::Physical {
+                location: Some(location),
+            } => format!("physical: {location}"),
+            HoldingKind::Physical { location: None } => "physical".to_string(),
         };
         rows.push(row("holding", String::new(), value));
     }
     for work in publication.works().await? {
-        rows.push(row("work", work.id.to_string(), work.title));
+        rows.push(row("work", work.id().to_string(), work.title().to_string()));
     }
-    for link in &publication.links {
-        rows.push(row("link", String::new(), link.clone()));
+    for link in publication.links() {
+        rows.push(row("link", String::new(), link.url.to_string()));
     }
     write_table(out, &rows)
 }

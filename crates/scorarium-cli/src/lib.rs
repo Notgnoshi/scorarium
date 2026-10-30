@@ -13,9 +13,8 @@ mod work;
 
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use scorarium_engine::legacy::archive::Archive;
+use scorarium_engine::Engine;
 
 pub use crate::log::LogWriter;
 pub use crate::script::run_script;
@@ -28,19 +27,18 @@ pub struct ShellArgs {
 
 pub async fn shell(
     args: ShellArgs,
-    archive: Archive,
+    engine: Engine,
     history: Option<PathBuf>,
     log: LogWriter,
 ) -> eyre::Result<()> {
-    let archive = Arc::new(archive);
     let mut stdout = std::io::stdout();
     match args.script {
         Some(path) => {
             let file = std::fs::File::open(&path)
                 .map_err(|e| eyre::eyre!("cannot open {}: {e}", path.display()))?;
-            run_script(&archive, BufReader::new(file), &mut stdout).await
+            run_script(&engine, BufReader::new(file), &mut stdout).await
         }
-        None if std::io::stdin().is_terminal() => interactive::run(&archive, history, &log).await,
-        None => run_script(&archive, std::io::stdin().lock(), &mut stdout).await,
+        None if std::io::stdin().is_terminal() => interactive::run(&engine, history, &log).await,
+        None => run_script(&engine, std::io::stdin().lock(), &mut stdout).await,
     }
 }

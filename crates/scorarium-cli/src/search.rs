@@ -1,25 +1,30 @@
 use std::io::Write;
 
-use scorarium_engine::legacy::archive::{Archive, Entity, sort_name};
+use scorarium_engine::Engine;
+use scorarium_engine::entity::{AnyEntity, Entity};
 
 use crate::library::write_table;
 
-pub(crate) async fn run(archive: &Archive, query: &str, out: &mut impl Write) -> eyre::Result<()> {
-    let rows: Vec<[String; 6]> = archive
-        .search(query, false)
+pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> eyre::Result<()> {
+    let rows: Vec<[String; 6]> = engine
+        .search(query, true, 20)
         .await?
         .into_iter()
         .map(|hit| {
             let (kind, id, title) = match &hit.entity {
-                Entity::Publication(p) => ("publication", p.id, p.title.clone()),
-                Entity::Work(w) => ("work", w.id, w.title.clone()),
-                Entity::Person(p) => ("person", p.id, p.name.clone()),
+                AnyEntity::Publication(p) => (
+                    "publication",
+                    p.id().to_string(),
+                    p.title().unwrap_or_default().to_string(),
+                ),
+                AnyEntity::Work(w) => ("work", w.id().to_string(), w.title().to_string()),
+                AnyEntity::Person(p) => ("person", p.id().to_string(), p.name().to_string()),
             };
             [
                 kind.to_string(),
-                hit.library_id.to_string(),
+                hit.library.to_string(),
                 hit.library_name.clone(),
-                id.to_string(),
+                id,
                 title,
                 context(&hit.entity),
             ]
@@ -28,19 +33,26 @@ pub(crate) async fn run(archive: &Archive, query: &str, out: &mut impl Write) ->
     write_table(out, &rows)
 }
 
-pub(crate) fn context(entity: &Entity) -> String {
+pub(crate) fn context(entity: &AnyEntity) -> String {
     match entity {
-        Entity::Publication(publication) => publication.people.join(", "),
-        Entity::Work(work) => {
-            let number = work.numbers.first();
-            let name = work.contributor.as_ref().map(|c| c.name.as_str());
+        AnyEntity::Publication(publication) => {
+            let names: Vec<&str> = publication
+                .contributors()
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect();
+            names.join(", ")
+        }
+        AnyEntity::Work(work) => {
+            let number = work.catalog_numbers().first();
+            let name = work.contributors().first().map(|c| c.name.as_str());
             match (number, name) {
                 (Some(number), Some(name)) => format!("{number} by {name}"),
-                (Some(number), None) => number.clone(),
+                (Some(number), None) => number.to_string(),
                 (None, Some(name)) => format!("by {name}"),
                 (None, None) => String::new(),
             }
         }
-        Entity::Person(person) => sort_name(&person.name),
+        AnyEntity::Person(person) => person.sort_name().to_string(),
     }
 }

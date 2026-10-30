@@ -1,17 +1,13 @@
-#![expect(deprecated)]
+use scorarium_engine::{Engine, EngineOptions};
 
-use scorarium_engine::legacy::archive::Archive;
-
-async fn demo() -> Archive {
-    let archive = Archive::in_memory().await.unwrap();
-    archive.populate_demo().await.unwrap();
-    archive
+async fn demo() -> Engine {
+    Engine::demo(EngineOptions::default()).await.unwrap()
 }
 
 /// Run a script, returning what it printed and how it ended.
-async fn run(archive: &Archive, script: &str) -> (String, eyre::Result<()>) {
+async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
     let mut out = Vec::new();
-    let result = scorarium_cli::run_script(archive, script.as_bytes(), &mut out).await;
+    let result = scorarium_cli::run_script(engine, script.as_bytes(), &mut out).await;
     (String::from_utf8(out).unwrap(), result)
 }
 
@@ -45,78 +41,78 @@ async fn a_failing_script_stops_at_the_failing_line() {
 
 #[tokio::test]
 async fn library_show_rejects_an_ambiguous_reference() {
-    let archive = demo().await;
+    let engine = demo().await;
     // A library named after another library's id, and a second "Books" differing only in case
-    let numeric = archive.create_library("1", false).await.unwrap();
-    let duplicate = archive.create_library("books", false).await.unwrap();
+    let numeric = engine.create_library("1", false).await.unwrap();
+    let duplicate = engine.create_library("books", false).await.unwrap();
 
-    let (out, result) = run(&archive, "library 'sheet music' show\n").await;
+    let (out, result) = run(&engine, "library 'sheet music' show\n").await;
     result.unwrap();
     assert_eq!(
         out,
         "id          \t2\nname        \tSheet music\nvisibility  \tpublic\npublications\t4\n"
     );
 
-    let (out, result) = run(&archive, "library 2 show\n").await;
+    let (out, result) = run(&engine, "library 2 show\n").await;
     result.unwrap();
     assert!(out.contains("name        \tSheet music\n"), "{out}");
 
-    // The library named "1" and the library with id 1 both match, in name order
-    let (_, result) = run(&archive, "library 1 show\n").await;
+    // The library named "1" and the library with id 1 both match, in id order
+    let (_, result) = run(&engine, "library 1 show\n").await;
     let error = format!("{:#}", result.unwrap_err());
     assert_eq!(
         error,
         format!(
-            "line 1: '1' names 2 libraries:\n  {}  1\n  1  Books",
-            numeric.id
+            "line 1: '1' names 2 libraries:\n  1  Books\n  {}  1",
+            numeric.id()
         )
     );
 
-    let (_, result) = run(&archive, "library Books show\n").await;
+    let (_, result) = run(&engine, "library Books show\n").await;
     let error = format!("{:#}", result.unwrap_err());
     assert_eq!(
         error,
         format!(
             "line 1: 'Books' names 2 libraries:\n  1  Books\n  {}  books",
-            duplicate.id
+            duplicate.id()
         )
     );
 }
 
 #[tokio::test]
 async fn library_create_rename_delete() {
-    let archive = demo().await;
+    let engine = demo().await;
     let script = "library create Magazines public\n\
                   library create 'Liner notes'\n\
                   library list\n\
                   library Magazines rename Periodicals\n\
                   library 'Liner notes' delete\n\
                   library list\n";
-    let (out, result) = run(&archive, script).await;
+    let (out, result) = run(&engine, script).await;
     result.unwrap();
     assert_eq!(
         out,
         "1\tBooks      \tprivate\n\
-         4\tLiner notes\tprivate\n\
-         3\tMagazines  \tpublic\n\
          2\tSheet music\tpublic\n\
+         3\tMagazines  \tpublic\n\
+         4\tLiner notes\tprivate\n\
          1\tBooks      \tprivate\n\
-         3\tPeriodicals\tpublic\n\
-         2\tSheet music\tpublic\n"
+         2\tSheet music\tpublic\n\
+         3\tPeriodicals\tpublic\n"
     );
 
-    let (_, result) = run(&archive, "library create '  '\n").await;
+    let (_, result) = run(&engine, "library create '  '\n").await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
-        "line 1: library name is empty"
+        "line 1: A library name cannot be blank."
     );
 }
 
 #[tokio::test]
 async fn the_selected_library_fills_the_subject_slot() {
-    let archive = demo().await;
+    let engine = demo().await;
     let script = "library books select\nshow\nrename Novels\nshow\nlibrary deselect\nshow\n";
-    let (out, result) = run(&archive, script).await;
+    let (out, result) = run(&engine, script).await;
     let error = format!("{:#}", result.unwrap_err());
     assert!(error.starts_with("line 6: "), "{error}");
     assert!(
@@ -145,7 +141,6 @@ async fn publication_show_resolves_by_title() {
          contributor\t \tScott Chacon (author)\n\
          contributor\t \tBen Straub (author)\n\
          holding    \t \tphysical\n\
-         holding    \t \tdigital: pro-git.pdf\n\
          link       \t \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
          link       \t \thttps://git-scm.com/book/en/v2\n"
     );
@@ -166,7 +161,7 @@ async fn work_show_resolves_by_title() {
          key            \t \tA minor\n\
          time signature \t \t5/8\n\
          instrumentation\t \tpiano\n\
-         stars          \t \t4\n\
+         stars          \t \t5\n\
          tags           \t \ttranscription, want-to-learn\n\
          catalog number \t \tOp. 29\n\
          contributor    \t \tSergei Rachmaninoff (composer)\n\
@@ -181,8 +176,8 @@ async fn work_show_resolves_by_title() {
 
 #[tokio::test]
 async fn person_list_shows_everyone_credited() {
-    let archive = demo().await;
-    let (out, result) = run(&archive, "library books person list\n").await;
+    let engine = demo().await;
+    let (out, result) = run(&engine, "library books person list\n").await;
     result.unwrap();
     assert_eq!(
         out,
@@ -192,7 +187,7 @@ async fn person_list_shows_everyone_credited() {
          3\tBen Straub    \tStraub, Ben\n"
     );
 
-    let (out, result) = run(&archive, "library books person list --role composer\n").await;
+    let (out, result) = run(&engine, "library books person list --role composer\n").await;
     result.unwrap();
     assert_eq!(out, "");
 }
@@ -216,9 +211,9 @@ async fn person_show_lists_each_credit_once() {
          publication\t5 \tRachmaninoff masterpieces for solo piano (composer)\n\
          publication\t4 \tRussian piano album (composer)\n\
          publication\t6 \tThe Isle of the Dead (composer)\n\
-         work       \t6 \tPolichinelle (composer)\n\
          work       \t4 \tPrelude in C-sharp minor (composer)\n\
          work       \t5 \tEtude-Tableau (composer)\n\
+         work       \t6 \tPolichinelle (composer)\n\
          work       \t7 \tThe Isle of the Dead (composer)\n"
     );
 }
@@ -250,8 +245,8 @@ async fn search_prints_the_same_columns_for_every_kind() {
         out,
         "work\t2\tSheet music\t6\tPolichinelle\tOp. 3 No. 4 by Sergei Rachmaninoff\n\
          publication\t1\tBooks\t2\tPro Git\tScott Chacon, Ben Straub\n\
-         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tKirkor, Georgy\n\
          publication\t2\tSheet music\t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
-         work       \t2\tSheet music\t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n"
+         work       \t2\tSheet music\t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n\
+         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
     );
 }

@@ -1,61 +1,71 @@
 use std::io::Write;
 
-use scorarium_engine::legacy::archive::{Library, Person, sort_name};
+use scorarium_engine::contributor::Contributor;
+use scorarium_engine::entity::Entity;
+use scorarium_engine::library::Library;
+use scorarium_engine::person::{Person, PersonId};
 
 use crate::library::write_table;
 
-/// List the persons credited in a library, keeping only those credited with the given role.
+/// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
     library: &Library,
     role: Option<&str>,
     out: &mut impl Write,
 ) -> eyre::Result<()> {
-    let rows: Vec<[String; 3]> = library
-        .person_summaries(role)
-        .await?
-        .into_iter()
+    let mut people = library.people(role).await?;
+    people.sort_by(|a, b| a.sort_name().cmp(b.sort_name()));
+    let rows: Vec<[String; 3]> = people
+        .iter()
         .map(|person| {
-            let sort_name = sort_name(&person.name);
-            [person.id.to_string(), person.name, sort_name]
+            [
+                person.id().to_string(),
+                person.name().to_string(),
+                person.sort_name().to_string(),
+            ]
         })
         .collect();
     write_table(out, &rows)
 }
 
-/// Show a person with the publications and works crediting them.
+/// Show a person with the publications and works they contributed to.
 pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
-    let credit = |title: &str, roles: Vec<&str>| {
-        if roles.is_empty() {
-            title.to_string()
-        } else {
-            format!("{title} ({})", roles.join(", "))
-        }
-    };
     let mut rows = vec![
-        row("id", person.id.to_string(), String::new()),
-        row("name", String::new(), person.name.clone()),
-        row("sort name", String::new(), person.sort_name.clone()),
+        row("id", person.id().to_string(), String::new()),
+        row("name", String::new(), person.name().to_string()),
+        row("sort name", String::new(), person.sort_name().to_string()),
     ];
-    for link in &person.links {
-        rows.push(row("link", String::new(), link.clone()));
+    for link in person.links() {
+        rows.push(row("link", String::new(), link.url.to_string()));
     }
     let mut publications = person.publications().await?;
-    publications.sort_by(|a, b| a.title.cmp(&b.title));
+    publications.sort_by(|a, b| a.title().cmp(&b.title()));
     for publication in &publications {
-        let value = credit(&publication.title, publication.roles_of(person.id));
-        rows.push(row("publication", publication.id.to_string(), value));
+        let title = publication.title().unwrap_or_default();
+        let roles = roles_of(publication.contributors(), person.id()).join(", ");
+        rows.push(row(
+            "publication",
+            publication.id().to_string(),
+            format!("{title} ({roles})"),
+        ));
     }
-    let mut seen = Vec::new();
-    for publication in &publications {
-        for work in publication.works().await? {
-            let roles = work.roles_of(person.id);
-            if roles.is_empty() || seen.contains(&work.id) {
-                continue;
-            }
-            seen.push(work.id);
-            rows.push(row("work", work.id.to_string(), credit(&work.title, roles)));
-        }
+    for work in person.works().await? {
+        let roles = roles_of(work.contributors(), person.id()).join(", ");
+        rows.push(row(
+            "work",
+            work.id().to_string(),
+            format!("{} ({roles})", work.title()),
+        ));
     }
     write_table(out, &rows)
+}
+
+/// List the roles `person` holds among `contributors`.
+fn roles_of(contributors: &[Contributor], person: PersonId) -> Vec<&str> {
+    contributors
+        .iter()
+        .filter(|c| c.person == person)
+        .map(|c| c.role.as_str())
+        .collect()
 }

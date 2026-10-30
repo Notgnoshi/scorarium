@@ -1,19 +1,22 @@
-use scorarium_engine::legacy::archive::same_name;
+use std::fmt::Display;
+use std::str::FromStr;
+
+use scorarium_engine::search::same_name;
 
 /// Find the one entity a reference names, by id or by name.
 ///
 /// Fail if the reference is ambiguous, or names no candidate.
-pub(crate) fn resolve<T>(
+pub(crate) fn resolve<T, I: FromStr + PartialEq + Display>(
     kind: &str,
     reference: &str,
     candidates: Vec<T>,
-    id: impl Fn(&T) -> i64,
+    id: impl Fn(&T) -> I,
     name: impl Fn(&T) -> &str,
 ) -> eyre::Result<T> {
-    let parsed = reference.parse::<i64>();
+    let parsed = reference.parse::<I>().ok();
     let mut matches: Vec<T> = candidates
         .into_iter()
-        .filter(|c| parsed == Ok(id(c)) || same_name(name(c), reference))
+        .filter(|c| Some(id(c)) == parsed || same_name(name(c), reference))
         .collect();
     match matches.len() {
         0 => eyre::bail!("no {kind} '{reference}'"),
