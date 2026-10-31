@@ -9,6 +9,7 @@ pub mod library;
 pub mod link;
 pub mod person;
 pub mod publication;
+pub mod review;
 pub mod search;
 pub mod suggest;
 pub mod value;

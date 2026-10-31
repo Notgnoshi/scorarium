@@ -903,6 +903,37 @@ impl Entity for Work {
         self.last_modified_at = last_modified_at;
         Ok(())
     }
+
+    /// Delete the work along with any orphaned people
+    ///
+    /// Returns [Error::NotFound] if the work has already been deleted.
+    async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM work WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Deleted,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in &people {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await
+    }
 }
 
 /// Insert a work in `library` and load it
@@ -1491,6 +1522,9 @@ fn digit_runs(text: &str) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::EngineOptions;
+    use crate::holding::NewHolding;
+    use crate::publication::ImportSeed;
 
     fn number(text: &str) -> CatalogNumber {
         text.parse().unwrap()
@@ -1616,5 +1650,48 @@ mod tests {
                 "none",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn delete_collects_orphan_people() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
+        let composer = work
+            .create_contributor("Erik Satie", "composer")
+            .await
+            .unwrap();
+        let mut other = library
+            .create_publication(
+                ImportSeed::Title("Satie piano works".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        other.add_work(work.id()).await.unwrap();
+
+        let work_id = work.id();
+        work.delete().await.unwrap();
+
+        assert!(Work::load(&engine, work_id).await.unwrap().is_none());
+        assert!(
+            Person::load(&engine, composer.id())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        for id in [publication.id(), other.id()] {
+            assert!(Publication::load(&engine, id).await.unwrap().is_some());
+        }
     }
 }

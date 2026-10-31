@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT (SELECT COUNT(*) FROM publication WHERE draft = 1)\n                    + (SELECT COUNT(*) FROM work WHERE draft = 1)\n                    + (SELECT COUNT(*) FROM person WHERE draft = 1) AS \"count!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "8fdf04a205224a0420e6f0285f70c44f0bb27119fcebec5f9b23af51744d0dae"
+}

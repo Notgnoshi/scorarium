@@ -371,6 +371,26 @@ impl Entity for Person {
         self.last_modified_at = last_modified_at;
         Ok(())
     }
+
+    /// Delete the person
+    ///
+    /// Returns [Error::NotFound] if the person has already been deleted.
+    async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM person WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Deleted,
+            Some(&self.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await
+    }
 }
 
 /// Insert a person named `name` in `library` with a derived sort name and load them

@@ -1166,38 +1166,6 @@ impl Publication {
         self.last_modified_at = last_modified_at;
         Ok(())
     }
-
-    /// Delete the publication along with any orphaned works and people
-    ///
-    /// Returns [Error::NotFound] if the publication has already been deleted.
-    pub async fn delete(mut self) -> Result<()> {
-        let mut tx = self.engine.begin_write().await?;
-        self.refresh(&mut tx).await?;
-        sqlx::query!("DELETE FROM publication WHERE id = ?", self.id.get())
-            .execute(&mut *tx)
-            .await?;
-        let works = work::collect_orphan_works(&mut tx, self.library).await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
-        let mut tx = tx
-            .record(
-                AuditSource::User,
-                Action::Deleted,
-                Some(&self.audit_subject()),
-                None,
-            )
-            .await?;
-        for subject in works.iter().chain(&people) {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
-        tx.commit().await
-    }
 }
 
 impl Entity for Publication {
@@ -1292,6 +1260,38 @@ impl Entity for Publication {
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
+    }
+
+    /// Delete the publication along with any orphaned works and people
+    ///
+    /// Returns [Error::NotFound] if the publication has already been deleted.
+    async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM publication WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        let works = work::collect_orphan_works(&mut tx, self.library).await?;
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Deleted,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in works.iter().chain(&people) {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await
     }
 }
 

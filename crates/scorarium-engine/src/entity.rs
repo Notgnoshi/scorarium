@@ -81,4 +81,9 @@ pub trait Entity: Sized {
     ///
     /// Returns [Error::NotFound] if the entity has been deleted.
     fn commit(&mut self) -> impl Future<Output = Result<()>> + Send;
+
+    /// Delete the entity and anything orphaned by its deletion
+    ///
+    /// Returns [Error::NotFound] if the entity has already been deleted.
+    fn delete(self) -> impl Future<Output = Result<()>> + Send;
 }
