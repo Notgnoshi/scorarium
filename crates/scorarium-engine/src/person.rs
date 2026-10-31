@@ -288,6 +288,26 @@ impl Person {
         Ok(())
     }
 
+    /// Delete the person
+    ///
+    /// Returns [Error::NotFound] if the person has already been deleted.
+    pub async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM person WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        tx.record(
+            AuditSource::User,
+            Action::Deleted,
+            Some(&self.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await
+    }
+
     /// List every publication that names the person as a contributor
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::with_contributor(&self.engine, self.id).await
