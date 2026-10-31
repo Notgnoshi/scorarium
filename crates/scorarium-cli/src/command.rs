@@ -64,6 +64,20 @@ impl AuditArgs {
 pub(crate) const VERBS_WITHOUT_SUBJECT: [&str; 3] = ["list", "create", "deselect"];
 
 #[derive(Debug, Subcommand)]
+enum LibrarySet {
+    /// The library's name
+    Name {
+        #[arg(value_name = "name")]
+        name: String,
+    },
+    /// Who can see the library
+    Visibility {
+        #[arg(value_enum, value_name = "visibility")]
+        visibility: Visibility,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 enum LibraryCommand {
     /// List every library
     List,
@@ -77,10 +91,11 @@ enum LibraryCommand {
         #[arg(value_enum, value_name = "visibility", default_value_t = Visibility::Private)]
         visibility: Visibility,
     },
-    /// Rename a library
-    Rename {
-        #[arg(value_name = "new-name")]
-        new_name: String,
+    /// Assign a library field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: LibrarySet,
     },
     /// Delete a library and everything in it
     Delete,
@@ -333,13 +348,16 @@ impl Shell {
                     library::show(&self.engine, require(library.as_deref(), "library")?, out)
                         .await?
                 }
-                LibraryCommand::Rename { new_name } => {
-                    library::rename(
-                        &self.engine,
-                        require(library.as_deref(), "library")?,
-                        &new_name,
-                    )
-                    .await?
+                LibraryCommand::Set { field } => {
+                    let reference = require(library.as_deref(), "library")?;
+                    match field {
+                        LibrarySet::Name { name } => {
+                            library::set_name(&self.engine, reference, &name).await?
+                        }
+                        LibrarySet::Visibility { visibility } => {
+                            library::set_visibility(&self.engine, reference, visibility).await?
+                        }
+                    }
                 }
                 LibraryCommand::Delete => {
                     library::delete(&self.engine, require(library.as_deref(), "library")?).await?;

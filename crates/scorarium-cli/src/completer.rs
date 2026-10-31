@@ -294,7 +294,7 @@ mod tests {
                 expected(
                     &[
                         "show",
-                        "rename",
+                        "set",
                         "delete",
                         "select",
                         "publication",

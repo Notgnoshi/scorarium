@@ -85,7 +85,8 @@ async fn library_create_rename_delete() {
     let script = "library create Magazines public\n\
                   library create 'Liner notes'\n\
                   library list\n\
-                  library Magazines rename Periodicals\n\
+                  library Magazines set name Periodicals\n\
+                  library Periodicals set visibility private\n\
                   library 'Liner notes' delete\n\
                   library list\n";
     let (out, result) = run(&engine, script).await;
@@ -98,7 +99,7 @@ async fn library_create_rename_delete() {
          4\tLiner notes\tprivate\n\
          1\tBooks      \tprivate\n\
          2\tSheet music\tpublic\n\
-         3\tPeriodicals\tpublic\n"
+         3\tPeriodicals\tprivate\n"
     );
 
     let (_, result) = run(&engine, "library create '  '\n").await;
@@ -111,7 +112,7 @@ async fn library_create_rename_delete() {
 #[tokio::test]
 async fn the_selected_library_fills_the_subject_slot() {
     let engine = demo().await;
-    let script = "library books select\nshow\nrename Novels\nshow\nlibrary deselect\nshow\n";
+    let script = "library books select\nshow\nset name Novels\nshow\nlibrary deselect\nshow\n";
     let (out, result) = run(&engine, script).await;
     let error = format!("{:#}", result.unwrap_err());
     assert!(error.starts_with("line 6: "), "{error}");

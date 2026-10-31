@@ -70,8 +70,22 @@ pub(crate) async fn create(engine: &Engine, raw: &str, visibility: Visibility) -
 }
 
 /// Rename a library, keeping its visibility.
-pub(crate) async fn rename(engine: &Engine, reference: &str, raw: &str) -> eyre::Result<()> {
+pub(crate) async fn set_name(engine: &Engine, reference: &str, raw: &str) -> eyre::Result<()> {
     resolve(engine, reference).await?.rename(raw).await?;
+    Ok(())
+}
+
+/// Make a library public or private.
+pub(crate) async fn set_visibility(
+    engine: &Engine,
+    reference: &str,
+    visibility: Visibility,
+) -> eyre::Result<()> {
+    let private = matches!(visibility, Visibility::Private);
+    resolve(engine, reference)
+        .await?
+        .set_private(private)
+        .await?;
     Ok(())
 }
 
