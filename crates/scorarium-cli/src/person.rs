@@ -7,7 +7,8 @@ use scorarium_engine::person::{Person, PersonId};
 
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
-use crate::{audit, reference};
+use crate::reference::Target;
+use crate::{audit, reference, search};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -80,6 +81,22 @@ pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<
         library.people(None).await?,
         |p| p.id(),
         |p| p.name(),
+    )
+}
+
+/// Decide whether a person name or id links an existing person or creates a new one.
+pub(crate) async fn target(
+    library: &Library,
+    reference: &str,
+    new: bool,
+) -> eyre::Result<Target<Person>> {
+    reference::target(
+        "person",
+        reference,
+        new,
+        library.people(None).await?,
+        |p| p.name(),
+        search::person_context,
     )
 }
 

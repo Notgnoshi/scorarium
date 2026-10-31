@@ -283,7 +283,10 @@ async fn import_commit_review_discard() {
         &engine,
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
-         import 978-0-13-468599-1\n",
+         import 978-0-13-468599-1\n\
+         publication 8 add contributor 'Grace Hopper' author\n\
+         publication 8 add contributor 'Ada Lovelace' editor\n\
+         publication 8 add work 'Chapter 1'\n",
     )
     .await;
     result.unwrap();
@@ -299,8 +302,11 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "Books\tpublication\t8\tScorarium handbook\n\
-         Books\tpublication\t9\n"
+        "Books\tpublication\t8 \tScorarium handbook\n\
+         Books\tpublication\t9\n\
+         Books\twork       \t11\tChapter 1\n\
+         Books\tperson     \t13\tGrace Hopper\n\
+         Books\tperson     \t14\tAda Lovelace\n"
     );
 
     let (out, result) = run(&engine, "library books publication 9 show\n").await;
@@ -312,6 +318,33 @@ async fn import_commit_review_discard() {
          title     \t \t\n\
          identifier\t \tisbn 978-0-13-468599-1\n\
          holding   \t9\tphysical\n"
+    );
+
+    let (out, result) = run(
+        &engine,
+        "library books work 11 commit\n\
+         library books person 14 discard-changes\n\
+         review\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        without_age(&out),
+        "Books\tpublication\t8 \tScorarium handbook\n\
+         Books\tpublication\t9\n\
+         Books\tperson     \t13\tGrace Hopper\n"
+    );
+
+    let (out, result) = run(&engine, "library books publication 8 show\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "id         \t8 \t\n\
+         draft      \t  \t\n\
+         title      \t  \tScorarium handbook\n\
+         contributor\t  \tGrace Hopper (author)\n\
+         holding    \t8 \tphysical: Desk\n\
+         work       \t11\tChapter 1\n"
     );
 
     let (out, result) = run(
@@ -348,5 +381,82 @@ async fn import_commit_review_discard() {
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
         "line 1: publication '8' is not in the review queue"
+    );
+}
+
+#[tokio::test]
+async fn add_work_links_by_id_or_creates() {
+    let engine = demo().await;
+    let album = "library 'sheet music' publication 'russian piano album'";
+    let (_, result) = run(&engine, &format!("{album} add work polichinelle\n")).await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: 'polichinelle' names 1 work:\n\
+         \x20 6  Polichinelle  Op. 3 No. 4 by Sergei Rachmaninoff\n\
+         re-run with an id to link one, or with --new to create another"
+    );
+
+    let (_, result) = run(
+        &engine,
+        &format!("{album} add contributor 'sergei rachmaninoff' composer\n"),
+    )
+    .await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: 'sergei rachmaninoff' names 1 person:\n\
+         \x20 10  Sergei Rachmaninoff  Rachmaninoff, Sergei\n\
+         re-run with an id to link one, or with --new to create another"
+    );
+
+    let (_, result) = run(&engine, &format!("{album} add work 6 --new\n")).await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: --new takes a name, not the id of an existing work"
+    );
+
+    let (out, result) = run(
+        &engine,
+        &format!(
+            "{album} add work Polichinelle --new\n\
+             {album} add work 6\n\
+             library 'sheet music' work 6 show\n\
+             library 'sheet music' work 11 show\n\
+             review\n"
+        ),
+    )
+    .await;
+    result.unwrap();
+    // The album is committed, so the new work is too and the review queue stays empty
+    assert_eq!(
+        out,
+        "id             \t6\t\n\
+         title          \t \tPolichinelle\n\
+         key            \t \tF-sharp minor\n\
+         instrumentation\t \tpiano\n\
+         classification \t \tmusic\n\
+         catalog-number \t \tOp. 3 No. 4\n\
+         contributor    \t \tSergei Rachmaninoff (composer)\n\
+         publication    \t4\tRussian piano album\n\
+         publication    \t5\tRachmaninoff masterpieces for solo piano\n\
+         id            \t11\t\n\
+         title         \t  \tPolichinelle\n\
+         classification\t  \tmusic\n\
+         publication   \t4 \tRussian piano album\n"
+    );
+
+    // A seed that fails ISBN validation is a title, not an error
+    let (out, result) = run(
+        &engine,
+        "library books import 978-0-13-468599-2\nlibrary books publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "8\n\
+         id     \t8\t\n\
+         draft  \t \t\n\
+         title  \t \t978-0-13-468599-2\n\
+         holding\t8\tphysical\n"
     );
 }

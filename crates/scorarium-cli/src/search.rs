@@ -2,6 +2,8 @@ use std::io::Write;
 
 use scorarium_engine::Engine;
 use scorarium_engine::entity::{AnyEntity, Entity};
+use scorarium_engine::person::Person;
+use scorarium_engine::work::Work;
 
 use crate::library::write_table;
 
@@ -48,16 +50,24 @@ pub(crate) fn context(entity: &AnyEntity) -> String {
                 .collect();
             names.join(", ")
         }
-        AnyEntity::Work(work) => {
-            let number = work.catalog_numbers().first();
-            let name = work.contributors().first().map(|c| c.name.as_str());
-            match (number, name) {
-                (Some(number), Some(name)) => format!("{number} by {name}"),
-                (Some(number), None) => number.to_string(),
-                (None, Some(name)) => format!("by {name}"),
-                (None, None) => String::new(),
-            }
-        }
-        AnyEntity::Person(person) => person.sort_name().to_string(),
+        AnyEntity::Work(work) => work_context(work),
+        AnyEntity::Person(person) => person_context(person),
     }
+}
+
+/// Describe a work by its catalog number and first contributor.
+pub(crate) fn work_context(work: &Work) -> String {
+    let number = work.catalog_numbers().first();
+    let name = work.contributors().first().map(|c| c.name.as_str());
+    match (number, name) {
+        (Some(number), Some(name)) => format!("{number} by {name}"),
+        (Some(number), None) => number.to_string(),
+        (None, Some(name)) => format!("by {name}"),
+        (None, None) => String::new(),
+    }
+}
+
+/// Describe a person by their sort name.
+pub(crate) fn person_context(person: &Person) -> String {
+    person.sort_name().to_string()
 }

@@ -268,11 +268,17 @@ pub(crate) enum PublicationAdd {
         person: String,
         #[arg(value_name = "role")]
         role: String,
+        /// Force-create a new person
+        #[arg(long)]
+        new: bool,
     },
     /// A work the publication contains
     Work {
         #[arg(value_name = "work")]
         work: String,
+        /// Force-create a new work
+        #[arg(long)]
+        new: bool,
     },
     /// A copy of the publication that the library owns
     Holding {
@@ -434,6 +440,9 @@ pub(crate) enum WorkAdd {
         person: String,
         #[arg(value_name = "role")]
         role: String,
+        /// Force-create a new person
+        #[arg(long)]
+        new: bool,
     },
 }
 

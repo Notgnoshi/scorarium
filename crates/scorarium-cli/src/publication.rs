@@ -11,6 +11,7 @@ use crate::command::{
     reject, require,
 };
 use crate::library::write_table;
+use crate::reference::Target;
 use crate::{audit, person, reference, work};
 
 /// The kinds of identifier printed on a publication.
@@ -234,13 +235,23 @@ pub(crate) async fn run(
                         .await?
                 }
                 PublicationAdd::Link { url } => publication.add_link(url).await?,
-                PublicationAdd::Contributor { person, role } => {
-                    let person = person::resolve(library, &person).await?;
-                    publication.add_contributor(person.id(), &role).await?
+                PublicationAdd::Contributor { person, role, new } => {
+                    match person::target(library, &person, new).await? {
+                        Target::Existing(person) => {
+                            publication.add_contributor(person.id(), &role).await?
+                        }
+                        Target::New => {
+                            publication.create_contributor(&person, &role).await?;
+                        }
+                    }
                 }
-                PublicationAdd::Work { work } => {
-                    let work = work::resolve(library, &work).await?;
-                    publication.add_work(work.id()).await?
+                PublicationAdd::Work { work, new } => {
+                    match work::target(library, &work, new).await? {
+                        Target::Existing(work) => publication.add_work(work.id()).await?,
+                        Target::New => {
+                            publication.create_work(&work).await?;
+                        }
+                    }
                 }
                 PublicationAdd::Holding { kind, location } => {
                     let holding = kind.new_holding(location.as_deref());
