@@ -66,8 +66,8 @@ impl AuditArgs {
     }
 }
 
-/// Name the `library` subcommands that take no library.
-pub(crate) const LIBRARY_COMMANDS_WITHOUT_SUBJECT: [&str; 3] = ["list", "create", "deselect"];
+/// The verbs that take no subject under any noun.
+pub(crate) const VERBS_WITHOUT_SUBJECT: [&str; 3] = ["list", "create", "deselect"];
 
 #[derive(Debug, Subcommand)]
 enum LibraryCommand {
@@ -251,7 +251,7 @@ impl Shell {
                 eyre::bail!("selected library {id} no longer exists; selection cleared");
             }
             // These verbs take no library, so prefixing the selection cannot make them valid.
-            if LIBRARY_COMMANDS_WITHOUT_SUBJECT.contains(&words[0].as_str()) {
+            if VERBS_WITHOUT_SUBJECT.contains(&words[0].as_str()) {
                 eyre::bail!(
                     "'{0}' does not act on the selected library; use 'library {0}'",
                     words[0]
