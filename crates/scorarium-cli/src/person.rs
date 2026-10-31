@@ -5,7 +5,9 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId};
 
+use crate::command::{PersonCommand, reject, require};
 use crate::library::write_table;
+use crate::{audit, reference};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -68,4 +70,38 @@ fn roles_of(contributors: &[Contributor], person: PersonId) -> Vec<&str> {
         .filter(|c| c.person == person)
         .map(|c| c.role.as_str())
         .collect()
+}
+
+/// Resolve a person name or id
+pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Person> {
+    reference::resolve(
+        "person",
+        reference,
+        library.people(None).await?,
+        |p| p.id(),
+        |p| p.name(),
+    )
+}
+
+/// Run a person command against a library.
+pub(crate) async fn run(
+    library: &Library,
+    subject: Option<&str>,
+    command: PersonCommand,
+    out: &mut impl Write,
+) -> eyre::Result<()> {
+    match command {
+        PersonCommand::List { role } => {
+            reject(subject, "person", "list")?;
+            list(library, role.as_deref(), out).await
+        }
+        PersonCommand::Show => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            show(person, out).await
+        }
+        PersonCommand::Audit(args) => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            audit::entity_log(&person, args.limit(), out).await
+        }
+    }
 }

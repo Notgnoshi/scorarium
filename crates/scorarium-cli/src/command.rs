@@ -3,12 +3,10 @@ use std::io::Write;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
-use scorarium_engine::value::Tag;
 
 use crate::library::{self, Visibility};
-use crate::{audit, person, publication, reference, search, tag, work};
+use crate::{audit, person, publication, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -46,14 +44,14 @@ enum Command {
 }
 
 #[derive(Debug, Args)]
-struct AuditArgs {
+pub(crate) struct AuditArgs {
     /// How many audit events to print; use 0 to print the full audit log
     #[arg(long, value_name = "n", default_value_t = 10)]
     limit: usize,
 }
 
 impl AuditArgs {
-    fn limit(&self) -> usize {
+    pub(crate) fn limit(&self) -> usize {
         if self.limit == 0 {
             usize::MAX
         } else {
@@ -126,7 +124,7 @@ enum LibraryCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum PublicationCommand {
+pub(crate) enum PublicationCommand {
     /// List the publications in a library
     List {
         /// Keep only publications carrying this tag. Repeatable.
@@ -140,7 +138,7 @@ enum PublicationCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum WorkCommand {
+pub(crate) enum WorkCommand {
     /// Show a work
     Show,
     /// Print a work's audit log
@@ -148,7 +146,7 @@ enum WorkCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum PersonCommand {
+pub(crate) enum PersonCommand {
     /// List everyone credited in a library
     List {
         /// Keep only persons credited with this role
@@ -324,34 +322,40 @@ impl Shell {
         match line.command {
             Command::Library { library, command } => match command {
                 LibraryCommand::List => {
-                    reject(&library, "library", "list")?;
+                    reject(library.as_deref(), "library", "list")?;
                     library::list(&self.engine, out).await?
                 }
                 LibraryCommand::Create { name, visibility } => {
-                    reject(&library, "library", "create")?;
+                    reject(library.as_deref(), "library", "create")?;
                     library::create(&self.engine, &name, visibility).await?
                 }
                 LibraryCommand::Show => {
-                    library::show(&self.engine, require(&library, "library")?, out).await?
+                    library::show(&self.engine, require(library.as_deref(), "library")?, out)
+                        .await?
                 }
                 LibraryCommand::Rename { new_name } => {
-                    library::rename(&self.engine, require(&library, "library")?, &new_name).await?
+                    library::rename(
+                        &self.engine,
+                        require(library.as_deref(), "library")?,
+                        &new_name,
+                    )
+                    .await?
                 }
                 LibraryCommand::Delete => {
-                    library::delete(&self.engine, require(&library, "library")?).await?;
+                    library::delete(&self.engine, require(library.as_deref(), "library")?).await?;
                     if self.selected.is_some() && self.selected().await?.is_none() {
                         self.selected = None;
                     }
                 }
                 LibraryCommand::Select => {
                     self.selected = Some(
-                        library::resolve(&self.engine, require(&library, "library")?)
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?
                             .id(),
                     );
                 }
                 LibraryCommand::Deselect => {
-                    reject(&library, "library", "deselect")?;
+                    reject(library.as_deref(), "library", "deselect")?;
                     self.selected = None;
                 }
                 LibraryCommand::Publication {
@@ -359,82 +363,26 @@ impl Shell {
                     command,
                 } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        PublicationCommand::List { tag } => {
-                            reject(&publication, "publication", "list")?;
-                            let tags = tag
-                                .iter()
-                                .map(|tag| tag.parse())
-                                .collect::<Result<Vec<Tag>, _>>()?;
-                            publication::list(&library, &tags, out).await?
-                        }
-                        PublicationCommand::Show | PublicationCommand::Audit(_) => {
-                            let reference = require(&publication, "publication")?;
-                            let publication = reference::resolve(
-                                "publication",
-                                reference,
-                                library.publications().await?,
-                                |p| p.id(),
-                                |p| p.title().unwrap_or_default(),
-                            )?;
-                            if let PublicationCommand::Audit(args) = command {
-                                audit::entity_log(&publication, args.limit(), out).await?
-                            } else {
-                                publication::show(publication, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    publication::run(&library, publication.as_deref(), command, out).await?
                 }
                 LibraryCommand::Work { work, command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        WorkCommand::Show | WorkCommand::Audit(_) => {
-                            let reference = require(&work, "work")?;
-                            let work = reference::resolve(
-                                "work",
-                                reference,
-                                library.works().await?,
-                                |w| w.id(),
-                                |w| w.title(),
-                            )?;
-                            if let WorkCommand::Audit(args) = command {
-                                audit::entity_log(&work, args.limit(), out).await?
-                            } else {
-                                work::show(work, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    work::run(&library, work.as_deref(), command, out).await?
                 }
                 LibraryCommand::Person { person, command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        PersonCommand::List { role } => {
-                            reject(&person, "person", "list")?;
-                            person::list(&library, role.as_deref(), out).await?
-                        }
-                        PersonCommand::Show | PersonCommand::Audit(_) => {
-                            let reference = require(&person, "person")?;
-                            let person = reference::resolve(
-                                "person",
-                                reference,
-                                library.people(None).await?,
-                                |p| p.id(),
-                                |p| p.name(),
-                            )?;
-                            if let PersonCommand::Audit(args) = command {
-                                audit::entity_log(&person, args.limit(), out).await?
-                            } else {
-                                person::show(person, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    person::run(&library, person.as_deref(), command, out).await?
                 }
                 LibraryCommand::Tag { command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
                     match command {
                         TagCommand::List => tag::list(&library, out).await?,
                     }
@@ -449,14 +397,12 @@ impl Shell {
 }
 
 /// Return the subject, or fail when the command was given none.
-fn require<'a>(subject: &'a Option<String>, kind: &str) -> eyre::Result<&'a str> {
-    subject
-        .as_deref()
-        .ok_or_else(|| eyre::eyre!("{kind} name required"))
+pub(crate) fn require<'a>(subject: Option<&'a str>, kind: &str) -> eyre::Result<&'a str> {
+    subject.ok_or_else(|| eyre::eyre!("{kind} name required"))
 }
 
 /// Fail when the command was given a subject it cannot use.
-fn reject(subject: &Option<String>, kind: &str, verb: &str) -> eyre::Result<()> {
+pub(crate) fn reject(subject: Option<&str>, kind: &str, verb: &str) -> eyre::Result<()> {
     if subject.is_some() {
         eyre::bail!("'{verb}' takes no {kind}");
     }

@@ -6,7 +6,9 @@ use scorarium_engine::library::Library;
 use scorarium_engine::publication::Publication;
 use scorarium_engine::value::Tag;
 
+use crate::command::{PublicationCommand, reject, require};
 use crate::library::write_table;
+use crate::{audit, reference};
 
 /// List a library's publications, keeping only those carrying every given tag.
 pub(crate) async fn list(
@@ -102,4 +104,42 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
         rows.push(row("link", String::new(), link.url.to_string()));
     }
     write_table(out, &rows)
+}
+
+/// Resolve a publication title or id
+pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Publication> {
+    reference::resolve(
+        "publication",
+        reference,
+        library.publications().await?,
+        |p| p.id(),
+        |p| p.title().unwrap_or_default(),
+    )
+}
+
+/// Run a publication command against a library.
+pub(crate) async fn run(
+    library: &Library,
+    subject: Option<&str>,
+    command: PublicationCommand,
+    out: &mut impl Write,
+) -> eyre::Result<()> {
+    match command {
+        PublicationCommand::List { tag } => {
+            reject(subject, "publication", "list")?;
+            let tags = tag
+                .iter()
+                .map(|tag| tag.parse())
+                .collect::<Result<Vec<Tag>, _>>()?;
+            list(library, &tags, out).await
+        }
+        PublicationCommand::Show => {
+            let publication = resolve(library, require(subject, "publication")?).await?;
+            show(publication, out).await
+        }
+        PublicationCommand::Audit(args) => {
+            let publication = resolve(library, require(subject, "publication")?).await?;
+            audit::entity_log(&publication, args.limit(), out).await
+        }
+    }
 }

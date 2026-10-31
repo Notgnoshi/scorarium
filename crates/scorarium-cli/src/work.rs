@@ -1,10 +1,13 @@
 use std::io::Write;
 
 use scorarium_engine::entity::Entity;
+use scorarium_engine::library::Library;
 use scorarium_engine::value::Tag;
 use scorarium_engine::work::Work;
 
+use crate::command::{WorkCommand, require};
 use crate::library::write_table;
+use crate::{audit, reference};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -49,4 +52,34 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
         rows.push(row("link", String::new(), link.url.to_string()));
     }
     write_table(out, &rows)
+}
+
+/// Resolve the title or id of a work 
+pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Work> {
+    reference::resolve(
+        "work",
+        reference,
+        library.works().await?,
+        |w| w.id(),
+        |w| w.title(),
+    )
+}
+
+/// Run a work command against a library.
+pub(crate) async fn run(
+    library: &Library,
+    subject: Option<&str>,
+    command: WorkCommand,
+    out: &mut impl Write,
+) -> eyre::Result<()> {
+    match command {
+        WorkCommand::Show => {
+            let work = resolve(library, require(subject, "work")?).await?;
+            show(work, out).await
+        }
+        WorkCommand::Audit(args) => {
+            let work = resolve(library, require(subject, "work")?).await?;
+            audit::entity_log(&work, args.limit(), out).await
+        }
+    }
 }
