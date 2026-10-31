@@ -5,7 +5,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId};
 
-use crate::command::{PersonCommand, reject, require};
+use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
 use crate::{audit, reference};
 
@@ -102,6 +102,33 @@ pub(crate) async fn run(
         PersonCommand::Audit(args) => {
             let person = resolve(library, require(subject, "person")?).await?;
             audit::entity_log(&person, args.limit(), out).await
+        }
+        PersonCommand::Set { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonSet::Name { name } => {
+                    person.rename(&name, person.sort_name().to_string()).await?
+                }
+                PersonSet::SortName { sort_name } => {
+                    person.rename(person.name().to_string(), &sort_name).await?
+                }
+            }
+            Ok(())
+        }
+        PersonCommand::Add { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonAdd::Link { url } => Ok(person.add_link(url).await?),
+            }
+        }
+        PersonCommand::Remove { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonRemove::Link { link } => {
+                    let id = reference::link(person.links(), &link)?;
+                    Ok(person.remove_link(id).await?)
+                }
+            }
         }
     }
 }

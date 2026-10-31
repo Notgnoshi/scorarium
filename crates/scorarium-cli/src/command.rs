@@ -4,6 +4,7 @@ use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
 use scorarium_engine::library::{Library, LibraryId};
+use scorarium_engine::link::HttpUrl;
 
 use crate::library::{self, Visibility};
 use crate::{audit, person, publication, search, tag, work};
@@ -170,8 +171,58 @@ pub(crate) enum PersonCommand {
     },
     /// Show a person
     Show,
+    /// Set a person field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: PersonSet,
+    },
+    /// Add a value to a person
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: PersonAdd,
+    },
+    /// Remove a value from a person
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: PersonRemove,
+    },
     /// Print a person's audit log
     Audit(AuditArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonSet {
+    /// The person's name
+    Name {
+        #[arg(value_name = "name")]
+        name: String,
+    },
+    /// The name to sort by
+    SortName {
+        #[arg(value_name = "sort-name")]
+        sort_name: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonAdd {
+    /// A web address about the person
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonRemove {
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
