@@ -829,37 +829,6 @@ impl Work {
         self.last_modified_at = last_modified_at;
         Ok(())
     }
-
-    /// Delete the work along with any orphaned people
-    ///
-    /// Returns [Error::NotFound] if the work has already been deleted.
-    pub async fn delete(mut self) -> Result<()> {
-        let mut tx = self.engine.begin_write().await?;
-        self.refresh(&mut tx).await?;
-        sqlx::query!("DELETE FROM work WHERE id = ?", self.id.get())
-            .execute(&mut *tx)
-            .await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
-        let mut tx = tx
-            .record(
-                AuditSource::User,
-                Action::Deleted,
-                Some(&self.audit_subject()),
-                None,
-            )
-            .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
-        tx.commit().await
-    }
 }
 
 impl Entity for Work {
@@ -933,6 +902,37 @@ impl Entity for Work {
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
+    }
+
+    /// Delete the work along with any orphaned people
+    ///
+    /// Returns [Error::NotFound] if the work has already been deleted.
+    async fn delete(mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM work WHERE id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut tx = tx
+            .record(
+                AuditSource::User,
+                Action::Deleted,
+                Some(&self.audit_subject()),
+                None,
+            )
+            .await?;
+        for subject in &people {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(subject),
+                    None,
+                )
+                .await?;
+        }
+        tx.commit().await
     }
 }
 
