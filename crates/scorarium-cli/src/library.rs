@@ -1,7 +1,10 @@
 use std::io::Write;
 
 use scorarium_engine::Engine;
+use scorarium_engine::entity::Entity;
+use scorarium_engine::holding::NewHolding;
 use scorarium_engine::library::Library;
+use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed};
 
 use crate::reference;
 
@@ -51,6 +54,30 @@ pub(crate) async fn show(
         ["publications".to_string(), publications.to_string()],
     ];
     write_table(out, &rows)
+}
+
+/// Create a draft publication from a title or an ISBN/ISMN, and print its id
+///
+/// The seed is a title unless it parses as an ISBN or an ISMN.
+pub(crate) async fn import(
+    engine: &Engine,
+    reference: &str,
+    seed: &str,
+    location: Option<&str>,
+    out: &mut impl Write,
+) -> eyre::Result<()> {
+    let library = resolve(engine, reference).await?;
+    let seed = Identifier::new(IdentifierKind::Isbn, seed)
+        .or_else(|_| Identifier::new(IdentifierKind::Ismn, seed))
+        .map_or_else(
+            |_| ImportSeed::Title(seed.to_string()),
+            ImportSeed::Identifier,
+        );
+    let publication = library
+        .create_publication(seed, NewHolding::Physical { location })
+        .await?;
+    writeln!(out, "{}", publication.id())?;
+    Ok(())
 }
 
 pub(crate) fn visibility(private: bool) -> &'static str {

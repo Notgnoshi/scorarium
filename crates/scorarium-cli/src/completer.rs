@@ -297,6 +297,7 @@ mod tests {
                         "set",
                         "delete",
                         "select",
+                        "import",
                         "publication",
                         "work",
                         "person",
@@ -316,7 +317,17 @@ mod tests {
             assert_eq!(
                 values(None, "library books publication 'Pro Git' "),
                 expected(
-                    &["show", "set", "clear", "add", "remove", "delete", "audit"],
+                    &[
+                        "show",
+                        "set",
+                        "clear",
+                        "add",
+                        "remove",
+                        "delete",
+                        "commit",
+                        "discard-changes",
+                        "audit"
+                    ],
                     36
                 )
             );

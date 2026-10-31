@@ -7,11 +7,12 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{Entity, EntityKind, Timestamp};
+use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
+use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, clean_text};
 use crate::{Engine, Error, Result};
@@ -869,6 +870,10 @@ impl Entity for Work {
         self.engine
             .entity_audit_log(EntityKind::Work, self.id.get(), self.library, before, limit)
             .await
+    }
+
+    async fn review_item(&self) -> Result<Option<ReviewItem>> {
+        review::item(&self.engine, self.id, AnyEntity::Work).await
     }
 
     async fn commit(&mut self) -> Result<()> {

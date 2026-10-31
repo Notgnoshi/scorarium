@@ -7,6 +7,7 @@ use crate::audit::{AuditEvent, AuditId};
 use crate::library::LibraryId;
 use crate::person::Person;
 use crate::publication::Publication;
+use crate::review::ReviewItem;
 use crate::work::Work;
 use crate::{Engine, Error, Result};
 
@@ -76,6 +77,9 @@ pub trait Entity: Sized {
         before: Option<AuditId>,
         limit: usize,
     ) -> impl Future<Output = Result<Vec<AuditEvent>>> + Send;
+
+    /// Look up this entity in the review queue, if it exists
+    fn review_item(&self) -> impl Future<Output = Result<Option<ReviewItem>>> + Send;
 
     /// If the entity is a draft, commit it as a non-draft entity
     ///

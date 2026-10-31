@@ -7,7 +7,8 @@ use scorarium_engine::person::{Person, PersonId};
 
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
-use crate::{audit, reference};
+use crate::reference::Target;
+use crate::{audit, reference, search};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -83,6 +84,22 @@ pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<
     )
 }
 
+/// Decide whether a person name or id links an existing person or creates a new one.
+pub(crate) async fn target(
+    library: &Library,
+    reference: &str,
+    new: bool,
+) -> eyre::Result<Target<Person>> {
+    reference::target(
+        "person",
+        reference,
+        new,
+        library.people(None).await?,
+        |p| p.name(),
+        search::person_context,
+    )
+}
+
 /// Run a person command against a library.
 pub(crate) async fn run(
     library: &Library,
@@ -102,6 +119,20 @@ pub(crate) async fn run(
         PersonCommand::Audit(args) => {
             let person = resolve(library, require(subject, "person")?).await?;
             audit::entity_log(&person, args.limit(), out).await
+        }
+        PersonCommand::Commit => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            person.commit().await?;
+            Ok(())
+        }
+        PersonCommand::DiscardChanges => {
+            let reference = require(subject, "person")?;
+            let person = resolve(library, reference).await?;
+            let Some(item) = person.review_item().await? else {
+                eyre::bail!("person '{reference}' is not in the review queue");
+            };
+            item.discard().await?;
+            Ok(())
         }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;

@@ -7,7 +7,8 @@ use scorarium_engine::work::Work;
 
 use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
 use crate::library::write_table;
-use crate::{audit, person, reference};
+use crate::reference::Target;
+use crate::{audit, person, reference, search};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -69,6 +70,22 @@ pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<
     )
 }
 
+/// Decide whether a work title or id links an existing work or creates a new one.
+pub(crate) async fn target(
+    library: &Library,
+    reference: &str,
+    new: bool,
+) -> eyre::Result<Target<Work>> {
+    reference::target(
+        "work",
+        reference,
+        new,
+        library.works().await?,
+        |w| w.title(),
+        search::work_context,
+    )
+}
+
 /// Run a work command against a library.
 pub(crate) async fn run(
     library: &Library,
@@ -84,6 +101,20 @@ pub(crate) async fn run(
         WorkCommand::Audit(args) => {
             let work = resolve(library, require(subject, "work")?).await?;
             audit::entity_log(&work, args.limit(), out).await
+        }
+        WorkCommand::Commit => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            work.commit().await?;
+            Ok(())
+        }
+        WorkCommand::DiscardChanges => {
+            let reference = require(subject, "work")?;
+            let work = resolve(library, reference).await?;
+            let Some(item) = work.review_item().await? else {
+                eyre::bail!("work '{reference}' is not in the review queue");
+            };
+            item.discard().await?;
+            Ok(())
         }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
@@ -121,9 +152,15 @@ pub(crate) async fn run(
                 WorkAdd::Tag { tag } => work.add_tag(tag).await?,
                 WorkAdd::CatalogNumber { number } => work.add_catalog_number(number).await?,
                 WorkAdd::Link { url } => work.add_link(url).await?,
-                WorkAdd::Contributor { person, role } => {
-                    let person = person::resolve(library, &person).await?;
-                    work.add_contributor(person.id(), &role).await?
+                WorkAdd::Contributor { person, role, new } => {
+                    match person::target(library, &person, new).await? {
+                        Target::Existing(person) => {
+                            work.add_contributor(person.id(), &role).await?
+                        }
+                        Target::New => {
+                            work.create_contributor(&person, &role).await?;
+                        }
+                    }
                 }
             }
             Ok(())

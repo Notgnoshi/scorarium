@@ -34,7 +34,7 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - name: Setup djlint
-              run: pipx install djlint
+              run: pipx install djlint==1.48.0
             - name: Check HTML template formatting
               run: |
                   djlint --check \

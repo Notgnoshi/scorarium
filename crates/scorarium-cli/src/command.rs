@@ -11,7 +11,7 @@ use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
 use crate::publication::{HoldingKind, IdentifierKind};
-use crate::{audit, person, publication, search, tag, work};
+use crate::{audit, person, publication, review, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -43,6 +43,8 @@ enum Command {
     },
     /// Print the global audit log of every library
     Audit(AuditArgs),
+    /// List the review queue
+    Review,
     /// Exit the shell
     #[command(alias = "exit")]
     Quit,
@@ -108,6 +110,14 @@ enum LibraryCommand {
     Select,
     /// Clear the selected library
     Deselect,
+    /// Create a draft publication from a title or an ISBN/ISMN
+    Import {
+        #[arg(value_name = "seed")]
+        seed: String,
+        /// The location of the first holding
+        #[arg(long, value_name = "location")]
+        location: Option<String>,
+    },
     /// Manage publications
     #[command(subcommand_value_name = "command")]
     Publication {
@@ -179,6 +189,10 @@ pub(crate) enum PublicationCommand {
     },
     /// Delete a publication and its holdings
     Delete,
+    /// Commit a draft publication
+    Commit,
+    /// Remove a publication from the review queue
+    DiscardChanges,
     /// Print a publication's audit log
     Audit(AuditArgs),
 }
@@ -254,11 +268,17 @@ pub(crate) enum PublicationAdd {
         person: String,
         #[arg(value_name = "role")]
         role: String,
+        /// Force-create a new person
+        #[arg(long)]
+        new: bool,
     },
     /// A work the publication contains
     Work {
         #[arg(value_name = "work")]
         work: String,
+        /// Force-create a new work
+        #[arg(long)]
+        new: bool,
     },
     /// A copy of the publication that the library owns
     Holding {
@@ -338,6 +358,10 @@ pub(crate) enum WorkCommand {
     },
     /// Print a work's audit log
     Audit(AuditArgs),
+    /// Commit a draft work
+    Commit,
+    /// Remove a work from the review queue
+    DiscardChanges,
 }
 
 #[derive(Debug, Subcommand)]
@@ -416,6 +440,9 @@ pub(crate) enum WorkAdd {
         person: String,
         #[arg(value_name = "role")]
         role: String,
+        /// Force-create a new person
+        #[arg(long)]
+        new: bool,
     },
 }
 
@@ -491,6 +518,10 @@ pub(crate) enum PersonCommand {
     },
     /// Print a person's audit log
     Audit(AuditArgs),
+    /// Commit a draft person
+    Commit,
+    /// Remove a person from the review queue
+    DiscardChanges,
 }
 
 #[derive(Debug, Subcommand)]
@@ -727,6 +758,16 @@ impl Shell {
                     reject(library.as_deref(), "library", "deselect")?;
                     self.selected = None;
                 }
+                LibraryCommand::Import { seed, location } => {
+                    library::import(
+                        &self.engine,
+                        require(library.as_deref(), "library")?,
+                        &seed,
+                        location.as_deref(),
+                        out,
+                    )
+                    .await?
+                }
                 LibraryCommand::Publication {
                     publication,
                     command,
@@ -759,6 +800,7 @@ impl Shell {
             },
             Command::Search { query } => search::run(&self.engine, &query, out).await?,
             Command::Audit(args) => audit::log(&self.engine, args.limit(), out).await?,
+            Command::Review => review::run(&self.engine, out).await?,
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)

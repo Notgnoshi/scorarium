@@ -139,7 +139,75 @@ The DSL needs to provide:
 * Accept the import
 * Discard the import
 
-TODO: Attempt to define a relatively complete DSL
+#### Grammar
+
+This is the grammar that I have settled on. Every command is `noun [subject] verb [arguments]`.
+Subjects can be an id or a name when non-ambiguous. Most commands are scoped by `library <library>`,
+which to save typing can be selected, in which case the `library <library>` prefix can be omitted.
+
+```
+library list
+library create <name> [public|private]
+library <library> show
+library <library> set name <name>
+library <library> set visibility public|private
+library <library> delete
+library <library> select
+library deselect
+library <library> import <seed> [--location <location>]
+
+publication list [--tag <tag>]...
+publication <publication> show
+publication <publication> audit [--limit <n>]
+publication <publication> set title|publisher|year|stars|note|classification <value>
+publication <publication> clear publisher|year|stars|note
+publication <publication> add tag <tag>
+publication <publication> add identifier isbn|ismn|publisher-number|plate-number <text>
+publication <publication> add link <url>
+publication <publication> add contributor <person> <role> [--new]
+publication <publication> add work <work> [--new]
+publication <publication> add holding physical [--location <location>]
+publication <publication> remove tag <tag>
+publication <publication> remove identifier isbn|ismn|publisher-number|plate-number <text>
+publication <publication> remove link <url|id>
+publication <publication> remove contributor <person> [<role>]
+publication <publication> remove work <work>
+publication <publication> remove holding <id>
+publication <publication> commit
+publication <publication> discard-changes
+publication <publication> delete
+
+work <work> show
+work <work> audit [--limit <n>]
+work <work> set title|key|time-signature|instrumentation|stars|note|classification <value>
+work <work> clear key|time-signature|instrumentation|stars|note
+work <work> add tag <tag>
+work <work> add catalog-number <number>
+work <work> add link <url>
+work <work> add contributor <person> <role> [--new]
+work <work> remove tag <tag>
+work <work> remove catalog-number <number>
+work <work> remove link <url|id>
+work <work> remove contributor <person> [<role>]
+work <work> commit
+work <work> discard-changes
+
+person list [--role <role>]
+person <person> show
+person <person> audit [--limit <n>]
+person <person> set name|sort-name <value>
+person <person> add link <url>
+person <person> remove link <url|id>
+person <person> commit
+person <person> discard-changes
+
+tag list
+
+search <query>
+audit [--limit <n>]
+review
+quit
+```
 
 ## Architecture
 
