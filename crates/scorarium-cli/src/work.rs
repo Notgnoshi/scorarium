@@ -5,9 +5,9 @@ use scorarium_engine::library::Library;
 use scorarium_engine::value::Tag;
 use scorarium_engine::work::Work;
 
-use crate::command::{WorkCommand, require};
+use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
 use crate::library::write_table;
-use crate::{audit, reference};
+use crate::{audit, person, reference};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -84,6 +84,76 @@ pub(crate) async fn run(
         WorkCommand::Audit(args) => {
             let work = resolve(library, require(subject, "work")?).await?;
             audit::entity_log(&work, args.limit(), out).await
+        }
+        WorkCommand::Set { field } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            match field {
+                WorkSet::Title { title } => work.set_title(title).await?,
+                WorkSet::Key { key } => work.set_key(Some(&key)).await?,
+                WorkSet::TimeSignature { time_signature } => {
+                    work.set_time_signature(Some(&time_signature)).await?
+                }
+                WorkSet::Instrumentation { instrumentation } => {
+                    work.set_instrumentation(Some(&instrumentation)).await?
+                }
+                WorkSet::Stars { stars } => work.set_stars(Some(stars)).await?,
+                WorkSet::Note { note } => work.set_note(Some(&note)).await?,
+                WorkSet::Classification { classification } => {
+                    work.set_classification(classification.into()).await?
+                }
+            }
+            Ok(())
+        }
+        WorkCommand::Clear { field } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            match field {
+                WorkClear::Key => work.set_key(None).await?,
+                WorkClear::TimeSignature => work.set_time_signature(None).await?,
+                WorkClear::Instrumentation => work.set_instrumentation(None).await?,
+                WorkClear::Stars => work.set_stars(None).await?,
+                WorkClear::Note => work.set_note(None).await?,
+            }
+            Ok(())
+        }
+        WorkCommand::Add { field } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            match field {
+                WorkAdd::Tag { tag } => work.add_tag(tag).await?,
+                WorkAdd::CatalogNumber { number } => work.add_catalog_number(number).await?,
+                WorkAdd::Link { url } => work.add_link(url).await?,
+                WorkAdd::Contributor { person, role } => {
+                    let person = person::resolve(library, &person).await?;
+                    work.add_contributor(person.id(), &role).await?
+                }
+            }
+            Ok(())
+        }
+        WorkCommand::Remove { field } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            match field {
+                WorkRemove::Tag { tag } => work.remove_tag(&tag).await?,
+                WorkRemove::CatalogNumber { number } => work.remove_catalog_number(&number).await?,
+                WorkRemove::Link { link } => {
+                    let id = reference::link(work.links(), &link)?;
+                    work.remove_link(id).await?
+                }
+                WorkRemove::Contributor { person, role } => {
+                    let person = person::resolve(library, &person).await?.id();
+                    let roles: Vec<String> = match role {
+                        Some(role) => vec![role],
+                        None => work
+                            .contributors()
+                            .iter()
+                            .filter(|c| c.person == person)
+                            .map(|c| c.role.clone())
+                            .collect(),
+                    };
+                    for role in roles {
+                        work.remove_contributor(person, &role).await?;
+                    }
+                }
+            }
+            Ok(())
         }
     }
 }

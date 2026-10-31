@@ -152,7 +152,10 @@ async fn publication_show_resolves_by_title() {
 async fn work_show_resolves_by_title() {
     let (out, result) = run(
         &demo().await,
-        "library 'sheet music' work 'the isle of the dead' show\n",
+        "library 'sheet music' work 'the isle of the dead' clear time-signature\n\
+         library 'sheet music' work 'the isle of the dead' add tag favorite\n\
+         library 'sheet music' work 'the isle of the dead' remove contributor 'georgy kirkor'\n\
+         library 'sheet music' work 'the isle of the dead' show\n",
     )
     .await;
     result.unwrap();
@@ -161,14 +164,12 @@ async fn work_show_resolves_by_title() {
         "id             \t7\t\n\
          title          \t \tThe Isle of the Dead\n\
          key            \t \tA minor\n\
-         time-signature \t \t5/8\n\
          instrumentation\t \tpiano\n\
          stars          \t \t5\n\
          classification \t \tmusic\n\
-         tags           \t \ttranscription, want-to-learn\n\
+         tags           \t \tfavorite, transcription, want-to-learn\n\
          catalog-number \t \tOp. 29\n\
          contributor    \t \tSergei Rachmaninoff (composer)\n\
-         contributor    \t \tGeorgy Kirkor (arranger)\n\
          publication    \t6\tThe Isle of the Dead\n\
          link           \t2\thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
          link           \t3\thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\

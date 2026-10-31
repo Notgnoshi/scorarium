@@ -5,6 +5,8 @@ use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::HttpUrl;
+use scorarium_engine::value::{Stars, Tag};
+use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
 use crate::{audit, person, publication, search, tag, work};
@@ -157,8 +159,153 @@ pub(crate) enum PublicationCommand {
 pub(crate) enum WorkCommand {
     /// Show a work
     Show,
+    /// Set a work field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: WorkSet,
+    },
+    /// Clear an optional work field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: WorkClear,
+    },
+    /// Add a value to a work
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: WorkAdd,
+    },
+    /// Remove a value from a work
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: WorkRemove,
+    },
     /// Print a work's audit log
     Audit(AuditArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkSet {
+    /// The work's title
+    Title {
+        #[arg(value_name = "title")]
+        title: String,
+    },
+    /// The musical key
+    Key {
+        #[arg(value_name = "key")]
+        key: String,
+    },
+    /// The time signature
+    TimeSignature {
+        #[arg(value_name = "time-signature")]
+        time_signature: String,
+    },
+    /// The instruments the work is scored for
+    Instrumentation {
+        #[arg(value_name = "instrumentation")]
+        instrumentation: String,
+    },
+    /// A rating from 1 to 5 stars
+    Stars {
+        #[arg(value_name = "stars")]
+        stars: Stars,
+    },
+    /// A free-form note
+    Note {
+        #[arg(value_name = "note")]
+        note: String,
+    },
+    /// Whether the work is music or prose
+    Classification {
+        #[arg(value_name = "classification", value_enum)]
+        classification: Classification,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkClear {
+    /// The musical key
+    Key,
+    /// The time signature
+    TimeSignature,
+    /// The instruments the work is scored for
+    Instrumentation,
+    /// The star rating
+    Stars,
+    /// The free-form note
+    Note,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkAdd {
+    /// A tag on the work
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// A catalog number, such as "Op. 29"
+    CatalogNumber {
+        #[arg(value_name = "number")]
+        number: CatalogNumber,
+    },
+    /// A web address about the work
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+    /// A person's contribution to the work in a role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkRemove {
+    /// A tag on the work
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// A catalog number
+    CatalogNumber {
+        #[arg(value_name = "number")]
+        number: CatalogNumber,
+    },
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
+    /// A person's contribution, in one role or in every role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: Option<String>,
+    },
+}
+
+/// Whether a work is sheet music or prose.
+#[derive(Clone, Copy, Debug, clap::ValueEnum)] // dang orphan rule strikes again
+pub(crate) enum Classification {
+    Music,
+    Prose,
+}
+
+impl From<Classification> for scorarium_engine::value::Classification {
+    fn from(classification: Classification) -> Self {
+        match classification {
+            Classification::Music => Self::Music,
+            Classification::Prose => Self::Prose,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
