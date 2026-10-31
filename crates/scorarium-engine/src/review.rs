@@ -36,6 +36,29 @@ async fn discard_entity<E: Entity>(mut entity: E) -> Result<()> {
     entity.delete().await
 }
 
+pub(crate) async fn item<E: Entity>(
+    engine: &Engine,
+    id: E::Id,
+    wrap: impl FnOnce(E) -> AnyEntity,
+) -> Result<Option<ReviewItem>> {
+    let Some(entity) = E::load(engine, id).await? else {
+        return Ok(None);
+    };
+    if !entity.is_draft() {
+        return Ok(None);
+    }
+    let library = engine
+        .library(entity.library())
+        .await?
+        .ok_or(Error::NotFound)?;
+    Ok(Some(ReviewItem {
+        library_name: library.name().to_owned(),
+        private: library.is_private(),
+        queued_at: entity.created_at(),
+        entity: wrap(entity),
+    }))
+}
+
 impl Engine {
     /// List every draft publication, work, and person in every library, oldest first
     pub async fn review_queue(&self) -> Result<Vec<ReviewItem>> {
@@ -137,5 +160,29 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn review_item_answers_for_a_draft_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Pro Git".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        let item = publication.review_item().await.unwrap().unwrap();
+        assert_eq!(item.library_name, "Books");
+        assert_eq!(item.queued_at, publication.created_at());
+        assert!(matches!(item.entity, AnyEntity::Publication(ref p) if p.id() == publication.id()));
+
+        publication.commit().await.unwrap();
+        assert!(publication.review_item().await.unwrap().is_none());
     }
 }

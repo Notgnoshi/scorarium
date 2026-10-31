@@ -5,10 +5,11 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::entity::{Entity, EntityKind, Timestamp};
+use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
+use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -343,6 +344,10 @@ impl Entity for Person {
                 limit,
             )
             .await
+    }
+
+    async fn review_item(&self) -> Result<Option<ReviewItem>> {
+        review::item(&self.engine, self.id, AnyEntity::Person).await
     }
 
     async fn commit(&mut self) -> Result<()> {
