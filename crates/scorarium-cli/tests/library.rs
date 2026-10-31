@@ -85,7 +85,8 @@ async fn library_create_rename_delete() {
     let script = "library create Magazines public\n\
                   library create 'Liner notes'\n\
                   library list\n\
-                  library Magazines rename Periodicals\n\
+                  library Magazines set name Periodicals\n\
+                  library Periodicals set visibility private\n\
                   library 'Liner notes' delete\n\
                   library list\n";
     let (out, result) = run(&engine, script).await;
@@ -98,7 +99,7 @@ async fn library_create_rename_delete() {
          4\tLiner notes\tprivate\n\
          1\tBooks      \tprivate\n\
          2\tSheet music\tpublic\n\
-         3\tPeriodicals\tpublic\n"
+         3\tPeriodicals\tprivate\n"
     );
 
     let (_, result) = run(&engine, "library create '  '\n").await;
@@ -111,7 +112,7 @@ async fn library_create_rename_delete() {
 #[tokio::test]
 async fn the_selected_library_fills_the_subject_slot() {
     let engine = demo().await;
-    let script = "library books select\nshow\nrename Novels\nshow\nlibrary deselect\nshow\n";
+    let script = "library books select\nshow\nset name Novels\nshow\nlibrary deselect\nshow\n";
     let (out, result) = run(&engine, script).await;
     let error = format!("{:#}", result.unwrap_err());
     assert!(error.starts_with("line 6: "), "{error}");
@@ -128,21 +129,30 @@ async fn the_selected_library_fills_the_subject_slot() {
 
 #[tokio::test]
 async fn publication_show_resolves_by_title() {
-    let (out, result) = run(&demo().await, "library books publication 'pro git' show\n").await;
+    let (out, result) = run(
+        &demo().await,
+        "library books publication 'pro git' add identifier plate-number 'P 123'\n\
+         library books publication 'pro git' add holding physical --location 'Shelf 3'\n\
+         library books publication 'pro git' remove contributor 'ben straub' author\n\
+         library books publication 'pro git' show\n",
+    )
+    .await;
     result.unwrap();
     assert_eq!(
         out,
-        "id         \t2\t\n\
-         title      \t \tPro Git\n\
-         publisher  \t \tApress\n\
-         year       \t \t2014\n\
-         stars      \t \t3\n\
-         identifier \t \tisbn 978-1-4842-0077-3\n\
-         contributor\t \tScott Chacon (author)\n\
-         contributor\t \tBen Straub (author)\n\
-         holding    \t \tphysical\n\
-         link       \t \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
-         link       \t \thttps://git-scm.com/book/en/v2\n"
+        "id            \t2\t\n\
+         title         \t \tPro Git\n\
+         publisher     \t \tApress\n\
+         year          \t \t2014\n\
+         stars         \t \t3\n\
+         classification\t \tprose\n\
+         identifier    \t \tisbn 978-1-4842-0077-3\n\
+         identifier    \t \tplate-number P 123\n\
+         contributor   \t \tScott Chacon (author)\n\
+         holding       \t2\tphysical\n\
+         holding       \t8\tphysical: Shelf 3\n\
+         link          \t3\thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
+         link          \t4\thttps://git-scm.com/book/en/v2\n"
     );
 }
 
@@ -150,7 +160,10 @@ async fn publication_show_resolves_by_title() {
 async fn work_show_resolves_by_title() {
     let (out, result) = run(
         &demo().await,
-        "library 'sheet music' work 'the isle of the dead' show\n",
+        "library 'sheet music' work 'the isle of the dead' clear time-signature\n\
+         library 'sheet music' work 'the isle of the dead' add tag favorite\n\
+         library 'sheet music' work 'the isle of the dead' remove contributor 'georgy kirkor'\n\
+         library 'sheet music' work 'the isle of the dead' show\n",
     )
     .await;
     result.unwrap();
@@ -159,18 +172,17 @@ async fn work_show_resolves_by_title() {
         "id             \t7\t\n\
          title          \t \tThe Isle of the Dead\n\
          key            \t \tA minor\n\
-         time signature \t \t5/8\n\
          instrumentation\t \tpiano\n\
          stars          \t \t5\n\
-         tags           \t \ttranscription, want-to-learn\n\
-         catalog number \t \tOp. 29\n\
+         classification \t \tmusic\n\
+         tags           \t \tfavorite, transcription, want-to-learn\n\
+         catalog-number \t \tOp. 29\n\
          contributor    \t \tSergei Rachmaninoff (composer)\n\
-         contributor    \t \tGeorgy Kirkor (arranger)\n\
          publication    \t6\tThe Isle of the Dead\n\
-         link           \t \thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
-         link           \t \thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\
-         link           \t \thttps://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)\n\
-         link           \t \thttps://www.wikidata.org/wiki/Q629711\n"
+         link           \t2\thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
+         link           \t3\thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\
+         link           \t4\thttps://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)\n\
+         link           \t5\thttps://www.wikidata.org/wiki/Q629711\n"
     );
 }
 
@@ -196,7 +208,9 @@ async fn person_list_shows_everyone_credited() {
 async fn person_show_lists_each_credit_once() {
     let (out, result) = run(
         &demo().await,
-        "library 'sheet music' person 'sergei rachmaninoff' show\n",
+        "library 'sheet music' person 'sergei rachmaninoff' set sort-name 'Rachmaninov, Sergei'\n\
+         library 'sheet music' person 'sergei rachmaninoff' remove link https://www.wikidata.org/wiki/Q131861\n\
+         library 'sheet music' person 'sergei rachmaninoff' show\n",
     )
     .await;
     result.unwrap();
@@ -204,10 +218,9 @@ async fn person_show_lists_each_credit_once() {
         out,
         "id         \t10\t\n\
          name       \t  \tSergei Rachmaninoff\n\
-         sort name  \t  \tRachmaninoff, Sergei\n\
-         link       \t  \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
-         link       \t  \thttps://en.wikipedia.org/wiki/Sergei_Rachmaninoff\n\
-         link       \t  \thttps://www.wikidata.org/wiki/Q131861\n\
+         sort-name  \t  \tRachmaninov, Sergei\n\
+         link       \t4 \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
+         link       \t5 \thttps://en.wikipedia.org/wiki/Sergei_Rachmaninoff\n\
          publication\t5 \tRachmaninoff masterpieces for solo piano (composer)\n\
          publication\t4 \tRussian piano album (composer)\n\
          publication\t6 \tThe Isle of the Dead (composer)\n\

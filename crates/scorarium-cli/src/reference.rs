@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
+use scorarium_engine::link::{HttpUrl, Link, LinkId};
 use scorarium_engine::search::same_name;
 
 /// Find the one entity a reference names, by id or by name.
@@ -33,4 +34,15 @@ pub(crate) fn resolve<T, I: FromStr + PartialEq + Display>(
             eyre::bail!("'{reference}' names {n} {plural}:\n{}", entries.join("\n"));
         }
     }
+}
+
+/// Find the link a reference resolves to, by id or by exact URL.
+pub(crate) fn link(links: &[Link], reference: &str) -> eyre::Result<LinkId> {
+    let id = reference.parse::<LinkId>().ok();
+    let url = reference.parse::<HttpUrl>().ok();
+    links
+        .iter()
+        .find(|l| Some(l.id) == id || Some(&l.url) == url.as_ref())
+        .map(|l| l.id)
+        .ok_or_else(|| eyre::eyre!("no link '{reference}'"))
 }

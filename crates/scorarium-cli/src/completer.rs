@@ -1,4 +1,4 @@
-use clap::{Arg, Command, CommandFactory};
+use clap::{Arg, Command};
 use reedline::{Completer, CompletionResult, Span, Suggestion};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::AnyEntity;
@@ -6,16 +6,9 @@ use scorarium_engine::library::LibraryId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
 use tokio::runtime::Handle;
 
-use crate::command::{LIBRARY_COMMANDS_WITHOUT_SUBJECT, Line};
+use crate::command::{self, VERBS_WITHOUT_SUBJECT};
 use crate::library::{self, visibility};
 use crate::search::context;
-
-/// The clap command tree
-fn tree() -> Command {
-    let mut tree = Line::command();
-    tree.build();
-    tree
-}
 
 /// Describe where a walk down the command tree stopped.
 struct Location<'a> {
@@ -83,7 +76,7 @@ impl ShellCompleter {
     /// `handle` runs engine queries, so the completer must be called off the runtime's threads.
     pub(crate) fn new(engine: Engine, handle: Handle, selected: Option<LibraryId>) -> Self {
         ShellCompleter {
-            tree: tree(),
+            tree: command::tree(),
             engine,
             handle,
             selected,
@@ -129,6 +122,7 @@ impl ShellCompleter {
             return Vec::new();
         }
         let is_library = command.get_name() == "library";
+        let takes_subject = command.has_subcommands() && command.get_positionals().next().is_some();
         let mut candidates = if has_subject {
             Vec::new()
         } else if is_library {
@@ -148,12 +142,12 @@ impl ShellCompleter {
             .filter(|sub| {
                 let name = sub.get_name();
                 // Clap's generated help fits neither position
-                if !is_library {
+                if !takes_subject {
                     true
                 } else if has_subject {
-                    name != "help" && !LIBRARY_COMMANDS_WITHOUT_SUBJECT.contains(&name)
+                    name != "help" && !VERBS_WITHOUT_SUBJECT.contains(&name)
                 } else {
-                    LIBRARY_COMMANDS_WITHOUT_SUBJECT.contains(&name)
+                    VERBS_WITHOUT_SUBJECT.contains(&name)
                 }
             })
             .map(|sub| {
@@ -300,7 +294,7 @@ mod tests {
                 expected(
                     &[
                         "show",
-                        "rename",
+                        "set",
                         "delete",
                         "select",
                         "publication",
@@ -321,7 +315,10 @@ mod tests {
             );
             assert_eq!(
                 values(None, "library books publication 'Pro Git' "),
-                expected(&["list", "show", "audit", "help"], 36)
+                expected(
+                    &["show", "set", "clear", "add", "remove", "delete", "audit"],
+                    36
+                )
             );
             assert_eq!(
                 values(None, "library 'sheet music' publication list --tag r").first(),

@@ -1,14 +1,17 @@
 use std::io::Write;
 
 use clap::error::ErrorKind;
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
-use scorarium_engine::value::Tag;
+use scorarium_engine::link::HttpUrl;
+use scorarium_engine::value::{Stars, Tag, Year};
+use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
-use crate::{audit, person, publication, reference, search, tag, work};
+use crate::publication::{HoldingKind, IdentifierKind};
+use crate::{audit, person, publication, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -24,10 +27,7 @@ pub(crate) struct Line {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Manage libraries
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> <command>\n       library list|create ..."
-    )]
+    #[command(subcommand_value_name = "command")]
     Library {
         /// The library name or id
         #[arg(value_name = "library", hide = true)]
@@ -42,7 +42,6 @@ enum Command {
         query: String,
     },
     /// Print the global audit log of every library
-    #[command(override_usage = "audit [--limit <n>]")]
     Audit(AuditArgs),
     /// Exit the shell
     #[command(alias = "exit")]
@@ -50,14 +49,14 @@ enum Command {
 }
 
 #[derive(Debug, Args)]
-struct AuditArgs {
+pub(crate) struct AuditArgs {
     /// How many audit events to print; use 0 to print the full audit log
     #[arg(long, value_name = "n", default_value_t = 10)]
     limit: usize,
 }
 
 impl AuditArgs {
-    fn limit(&self) -> usize {
+    pub(crate) fn limit(&self) -> usize {
         if self.limit == 0 {
             usize::MAX
         } else {
@@ -66,15 +65,28 @@ impl AuditArgs {
     }
 }
 
-/// Name the `library` subcommands that take no library.
-pub(crate) const LIBRARY_COMMANDS_WITHOUT_SUBJECT: [&str; 3] = ["list", "create", "deselect"];
+/// The verbs that take no subject under any noun.
+pub(crate) const VERBS_WITHOUT_SUBJECT: [&str; 3] = ["list", "create", "deselect"];
+
+#[derive(Debug, Subcommand)]
+enum LibrarySet {
+    /// The library's name
+    Name {
+        #[arg(value_name = "name")]
+        name: String,
+    },
+    /// Who can see the library
+    Visibility {
+        #[arg(value_enum, value_name = "visibility")]
+        visibility: Visibility,
+    },
+}
 
 #[derive(Debug, Subcommand)]
 enum LibraryCommand {
     /// List every library
     List,
     /// Show the contents of a library
-    #[command(override_usage = "library <library> show")]
     Show,
     /// Create a library
     Create {
@@ -84,25 +96,20 @@ enum LibraryCommand {
         #[arg(value_enum, value_name = "visibility", default_value_t = Visibility::Private)]
         visibility: Visibility,
     },
-    /// Rename a library
-    #[command(override_usage = "library <library> rename <new-name>")]
-    Rename {
-        #[arg(value_name = "new-name")]
-        new_name: String,
+    /// Assign a library field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: LibrarySet,
     },
     /// Delete a library and everything in it
-    #[command(override_usage = "library <library> delete")]
     Delete,
     /// Select a library for the commands that follow
-    #[command(override_usage = "library <library> select")]
     Select,
     /// Clear the selected library
     Deselect,
     /// Manage publications
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> publication <publication> <command>\n       library <library> publication list [--tag <tag>]..."
-    )]
+    #[command(subcommand_value_name = "command")]
     Publication {
         /// The publication title or id
         #[arg(value_name = "publication", hide = true)]
@@ -111,10 +118,7 @@ enum LibraryCommand {
         command: PublicationCommand,
     },
     /// Manage works
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> work <work> <command>"
-    )]
+    #[command(subcommand_value_name = "command")]
     Work {
         /// The work title or id
         #[arg(value_name = "work", hide = true)]
@@ -123,10 +127,7 @@ enum LibraryCommand {
         command: WorkCommand,
     },
     /// Manage persons
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> person <person> <command>\n       library <library> person list [--role <role>]"
-    )]
+    #[command(subcommand_value_name = "command")]
     Person {
         /// The person name or id
         #[arg(value_name = "person", hide = true)]
@@ -135,10 +136,7 @@ enum LibraryCommand {
         command: PersonCommand,
     },
     /// Manage tags
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> tag <command>"
-    )]
+    #[command(subcommand_value_name = "command")]
     Tag {
         #[command(subcommand)]
         command: TagCommand,
@@ -146,54 +144,462 @@ enum LibraryCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum PublicationCommand {
+pub(crate) enum PublicationCommand {
     /// List the publications in a library
-    #[command(override_usage = "library <library> publication list [--tag <tag>]...")]
     List {
         /// Keep only publications carrying this tag. Repeatable.
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
     },
     /// Show a publication
-    #[command(override_usage = "library <library> publication <publication> show")]
     Show,
+    /// Set a publication field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: PublicationSet,
+    },
+    /// Clear an optional publication field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: PublicationClear,
+    },
+    /// Add a value to a publication
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: PublicationAdd,
+    },
+    /// Remove a value from a publication
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: PublicationRemove,
+    },
+    /// Delete a publication and its holdings
+    Delete,
     /// Print a publication's audit log
-    #[command(override_usage = "library <library> publication <publication> audit [--limit <n>]")]
     Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
-enum WorkCommand {
+pub(crate) enum PublicationSet {
+    /// The publication's title
+    Title {
+        #[arg(value_name = "title")]
+        title: String,
+    },
+    /// The publisher
+    Publisher {
+        #[arg(value_name = "publisher")]
+        publisher: String,
+    },
+    /// The year of publication
+    Year {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+    /// A rating from 1 to 5 stars
+    Stars {
+        #[arg(value_name = "stars")]
+        stars: Stars,
+    },
+    /// A free-form note
+    Note {
+        #[arg(value_name = "note")]
+        note: String,
+    },
+    /// Whether the publication is music or prose
+    Classification {
+        #[arg(value_name = "classification", value_enum)]
+        classification: Classification,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationClear {
+    /// The publisher
+    Publisher,
+    /// The year of publication
+    Year,
+    /// The star rating
+    Stars,
+    /// The free-form note
+    Note,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationAdd {
+    /// A tag on the publication
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// An identifier printed on the publication, such as an ISBN
+    Identifier {
+        #[arg(value_name = "kind", value_enum)]
+        kind: IdentifierKind,
+        #[arg(value_name = "text")]
+        text: String,
+    },
+    /// A web address about the publication
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+    /// A person's contribution to the publication in a role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: String,
+    },
+    /// A work the publication contains
+    Work {
+        #[arg(value_name = "work")]
+        work: String,
+    },
+    /// A copy of the publication that the library owns
+    Holding {
+        #[arg(value_name = "kind", value_enum)]
+        kind: HoldingKind,
+        /// Where the copy is kept
+        #[arg(long, value_name = "location")]
+        location: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationRemove {
+    /// A tag on the publication
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// An identifier printed on the publication
+    Identifier {
+        #[arg(value_name = "kind", value_enum)]
+        kind: IdentifierKind,
+        #[arg(value_name = "text")]
+        text: String,
+    },
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
+    /// A person's contribution, in one role or in every role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: Option<String>,
+    },
+    /// A work the publication contains
+    Work {
+        #[arg(value_name = "work")]
+        work: String,
+    },
+    /// A copy of the publication, by id
+    Holding {
+        #[arg(value_name = "id")]
+        holding: HoldingId,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkCommand {
     /// Show a work
-    #[command(override_usage = "library <library> work <work> show")]
     Show,
+    /// Set a work field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: WorkSet,
+    },
+    /// Clear an optional work field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: WorkClear,
+    },
+    /// Add a value to a work
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: WorkAdd,
+    },
+    /// Remove a value from a work
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: WorkRemove,
+    },
     /// Print a work's audit log
-    #[command(override_usage = "library <library> work <work> audit [--limit <n>]")]
     Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
-enum PersonCommand {
+pub(crate) enum WorkSet {
+    /// The work's title
+    Title {
+        #[arg(value_name = "title")]
+        title: String,
+    },
+    /// The musical key
+    Key {
+        #[arg(value_name = "key")]
+        key: String,
+    },
+    /// The time signature
+    TimeSignature {
+        #[arg(value_name = "time-signature")]
+        time_signature: String,
+    },
+    /// The instruments the work is scored for
+    Instrumentation {
+        #[arg(value_name = "instrumentation")]
+        instrumentation: String,
+    },
+    /// A rating from 1 to 5 stars
+    Stars {
+        #[arg(value_name = "stars")]
+        stars: Stars,
+    },
+    /// A free-form note
+    Note {
+        #[arg(value_name = "note")]
+        note: String,
+    },
+    /// Whether the work is music or prose
+    Classification {
+        #[arg(value_name = "classification", value_enum)]
+        classification: Classification,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkClear {
+    /// The musical key
+    Key,
+    /// The time signature
+    TimeSignature,
+    /// The instruments the work is scored for
+    Instrumentation,
+    /// The star rating
+    Stars,
+    /// The free-form note
+    Note,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkAdd {
+    /// A tag on the work
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// A catalog number, such as "Op. 29"
+    CatalogNumber {
+        #[arg(value_name = "number")]
+        number: CatalogNumber,
+    },
+    /// A web address about the work
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+    /// A person's contribution to the work in a role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum WorkRemove {
+    /// A tag on the work
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// A catalog number
+    CatalogNumber {
+        #[arg(value_name = "number")]
+        number: CatalogNumber,
+    },
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
+    /// A person's contribution, in one role or in every role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: Option<String>,
+    },
+}
+
+/// Whether a publication or work is sheet music or prose.
+#[derive(Clone, Copy, Debug, clap::ValueEnum)] // dang orphan rule strikes again
+pub(crate) enum Classification {
+    Music,
+    Prose,
+}
+
+impl From<Classification> for scorarium_engine::value::Classification {
+    fn from(classification: Classification) -> Self {
+        match classification {
+            Classification::Music => Self::Music,
+            Classification::Prose => Self::Prose,
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonCommand {
     /// List everyone credited in a library
-    #[command(override_usage = "library <library> person list [--role <role>]")]
     List {
         /// Keep only persons credited with this role
         #[arg(long, value_name = "role")]
         role: Option<String>,
     },
     /// Show a person
-    #[command(override_usage = "library <library> person <person> show")]
     Show,
+    /// Set a person field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: PersonSet,
+    },
+    /// Add a value to a person
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: PersonAdd,
+    },
+    /// Remove a value from a person
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: PersonRemove,
+    },
     /// Print a person's audit log
-    #[command(override_usage = "library <library> person <person> audit [--limit <n>]")]
     Audit(AuditArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonSet {
+    /// The person's name
+    Name {
+        #[arg(value_name = "name")]
+        name: String,
+    },
+    /// The name to sort by
+    SortName {
+        #[arg(value_name = "sort-name")]
+        sort_name: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonAdd {
+    /// A web address about the person
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonRemove {
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum TagCommand {
     /// List the tags in a library with their use counts
-    #[command(override_usage = "library <library> tag list")]
     List,
+}
+
+/// Build the command tree with every usage line computed from its path.
+///
+/// Clap omits a parent's positionals from a subcommand's usage, so the subject placeholders are
+/// inserted here rather than written by hand on each command.
+pub(crate) fn tree() -> clap::Command {
+    let mut tree = Line::command();
+    tree.build();
+    for command in tree.get_subcommands_mut() {
+        usage(command, "");
+    }
+    tree
+}
+
+fn usage(command: &mut clap::Command, prefix: &str) {
+    if command.get_name() == "help" {
+        return;
+    }
+    let subject = command
+        .has_subcommands()
+        .then(|| command.get_positionals().next())
+        .flatten()
+        .map(|positional| {
+            positional
+                .get_value_names()
+                .and_then(|names| names.first())
+                .map_or_else(|| positional.get_id().to_string(), |name| name.to_string())
+        });
+    let verbs: Vec<String> = if subject.is_some() {
+        command
+            .get_subcommands()
+            .map(clap::Command::get_name)
+            .filter(|name| VERBS_WITHOUT_SUBJECT.contains(name))
+            .map(str::to_string)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut path = format!("{prefix}{}", command.get_name());
+    if let Some(subject) = &subject {
+        path = format!("{path} <{subject}>");
+    }
+    let own_prefix = format!("{path} ");
+    let subjectless_prefix = format!("{prefix}{} ", command.get_name());
+    let bin_name = command.get_bin_name().unwrap_or_default().to_string();
+    let rendered = command.render_usage().to_string();
+    let arguments = rendered
+        .trim_start()
+        .trim_start_matches("Usage:")
+        .trim_start()
+        .trim_start_matches(bin_name.as_str())
+        .trim();
+    let mut line = format!("{path} {arguments}").trim().to_string();
+    if !verbs.is_empty() {
+        line.push_str(&format!(
+            "\n       {prefix}{} {} ...",
+            command.get_name(),
+            verbs.join("|")
+        ));
+    }
+
+    for sub in command.get_subcommands_mut() {
+        if subject.is_some() && VERBS_WITHOUT_SUBJECT.contains(&sub.get_name()) {
+            usage(sub, &subjectless_prefix);
+        } else {
+            usage(sub, &own_prefix);
+        }
+    }
+    *command = std::mem::take(command).override_usage(line);
 }
 
 /// Whether the shell keeps reading after a command.
@@ -214,12 +620,10 @@ pub(crate) struct Shell {
 impl Shell {
     /// Start a session with no library selected.
     pub(crate) fn new(engine: Engine) -> Shell {
-        let mut tree = Line::command();
-        tree.build();
         Shell {
             engine,
             selected: None,
-            tree,
+            tree: tree(),
         }
     }
 
@@ -251,7 +655,7 @@ impl Shell {
                 eyre::bail!("selected library {id} no longer exists; selection cleared");
             }
             // These verbs take no library, so prefixing the selection cannot make them valid.
-            if LIBRARY_COMMANDS_WITHOUT_SUBJECT.contains(&words[0].as_str()) {
+            if VERBS_WITHOUT_SUBJECT.contains(&words[0].as_str()) {
                 eyre::bail!(
                     "'{0}' does not act on the selected library; use 'library {0}'",
                     words[0]
@@ -259,7 +663,11 @@ impl Shell {
             }
             words.splice(0..0, ["library".to_string(), id.to_string()]);
         }
-        let line = match Line::try_parse_from(&words) {
+        let line = match self
+            .tree
+            .try_get_matches_from_mut(&words)
+            .and_then(|matches| Line::from_arg_matches(&matches))
+        {
             Ok(line) => line,
             Err(error) if error.kind() == ErrorKind::DisplayHelp => {
                 write!(out, "{error}")?;
@@ -280,34 +688,43 @@ impl Shell {
         match line.command {
             Command::Library { library, command } => match command {
                 LibraryCommand::List => {
-                    reject(&library, "library", "list")?;
+                    reject(library.as_deref(), "library", "list")?;
                     library::list(&self.engine, out).await?
                 }
                 LibraryCommand::Create { name, visibility } => {
-                    reject(&library, "library", "create")?;
+                    reject(library.as_deref(), "library", "create")?;
                     library::create(&self.engine, &name, visibility).await?
                 }
                 LibraryCommand::Show => {
-                    library::show(&self.engine, require(&library, "library")?, out).await?
+                    library::show(&self.engine, require(library.as_deref(), "library")?, out)
+                        .await?
                 }
-                LibraryCommand::Rename { new_name } => {
-                    library::rename(&self.engine, require(&library, "library")?, &new_name).await?
+                LibraryCommand::Set { field } => {
+                    let reference = require(library.as_deref(), "library")?;
+                    match field {
+                        LibrarySet::Name { name } => {
+                            library::set_name(&self.engine, reference, &name).await?
+                        }
+                        LibrarySet::Visibility { visibility } => {
+                            library::set_visibility(&self.engine, reference, visibility).await?
+                        }
+                    }
                 }
                 LibraryCommand::Delete => {
-                    library::delete(&self.engine, require(&library, "library")?).await?;
+                    library::delete(&self.engine, require(library.as_deref(), "library")?).await?;
                     if self.selected.is_some() && self.selected().await?.is_none() {
                         self.selected = None;
                     }
                 }
                 LibraryCommand::Select => {
                     self.selected = Some(
-                        library::resolve(&self.engine, require(&library, "library")?)
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?
                             .id(),
                     );
                 }
                 LibraryCommand::Deselect => {
-                    reject(&library, "library", "deselect")?;
+                    reject(library.as_deref(), "library", "deselect")?;
                     self.selected = None;
                 }
                 LibraryCommand::Publication {
@@ -315,82 +732,26 @@ impl Shell {
                     command,
                 } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        PublicationCommand::List { tag } => {
-                            reject(&publication, "publication", "list")?;
-                            let tags = tag
-                                .iter()
-                                .map(|tag| tag.parse())
-                                .collect::<Result<Vec<Tag>, _>>()?;
-                            publication::list(&library, &tags, out).await?
-                        }
-                        PublicationCommand::Show | PublicationCommand::Audit(_) => {
-                            let reference = require(&publication, "publication")?;
-                            let publication = reference::resolve(
-                                "publication",
-                                reference,
-                                library.publications().await?,
-                                |p| p.id(),
-                                |p| p.title().unwrap_or_default(),
-                            )?;
-                            if let PublicationCommand::Audit(args) = command {
-                                audit::entity_log(&publication, args.limit(), out).await?
-                            } else {
-                                publication::show(publication, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    publication::run(&library, publication.as_deref(), command, out).await?
                 }
                 LibraryCommand::Work { work, command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        WorkCommand::Show | WorkCommand::Audit(_) => {
-                            let reference = require(&work, "work")?;
-                            let work = reference::resolve(
-                                "work",
-                                reference,
-                                library.works().await?,
-                                |w| w.id(),
-                                |w| w.title(),
-                            )?;
-                            if let WorkCommand::Audit(args) = command {
-                                audit::entity_log(&work, args.limit(), out).await?
-                            } else {
-                                work::show(work, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    work::run(&library, work.as_deref(), command, out).await?
                 }
                 LibraryCommand::Person { person, command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
-                    match command {
-                        PersonCommand::List { role } => {
-                            reject(&person, "person", "list")?;
-                            person::list(&library, role.as_deref(), out).await?
-                        }
-                        PersonCommand::Show | PersonCommand::Audit(_) => {
-                            let reference = require(&person, "person")?;
-                            let person = reference::resolve(
-                                "person",
-                                reference,
-                                library.people(None).await?,
-                                |p| p.id(),
-                                |p| p.name(),
-                            )?;
-                            if let PersonCommand::Audit(args) = command {
-                                audit::entity_log(&person, args.limit(), out).await?
-                            } else {
-                                person::show(person, out).await?
-                            }
-                        }
-                    }
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
+                    person::run(&library, person.as_deref(), command, out).await?
                 }
                 LibraryCommand::Tag { command } => {
                     let library =
-                        library::resolve(&self.engine, require(&library, "library")?).await?;
+                        library::resolve(&self.engine, require(library.as_deref(), "library")?)
+                            .await?;
                     match command {
                         TagCommand::List => tag::list(&library, out).await?,
                     }
@@ -405,14 +766,12 @@ impl Shell {
 }
 
 /// Return the subject, or fail when the command was given none.
-fn require<'a>(subject: &'a Option<String>, kind: &str) -> eyre::Result<&'a str> {
-    subject
-        .as_deref()
-        .ok_or_else(|| eyre::eyre!("{kind} name required"))
+pub(crate) fn require<'a>(subject: Option<&'a str>, kind: &str) -> eyre::Result<&'a str> {
+    subject.ok_or_else(|| eyre::eyre!("{kind} name required"))
 }
 
 /// Fail when the command was given a subject it cannot use.
-fn reject(subject: &Option<String>, kind: &str, verb: &str) -> eyre::Result<()> {
+pub(crate) fn reject(subject: Option<&str>, kind: &str, verb: &str) -> eyre::Result<()> {
     if subject.is_some() {
         eyre::bail!("'{verb}' takes no {kind}");
     }

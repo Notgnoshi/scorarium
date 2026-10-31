@@ -5,7 +5,9 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId};
 
+use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
+use crate::{audit, reference};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -34,10 +36,10 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
     let mut rows = vec![
         row("id", person.id().to_string(), String::new()),
         row("name", String::new(), person.name().to_string()),
-        row("sort name", String::new(), person.sort_name().to_string()),
+        row("sort-name", String::new(), person.sort_name().to_string()),
     ];
     for link in person.links() {
-        rows.push(row("link", String::new(), link.url.to_string()));
+        rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
     let mut publications = person.publications().await?;
     publications.sort_by(|a, b| a.title().cmp(&b.title()));
@@ -68,4 +70,65 @@ fn roles_of(contributors: &[Contributor], person: PersonId) -> Vec<&str> {
         .filter(|c| c.person == person)
         .map(|c| c.role.as_str())
         .collect()
+}
+
+/// Resolve a person name or id
+pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Person> {
+    reference::resolve(
+        "person",
+        reference,
+        library.people(None).await?,
+        |p| p.id(),
+        |p| p.name(),
+    )
+}
+
+/// Run a person command against a library.
+pub(crate) async fn run(
+    library: &Library,
+    subject: Option<&str>,
+    command: PersonCommand,
+    out: &mut impl Write,
+) -> eyre::Result<()> {
+    match command {
+        PersonCommand::List { role } => {
+            reject(subject, "person", "list")?;
+            list(library, role.as_deref(), out).await
+        }
+        PersonCommand::Show => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            show(person, out).await
+        }
+        PersonCommand::Audit(args) => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            audit::entity_log(&person, args.limit(), out).await
+        }
+        PersonCommand::Set { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonSet::Name { name } => {
+                    person.rename(&name, person.sort_name().to_string()).await?
+                }
+                PersonSet::SortName { sort_name } => {
+                    person.rename(person.name().to_string(), &sort_name).await?
+                }
+            }
+            Ok(())
+        }
+        PersonCommand::Add { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonAdd::Link { url } => Ok(person.add_link(url).await?),
+            }
+        }
+        PersonCommand::Remove { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonRemove::Link { link } => {
+                    let id = reference::link(person.links(), &link)?;
+                    Ok(person.remove_link(id).await?)
+                }
+            }
+        }
+    }
 }
