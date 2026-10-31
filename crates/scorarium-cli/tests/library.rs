@@ -129,7 +129,14 @@ async fn the_selected_library_fills_the_subject_slot() {
 
 #[tokio::test]
 async fn publication_show_resolves_by_title() {
-    let (out, result) = run(&demo().await, "library books publication 'pro git' show\n").await;
+    let (out, result) = run(
+        &demo().await,
+        "library books publication 'pro git' add identifier plate-number 'P 123'\n\
+         library books publication 'pro git' add holding physical --location 'Shelf 3'\n\
+         library books publication 'pro git' remove contributor 'ben straub' author\n\
+         library books publication 'pro git' show\n",
+    )
+    .await;
     result.unwrap();
     assert_eq!(
         out,
@@ -140,9 +147,10 @@ async fn publication_show_resolves_by_title() {
          stars         \t \t3\n\
          classification\t \tprose\n\
          identifier    \t \tisbn 978-1-4842-0077-3\n\
+         identifier    \t \tplate-number P 123\n\
          contributor   \t \tScott Chacon (author)\n\
-         contributor   \t \tBen Straub (author)\n\
          holding       \t2\tphysical\n\
+         holding       \t8\tphysical: Shelf 3\n\
          link          \t3\thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
          link          \t4\thttps://git-scm.com/book/en/v2\n"
     );

@@ -3,12 +3,14 @@ use std::io::Write;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
+use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::HttpUrl;
-use scorarium_engine::value::{Stars, Tag};
+use scorarium_engine::value::{Stars, Tag, Year};
 use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
+use crate::publication::{HoldingKind, IdentifierKind};
 use crate::{audit, person, publication, search, tag, work};
 
 #[derive(Debug, Parser)]
@@ -151,8 +153,159 @@ pub(crate) enum PublicationCommand {
     },
     /// Show a publication
     Show,
+    /// Set a publication field
+    #[command(subcommand_value_name = "field")]
+    Set {
+        #[command(subcommand)]
+        field: PublicationSet,
+    },
+    /// Clear an optional publication field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: PublicationClear,
+    },
+    /// Add a value to a publication
+    #[command(subcommand_value_name = "field")]
+    Add {
+        #[command(subcommand)]
+        field: PublicationAdd,
+    },
+    /// Remove a value from a publication
+    #[command(subcommand_value_name = "field")]
+    Remove {
+        #[command(subcommand)]
+        field: PublicationRemove,
+    },
+    /// Delete a publication and its holdings
+    Delete,
     /// Print a publication's audit log
     Audit(AuditArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationSet {
+    /// The publication's title
+    Title {
+        #[arg(value_name = "title")]
+        title: String,
+    },
+    /// The publisher
+    Publisher {
+        #[arg(value_name = "publisher")]
+        publisher: String,
+    },
+    /// The year of publication
+    Year {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+    /// A rating from 1 to 5 stars
+    Stars {
+        #[arg(value_name = "stars")]
+        stars: Stars,
+    },
+    /// A free-form note
+    Note {
+        #[arg(value_name = "note")]
+        note: String,
+    },
+    /// Whether the publication is music or prose
+    Classification {
+        #[arg(value_name = "classification", value_enum)]
+        classification: Classification,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationClear {
+    /// The publisher
+    Publisher,
+    /// The year of publication
+    Year,
+    /// The star rating
+    Stars,
+    /// The free-form note
+    Note,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationAdd {
+    /// A tag on the publication
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// An identifier printed on the publication, such as an ISBN
+    Identifier {
+        #[arg(value_name = "kind", value_enum)]
+        kind: IdentifierKind,
+        #[arg(value_name = "text")]
+        text: String,
+    },
+    /// A web address about the publication
+    Link {
+        #[arg(value_name = "url")]
+        url: HttpUrl,
+    },
+    /// A person's contribution to the publication in a role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: String,
+    },
+    /// A work the publication contains
+    Work {
+        #[arg(value_name = "work")]
+        work: String,
+    },
+    /// A copy of the publication that the library owns
+    Holding {
+        #[arg(value_name = "kind", value_enum)]
+        kind: HoldingKind,
+        /// Where the copy is kept
+        #[arg(long, value_name = "location")]
+        location: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PublicationRemove {
+    /// A tag on the publication
+    Tag {
+        #[arg(value_name = "tag")]
+        tag: Tag,
+    },
+    /// An identifier printed on the publication
+    Identifier {
+        #[arg(value_name = "kind", value_enum)]
+        kind: IdentifierKind,
+        #[arg(value_name = "text")]
+        text: String,
+    },
+    /// A link, by id or by URL
+    Link {
+        #[arg(value_name = "url|id")]
+        link: String,
+    },
+    /// A person's contribution, in one role or in every role
+    Contributor {
+        #[arg(value_name = "person")]
+        person: String,
+        #[arg(value_name = "role")]
+        role: Option<String>,
+    },
+    /// A work the publication contains
+    Work {
+        #[arg(value_name = "work")]
+        work: String,
+    },
+    /// A copy of the publication, by id
+    Holding {
+        #[arg(value_name = "id")]
+        holding: HoldingId,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -292,7 +445,7 @@ pub(crate) enum WorkRemove {
     },
 }
 
-/// Whether a work is sheet music or prose.
+/// Whether a publication or work is sheet music or prose.
 #[derive(Clone, Copy, Debug, clap::ValueEnum)] // dang orphan rule strikes again
 pub(crate) enum Classification {
     Music,

@@ -315,7 +315,10 @@ mod tests {
             );
             assert_eq!(
                 values(None, "library books publication 'Pro Git' "),
-                expected(&["show", "audit"], 36)
+                expected(
+                    &["show", "set", "clear", "add", "remove", "delete", "audit"],
+                    36
+                )
             );
             assert_eq!(
                 values(None, "library 'sheet music' publication list --tag r").first(),
