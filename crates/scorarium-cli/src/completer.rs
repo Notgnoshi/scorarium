@@ -318,7 +318,15 @@ mod tests {
                 values(None, "library books publication 'Pro Git' "),
                 expected(
                     &[
-                        "show", "set", "clear", "add", "remove", "delete", "commit", "audit"
+                        "show",
+                        "set",
+                        "clear",
+                        "add",
+                        "remove",
+                        "delete",
+                        "commit",
+                        "discard-changes",
+                        "audit"
                     ],
                     36
                 )

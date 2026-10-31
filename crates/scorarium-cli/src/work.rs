@@ -90,6 +90,15 @@ pub(crate) async fn run(
             work.commit().await?;
             Ok(())
         }
+        WorkCommand::DiscardChanges => {
+            let reference = require(subject, "work")?;
+            let work = resolve(library, reference).await?;
+            let Some(item) = work.review_item().await? else {
+                eyre::bail!("work '{reference}' is not in the review queue");
+            };
+            item.discard().await?;
+            Ok(())
+        }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {

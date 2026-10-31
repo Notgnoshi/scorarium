@@ -108,6 +108,15 @@ pub(crate) async fn run(
             person.commit().await?;
             Ok(())
         }
+        PersonCommand::DiscardChanges => {
+            let reference = require(subject, "person")?;
+            let person = resolve(library, reference).await?;
+            let Some(item) = person.review_item().await? else {
+                eyre::bail!("person '{reference}' is not in the review queue");
+            };
+            item.discard().await?;
+            Ok(())
+        }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {

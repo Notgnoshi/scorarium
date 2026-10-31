@@ -300,5 +300,14 @@ pub(crate) async fn run(
             publication.commit().await?;
             Ok(())
         }
+        PublicationCommand::DiscardChanges => {
+            let reference = require(subject, "publication")?;
+            let publication = resolve(library, reference).await?;
+            let Some(item) = publication.review_item().await? else {
+                eyre::bail!("publication '{reference}' is not in the review queue");
+            };
+            item.discard().await?;
+            Ok(())
+        }
     }
 }

@@ -329,4 +329,24 @@ async fn import_commit_review_discard() {
         format!("{:#}", result.unwrap_err()),
         "line 1: A publication needs a title before it can be committed."
     );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 9 discard-changes\nreview\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(out, "");
+
+    let (_, result) = run(&engine, "library books publication 9 discard-changes\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: no publication '9'"
+    );
+
+    let (_, result) = run(&engine, "library books publication 8 discard-changes\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: publication '8' is not in the review queue"
+    );
 }

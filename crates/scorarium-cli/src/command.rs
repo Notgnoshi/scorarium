@@ -191,6 +191,8 @@ pub(crate) enum PublicationCommand {
     Delete,
     /// Commit a draft publication
     Commit,
+    /// Remove a publication from the review queue
+    DiscardChanges,
     /// Print a publication's audit log
     Audit(AuditArgs),
 }
@@ -352,6 +354,8 @@ pub(crate) enum WorkCommand {
     Audit(AuditArgs),
     /// Commit a draft work
     Commit,
+    /// Remove a work from the review queue
+    DiscardChanges,
 }
 
 #[derive(Debug, Subcommand)]
@@ -507,6 +511,8 @@ pub(crate) enum PersonCommand {
     Audit(AuditArgs),
     /// Commit a draft person
     Commit,
+    /// Remove a person from the review queue
+    DiscardChanges,
 }
 
 #[derive(Debug, Subcommand)]
