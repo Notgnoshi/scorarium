@@ -11,7 +11,7 @@ use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
 use crate::publication::{HoldingKind, IdentifierKind};
-use crate::{audit, person, publication, search, tag, work};
+use crate::{audit, person, publication, review, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -43,6 +43,8 @@ enum Command {
     },
     /// Print the global audit log of every library
     Audit(AuditArgs),
+    /// List the review queue
+    Review,
     /// Exit the shell
     #[command(alias = "exit")]
     Quit,
@@ -759,6 +761,7 @@ impl Shell {
             },
             Command::Search { query } => search::run(&self.engine, &query, out).await?,
             Command::Audit(args) => audit::log(&self.engine, args.limit(), out).await?,
+            Command::Review => review::run(&self.engine, out).await?,
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)

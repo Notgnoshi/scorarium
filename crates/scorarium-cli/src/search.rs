@@ -11,15 +11,7 @@ pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> e
         .await?
         .into_iter()
         .map(|hit| {
-            let (kind, id, title) = match &hit.entity {
-                AnyEntity::Publication(p) => (
-                    "publication",
-                    p.id().to_string(),
-                    p.title().unwrap_or_default().to_string(),
-                ),
-                AnyEntity::Work(w) => ("work", w.id().to_string(), w.title().to_string()),
-                AnyEntity::Person(p) => ("person", p.id().to_string(), p.name().to_string()),
-            };
+            let (kind, id, title) = describe(&hit.entity);
             [
                 kind.to_string(),
                 hit.library.to_string(),
@@ -31,6 +23,19 @@ pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> e
         })
         .collect();
     write_table(out, &rows)
+}
+
+/// Return the kind, id, and label of an entity.
+pub(crate) fn describe(entity: &AnyEntity) -> (&'static str, String, String) {
+    match entity {
+        AnyEntity::Publication(p) => (
+            "publication",
+            p.id().to_string(),
+            p.title().unwrap_or_default().to_string(),
+        ),
+        AnyEntity::Work(w) => ("work", w.id().to_string(), w.title().to_string()),
+        AnyEntity::Person(p) => ("person", p.id().to_string(), p.name().to_string()),
+    }
 }
 
 pub(crate) fn context(entity: &AnyEntity) -> String {
