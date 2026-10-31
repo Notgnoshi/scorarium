@@ -1,3 +1,4 @@
+mod audit;
 mod command;
 mod completer;
 mod interactive;

@@ -1,14 +1,14 @@
 use std::io::Write;
 
 use clap::error::ErrorKind;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::value::Tag;
 
 use crate::library::{self, Visibility};
-use crate::{person, publication, reference, search, tag, work};
+use crate::{audit, person, publication, reference, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -41,9 +41,29 @@ enum Command {
         #[arg(value_name = "query")]
         query: String,
     },
+    /// Print the global audit log of every library
+    #[command(override_usage = "audit [--limit <n>]")]
+    Audit(AuditArgs),
     /// Exit the shell
     #[command(alias = "exit")]
     Quit,
+}
+
+#[derive(Debug, Args)]
+struct AuditArgs {
+    /// How many audit events to print; use 0 to print the full audit log
+    #[arg(long, value_name = "n", default_value_t = 10)]
+    limit: usize,
+}
+
+impl AuditArgs {
+    fn limit(&self) -> usize {
+        if self.limit == 0 {
+            usize::MAX
+        } else {
+            self.limit
+        }
+    }
 }
 
 /// Name the `library` subcommands that take no library.
@@ -137,6 +157,9 @@ enum PublicationCommand {
     /// Show a publication
     #[command(override_usage = "library <library> publication <publication> show")]
     Show,
+    /// Print a publication's audit log
+    #[command(override_usage = "library <library> publication <publication> audit [--limit <n>]")]
+    Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -144,6 +167,9 @@ enum WorkCommand {
     /// Show a work
     #[command(override_usage = "library <library> work <work> show")]
     Show,
+    /// Print a work's audit log
+    #[command(override_usage = "library <library> work <work> audit [--limit <n>]")]
+    Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -158,6 +184,9 @@ enum PersonCommand {
     /// Show a person
     #[command(override_usage = "library <library> person <person> show")]
     Show,
+    /// Print a person's audit log
+    #[command(override_usage = "library <library> person <person> audit [--limit <n>]")]
+    Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -296,7 +325,7 @@ impl Shell {
                                 .collect::<Result<Vec<Tag>, _>>()?;
                             publication::list(&library, &tags, out).await?
                         }
-                        PublicationCommand::Show => {
+                        PublicationCommand::Show | PublicationCommand::Audit(_) => {
                             let reference = require(&publication, "publication")?;
                             let publication = reference::resolve(
                                 "publication",
@@ -305,7 +334,11 @@ impl Shell {
                                 |p| p.id(),
                                 |p| p.title().unwrap_or_default(),
                             )?;
-                            publication::show(publication, out).await?
+                            if let PublicationCommand::Audit(args) = command {
+                                audit::entity_log(&publication, args.limit(), out).await?
+                            } else {
+                                publication::show(publication, out).await?
+                            }
                         }
                     }
                 }
@@ -313,7 +346,7 @@ impl Shell {
                     let library =
                         library::resolve(&self.engine, require(&library, "library")?).await?;
                     match command {
-                        WorkCommand::Show => {
+                        WorkCommand::Show | WorkCommand::Audit(_) => {
                             let reference = require(&work, "work")?;
                             let work = reference::resolve(
                                 "work",
@@ -322,7 +355,11 @@ impl Shell {
                                 |w| w.id(),
                                 |w| w.title(),
                             )?;
-                            work::show(work, out).await?
+                            if let WorkCommand::Audit(args) = command {
+                                audit::entity_log(&work, args.limit(), out).await?
+                            } else {
+                                work::show(work, out).await?
+                            }
                         }
                     }
                 }
@@ -334,7 +371,7 @@ impl Shell {
                             reject(&person, "person", "list")?;
                             person::list(&library, role.as_deref(), out).await?
                         }
-                        PersonCommand::Show => {
+                        PersonCommand::Show | PersonCommand::Audit(_) => {
                             let reference = require(&person, "person")?;
                             let person = reference::resolve(
                                 "person",
@@ -343,7 +380,11 @@ impl Shell {
                                 |p| p.id(),
                                 |p| p.name(),
                             )?;
-                            person::show(person, out).await?
+                            if let PersonCommand::Audit(args) = command {
+                                audit::entity_log(&person, args.limit(), out).await?
+                            } else {
+                                person::show(person, out).await?
+                            }
                         }
                     }
                 }
@@ -356,6 +397,7 @@ impl Shell {
                 }
             },
             Command::Search { query } => search::run(&self.engine, &query, out).await?,
+            Command::Audit(args) => audit::log(&self.engine, args.limit(), out).await?,
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)

@@ -320,6 +320,10 @@ mod tests {
                 expected(&["'Practical Vim'", "'Pro Git'"], 26)
             );
             assert_eq!(
+                values(None, "library books publication 'Pro Git' "),
+                expected(&["list", "show", "audit", "help"], 36)
+            );
+            assert_eq!(
                 values(None, "library 'sheet music' publication list --tag r").first(),
                 Some(&("russian".to_string(), 45))
             );
