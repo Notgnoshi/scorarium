@@ -85,6 +85,11 @@ pub(crate) async fn run(
             let work = resolve(library, require(subject, "work")?).await?;
             audit::entity_log(&work, args.limit(), out).await
         }
+        WorkCommand::Commit => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            work.commit().await?;
+            Ok(())
+        }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {

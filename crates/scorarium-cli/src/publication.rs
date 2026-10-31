@@ -295,5 +295,10 @@ pub(crate) async fn run(
             publication.delete().await?;
             Ok(())
         }
+        PublicationCommand::Commit => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            publication.commit().await?;
+            Ok(())
+        }
     }
 }

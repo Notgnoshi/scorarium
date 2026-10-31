@@ -313,4 +313,20 @@ async fn import_commit_review_discard() {
          identifier\t \tisbn 978-0-13-468599-1\n\
          holding   \t9\tphysical\n"
     );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 'scorarium handbook' commit\n\
+         library books publication 8 commit\n\
+         review\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(without_age(&out), "Books\tpublication\t9\n");
+
+    let (_, result) = run(&engine, "library books publication 9 commit\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: A publication needs a title before it can be committed."
+    );
 }

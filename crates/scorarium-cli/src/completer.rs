@@ -317,7 +317,9 @@ mod tests {
             assert_eq!(
                 values(None, "library books publication 'Pro Git' "),
                 expected(
-                    &["show", "set", "clear", "add", "remove", "delete", "audit"],
+                    &[
+                        "show", "set", "clear", "add", "remove", "delete", "commit", "audit"
+                    ],
                     36
                 )
             );

@@ -103,6 +103,11 @@ pub(crate) async fn run(
             let person = resolve(library, require(subject, "person")?).await?;
             audit::entity_log(&person, args.limit(), out).await
         }
+        PersonCommand::Commit => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            person.commit().await?;
+            Ok(())
+        }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {
