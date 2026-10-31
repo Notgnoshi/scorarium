@@ -3,7 +3,7 @@ use std::io::Write;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::Library;
-use scorarium_engine::publication::Publication;
+use scorarium_engine::publication::{IdentifierKind, Publication};
 use scorarium_engine::value::Tag;
 
 use crate::command::{PublicationCommand, reject, require};
@@ -70,6 +70,10 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
         ("year", publication.year().map(|year| year.to_string())),
         ("stars", publication.stars().map(|stars| stars.to_string())),
         ("note", publication.note().map(str::to_string)),
+        (
+            "classification",
+            publication.classification().map(|c| c.to_string()),
+        ),
     ];
     for (label, value) in optional {
         if let Some(value) = value {
@@ -81,7 +85,7 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
         rows.push(row("tags", String::new(), tags.join(", ")));
     }
     for identifier in publication.identifiers() {
-        let value = format!("{} {}", identifier.kind(), identifier);
+        let value = format!("{} {}", identifier_kind(identifier.kind()), identifier);
         rows.push(row("identifier", String::new(), value));
     }
     for contributor in publication.contributors() {
@@ -95,15 +99,24 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
             } => format!("physical: {location}"),
             HoldingKind::Physical { location: None } => "physical".to_string(),
         };
-        rows.push(row("holding", String::new(), value));
+        rows.push(row("holding", holding.id.to_string(), value));
     }
     for work in publication.works().await? {
         rows.push(row("work", work.id().to_string(), work.title().to_string()));
     }
     for link in publication.links() {
-        rows.push(row("link", String::new(), link.url.to_string()));
+        rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
     write_table(out, &rows)
+}
+
+fn identifier_kind(kind: IdentifierKind) -> &'static str {
+    match kind {
+        IdentifierKind::Isbn => "isbn",
+        IdentifierKind::Ismn => "ismn",
+        IdentifierKind::PublisherNumber => "publisher-number",
+        IdentifierKind::PlateNumber => "plate-number",
+    }
 }
 
 /// Resolve a publication title or id

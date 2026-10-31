@@ -17,13 +17,17 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     ];
     let optional = [
         ("key", work.key().map(str::to_string)),
-        ("time signature", work.time_signature().map(str::to_string)),
+        ("time-signature", work.time_signature().map(str::to_string)),
         (
             "instrumentation",
             work.instrumentation().map(str::to_string),
         ),
         ("stars", work.stars().map(|stars| stars.to_string())),
         ("note", work.note().map(str::to_string)),
+        (
+            "classification",
+            work.classification().map(|c| c.to_string()),
+        ),
     ];
     for (label, value) in optional {
         if let Some(value) = value {
@@ -35,7 +39,7 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
         rows.push(row("tags", String::new(), tags.join(", ")));
     }
     for number in work.catalog_numbers() {
-        rows.push(row("catalog number", String::new(), number.to_string()));
+        rows.push(row("catalog-number", String::new(), number.to_string()));
     }
     for contributor in work.contributors() {
         let value = format!("{} ({})", contributor.name, contributor.role);
@@ -49,12 +53,12 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
         ));
     }
     for link in work.links() {
-        rows.push(row("link", String::new(), link.url.to_string()));
+        rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
     write_table(out, &rows)
 }
 
-/// Resolve the title or id of a work 
+/// Resolve the title or id of a work
 pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Work> {
     reference::resolve(
         "work",

@@ -36,10 +36,10 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
     let mut rows = vec![
         row("id", person.id().to_string(), String::new()),
         row("name", String::new(), person.name().to_string()),
-        row("sort name", String::new(), person.sort_name().to_string()),
+        row("sort-name", String::new(), person.sort_name().to_string()),
     ];
     for link in person.links() {
-        rows.push(row("link", String::new(), link.url.to_string()));
+        rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
     let mut publications = person.publications().await?;
     publications.sort_by(|a, b| a.title().cmp(&b.title()));
