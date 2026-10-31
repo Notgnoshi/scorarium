@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use clap::error::ErrorKind;
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
@@ -24,10 +24,7 @@ pub(crate) struct Line {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Manage libraries
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> <command>\n       library list|create ..."
-    )]
+    #[command(subcommand_value_name = "command")]
     Library {
         /// The library name or id
         #[arg(value_name = "library", hide = true)]
@@ -42,7 +39,6 @@ enum Command {
         query: String,
     },
     /// Print the global audit log of every library
-    #[command(override_usage = "audit [--limit <n>]")]
     Audit(AuditArgs),
     /// Exit the shell
     #[command(alias = "exit")]
@@ -74,7 +70,6 @@ enum LibraryCommand {
     /// List every library
     List,
     /// Show the contents of a library
-    #[command(override_usage = "library <library> show")]
     Show,
     /// Create a library
     Create {
@@ -85,24 +80,18 @@ enum LibraryCommand {
         visibility: Visibility,
     },
     /// Rename a library
-    #[command(override_usage = "library <library> rename <new-name>")]
     Rename {
         #[arg(value_name = "new-name")]
         new_name: String,
     },
     /// Delete a library and everything in it
-    #[command(override_usage = "library <library> delete")]
     Delete,
     /// Select a library for the commands that follow
-    #[command(override_usage = "library <library> select")]
     Select,
     /// Clear the selected library
     Deselect,
     /// Manage publications
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> publication <publication> <command>\n       library <library> publication list [--tag <tag>]..."
-    )]
+    #[command(subcommand_value_name = "command")]
     Publication {
         /// The publication title or id
         #[arg(value_name = "publication", hide = true)]
@@ -111,10 +100,7 @@ enum LibraryCommand {
         command: PublicationCommand,
     },
     /// Manage works
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> work <work> <command>"
-    )]
+    #[command(subcommand_value_name = "command")]
     Work {
         /// The work title or id
         #[arg(value_name = "work", hide = true)]
@@ -123,10 +109,7 @@ enum LibraryCommand {
         command: WorkCommand,
     },
     /// Manage persons
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> person <person> <command>\n       library <library> person list [--role <role>]"
-    )]
+    #[command(subcommand_value_name = "command")]
     Person {
         /// The person name or id
         #[arg(value_name = "person", hide = true)]
@@ -135,10 +118,7 @@ enum LibraryCommand {
         command: PersonCommand,
     },
     /// Manage tags
-    #[command(
-        subcommand_value_name = "command",
-        override_usage = "library <library> tag <command>"
-    )]
+    #[command(subcommand_value_name = "command")]
     Tag {
         #[command(subcommand)]
         command: TagCommand,
@@ -148,52 +128,114 @@ enum LibraryCommand {
 #[derive(Debug, Subcommand)]
 enum PublicationCommand {
     /// List the publications in a library
-    #[command(override_usage = "library <library> publication list [--tag <tag>]...")]
     List {
         /// Keep only publications carrying this tag. Repeatable.
         #[arg(long, value_name = "tag")]
         tag: Vec<String>,
     },
     /// Show a publication
-    #[command(override_usage = "library <library> publication <publication> show")]
     Show,
     /// Print a publication's audit log
-    #[command(override_usage = "library <library> publication <publication> audit [--limit <n>]")]
     Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
 enum WorkCommand {
     /// Show a work
-    #[command(override_usage = "library <library> work <work> show")]
     Show,
     /// Print a work's audit log
-    #[command(override_usage = "library <library> work <work> audit [--limit <n>]")]
     Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
 enum PersonCommand {
     /// List everyone credited in a library
-    #[command(override_usage = "library <library> person list [--role <role>]")]
     List {
         /// Keep only persons credited with this role
         #[arg(long, value_name = "role")]
         role: Option<String>,
     },
     /// Show a person
-    #[command(override_usage = "library <library> person <person> show")]
     Show,
     /// Print a person's audit log
-    #[command(override_usage = "library <library> person <person> audit [--limit <n>]")]
     Audit(AuditArgs),
 }
 
 #[derive(Debug, Subcommand)]
 enum TagCommand {
     /// List the tags in a library with their use counts
-    #[command(override_usage = "library <library> tag list")]
     List,
+}
+
+/// Build the command tree with every usage line computed from its path.
+///
+/// Clap omits a parent's positionals from a subcommand's usage, so the subject placeholders are
+/// inserted here rather than written by hand on each command.
+pub(crate) fn tree() -> clap::Command {
+    let mut tree = Line::command();
+    tree.build();
+    for command in tree.get_subcommands_mut() {
+        usage(command, "");
+    }
+    tree
+}
+
+fn usage(command: &mut clap::Command, prefix: &str) {
+    if command.get_name() == "help" {
+        return;
+    }
+    let subject = command
+        .has_subcommands()
+        .then(|| command.get_positionals().next())
+        .flatten()
+        .map(|positional| {
+            positional
+                .get_value_names()
+                .and_then(|names| names.first())
+                .map_or_else(|| positional.get_id().to_string(), |name| name.to_string())
+        });
+    let verbs: Vec<String> = if subject.is_some() {
+        command
+            .get_subcommands()
+            .map(clap::Command::get_name)
+            .filter(|name| VERBS_WITHOUT_SUBJECT.contains(name))
+            .map(str::to_string)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut path = format!("{prefix}{}", command.get_name());
+    if let Some(subject) = &subject {
+        path = format!("{path} <{subject}>");
+    }
+    let own_prefix = format!("{path} ");
+    let subjectless_prefix = format!("{prefix}{} ", command.get_name());
+    let bin_name = command.get_bin_name().unwrap_or_default().to_string();
+    let rendered = command.render_usage().to_string();
+    let arguments = rendered
+        .trim_start()
+        .trim_start_matches("Usage:")
+        .trim_start()
+        .trim_start_matches(bin_name.as_str())
+        .trim();
+    let mut line = format!("{path} {arguments}").trim().to_string();
+    if !verbs.is_empty() {
+        line.push_str(&format!(
+            "\n       {prefix}{} {} ...",
+            command.get_name(),
+            verbs.join("|")
+        ));
+    }
+
+    for sub in command.get_subcommands_mut() {
+        if subject.is_some() && VERBS_WITHOUT_SUBJECT.contains(&sub.get_name()) {
+            usage(sub, &subjectless_prefix);
+        } else {
+            usage(sub, &own_prefix);
+        }
+    }
+    *command = std::mem::take(command).override_usage(line);
 }
 
 /// Whether the shell keeps reading after a command.
@@ -214,12 +256,10 @@ pub(crate) struct Shell {
 impl Shell {
     /// Start a session with no library selected.
     pub(crate) fn new(engine: Engine) -> Shell {
-        let mut tree = Line::command();
-        tree.build();
         Shell {
             engine,
             selected: None,
-            tree,
+            tree: tree(),
         }
     }
 
@@ -259,7 +299,11 @@ impl Shell {
             }
             words.splice(0..0, ["library".to_string(), id.to_string()]);
         }
-        let line = match Line::try_parse_from(&words) {
+        let line = match self
+            .tree
+            .try_get_matches_from_mut(&words)
+            .and_then(|matches| Line::from_arg_matches(&matches))
+        {
             Ok(line) => line,
             Err(error) if error.kind() == ErrorKind::DisplayHelp => {
                 write!(out, "{error}")?;

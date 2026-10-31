@@ -1,4 +1,4 @@
-use clap::{Arg, Command, CommandFactory};
+use clap::{Arg, Command};
 use reedline::{Completer, CompletionResult, Span, Suggestion};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::AnyEntity;
@@ -6,16 +6,9 @@ use scorarium_engine::library::LibraryId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
 use tokio::runtime::Handle;
 
-use crate::command::{Line, VERBS_WITHOUT_SUBJECT};
+use crate::command::{self, VERBS_WITHOUT_SUBJECT};
 use crate::library::{self, visibility};
 use crate::search::context;
-
-/// The clap command tree
-fn tree() -> Command {
-    let mut tree = Line::command();
-    tree.build();
-    tree
-}
 
 /// Describe where a walk down the command tree stopped.
 struct Location<'a> {
@@ -83,7 +76,7 @@ impl ShellCompleter {
     /// `handle` runs engine queries, so the completer must be called off the runtime's threads.
     pub(crate) fn new(engine: Engine, handle: Handle, selected: Option<LibraryId>) -> Self {
         ShellCompleter {
-            tree: tree(),
+            tree: command::tree(),
             engine,
             handle,
             selected,
