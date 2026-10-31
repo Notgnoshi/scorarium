@@ -263,3 +263,54 @@ async fn search_prints_the_same_columns_for_every_kind() {
          person     \t2\tSheet music\t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
     );
 }
+
+/// Filter the age from the review queue output
+fn without_age(out: &str) -> String {
+    out.lines()
+        .map(|line| {
+            line.rsplit_once('\t')
+                .map_or(line, |(rest, _)| rest)
+                .trim_end()
+        })
+        .map(|line| format!("{line}\n"))
+        .collect()
+}
+
+#[tokio::test]
+async fn import_commit_review_discard() {
+    let engine = demo().await;
+    let (out, result) = run(
+        &engine,
+        "library books select\n\
+         import 'Scorarium handbook' --location Desk\n\
+         import 978-0-13-468599-1\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(out, "8\n9\n");
+
+    let (_, result) = run(&engine, "library books import '  '\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: A publication title cannot be blank."
+    );
+
+    let (out, result) = run(&engine, "review\n").await;
+    result.unwrap();
+    assert_eq!(
+        without_age(&out),
+        "Books\tpublication\t8\tScorarium handbook\n\
+         Books\tpublication\t9\n"
+    );
+
+    let (out, result) = run(&engine, "library books publication 9 show\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "id        \t9\t\n\
+         draft     \t \t\n\
+         title     \t \t\n\
+         identifier\t \tisbn 978-0-13-468599-1\n\
+         holding   \t9\tphysical\n"
+    );
+}

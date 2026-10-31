@@ -110,6 +110,14 @@ enum LibraryCommand {
     Select,
     /// Clear the selected library
     Deselect,
+    /// Create a draft publication from a title or an ISBN/ISMN
+    Import {
+        #[arg(value_name = "seed")]
+        seed: String,
+        /// The location of the first holding
+        #[arg(long, value_name = "location")]
+        location: Option<String>,
+    },
     /// Manage publications
     #[command(subcommand_value_name = "command")]
     Publication {
@@ -728,6 +736,16 @@ impl Shell {
                 LibraryCommand::Deselect => {
                     reject(library.as_deref(), "library", "deselect")?;
                     self.selected = None;
+                }
+                LibraryCommand::Import { seed, location } => {
+                    library::import(
+                        &self.engine,
+                        require(library.as_deref(), "library")?,
+                        &seed,
+                        location.as_deref(),
+                        out,
+                    )
+                    .await?
                 }
                 LibraryCommand::Publication {
                     publication,

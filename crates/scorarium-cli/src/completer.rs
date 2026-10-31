@@ -297,6 +297,7 @@ mod tests {
                         "set",
                         "delete",
                         "select",
+                        "import",
                         "publication",
                         "work",
                         "person",
