@@ -329,6 +329,11 @@ impl Work {
         Ok(())
     }
 
+    async fn collect_orphans_and_commit(&self, mut tx: Audited<'_>) -> Result<()> {
+        let collected = person::collect_orphan_people(&mut tx, self.library).await?;
+        entity::commit_rejection(tx, &collected).await
+    }
+
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -1038,6 +1043,32 @@ impl Entity for Work {
             proposals.push(from_row(&self.engine, &mut conn, row).await?);
         }
         Ok(proposals)
+    }
+
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM work_proposal WHERE id = ? AND work_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        self.collect_orphans_and_commit(tx).await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM work_proposal WHERE work_id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        self.collect_orphans_and_commit(tx).await
     }
 
     async fn commit(&mut self) -> Result<()> {

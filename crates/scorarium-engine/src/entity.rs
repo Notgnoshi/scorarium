@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use scorarium_client::Source;
 
-use crate::audit::{AuditEvent, AuditId};
+use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::library::LibraryId;
 use crate::person::Person;
 use crate::publication::Publication;
@@ -129,8 +129,48 @@ pub trait Entity: Sized {
     /// Returns [Error::NotFound] if the entity has been deleted.
     fn commit(&mut self) -> impl Future<Output = Result<()>> + Send;
 
+    /// Discard a proposed edit
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted, or the proposal no longer exists
+    fn reject(&mut self, proposal: ProposalId) -> impl Future<Output = Result<()>> + Send;
+
+    /// Discard every proposed edit, along with any draft they were the last reference to
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted.
+    fn reject_all(&mut self) -> impl Future<Output = Result<()>> + Send;
+
     /// Delete the entity and anything orphaned by its deletion
     ///
     /// Returns [Error::NotFound] if the entity has already been deleted.
     fn delete(self) -> impl Future<Output = Result<()>> + Send;
+}
+
+/// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`
+pub(crate) async fn commit_rejection(tx: Audited<'_>, collected: &[AuditSubject]) -> Result<()> {
+    let Some((first, rest)) = collected.split_first() else {
+        #[expect(
+            deprecated,
+            reason = "discarding edit proposals doesn't need to be audited"
+        )]
+        return tx.commit_unaudited().await;
+    };
+    let mut tx = tx
+        .record(
+            AuditSource::OrphanCleanup,
+            Action::Deleted,
+            Some(first),
+            None,
+        )
+        .await?;
+    for subject in rest {
+        tx = tx
+            .record(
+                AuditSource::OrphanCleanup,
+                Action::Deleted,
+                Some(subject),
+                None,
+            )
+            .await?;
+    }
+    tx.commit().await
 }

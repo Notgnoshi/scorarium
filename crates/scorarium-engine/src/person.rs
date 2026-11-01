@@ -417,6 +417,43 @@ impl Entity for Person {
         rows.into_iter().map(from_row).collect()
     }
 
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM person_proposal WHERE id = ? AND person_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        #[expect(
+            deprecated,
+            reason = "rejecting proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!(
+            "DELETE FROM person_proposal WHERE person_id = ?",
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "rejecting proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+
     async fn commit(&mut self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;

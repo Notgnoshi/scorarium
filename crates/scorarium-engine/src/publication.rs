@@ -360,6 +360,13 @@ impl Publication {
         .await
     }
 
+    async fn collect_orphans_and_commit(&self, mut tx: Audited<'_>) -> Result<()> {
+        // deleting works can orphan people, so works first
+        let mut collected = work::collect_orphan_works(&mut tx, self.library).await?;
+        collected.extend(person::collect_orphan_people(&mut tx, self.library).await?);
+        entity::commit_rejection(tx, &collected).await
+    }
+
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -1428,6 +1435,35 @@ impl Entity for Publication {
         Ok(proposals)
     }
 
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM publication_proposal WHERE id = ? AND publication_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        self.collect_orphans_and_commit(tx).await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!(
+            "DELETE FROM publication_proposal WHERE publication_id = ?",
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        self.collect_orphans_and_commit(tx).await
+    }
+
     async fn commit(&mut self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -2232,6 +2268,50 @@ mod tests {
             matches!(proposals[0].value, Proposal::Title(ref t) if t == "Pro Git: Second Edition")
         );
         assert!(matches!(proposals[1].value, Proposal::Contents(ref w) if w.id() == work.id()));
+    }
+
+    #[tokio::test]
+    async fn rejecting_the_last_proposal_naming_a_draft_collects_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut a = library
+            .create_publication(
+                ImportSeed::Title("Preludes, book one".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut b = library
+            .create_publication(
+                ImportSeed::Title("Preludes, book two".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        a.commit().await.unwrap();
+        b.commit().await.unwrap();
+
+        let work = a
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        let b_proposal = b
+            .propose(Source::OpenLibrary, Proposal::Contents(work.clone()))
+            .await
+            .unwrap()
+            .unwrap();
+        let a_proposal = a.proposals().await.unwrap()[0].id;
+
+        a.reject(a_proposal).await.unwrap();
+        assert!(Work::load(&engine, work.id()).await.unwrap().is_some());
+        assert!(matches!(a.reject(a_proposal).await, Err(Error::NotFound)));
+        assert!(matches!(a.reject(b_proposal).await, Err(Error::NotFound)));
+
+        b.reject(b_proposal).await.unwrap();
+        assert!(Work::load(&engine, work.id()).await.unwrap().is_none());
     }
 
     #[tokio::test]
