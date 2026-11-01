@@ -6,6 +6,8 @@ pub mod open_library;
 mod rate_limited_client;
 mod transport;
 
+use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -64,6 +66,33 @@ pub enum Priority {
     /// Background requests are pushed to the back of the queue, and are retried with backoff if the
     /// source is rate limiting us or unhealthy.
     Background,
+}
+
+/// A metadata API that the client talks to
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Source {
+    /// The Open Library API
+    OpenLibrary,
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            Source::OpenLibrary => "openlibrary",
+        };
+        f.write_str(text)
+    }
+}
+
+impl FromStr for Source {
+    type Err = eyre::Report;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        match text {
+            "openlibrary" => Ok(Source::OpenLibrary),
+            _ => Err(eyre::eyre!("unknown source {text:?}")),
+        }
+    }
 }
 
 /// What one API source is doing right now

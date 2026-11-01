@@ -1,0 +1,71 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 0 AS \"rank!: i64\", publication.id AS \"id!: i64\",\n                      CASE WHEN publication.draft = 1 THEN publication.created_at\n                           ELSE (SELECT MIN(created_at) FROM publication_proposal\n                                 WHERE publication_id = publication.id) END\n                          AS \"queued_at!: Timestamp\",\n                      library.name AS \"library_name!: String\",\n                      library.private AS \"private!: bool\",\n                      (SELECT COUNT(*) FROM publication_proposal WHERE publication_id = publication.id)\n                          AS \"proposals!: i64\"\n               FROM publication JOIN library ON library.id = publication.library_id\n               WHERE publication.draft = 1 OR EXISTS (SELECT 1 FROM publication_proposal\n                                                      WHERE publication_id = publication.id)\n               UNION ALL\n               SELECT 1, work.id,\n                      CASE WHEN work.draft = 1 THEN work.created_at\n                           ELSE (SELECT MIN(created_at) FROM work_proposal\n                                 WHERE work_id = work.id) END,\n                      library.name, library.private,\n                      (SELECT COUNT(*) FROM work_proposal WHERE work_id = work.id)\n               FROM work JOIN library ON library.id = work.library_id\n               WHERE work.draft = 1 OR EXISTS (SELECT 1 FROM work_proposal\n                                              WHERE work_id = work.id)\n               UNION ALL\n               SELECT 2, person.id,\n                      CASE WHEN person.draft = 1 THEN person.created_at\n                           ELSE (SELECT MIN(created_at) FROM person_proposal\n                                 WHERE person_id = person.id) END,\n                      library.name, library.private,\n                      (SELECT COUNT(*) FROM person_proposal WHERE person_id = person.id)\n               FROM person JOIN library ON library.id = person.library_id\n               WHERE person.draft = 1 OR EXISTS (SELECT 1 FROM person_proposal\n                                              WHERE person_id = person.id)\n               ORDER BY 3, 1, 2",
+  "describe": {
+    "columns": [
+      {
+        "name": "rank!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "id!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "queued_at!: Timestamp",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "library_name!: String",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "private!: bool",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library",
+            "name": "private"
+          }
+        }
+      },
+      {
+        "name": "proposals!: i64",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1db9fcaec173799aab5a9aaceee969835978ff2623b808a65c1237c3ac9d3f16"
+}

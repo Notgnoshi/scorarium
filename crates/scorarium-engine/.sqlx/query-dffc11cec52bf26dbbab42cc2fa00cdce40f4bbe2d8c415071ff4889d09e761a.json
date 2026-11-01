@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, field, source, proposed_value,\n                      created_at AS \"created_at: Timestamp\"\n               FROM person_proposal WHERE id = ? AND person_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person_proposal",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "field",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_proposal",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_proposal",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "proposed_value",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person_proposal",
+            "name": "proposed_value"
+          }
+        }
+      },
+      {
+        "name": "created_at: Timestamp",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person_proposal",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dffc11cec52bf26dbbab42cc2fa00cdce40f4bbe2d8c415071ff4889d09e761a"
+}

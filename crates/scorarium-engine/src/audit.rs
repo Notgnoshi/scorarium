@@ -44,6 +44,7 @@ pub enum AuditSource {
     OrphanCleanup,
     Merge,
     LinkRecognition,
+    Enrichment,
 }
 
 impl fmt::Display for AuditSource {
@@ -53,6 +54,7 @@ impl fmt::Display for AuditSource {
             AuditSource::OrphanCleanup => "orphan_cleanup",
             AuditSource::Merge => "merge",
             AuditSource::LinkRecognition => "link_recognition",
+            AuditSource::Enrichment => "enrichment",
         })
     }
 }
@@ -66,6 +68,7 @@ impl FromStr for AuditSource {
             "orphan_cleanup" => AuditSource::OrphanCleanup,
             "merge" => AuditSource::Merge,
             "link_recognition" => AuditSource::LinkRecognition,
+            "enrichment" => AuditSource::Enrichment,
             other => return Err(eyre::eyre!("unknown audit source {other:?}").into()),
         })
     }
@@ -159,6 +162,13 @@ impl<'a> Audited<'a> {
     ) -> Result<Recorded<'a>> {
         insert(&mut self.tx, source, action, subject, field).await?;
         Ok(Recorded { tx: self.tx })
+    }
+
+    /// Commit the transaction without recording an audit event.
+    #[deprecated(note = "Use Audited::record()")]
+    pub(crate) async fn commit_unaudited(self) -> Result<()> {
+        self.tx.commit().await?;
+        Ok(())
     }
 }
 

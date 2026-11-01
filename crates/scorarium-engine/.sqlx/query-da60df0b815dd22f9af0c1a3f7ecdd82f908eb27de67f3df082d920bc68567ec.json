@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO work_proposal\n                   (library_id, work_id, person_id, field, source, proposed_value)\n               VALUES (?, ?, ?, 'contributor', ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "da60df0b815dd22f9af0c1a3f7ecdd82f908eb27de67f3df082d920bc68567ec"
+}

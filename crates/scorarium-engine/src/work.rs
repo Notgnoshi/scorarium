@@ -3,11 +3,12 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
+use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -96,6 +97,18 @@ impl FromStr for Field {
             other => return Err(eyre::eyre!("unknown work field {other:?}").into()),
         })
     }
+}
+
+/// A proposed edit to a [Work]
+#[derive(Clone, Debug)]
+pub enum Proposal {
+    Title(String),
+    Key(String),
+    TimeSignature(String),
+    Instrumentation(String),
+    CatalogNumber(CatalogNumber),
+    Contributor { person: Person, role: String },
+    Link(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -314,6 +327,145 @@ impl Work {
         self.title = title.to_string();
         self.last_modified_at = last_modified_at;
         Ok(())
+    }
+
+    async fn collect_orphans_and_commit(&self, mut tx: Audited<'_>) -> Result<()> {
+        let collected = person::collect_orphan_people(&mut tx, self.library).await?;
+        entity::commit_rejection(tx, &collected).await
+    }
+
+    #[expect(dead_code)]
+    pub(crate) async fn propose(
+        &self,
+        source: Source,
+        value: Proposal,
+    ) -> Result<Option<ProposalId>> {
+        let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
+        let (field, text, person) = match &value {
+            Proposal::Title(title) => ("title", clean_title(title)?.to_string(), None),
+            Proposal::Key(key) => (
+                "key",
+                clean_text(Some(key))
+                    .ok_or_else(|| blank("A key"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::TimeSignature(time_signature) => (
+                "time_signature",
+                clean_text(Some(time_signature))
+                    .ok_or_else(|| blank("A time signature"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::Instrumentation(instrumentation) => (
+                "instrumentation",
+                clean_text(Some(instrumentation))
+                    .ok_or_else(|| blank("An instrumentation"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::CatalogNumber(number) => ("catalog_number", number.to_string(), None),
+            Proposal::Contributor { person, role } => {
+                ("contributor", clean_role(role)?.to_string(), Some(person))
+            }
+            Proposal::Link(url) => ("link", url.to_string(), None),
+        };
+        let mut tx = self.engine.begin_write().await?;
+        let current = Work::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Title(_) => current.title == text,
+            Proposal::Key(_) => current.key.as_deref() == Some(&text),
+            Proposal::TimeSignature(_) => current.time_signature.as_deref() == Some(&text),
+            Proposal::Instrumentation(_) => current.instrumentation.as_deref() == Some(&text),
+            Proposal::CatalogNumber(number) => current.catalog_numbers.contains(number),
+            Proposal::Contributor { person, .. } => current
+                .contributors
+                .iter()
+                .any(|c| c.person == person.id() && c.role == text),
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Work, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
+        if let Some(person) = person
+            && person::name(&mut tx, self.library, person.id())
+                .await?
+                .is_none()
+        {
+            return Err(Error::NotFound);
+        }
+        let person = person.map(|person| person.id().get());
+        let source = source.to_string();
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO work_proposal
+                   (library_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING
+               RETURNING id AS "id!""#,
+            self.library.get(),
+            self.id.get(),
+            person,
+            field,
+            source,
+            text
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "creating a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await?;
+        Ok(id.map(ProposalId::new))
+    }
+
+    /// Create a draft person and propose that they contributed to the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) async fn propose_new_contributor(
+        &self,
+        source: Source,
+        name: &str,
+        role: &str,
+    ) -> Result<Person> {
+        let name = person::clean_name(name)?;
+        let role = clean_role(role)?;
+        let mut tx = self.engine.begin_write().await?;
+        Work::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let person = person::insert(&self.engine, &mut tx, self.library, name, true).await?;
+        let source = source.to_string();
+        sqlx::query!(
+            r#"INSERT INTO work_proposal
+                   (library_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, 'contributor', ?, ?)"#,
+            self.library.get(),
+            self.id.get(),
+            person.id().get(),
+            source,
+            role
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::Enrichment,
+            Action::Created,
+            Some(&person.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        Ok(person)
     }
 
     /// Set or clear the key, treating a blank key as none
@@ -835,6 +987,7 @@ impl Work {
 impl Entity for Work {
     type Id = WorkId;
     type Field = Field;
+    type Proposal = Proposal;
 
     async fn load(engine: &Engine, id: WorkId) -> Result<Option<Work>> {
         let mut conn = engine.begin_read().await?;
@@ -876,6 +1029,75 @@ impl Entity for Work {
         review::item(&self.engine, self.id, AnyEntity::Work).await
     }
 
+    async fn proposals(&self) -> Result<Vec<entity::Proposal<Work>>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM work_proposal WHERE work_id = ? ORDER BY id"#,
+            self.id.get()
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        let mut proposals = Vec::with_capacity(rows.len());
+        for row in rows {
+            proposals.push(from_row(&self.engine, &mut conn, row).await?);
+        }
+        Ok(proposals)
+    }
+
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Key(key) => self.set_key(Some(&key)).await?,
+            Proposal::TimeSignature(time_signature) => {
+                self.set_time_signature(Some(&time_signature)).await?
+            }
+            Proposal::Instrumentation(instrumentation) => {
+                self.set_instrumentation(Some(&instrumentation)).await?
+            }
+            Proposal::CatalogNumber(number) => self.add_catalog_number(number).await?,
+            Proposal::Contributor { person, role } => {
+                self.add_contributor(person.id(), role).await?
+            }
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM work_proposal WHERE id = ? AND work_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        self.collect_orphans_and_commit(tx).await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!("DELETE FROM work_proposal WHERE work_id = ?", self.id.get())
+            .execute(&mut *tx)
+            .await?;
+        self.collect_orphans_and_commit(tx).await
+    }
+
     async fn commit(&mut self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -890,6 +1112,7 @@ impl Entity for Work {
         .fetch_one(&mut *tx)
         .await?;
         let people = person::commit_contributors_of_work(&mut tx, self.id).await?;
+        let orphans = person::collect_orphan_people(&mut tx, self.library).await?;
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -901,6 +1124,16 @@ impl Entity for Work {
         for subject in people {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         tx.commit().await?;
@@ -967,6 +1200,89 @@ pub(crate) async fn insert(
     Work::fetch(engine, conn, WorkId::new(id))
         .await?
         .ok_or(Error::NotFound)
+}
+
+impl Work {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Work>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM work_proposal WHERE id = ? AND work_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(from_row(&self.engine, conn, row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM work_proposal WHERE id = ? AND work_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+}
+
+/// A POD type to deserialize a work proposal from the database into
+struct ProposalRow {
+    id: i64,
+    field: String,
+    source: String,
+    proposed_value: String,
+    person_id: Option<i64>,
+    created_at: Timestamp,
+}
+
+async fn from_row(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    row: ProposalRow,
+) -> Result<entity::Proposal<Work>> {
+    let value = match row.field.as_str() {
+        "title" => Proposal::Title(row.proposed_value),
+        "key" => Proposal::Key(row.proposed_value),
+        "time_signature" => Proposal::TimeSignature(row.proposed_value),
+        "instrumentation" => Proposal::Instrumentation(row.proposed_value),
+        "catalog_number" => Proposal::CatalogNumber(row.proposed_value.parse()?),
+        "contributor" => {
+            let person = row
+                .person_id
+                .ok_or_else(|| eyre::eyre!("work proposal {} has no person", row.id))?;
+            let person = Person::fetch(engine, conn, PersonId::new(person))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contributor {
+                person,
+                role: row.proposed_value,
+            }
+        }
+        "link" => Proposal::Link(row.proposed_value.parse()?),
+        other => return Err(eyre::eyre!("unknown work proposal field {other:?}").into()),
+    };
+    Ok(entity::Proposal {
+        id: ProposalId::new(row.id),
+        source: row.source.parse()?,
+        created_at: row.created_at,
+        value,
+    })
 }
 
 /// Check whether `library` has a work with the id `work`
@@ -1048,7 +1364,7 @@ pub(crate) async fn commit_works_of(
         .collect())
 }
 
-/// Delete every work in `library` that no publication contains
+/// Delete every work in `library` not referenced by another entity
 ///
 /// Return the audit subject of each work deleted, in id order.
 pub(crate) async fn collect_orphan_works(
@@ -1057,7 +1373,9 @@ pub(crate) async fn collect_orphan_works(
 ) -> Result<Vec<AuditSubject>> {
     let mut works = sqlx::query!(
         "DELETE FROM work
-         WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)
+         WHERE library_id = ?
+           AND id NOT IN (SELECT work_id FROM publication_work)
+           AND id NOT IN (SELECT work_id FROM publication_proposal WHERE work_id IS NOT NULL)
          RETURNING id AS \"id!\", title",
         library.get()
     )
@@ -1698,5 +2016,42 @@ mod tests {
         for id in [publication.id(), other.id()] {
             assert!(Publication::load(&engine, id).await.unwrap().is_some());
         }
+    }
+
+    #[tokio::test]
+    async fn a_proposed_work_survives_losing_its_publication() {
+        use crate::publication::Proposal as PublicationProposal;
+
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut a = library
+            .create_publication(
+                ImportSeed::Title("Russian piano album".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let prelude = a.create_work("Prelude").await.unwrap();
+        let b = library
+            .create_publication(
+                ImportSeed::Title("Prelude edition".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let proposal = PublicationProposal::Contents(prelude.clone());
+        assert!(
+            b.propose(Source::OpenLibrary, proposal)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        a.delete().await.unwrap();
+
+        assert!(Work::load(&engine, prelude.id()).await.unwrap().is_some());
     }
 }

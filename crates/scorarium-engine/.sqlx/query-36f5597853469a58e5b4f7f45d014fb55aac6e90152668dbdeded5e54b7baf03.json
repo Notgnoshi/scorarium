@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM publication_proposal WHERE publication_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "36f5597853469a58e5b4f7f45d014fb55aac6e90152668dbdeded5e54b7baf03"
+}

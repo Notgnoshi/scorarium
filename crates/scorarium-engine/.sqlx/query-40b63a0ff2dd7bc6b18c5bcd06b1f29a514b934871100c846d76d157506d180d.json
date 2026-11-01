@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "DELETE FROM person\n         WHERE library_id = ?\n           AND id NOT IN (SELECT person_id FROM publication_contributor)\n           AND id NOT IN (SELECT person_id FROM work_contributor)\n         RETURNING id AS \"id!\", name",
+  "query": "DELETE FROM person\n         WHERE library_id = ?\n           AND id NOT IN (SELECT person_id FROM publication_contributor)\n           AND id NOT IN (SELECT person_id FROM work_contributor)\n           AND id NOT IN (SELECT person_id FROM publication_proposal WHERE person_id IS NOT NULL)\n           AND id NOT IN (SELECT person_id FROM work_proposal WHERE person_id IS NOT NULL)\n         RETURNING id AS \"id!\", name",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "935754a586b3a00714c6b0065422516ed63d537e81abdfa69bd83208d247cf21"
+  "hash": "40b63a0ff2dd7bc6b18c5bcd06b1f29a514b934871100c846d76d157506d180d"
 }

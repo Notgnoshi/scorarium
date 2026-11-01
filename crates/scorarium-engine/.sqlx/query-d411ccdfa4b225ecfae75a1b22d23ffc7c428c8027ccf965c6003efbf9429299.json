@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, field, source, proposed_value, work_id, person_id,\n                      created_at AS \"created_at: Timestamp\"\n               FROM publication_proposal WHERE id = ? AND publication_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "field",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "proposed_value",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "proposed_value"
+          }
+        }
+      },
+      {
+        "name": "work_id",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "work_id"
+          }
+        }
+      },
+      {
+        "name": "person_id",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "created_at: Timestamp",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_proposal",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "d411ccdfa4b225ecfae75a1b22d23ffc7c428c8027ccf965c6003efbf9429299"
+}

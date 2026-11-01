@@ -3,11 +3,12 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
+use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
+use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -110,6 +111,18 @@ impl FromStr for Field {
             other => return Err(eyre::eyre!("unknown publication field {other:?}").into()),
         })
     }
+}
+
+/// A proposed edit to a [Publication]
+#[derive(Clone, Debug)]
+pub enum Proposal {
+    Title(String),
+    Publisher(String),
+    Year(Year),
+    Identifier(Identifier),
+    Contributor { person: Person, role: String },
+    Contents(Work),
+    Link(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -345,6 +358,193 @@ impl Publication {
         .await?
         .commit()
         .await
+    }
+
+    async fn collect_orphans_and_commit(&self, mut tx: Audited<'_>) -> Result<()> {
+        // deleting works can orphan people, so works first
+        let mut collected = work::collect_orphan_works(&mut tx, self.library).await?;
+        collected.extend(person::collect_orphan_people(&mut tx, self.library).await?);
+        entity::commit_rejection(tx, &collected).await
+    }
+
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) async fn propose(
+        &self,
+        source: Source,
+        value: Proposal,
+    ) -> Result<Option<ProposalId>> {
+        let (mut work, mut person) = (None, None);
+        let (field, text) = match &value {
+            Proposal::Title(title) => ("title", Some(clean_title(title)?.to_string())),
+            Proposal::Publisher(publisher) => {
+                let publisher = clean_text(Some(publisher))
+                    .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
+                ("publisher", Some(publisher.to_string()))
+            }
+            Proposal::Year(year) => ("year", Some(year.to_string())),
+            Proposal::Identifier(identifier) => (
+                "identifier",
+                Some(format!("{} {}", identifier.kind(), identifier.as_str())),
+            ),
+            Proposal::Contributor {
+                person: proposed,
+                role,
+            } => {
+                person = Some(proposed);
+                ("contributor", Some(clean_role(role)?.to_string()))
+            }
+            Proposal::Contents(proposed) => {
+                work = Some(proposed);
+                ("contents", None)
+            }
+            Proposal::Link(url) => ("link", Some(url.to_string())),
+        };
+        let mut tx = self.engine.begin_write().await?;
+        let current = Publication::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Title(_) => current.title.as_deref() == text.as_deref(),
+            Proposal::Publisher(_) => current.publisher.as_deref() == text.as_deref(),
+            Proposal::Year(year) => current.year == Some(*year),
+            Proposal::Identifier(identifier) => current.identifiers.contains(identifier),
+            Proposal::Contributor { person, .. } => current
+                .contributors
+                .iter()
+                .any(|c| c.person == person.id() && Some(c.role.as_str()) == text.as_deref()),
+            Proposal::Contents(work) => sqlx::query_scalar!(
+                r#"SELECT 1 AS "present!: i64" FROM publication_work
+                       WHERE publication_id = ? AND work_id = ?"#,
+                self.id.get(),
+                work.id().get()
+            )
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some(),
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Publication, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
+        if let Some(person) = person
+            && person::name(&mut tx, self.library, person.id())
+                .await?
+                .is_none()
+        {
+            return Err(Error::NotFound);
+        }
+        if let Some(work) = work
+            && !work::exists(&mut tx, self.library, work.id()).await?
+        {
+            return Err(Error::NotFound);
+        }
+        let work = work.map(|work| work.id().get());
+        let person = person.map(|person| person.id().get());
+        let source = source.to_string();
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO publication_proposal
+                   (library_id, publication_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING
+               RETURNING id AS "id!""#,
+            self.library.get(),
+            self.id.get(),
+            work,
+            person,
+            field,
+            source,
+            text
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "creating a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await?;
+        Ok(id.map(ProposalId::new))
+    }
+
+    /// Create a draft work and propose that the publication contains it
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) async fn propose_new_work(&self, source: Source, title: &str) -> Result<Work> {
+        let title = work::clean_title(title)?;
+        let mut tx = self.engine.begin_write().await?;
+        Publication::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let work = work::insert(&self.engine, &mut tx, self.library, title, true, None).await?;
+        let source = source.to_string();
+        sqlx::query!(
+            r#"INSERT INTO publication_proposal
+                   (library_id, publication_id, work_id, field, source)
+               VALUES (?, ?, ?, 'contents', ?)"#,
+            self.library.get(),
+            self.id.get(),
+            work.id().get(),
+            source
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::Enrichment,
+            Action::Created,
+            Some(&work.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        Ok(work)
+    }
+
+    /// Create a draft person and propose that they contributed to the publication
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    #[expect(dead_code)]
+    pub(crate) async fn propose_new_contributor(
+        &self,
+        source: Source,
+        name: &str,
+        role: &str,
+    ) -> Result<Person> {
+        let name = person::clean_name(name)?;
+        let role = clean_role(role)?;
+        let mut tx = self.engine.begin_write().await?;
+        Publication::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let person = person::insert(&self.engine, &mut tx, self.library, name, true).await?;
+        let source = source.to_string();
+        sqlx::query!(
+            r#"INSERT INTO publication_proposal
+                   (library_id, publication_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, 'contributor', ?, ?)"#,
+            self.library.get(),
+            self.id.get(),
+            person.id().get(),
+            source,
+            role
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::Enrichment,
+            Action::Created,
+            Some(&person.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        Ok(person)
     }
 
     /// Retitle the publication
@@ -866,8 +1066,7 @@ impl Publication {
 
     /// Add a work from the publication's library to the publication
     ///
-    /// Commit the work and its contributors if the publication is committed, and give an
-    /// unclassified work the publication's classification.
+    /// The added work matches the owning publication's draft state and classification.
     ///
     /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
     /// work.
@@ -895,6 +1094,11 @@ impl Publication {
             committed.extend(work::commit_works_of(&mut tx, self.id).await?);
             committed.extend(person::commit_contributors_of_work(&mut tx, work).await?);
         }
+        let orphans = if committed.is_empty() {
+            Vec::new()
+        } else {
+            person::collect_orphan_people(&mut tx, self.library).await?
+        };
         let classified = match self.classification {
             Some(classification) => {
                 work::inherit_classification(&mut tx, self.id, classification).await?
@@ -919,6 +1123,16 @@ impl Publication {
         for subject in committed {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         let field = work::Field::Classification.to_string();
@@ -1172,6 +1386,7 @@ impl Publication {
 impl Entity for Publication {
     type Id = PublicationId;
     type Field = Field;
+    type Proposal = Proposal;
 
     async fn load(engine: &Engine, id: PublicationId) -> Result<Option<Publication>> {
         let mut conn = engine.begin_read().await?;
@@ -1219,6 +1434,74 @@ impl Entity for Publication {
         review::item(&self.engine, self.id, AnyEntity::Publication).await
     }
 
+    async fn proposals(&self) -> Result<Vec<entity::Proposal<Publication>>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, work_id, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM publication_proposal WHERE publication_id = ? ORDER BY id"#,
+            self.id.get()
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        let mut proposals = Vec::with_capacity(rows.len());
+        for row in rows {
+            proposals.push(from_row(&self.engine, &mut conn, row).await?);
+        }
+        Ok(proposals)
+    }
+
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Publisher(publisher) => self.set_publisher(Some(&publisher)).await?,
+            Proposal::Year(year) => self.set_year(Some(year)).await?,
+            Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
+            Proposal::Contributor { person, role } => {
+                self.add_contributor(person.id(), role).await?
+            }
+            Proposal::Contents(work) => self.add_work(work.id()).await?,
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM publication_proposal WHERE id = ? AND publication_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        self.collect_orphans_and_commit(tx).await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!(
+            "DELETE FROM publication_proposal WHERE publication_id = ?",
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        self.collect_orphans_and_commit(tx).await
+    }
+
     async fn commit(&mut self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -1248,6 +1531,8 @@ impl Entity for Publication {
             subjects.extend(person::commit_contributors_of_work(&mut tx, WorkId::new(work)).await?);
         }
         subjects.extend(person::commit_contributors_of_publication(&mut tx, self.id).await?);
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -1259,6 +1544,16 @@ impl Entity for Publication {
         for subject in subjects {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         tx.commit().await?;
@@ -1493,6 +1788,109 @@ pub(crate) async fn tagged(
         publications.push(Publication::from_row(engine, &mut conn, row).await?);
     }
     Ok(publications)
+}
+
+impl Publication {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Publication>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, work_id, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM publication_proposal WHERE id = ? AND publication_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(from_row(&self.engine, conn, row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM publication_proposal WHERE id = ? AND publication_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+}
+
+/// A POD type to deserialize a publication proposal from the database into
+struct ProposalRow {
+    id: i64,
+    field: String,
+    source: String,
+    proposed_value: Option<String>,
+    work_id: Option<i64>,
+    person_id: Option<i64>,
+    created_at: Timestamp,
+}
+
+async fn from_row(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    row: ProposalRow,
+) -> Result<entity::Proposal<Publication>> {
+    let proposed = match row.field.as_str() {
+        "title" => Proposal::Title(stored_value(row.proposed_value, row.id)?),
+        "publisher" => Proposal::Publisher(stored_value(row.proposed_value, row.id)?),
+        "year" => Proposal::Year(stored_value(row.proposed_value, row.id)?.parse()?),
+        "identifier" => {
+            let text = stored_value(row.proposed_value, row.id)?;
+            let (kind, value) = text.split_once(' ').ok_or_else(|| {
+                eyre::eyre!("publication proposal {} has a malformed identifier", row.id)
+            })?;
+            Proposal::Identifier(Identifier::new(kind.parse()?, value)?)
+        }
+        "contributor" => {
+            let person = row
+                .person_id
+                .ok_or_else(|| eyre::eyre!("publication proposal {} has no person", row.id))?;
+            let person = Person::fetch(engine, conn, PersonId::new(person))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contributor {
+                person,
+                role: stored_value(row.proposed_value, row.id)?,
+            }
+        }
+        "contents" => {
+            let work = row
+                .work_id
+                .ok_or_else(|| eyre::eyre!("publication proposal {} has no work", row.id))?;
+            let work = Work::fetch(engine, conn, WorkId::new(work))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contents(work)
+        }
+        "link" => Proposal::Link(stored_value(row.proposed_value, row.id)?.parse()?),
+        other => return Err(eyre::eyre!("unknown publication proposal field {other:?}").into()),
+    };
+    Ok(entity::Proposal {
+        id: ProposalId::new(row.id),
+        source: row.source.parse()?,
+        created_at: row.created_at,
+        value: proposed,
+    })
+}
+
+/// Unwrap the value of proposal `id`, which every field but contents stores
+fn stored_value(value: Option<String>, id: i64) -> Result<String> {
+    value.ok_or_else(|| eyre::eyre!("publication proposal {id} has no value").into())
 }
 
 fn clean_title(title: &str) -> Result<&str> {
@@ -1908,6 +2306,167 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn a_source_proposes_a_fact_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let publication = library
+            .create_publication(
+                ImportSeed::Title("Pro Git".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut other = library
+            .create_publication(
+                ImportSeed::Title("Scott Chacon".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let work = other.create_work("Chapter 1").await.unwrap();
+
+        let current = Proposal::Title("Pro Git".into());
+        assert!(
+            publication
+                .propose(Source::OpenLibrary, current)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let title = || Proposal::Title("Pro Git: Second Edition".into());
+        let contents = || Proposal::Contents(work.clone());
+        let ids = [
+            publication.propose(Source::OpenLibrary, title()).await,
+            publication.propose(Source::OpenLibrary, title()).await,
+            publication.propose(Source::OpenLibrary, contents()).await,
+            publication.propose(Source::OpenLibrary, contents()).await,
+        ]
+        .map(|id| id.unwrap());
+        assert!(ids[0].is_some() && ids[1].is_none() && ids[2].is_some() && ids[3].is_none());
+
+        let proposals = publication.proposals().await.unwrap();
+        assert_eq!(proposals.len(), 2);
+        assert!(
+            matches!(proposals[0].value, Proposal::Title(ref t) if t == "Pro Git: Second Edition")
+        );
+        assert!(matches!(proposals[1].value, Proposal::Contents(ref w) if w.id() == work.id()));
+    }
+
+    #[tokio::test]
+    async fn rejecting_the_last_proposal_naming_a_draft_collects_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut a = library
+            .create_publication(
+                ImportSeed::Title("Preludes, book one".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut b = library
+            .create_publication(
+                ImportSeed::Title("Preludes, book two".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        a.commit().await.unwrap();
+        b.commit().await.unwrap();
+
+        let work = a
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        let b_proposal = b
+            .propose(Source::OpenLibrary, Proposal::Contents(work.clone()))
+            .await
+            .unwrap()
+            .unwrap();
+        let a_proposal = a.proposals().await.unwrap()[0].id;
+
+        a.reject(a_proposal).await.unwrap();
+        assert!(Work::load(&engine, work.id()).await.unwrap().is_some());
+        assert!(matches!(a.reject(a_proposal).await, Err(Error::NotFound)));
+        assert!(matches!(a.reject(b_proposal).await, Err(Error::NotFound)));
+
+        b.reject(b_proposal).await.unwrap();
+        assert!(Work::load(&engine, work.id()).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn accepting_contents_commits_the_proposed_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Preludes".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+
+        let work = publication
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        assert!(work.is_draft());
+        let id = publication.proposals().await.unwrap()[0].id;
+
+        publication.accept(id).await.unwrap();
+
+        let work = Work::load(&engine, work.id()).await.unwrap().unwrap();
+        assert!(!work.is_draft());
+        assert_eq!(publication.works().await.unwrap().len(), 1);
+        assert!(publication.proposals().await.unwrap().is_empty());
+        assert!(matches!(publication.accept(id).await, Err(Error::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn committing_a_draft_drops_its_proposals() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Preludes".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+
+        let mut work = publication
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        let person = work
+            .propose_new_contributor(Source::OpenLibrary, "Erik Satie", "composer")
+            .await
+            .unwrap();
+        let id = publication.proposals().await.unwrap()[0].id;
+
+        publication.accept(id).await.unwrap();
+
+        work.reload().await.unwrap();
+        assert!(!work.is_draft());
+        assert!(work.proposals().await.unwrap().is_empty());
+        assert!(Person::load(&engine, person.id()).await.unwrap().is_none());
     }
 
     #[tokio::test]

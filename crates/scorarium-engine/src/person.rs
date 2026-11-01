@@ -2,10 +2,11 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
+use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
@@ -69,6 +70,13 @@ impl FromStr for Field {
             other => return Err(eyre::eyre!("unknown person field {other:?}").into()),
         })
     }
+}
+
+/// A proposed edit to a [Person]
+#[derive(Clone, Debug)]
+pub enum Proposal {
+    Name(String),
+    Link(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -289,6 +297,51 @@ impl Person {
         Ok(())
     }
 
+    #[expect(dead_code)]
+    pub(crate) async fn propose(
+        &self,
+        source: Source,
+        value: Proposal,
+    ) -> Result<Option<ProposalId>> {
+        let (field, text) = match &value {
+            Proposal::Name(name) => ("name", clean_name(name)?.to_string()),
+            Proposal::Link(url) => ("link", url.to_string()),
+        };
+        let mut tx = self.engine.begin_write().await?;
+        let current = Person::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Name(_) => current.name == text,
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Person, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
+        let source = source.to_string();
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO person_proposal (library_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING
+               RETURNING id AS "id!""#,
+            self.library.get(),
+            self.id.get(),
+            field,
+            source,
+            text
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        #[expect(deprecated, reason = "making a proposal does not need an audit event")]
+        tx.commit_unaudited().await?;
+        Ok(id.map(ProposalId::new))
+    }
+
     /// List every publication that names the person as a contributor
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::with_contributor(&self.engine, self.id).await
@@ -303,6 +356,7 @@ impl Person {
 impl Entity for Person {
     type Id = PersonId;
     type Field = Field;
+    type Proposal = Proposal;
 
     async fn load(engine: &Engine, id: PersonId) -> Result<Option<Person>> {
         let mut conn = engine.begin_read().await?;
@@ -348,6 +402,71 @@ impl Entity for Person {
 
     async fn review_item(&self) -> Result<Option<ReviewItem>> {
         review::item(&self.engine, self.id, AnyEntity::Person).await
+    }
+
+    async fn proposals(&self) -> Result<Vec<entity::Proposal<Person>>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value,
+                      created_at AS "created_at: Timestamp"
+               FROM person_proposal WHERE person_id = ? ORDER BY id"#,
+            self.id.get()
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.into_iter().map(from_row).collect()
+    }
+
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Name(name) => self.rename(&name, sort_name(&name)).await?,
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
+    async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let rejected = sqlx::query!(
+            "DELETE FROM person_proposal WHERE id = ? AND person_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        if rejected == 0 {
+            return Err(Error::NotFound);
+        }
+        #[expect(
+            deprecated,
+            reason = "rejecting proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+
+    async fn reject_all(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        sqlx::query!(
+            "DELETE FROM person_proposal WHERE person_id = ?",
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "rejecting proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -396,6 +515,65 @@ impl Entity for Person {
         .commit()
         .await
     }
+}
+
+impl Person {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Person>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value,
+                      created_at AS "created_at: Timestamp"
+               FROM person_proposal WHERE id = ? AND person_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(conn)
+        .await?;
+        row.map(from_row).transpose()
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM person_proposal WHERE id = ? AND person_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
+}
+
+/// A POD type to deserialize a person proposal from the database into
+struct ProposalRow {
+    id: i64,
+    field: String,
+    source: String,
+    proposed_value: String,
+    created_at: Timestamp,
+}
+
+fn from_row(row: ProposalRow) -> Result<entity::Proposal<Person>> {
+    let value = match row.field.as_str() {
+        "name" => Proposal::Name(row.proposed_value),
+        "link" => Proposal::Link(row.proposed_value.parse()?),
+        other => return Err(eyre::eyre!("unknown person proposal field {other:?}").into()),
+    };
+    Ok(entity::Proposal {
+        id: ProposalId::new(row.id),
+        source: row.source.parse()?,
+        created_at: row.created_at,
+        value,
+    })
 }
 
 /// Insert a person named `name` in `library` with a derived sort name and load them
@@ -575,7 +753,7 @@ pub(crate) async fn commit_contributors_of_work(
         .collect())
 }
 
-/// Delete every person in `library` that no publication or work names as a contributor
+/// Delete every person in `library` not referenced by another entity
 ///
 /// Return the audit subject of each person deleted, in id order.
 pub(crate) async fn collect_orphan_people(
@@ -587,6 +765,8 @@ pub(crate) async fn collect_orphan_people(
          WHERE library_id = ?
            AND id NOT IN (SELECT person_id FROM publication_contributor)
            AND id NOT IN (SELECT person_id FROM work_contributor)
+           AND id NOT IN (SELECT person_id FROM publication_proposal WHERE person_id IS NOT NULL)
+           AND id NOT IN (SELECT person_id FROM work_proposal WHERE person_id IS NOT NULL)
          RETURNING id AS \"id!\", name",
         library.get()
     )

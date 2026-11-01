@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM person_proposal WHERE person_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "43570c54b38536a23e67f688e6b5ba4b8fdec93ded436885080c8d2d0d1fc2cf"
+}
