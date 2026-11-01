@@ -160,6 +160,13 @@ impl<'a> Audited<'a> {
         insert(&mut self.tx, source, action, subject, field).await?;
         Ok(Recorded { tx: self.tx })
     }
+
+    /// Commit the transaction without recording an audit event.
+    #[deprecated(note = "Use Audited::record()")]
+    pub(crate) async fn commit_unaudited(self) -> Result<()> {
+        self.tx.commit().await?;
+        Ok(())
+    }
 }
 
 pub(crate) struct Recorded<'a> {

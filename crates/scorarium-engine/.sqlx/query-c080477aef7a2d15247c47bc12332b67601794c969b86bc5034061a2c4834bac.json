@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO work_proposal\n                   (library_id, work_id, person_id, field, source, proposed_value)\n               VALUES (?, ?, ?, ?, ?, ?)\n               ON CONFLICT DO NOTHING\n               RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c080477aef7a2d15247c47bc12332b67601794c969b86bc5034061a2c4834bac"
+}

@@ -1,7 +1,10 @@
 use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
+use std::num::ParseIntError;
 use std::str::FromStr;
+
+use scorarium_client::Source;
 
 use crate::audit::{AuditEvent, AuditId};
 use crate::library::LibraryId;
@@ -43,6 +46,42 @@ impl FromStr for EntityKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ProposalId(i64);
+
+impl ProposalId {
+    pub(crate) fn new(id: i64) -> ProposalId {
+        ProposalId(id)
+    }
+
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl fmt::Display for ProposalId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromStr for ProposalId {
+    type Err = ParseIntError;
+
+    fn from_str(text: &str) -> std::result::Result<ProposalId, ParseIntError> {
+        text.parse().map(ProposalId)
+    }
+}
+
+/// A proposed edit to an [Entity]
+#[derive(Clone, Debug)]
+pub struct Proposal<E: Entity> {
+    pub id: ProposalId,
+    pub source: Source,
+    pub created_at: Timestamp,
+    pub value: E::Proposal,
+}
+
 #[derive(Clone, Debug)]
 pub enum AnyEntity {
     Publication(Publication),
@@ -56,6 +95,7 @@ pub trait Entity: Sized {
     type Id: Copy + Eq + Hash + fmt::Display + FromStr;
     /// An enum covering the fields that can be updated on an entity
     type Field: Copy + Eq + fmt::Display + FromStr;
+    type Proposal: Clone + fmt::Debug;
 
     /// Load the entity with the given id, if it exists
     fn load(engine: &Engine, id: Self::Id) -> impl Future<Output = Result<Option<Self>>> + Send;
@@ -80,6 +120,9 @@ pub trait Entity: Sized {
 
     /// Look up this entity in the review queue, if it exists
     fn review_item(&self) -> impl Future<Output = Result<Option<ReviewItem>>> + Send;
+
+    /// List the proposed edits to the entity
+    fn proposals(&self) -> impl Future<Output = Result<Vec<Proposal<Self>>>> + Send;
 
     /// If the entity is a draft, commit it as a non-draft entity
     ///

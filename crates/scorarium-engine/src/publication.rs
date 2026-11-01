@@ -3,11 +3,12 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
+use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
+use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -110,6 +111,18 @@ impl FromStr for Field {
             other => return Err(eyre::eyre!("unknown publication field {other:?}").into()),
         })
     }
+}
+
+/// A proposed edit to a [Publication]
+#[derive(Clone, Debug)]
+pub enum Proposal {
+    Title(String),
+    Publisher(String),
+    Year(Year),
+    Identifier(Identifier),
+    Contributor { person: Person, role: String },
+    Contents(Work),
+    Link(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -345,6 +358,80 @@ impl Publication {
         .await?
         .commit()
         .await
+    }
+
+    pub(crate) async fn propose(
+        &self,
+        source: Source,
+        value: Proposal,
+    ) -> Result<Option<ProposalId>> {
+        let (mut work, mut person) = (None, None);
+        let (field, text) = match &value {
+            Proposal::Title(title) => ("title", Some(clean_title(title)?.to_string())),
+            Proposal::Publisher(publisher) => {
+                let publisher = clean_text(Some(publisher))
+                    .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
+                ("publisher", Some(publisher.to_string()))
+            }
+            Proposal::Year(year) => ("year", Some(year.to_string())),
+            Proposal::Identifier(identifier) => (
+                "identifier",
+                Some(format!("{} {}", identifier.kind(), identifier.as_str())),
+            ),
+            Proposal::Contributor {
+                person: proposed,
+                role,
+            } => {
+                person = Some(proposed);
+                ("contributor", Some(clean_role(role)?.to_string()))
+            }
+            Proposal::Contents(proposed) => {
+                work = Some(proposed);
+                ("contents", None)
+            }
+            Proposal::Link(url) => ("link", Some(url.to_string())),
+        };
+        let mut tx = self.engine.begin_write().await?;
+        Publication::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        if let Some(person) = person
+            && person::name(&mut tx, self.library, person.id())
+                .await?
+                .is_none()
+        {
+            return Err(Error::NotFound);
+        }
+        if let Some(work) = work
+            && !work::exists(&mut tx, self.library, work.id()).await?
+        {
+            return Err(Error::NotFound);
+        }
+        let work = work.map(|work| work.id().get());
+        let person = person.map(|person| person.id().get());
+        let source = source.to_string();
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO publication_proposal
+                   (library_id, publication_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING
+               RETURNING id AS "id!""#,
+            self.library.get(),
+            self.id.get(),
+            work,
+            person,
+            field,
+            source,
+            text
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "creating a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await?;
+        Ok(id.map(ProposalId::new))
     }
 
     /// Retitle the publication
@@ -1172,6 +1259,7 @@ impl Publication {
 impl Entity for Publication {
     type Id = PublicationId;
     type Field = Field;
+    type Proposal = Proposal;
 
     async fn load(engine: &Engine, id: PublicationId) -> Result<Option<Publication>> {
         let mut conn = engine.begin_read().await?;
@@ -1217,6 +1305,24 @@ impl Entity for Publication {
 
     async fn review_item(&self) -> Result<Option<ReviewItem>> {
         review::item(&self.engine, self.id, AnyEntity::Publication).await
+    }
+
+    async fn proposals(&self) -> Result<Vec<entity::Proposal<Publication>>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, work_id, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM publication_proposal WHERE publication_id = ? ORDER BY id"#,
+            self.id.get()
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        let mut proposals = Vec::with_capacity(rows.len());
+        for row in rows {
+            proposals.push(from_row(&self.engine, &mut conn, row).await?);
+        }
+        Ok(proposals)
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -1493,6 +1599,70 @@ pub(crate) async fn tagged(
         publications.push(Publication::from_row(engine, &mut conn, row).await?);
     }
     Ok(publications)
+}
+
+/// A POD type to deserialize a publication proposal from the database into
+struct ProposalRow {
+    id: i64,
+    field: String,
+    source: String,
+    proposed_value: Option<String>,
+    work_id: Option<i64>,
+    person_id: Option<i64>,
+    created_at: Timestamp,
+}
+
+async fn from_row(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    row: ProposalRow,
+) -> Result<entity::Proposal<Publication>> {
+    let proposed = match row.field.as_str() {
+        "title" => Proposal::Title(stored_value(row.proposed_value, row.id)?),
+        "publisher" => Proposal::Publisher(stored_value(row.proposed_value, row.id)?),
+        "year" => Proposal::Year(stored_value(row.proposed_value, row.id)?.parse()?),
+        "identifier" => {
+            let text = stored_value(row.proposed_value, row.id)?;
+            let (kind, value) = text.split_once(' ').ok_or_else(|| {
+                eyre::eyre!("publication proposal {} has a malformed identifier", row.id)
+            })?;
+            Proposal::Identifier(Identifier::new(kind.parse()?, value)?)
+        }
+        "contributor" => {
+            let person = row
+                .person_id
+                .ok_or_else(|| eyre::eyre!("publication proposal {} has no person", row.id))?;
+            let person = Person::fetch(engine, conn, PersonId::new(person))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contributor {
+                person,
+                role: stored_value(row.proposed_value, row.id)?,
+            }
+        }
+        "contents" => {
+            let work = row
+                .work_id
+                .ok_or_else(|| eyre::eyre!("publication proposal {} has no work", row.id))?;
+            let work = Work::fetch(engine, conn, WorkId::new(work))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contents(work)
+        }
+        "link" => Proposal::Link(stored_value(row.proposed_value, row.id)?.parse()?),
+        other => return Err(eyre::eyre!("unknown publication proposal field {other:?}").into()),
+    };
+    Ok(entity::Proposal {
+        id: ProposalId::new(row.id),
+        source: row.source.parse()?,
+        created_at: row.created_at,
+        value: proposed,
+    })
+}
+
+/// Unwrap the value of proposal `id`, which every field but contents stores
+fn stored_value(value: Option<String>, id: i64) -> Result<String> {
+    value.ok_or_else(|| eyre::eyre!("publication proposal {id} has no value").into())
 }
 
 fn clean_title(title: &str) -> Result<&str> {
@@ -1908,6 +2078,41 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn a_source_proposes_a_fact_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Pro Git".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let work = publication.create_work("Chapter 1").await.unwrap();
+
+        let title = || Proposal::Title("Pro Git: Second Edition".into());
+        let contents = || Proposal::Contents(work.clone());
+        let ids = [
+            publication.propose(Source::OpenLibrary, title()).await,
+            publication.propose(Source::OpenLibrary, title()).await,
+            publication.propose(Source::OpenLibrary, contents()).await,
+            publication.propose(Source::OpenLibrary, contents()).await,
+        ]
+        .map(|id| id.unwrap());
+        assert!(ids[0].is_some() && ids[1].is_none() && ids[2].is_some() && ids[3].is_none());
+
+        let proposals = publication.proposals().await.unwrap();
+        assert_eq!(proposals.len(), 2);
+        assert!(
+            matches!(proposals[0].value, Proposal::Title(ref t) if t == "Pro Git: Second Edition")
+        );
+        assert!(matches!(proposals[1].value, Proposal::Contents(ref w) if w.id() == work.id()));
     }
 
     #[tokio::test]

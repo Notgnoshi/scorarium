@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, field, source, proposed_value, person_id,\n                      created_at AS \"created_at: Timestamp\"\n               FROM work_proposal WHERE work_id = ? ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "field",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "field"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "proposed_value",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "proposed_value"
+          }
+        }
+      },
+      {
+        "name": "person_id",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "created_at: Timestamp",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_proposal",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "209fcdf0c7edcddf8e78724f380cae18eb332da8b494844b42cc6a3d2dade817"
+}

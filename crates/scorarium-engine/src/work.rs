@@ -3,11 +3,12 @@ use std::fmt;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
+use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{AnyEntity, Entity, EntityKind, Timestamp};
+use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -96,6 +97,18 @@ impl FromStr for Field {
             other => return Err(eyre::eyre!("unknown work field {other:?}").into()),
         })
     }
+}
+
+/// A proposed edit to a [Work]
+#[derive(Clone, Debug)]
+pub enum Proposal {
+    Title(String),
+    Key(String),
+    TimeSignature(String),
+    Instrumentation(String),
+    CatalogNumber(CatalogNumber),
+    Contributor { person: Person, role: String },
+    Link(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -314,6 +327,77 @@ impl Work {
         self.title = title.to_string();
         self.last_modified_at = last_modified_at;
         Ok(())
+    }
+
+    pub(crate) async fn propose(
+        &self,
+        source: Source,
+        value: Proposal,
+    ) -> Result<Option<ProposalId>> {
+        let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
+        let (field, text, person) = match &value {
+            Proposal::Title(title) => ("title", clean_title(title)?.to_string(), None),
+            Proposal::Key(key) => (
+                "key",
+                clean_text(Some(key))
+                    .ok_or_else(|| blank("A key"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::TimeSignature(time_signature) => (
+                "time_signature",
+                clean_text(Some(time_signature))
+                    .ok_or_else(|| blank("A time signature"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::Instrumentation(instrumentation) => (
+                "instrumentation",
+                clean_text(Some(instrumentation))
+                    .ok_or_else(|| blank("An instrumentation"))?
+                    .to_string(),
+                None,
+            ),
+            Proposal::CatalogNumber(number) => ("catalog_number", number.to_string(), None),
+            Proposal::Contributor { person, role } => {
+                ("contributor", clean_role(role)?.to_string(), Some(person))
+            }
+            Proposal::Link(url) => ("link", url.to_string(), None),
+        };
+        let mut tx = self.engine.begin_write().await?;
+        Work::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        if let Some(person) = person
+            && person::name(&mut tx, self.library, person.id())
+                .await?
+                .is_none()
+        {
+            return Err(Error::NotFound);
+        }
+        let person = person.map(|person| person.id().get());
+        let source = source.to_string();
+        let id = sqlx::query_scalar!(
+            r#"INSERT INTO work_proposal
+                   (library_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING
+               RETURNING id AS "id!""#,
+            self.library.get(),
+            self.id.get(),
+            person,
+            field,
+            source,
+            text
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "creating a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await?;
+        Ok(id.map(ProposalId::new))
     }
 
     /// Set or clear the key, treating a blank key as none
@@ -835,6 +919,7 @@ impl Work {
 impl Entity for Work {
     type Id = WorkId;
     type Field = Field;
+    type Proposal = Proposal;
 
     async fn load(engine: &Engine, id: WorkId) -> Result<Option<Work>> {
         let mut conn = engine.begin_read().await?;
@@ -874,6 +959,24 @@ impl Entity for Work {
 
     async fn review_item(&self) -> Result<Option<ReviewItem>> {
         review::item(&self.engine, self.id, AnyEntity::Work).await
+    }
+
+    async fn proposals(&self) -> Result<Vec<entity::Proposal<Work>>> {
+        let mut conn = self.engine.begin_read().await?;
+        let rows = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM work_proposal WHERE work_id = ? ORDER BY id"#,
+            self.id.get()
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        let mut proposals = Vec::with_capacity(rows.len());
+        for row in rows {
+            proposals.push(from_row(&self.engine, &mut conn, row).await?);
+        }
+        Ok(proposals)
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -967,6 +1070,50 @@ pub(crate) async fn insert(
     Work::fetch(engine, conn, WorkId::new(id))
         .await?
         .ok_or(Error::NotFound)
+}
+
+/// A POD type to deserialize a work proposal from the database into
+struct ProposalRow {
+    id: i64,
+    field: String,
+    source: String,
+    proposed_value: String,
+    person_id: Option<i64>,
+    created_at: Timestamp,
+}
+
+async fn from_row(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    row: ProposalRow,
+) -> Result<entity::Proposal<Work>> {
+    let value = match row.field.as_str() {
+        "title" => Proposal::Title(row.proposed_value),
+        "key" => Proposal::Key(row.proposed_value),
+        "time_signature" => Proposal::TimeSignature(row.proposed_value),
+        "instrumentation" => Proposal::Instrumentation(row.proposed_value),
+        "catalog_number" => Proposal::CatalogNumber(row.proposed_value.parse()?),
+        "contributor" => {
+            let person = row
+                .person_id
+                .ok_or_else(|| eyre::eyre!("work proposal {} has no person", row.id))?;
+            let person = Person::fetch(engine, conn, PersonId::new(person))
+                .await?
+                .ok_or(Error::NotFound)?;
+            Proposal::Contributor {
+                person,
+                role: row.proposed_value,
+            }
+        }
+        "link" => Proposal::Link(row.proposed_value.parse()?),
+        other => return Err(eyre::eyre!("unknown work proposal field {other:?}").into()),
+    };
+    Ok(entity::Proposal {
+        id: ProposalId::new(row.id),
+        source: row.source.parse()?,
+        created_at: row.created_at,
+        value,
+    })
 }
 
 /// Check whether `library` has a work with the id `work`
