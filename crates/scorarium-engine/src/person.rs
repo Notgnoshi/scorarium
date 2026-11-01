@@ -665,7 +665,7 @@ pub(crate) async fn commit_contributors_of_work(
         .collect())
 }
 
-/// Delete every person in `library` that no publication or work names as a contributor
+/// Delete every person in `library` not referenced by another entity
 ///
 /// Return the audit subject of each person deleted, in id order.
 pub(crate) async fn collect_orphan_people(
@@ -677,6 +677,8 @@ pub(crate) async fn collect_orphan_people(
          WHERE library_id = ?
            AND id NOT IN (SELECT person_id FROM publication_contributor)
            AND id NOT IN (SELECT person_id FROM work_contributor)
+           AND id NOT IN (SELECT person_id FROM publication_proposal WHERE person_id IS NOT NULL)
+           AND id NOT IN (SELECT person_id FROM work_proposal WHERE person_id IS NOT NULL)
          RETURNING id AS \"id!\", name",
         library.get()
     )

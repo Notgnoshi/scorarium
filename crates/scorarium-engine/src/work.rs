@@ -1215,7 +1215,7 @@ pub(crate) async fn commit_works_of(
         .collect())
 }
 
-/// Delete every work in `library` that no publication contains
+/// Delete every work in `library` not referenced by another entity
 ///
 /// Return the audit subject of each work deleted, in id order.
 pub(crate) async fn collect_orphan_works(
@@ -1224,7 +1224,9 @@ pub(crate) async fn collect_orphan_works(
 ) -> Result<Vec<AuditSubject>> {
     let mut works = sqlx::query!(
         "DELETE FROM work
-         WHERE library_id = ? AND id NOT IN (SELECT work_id FROM publication_work)
+         WHERE library_id = ?
+           AND id NOT IN (SELECT work_id FROM publication_work)
+           AND id NOT IN (SELECT work_id FROM publication_proposal WHERE work_id IS NOT NULL)
          RETURNING id AS \"id!\", title",
         library.get()
     )
@@ -1865,5 +1867,42 @@ mod tests {
         for id in [publication.id(), other.id()] {
             assert!(Publication::load(&engine, id).await.unwrap().is_some());
         }
+    }
+
+    #[tokio::test]
+    async fn a_proposed_work_survives_losing_its_publication() {
+        use crate::publication::Proposal as PublicationProposal;
+
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut a = library
+            .create_publication(
+                ImportSeed::Title("Russian piano album".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let prelude = a.create_work("Prelude").await.unwrap();
+        let b = library
+            .create_publication(
+                ImportSeed::Title("Prelude edition".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let proposal = PublicationProposal::Contents(prelude.clone());
+        assert!(
+            b.propose(Source::OpenLibrary, proposal)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        a.delete().await.unwrap();
+
+        assert!(Work::load(&engine, prelude.id()).await.unwrap().is_some());
     }
 }
