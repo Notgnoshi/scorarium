@@ -1110,6 +1110,7 @@ impl Entity for Work {
         .fetch_one(&mut *tx)
         .await?;
         let people = person::commit_contributors_of_work(&mut tx, self.id).await?;
+        let orphans = person::collect_orphan_people(&mut tx, self.library).await?;
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -1121,6 +1122,16 @@ impl Entity for Work {
         for subject in people {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         tx.commit().await?;

@@ -1063,8 +1063,7 @@ impl Publication {
 
     /// Add a work from the publication's library to the publication
     ///
-    /// Commit the work and its contributors if the publication is committed, and give an
-    /// unclassified work the publication's classification.
+    /// The added work matches the owning publication's draft state and classification.
     ///
     /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
     /// work.
@@ -1092,6 +1091,11 @@ impl Publication {
             committed.extend(work::commit_works_of(&mut tx, self.id).await?);
             committed.extend(person::commit_contributors_of_work(&mut tx, work).await?);
         }
+        let orphans = if committed.is_empty() {
+            Vec::new()
+        } else {
+            person::collect_orphan_people(&mut tx, self.library).await?
+        };
         let classified = match self.classification {
             Some(classification) => {
                 work::inherit_classification(&mut tx, self.id, classification).await?
@@ -1116,6 +1120,16 @@ impl Publication {
         for subject in committed {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         let field = work::Field::Classification.to_string();
@@ -1514,6 +1528,8 @@ impl Entity for Publication {
             subjects.extend(person::commit_contributors_of_work(&mut tx, WorkId::new(work)).await?);
         }
         subjects.extend(person::commit_contributors_of_publication(&mut tx, self.id).await?);
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -1525,6 +1541,16 @@ impl Entity for Publication {
         for subject in subjects {
             tx = tx
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
+                .await?;
+        }
+        for subject in orphans {
+            tx = tx
+                .record(
+                    AuditSource::OrphanCleanup,
+                    Action::Deleted,
+                    Some(&subject),
+                    None,
+                )
                 .await?;
         }
         tx.commit().await?;
@@ -2404,6 +2430,40 @@ mod tests {
         assert_eq!(publication.works().await.unwrap().len(), 1);
         assert!(publication.proposals().await.unwrap().is_empty());
         assert!(matches!(publication.accept(id).await, Err(Error::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn committing_a_draft_drops_its_proposals() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Preludes".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+
+        let mut work = publication
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        let person = work
+            .propose_new_contributor(Source::OpenLibrary, "Erik Satie", "composer")
+            .await
+            .unwrap();
+        let id = publication.proposals().await.unwrap()[0].id;
+
+        publication.accept(id).await.unwrap();
+
+        work.reload().await.unwrap();
+        assert!(!work.is_draft());
+        assert!(work.proposals().await.unwrap().is_empty());
+        assert!(Person::load(&engine, person.id()).await.unwrap().is_none());
     }
 
     #[tokio::test]

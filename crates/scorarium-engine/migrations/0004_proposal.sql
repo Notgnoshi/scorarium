@@ -58,3 +58,23 @@ CREATE TABLE person_proposal (
     FOREIGN KEY (person_id, library_id) REFERENCES person(id, library_id) ON DELETE CASCADE
 ) STRICT;
 CREATE UNIQUE INDEX person_proposal_fact ON person_proposal(person_id, field, source, proposed_value);
+
+-- Committing a draft means the user is done reviewing, so facts learned about the draft before then
+-- are dropped rather than carried onto the committed entity.
+CREATE TRIGGER publication_committed AFTER UPDATE OF draft ON publication
+WHEN OLD.draft = 1 AND NEW.draft = 0
+BEGIN
+    DELETE FROM publication_proposal WHERE publication_id = NEW.id;
+END;
+
+CREATE TRIGGER work_committed AFTER UPDATE OF draft ON work
+WHEN OLD.draft = 1 AND NEW.draft = 0
+BEGIN
+    DELETE FROM work_proposal WHERE work_id = NEW.id;
+END;
+
+CREATE TRIGGER person_committed AFTER UPDATE OF draft ON person
+WHEN OLD.draft = 1 AND NEW.draft = 0
+BEGIN
+    DELETE FROM person_proposal WHERE person_id = NEW.id;
+END;
