@@ -420,6 +420,47 @@ impl Work {
         Ok(id.map(ProposalId::new))
     }
 
+    /// Create a draft person and propose that they contributed to the work
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub(crate) async fn propose_new_contributor(
+        &self,
+        source: Source,
+        name: &str,
+        role: &str,
+    ) -> Result<Person> {
+        let name = person::clean_name(name)?;
+        let role = clean_role(role)?;
+        let mut tx = self.engine.begin_write().await?;
+        Work::fetch(&self.engine, &mut tx, self.id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let person = person::insert(&self.engine, &mut tx, self.library, name, true).await?;
+        let source = source.to_string();
+        sqlx::query!(
+            r#"INSERT INTO work_proposal
+                   (library_id, work_id, person_id, field, source, proposed_value)
+               VALUES (?, ?, ?, 'contributor', ?, ?)"#,
+            self.library.get(),
+            self.id.get(),
+            person.id().get(),
+            source,
+            role
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.record(
+            AuditSource::Enrichment,
+            Action::Created,
+            Some(&person.audit_subject()),
+            None,
+        )
+        .await?
+        .commit()
+        .await?;
+        Ok(person)
+    }
+
     /// Set or clear the key, treating a blank key as none
     ///
     /// Returns [Error::NotFound] if the work has been deleted.

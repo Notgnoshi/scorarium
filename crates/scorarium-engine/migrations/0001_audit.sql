@@ -1,7 +1,7 @@
 CREATE TABLE audit_entry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-    source TEXT NOT NULL CHECK (source IN ('user', 'orphan_cleanup', 'merge', 'link_recognition')),
+    source TEXT NOT NULL CHECK (source IN ('user', 'orphan_cleanup', 'merge', 'link_recognition', 'enrichment')),
     action TEXT NOT NULL CHECK (action IN (
         'created', 'updated', 'deleted', 'merged', 'committed',
         'password_claimed', 'password_changed'
