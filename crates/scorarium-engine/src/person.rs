@@ -297,6 +297,7 @@ impl Person {
         Ok(())
     }
 
+    #[expect(dead_code)]
     pub(crate) async fn propose(
         &self,
         source: Source,

@@ -367,6 +367,7 @@ impl Publication {
         entity::commit_rejection(tx, &collected).await
     }
 
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -472,6 +473,7 @@ impl Publication {
     /// Create a draft work and propose that the publication contains it
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose_new_work(&self, source: Source, title: &str) -> Result<Work> {
         let title = work::clean_title(title)?;
         let mut tx = self.engine.begin_write().await?;
@@ -506,6 +508,7 @@ impl Publication {
     /// Create a draft person and propose that they contributed to the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
+    #[expect(dead_code)]
     pub(crate) async fn propose_new_contributor(
         &self,
         source: Source,

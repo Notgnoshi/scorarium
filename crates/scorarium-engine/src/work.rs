@@ -334,6 +334,7 @@ impl Work {
         entity::commit_rejection(tx, &collected).await
     }
 
+    #[expect(dead_code)]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -428,6 +429,7 @@ impl Work {
     /// Create a draft person and propose that they contributed to the work
     ///
     /// Returns [Error::NotFound] if the work has been deleted.
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose_new_contributor(
         &self,
         source: Source,
