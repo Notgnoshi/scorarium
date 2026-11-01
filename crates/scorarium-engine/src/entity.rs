@@ -129,6 +129,11 @@ pub trait Entity: Sized {
     /// Returns [Error::NotFound] if the entity has been deleted.
     fn commit(&mut self) -> impl Future<Output = Result<()>> + Send;
 
+    /// Apply the given proposal
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted, or the proposal no longer exists
+    fn accept(&mut self, proposal: ProposalId) -> impl Future<Output = Result<()>> + Send;
+
     /// Discard a proposed edit
     ///
     /// Returns [Error::NotFound] if the entity has been deleted, or the proposal no longer exists

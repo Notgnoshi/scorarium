@@ -417,6 +417,20 @@ impl Entity for Person {
         rows.into_iter().map(from_row).collect()
     }
 
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Name(name) => self.rename(&name, sort_name(&name)).await?,
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
     async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -499,6 +513,42 @@ impl Entity for Person {
         .await?
         .commit()
         .await
+    }
+}
+
+impl Person {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Person>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value,
+                      created_at AS "created_at: Timestamp"
+               FROM person_proposal WHERE id = ? AND person_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(conn)
+        .await?;
+        row.map(from_row).transpose()
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM person_proposal WHERE id = ? AND person_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding proposals does not need an audit event"
+        )]
+        tx.commit_unaudited().await
     }
 }
 

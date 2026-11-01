@@ -1045,6 +1045,31 @@ impl Entity for Work {
         Ok(proposals)
     }
 
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Key(key) => self.set_key(Some(&key)).await?,
+            Proposal::TimeSignature(time_signature) => {
+                self.set_time_signature(Some(&time_signature)).await?
+            }
+            Proposal::Instrumentation(instrumentation) => {
+                self.set_instrumentation(Some(&instrumentation)).await?
+            }
+            Proposal::CatalogNumber(number) => self.add_catalog_number(number).await?,
+            Proposal::Contributor { person, role } => {
+                self.add_contributor(person.id(), role).await?
+            }
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
     async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -1162,6 +1187,45 @@ pub(crate) async fn insert(
     Work::fetch(engine, conn, WorkId::new(id))
         .await?
         .ok_or(Error::NotFound)
+}
+
+impl Work {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Work>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM work_proposal WHERE id = ? AND work_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(from_row(&self.engine, conn, row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM work_proposal WHERE id = ? AND work_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
 }
 
 /// A POD type to deserialize a work proposal from the database into

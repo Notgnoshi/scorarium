@@ -1435,6 +1435,27 @@ impl Entity for Publication {
         Ok(proposals)
     }
 
+    async fn accept(&mut self, proposal: ProposalId) -> Result<()> {
+        let mut conn = self.engine.begin_read().await?;
+        let proposal = self
+            .fetch_proposal(&mut conn, proposal)
+            .await?
+            .ok_or(Error::NotFound)?;
+        drop(conn);
+        match proposal.value {
+            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Publisher(publisher) => self.set_publisher(Some(&publisher)).await?,
+            Proposal::Year(year) => self.set_year(Some(year)).await?,
+            Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
+            Proposal::Contributor { person, role } => {
+                self.add_contributor(person.id(), role).await?
+            }
+            Proposal::Contents(work) => self.add_work(work.id()).await?,
+            Proposal::Link(url) => self.add_link(url).await?,
+        }
+        self.discard_proposal(proposal.id).await
+    }
+
     async fn reject(&mut self, proposal: ProposalId) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
@@ -1738,6 +1759,45 @@ pub(crate) async fn tagged(
         publications.push(Publication::from_row(engine, &mut conn, row).await?);
     }
     Ok(publications)
+}
+
+impl Publication {
+    async fn fetch_proposal(
+        &self,
+        conn: &mut SqliteConnection,
+        id: ProposalId,
+    ) -> Result<Option<entity::Proposal<Publication>>> {
+        let row = sqlx::query_as!(
+            ProposalRow,
+            r#"SELECT id, field, source, proposed_value, work_id, person_id,
+                      created_at AS "created_at: Timestamp"
+               FROM publication_proposal WHERE id = ? AND publication_id = ?"#,
+            id.get(),
+            self.id.get()
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        match row {
+            Some(row) => Ok(Some(from_row(&self.engine, conn, row).await?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn discard_proposal(&self, proposal: ProposalId) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        sqlx::query!(
+            "DELETE FROM publication_proposal WHERE id = ? AND publication_id = ?",
+            proposal.get(),
+            self.id.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        #[expect(
+            deprecated,
+            reason = "discarding a proposal does not need an audit event"
+        )]
+        tx.commit_unaudited().await
+    }
 }
 
 /// A POD type to deserialize a publication proposal from the database into
@@ -2312,6 +2372,38 @@ mod tests {
 
         b.reject(b_proposal).await.unwrap();
         assert!(Work::load(&engine, work.id()).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn accepting_contents_commits_the_proposed_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Preludes".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+
+        let work = publication
+            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .await
+            .unwrap();
+        assert!(work.is_draft());
+        let id = publication.proposals().await.unwrap()[0].id;
+
+        publication.accept(id).await.unwrap();
+
+        let work = Work::load(&engine, work.id()).await.unwrap().unwrap();
+        assert!(!work.is_draft());
+        assert_eq!(publication.works().await.unwrap().len(), 1);
+        assert!(publication.proposals().await.unwrap().is_empty());
+        assert!(matches!(publication.accept(id).await, Err(Error::NotFound)));
     }
 
     #[tokio::test]
