@@ -307,9 +307,21 @@ impl Person {
             Proposal::Link(url) => ("link", url.to_string()),
         };
         let mut tx = self.engine.begin_write().await?;
-        Person::fetch(&self.engine, &mut tx, self.id)
+        let current = Person::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Name(_) => current.name == text,
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Person, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
         let source = source.to_string();
         let id = sqlx::query_scalar!(
             r#"INSERT INTO person_proposal (library_id, person_id, field, source, proposed_value)

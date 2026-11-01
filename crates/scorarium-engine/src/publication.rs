@@ -392,9 +392,37 @@ impl Publication {
             Proposal::Link(url) => ("link", Some(url.to_string())),
         };
         let mut tx = self.engine.begin_write().await?;
-        Publication::fetch(&self.engine, &mut tx, self.id)
+        let current = Publication::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Title(_) => current.title.as_deref() == text.as_deref(),
+            Proposal::Publisher(_) => current.publisher.as_deref() == text.as_deref(),
+            Proposal::Year(year) => current.year == Some(*year),
+            Proposal::Identifier(identifier) => current.identifiers.contains(identifier),
+            Proposal::Contributor { person, .. } => current
+                .contributors
+                .iter()
+                .any(|c| c.person == person.id() && Some(c.role.as_str()) == text.as_deref()),
+            Proposal::Contents(work) => sqlx::query_scalar!(
+                r#"SELECT 1 AS "present!: i64" FROM publication_work
+                       WHERE publication_id = ? AND work_id = ?"#,
+                self.id.get(),
+                work.id().get()
+            )
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some(),
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Publication, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
         if let Some(person) = person
             && person::name(&mut tx, self.library, person.id())
                 .await?
@@ -2087,14 +2115,30 @@ mod tests {
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
-        let mut publication = library
+        let publication = library
             .create_publication(
                 ImportSeed::Title("Pro Git".into()),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
-        let work = publication.create_work("Chapter 1").await.unwrap();
+        let mut other = library
+            .create_publication(
+                ImportSeed::Title("Scott Chacon".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let work = other.create_work("Chapter 1").await.unwrap();
+
+        let current = Proposal::Title("Pro Git".into());
+        assert!(
+            publication
+                .propose(Source::OpenLibrary, current)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         let title = || Proposal::Title("Pro Git: Second Edition".into());
         let contents = || Proposal::Contents(work.clone());

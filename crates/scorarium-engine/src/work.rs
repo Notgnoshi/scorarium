@@ -365,9 +365,29 @@ impl Work {
             Proposal::Link(url) => ("link", url.to_string(), None),
         };
         let mut tx = self.engine.begin_write().await?;
-        Work::fetch(&self.engine, &mut tx, self.id)
+        let current = Work::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
+        let has = match &value {
+            Proposal::Title(_) => current.title == text,
+            Proposal::Key(_) => current.key.as_deref() == Some(&text),
+            Proposal::TimeSignature(_) => current.time_signature.as_deref() == Some(&text),
+            Proposal::Instrumentation(_) => current.instrumentation.as_deref() == Some(&text),
+            Proposal::CatalogNumber(number) => current.catalog_numbers.contains(number),
+            Proposal::Contributor { person, .. } => current
+                .contributors
+                .iter()
+                .any(|c| c.person == person.id() && c.role == text),
+            Proposal::Link(url) => {
+                let record = ExternalRecord::recognize(EntityKind::Work, url);
+                current.links.iter().any(|link| {
+                    link.url == *url || (link.record.is_some() && link.record == record)
+                })
+            }
+        };
+        if has {
+            return Ok(None);
+        }
         if let Some(person) = person
             && person::name(&mut tx, self.library, person.id())
                 .await?
