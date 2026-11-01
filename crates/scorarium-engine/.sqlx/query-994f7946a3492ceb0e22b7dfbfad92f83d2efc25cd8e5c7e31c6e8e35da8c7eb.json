@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT (SELECT COUNT(*) FROM publication\n                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM publication_proposal\n                                                   WHERE publication_id = publication.id))\n                    + (SELECT COUNT(*) FROM work\n                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM work_proposal\n                                                   WHERE work_id = work.id))\n                    + (SELECT COUNT(*) FROM person\n                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM person_proposal\n                                                   WHERE person_id = person.id)) AS \"count!: i64\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "994f7946a3492ceb0e22b7dfbfad92f83d2efc25cd8e5c7e31c6e8e35da8c7eb"
+}

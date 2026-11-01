@@ -11,12 +11,14 @@ pub struct ReviewItem {
     pub entity: AnyEntity,
     /// The timestamp the item was added to the review queue
     pub queued_at: Timestamp,
+    /// The number of pending proposals for the entity
+    pub proposals: usize,
 }
 
 impl ReviewItem {
     /// Remove the entry from the queue
     ///
-    /// If the entry is a draft, the draft is deleted.
+    /// If the entry is a draft, the draft is deleted. Otherwise every pending proposal is rejected.
     ///
     /// Returns [Error::NotFound] if the entity has already been removed from the queue.
     pub async fn discard(self) -> Result<()> {
@@ -30,10 +32,13 @@ impl ReviewItem {
 
 async fn discard_entity<E: Entity>(mut entity: E) -> Result<()> {
     entity.reload().await?;
-    if !entity.is_draft() {
-        return Err(Error::NotFound);
+    if entity.is_draft() {
+        entity.delete().await
+    } else if !entity.proposals().await?.is_empty() {
+        entity.reject_all().await
+    } else {
+        Err(Error::NotFound)
     }
-    entity.delete().await
 }
 
 pub(crate) async fn item<E: Entity>(
@@ -44,9 +49,14 @@ pub(crate) async fn item<E: Entity>(
     let Some(entity) = E::load(engine, id).await? else {
         return Ok(None);
     };
-    if !entity.is_draft() {
+    let proposals = entity.proposals().await?;
+    let queued_at = if entity.is_draft() {
+        entity.created_at()
+    } else if let Some(first) = proposals.first() {
+        first.created_at
+    } else {
         return Ok(None);
-    }
+    };
     let library = engine
         .library(entity.library())
         .await?
@@ -54,32 +64,50 @@ pub(crate) async fn item<E: Entity>(
     Ok(Some(ReviewItem {
         library_name: library.name().to_owned(),
         private: library.is_private(),
-        queued_at: entity.created_at(),
+        queued_at,
+        proposals: proposals.len(),
         entity: wrap(entity),
     }))
 }
 
 impl Engine {
-    /// List every draft publication, work, and person in every library, oldest first
+    /// List every draft and every entity with pending proposals, oldest first
     pub async fn review_queue(&self) -> Result<Vec<ReviewItem>> {
         let mut conn = self.begin_read().await?;
-        // Drafts are often created within the same second, so use the kind and id break ties to
-        // break sort ties.
+        // Entities are often queued within the same second, so use the kind and id to break sort ties.
         let rows = sqlx::query!(
             r#"SELECT 0 AS "rank!: i64", publication.id AS "id!: i64",
-                      publication.created_at AS "created_at!: Timestamp",
+                      CASE WHEN publication.draft = 1 THEN publication.created_at
+                           ELSE (SELECT MIN(created_at) FROM publication_proposal
+                                 WHERE publication_id = publication.id) END
+                          AS "queued_at!: Timestamp",
                       library.name AS "library_name!: String",
-                      library.private AS "private!: bool"
+                      library.private AS "private!: bool",
+                      (SELECT COUNT(*) FROM publication_proposal WHERE publication_id = publication.id)
+                          AS "proposals!: i64"
                FROM publication JOIN library ON library.id = publication.library_id
-               WHERE publication.draft = 1
+               WHERE publication.draft = 1 OR EXISTS (SELECT 1 FROM publication_proposal
+                                                      WHERE publication_id = publication.id)
                UNION ALL
-               SELECT 1, work.id, work.created_at, library.name, library.private
+               SELECT 1, work.id,
+                      CASE WHEN work.draft = 1 THEN work.created_at
+                           ELSE (SELECT MIN(created_at) FROM work_proposal
+                                 WHERE work_id = work.id) END,
+                      library.name, library.private,
+                      (SELECT COUNT(*) FROM work_proposal WHERE work_id = work.id)
                FROM work JOIN library ON library.id = work.library_id
-               WHERE work.draft = 1
+               WHERE work.draft = 1 OR EXISTS (SELECT 1 FROM work_proposal
+                                              WHERE work_id = work.id)
                UNION ALL
-               SELECT 2, person.id, person.created_at, library.name, library.private
+               SELECT 2, person.id,
+                      CASE WHEN person.draft = 1 THEN person.created_at
+                           ELSE (SELECT MIN(created_at) FROM person_proposal
+                                 WHERE person_id = person.id) END,
+                      library.name, library.private,
+                      (SELECT COUNT(*) FROM person_proposal WHERE person_id = person.id)
                FROM person JOIN library ON library.id = person.library_id
-               WHERE person.draft = 1
+               WHERE person.draft = 1 OR EXISTS (SELECT 1 FROM person_proposal
+                                              WHERE person_id = person.id)
                ORDER BY 3, 1, 2"#
         )
         .fetch_all(&mut *conn)
@@ -105,7 +133,8 @@ impl Engine {
                     library_name: row.library_name,
                     private: row.private,
                     entity,
-                    queued_at: row.created_at,
+                    queued_at: row.queued_at,
+                    proposals: usize::try_from(row.proposals).expect("a count is never negative"),
                 });
             }
         }
@@ -116,9 +145,15 @@ impl Engine {
     pub async fn review_count(&self) -> Result<usize> {
         let mut conn = self.begin_read().await?;
         let count = sqlx::query_scalar!(
-            r#"SELECT (SELECT COUNT(*) FROM publication WHERE draft = 1)
-                    + (SELECT COUNT(*) FROM work WHERE draft = 1)
-                    + (SELECT COUNT(*) FROM person WHERE draft = 1) AS "count!: i64""#
+            r#"SELECT (SELECT COUNT(*) FROM publication
+                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM publication_proposal
+                                                   WHERE publication_id = publication.id))
+                    + (SELECT COUNT(*) FROM work
+                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM work_proposal
+                                                   WHERE work_id = work.id))
+                    + (SELECT COUNT(*) FROM person
+                        WHERE draft = 1 OR EXISTS (SELECT 1 FROM person_proposal
+                                                   WHERE person_id = person.id)) AS "count!: i64""#
         )
         .fetch_one(&mut *conn)
         .await?;
@@ -128,10 +163,12 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
+    use scorarium_client::Source;
+
     use super::*;
     use crate::EngineOptions;
     use crate::holding::NewHolding;
-    use crate::publication::ImportSeed;
+    use crate::publication::{ImportSeed, Proposal};
 
     #[tokio::test]
     async fn discard_refuses_an_entry_no_longer_queued() {
@@ -163,7 +200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn review_item_answers_for_a_draft_only() {
+    async fn review_item_answers_for_a_queued_entity_only() {
         let dir = tempfile::tempdir().unwrap();
         let engine = Engine::open(dir.path(), EngineOptions::default())
             .await
@@ -184,5 +221,45 @@ mod tests {
 
         publication.commit().await.unwrap();
         assert!(publication.review_item().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_committed_entity_with_proposals_is_queued_until_discarded() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), EngineOptions::default())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title("Pro Git".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+        assert!(engine.review_queue().await.unwrap().is_empty());
+
+        publication
+            .propose(Source::OpenLibrary, Proposal::Publisher("Apress".into()))
+            .await
+            .unwrap();
+        let proposal_created_at = publication.proposals().await.unwrap()[0].created_at;
+
+        let mut queue = engine.review_queue().await.unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].proposals, 1);
+        assert_eq!(queue[0].queued_at, proposal_created_at);
+        assert_eq!(engine.review_count().await.unwrap(), 1);
+
+        queue.pop().unwrap().discard().await.unwrap();
+
+        assert!(engine.review_queue().await.unwrap().is_empty());
+        assert!(
+            Publication::load(&engine, publication.id())
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }
