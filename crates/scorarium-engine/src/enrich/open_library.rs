@@ -1,7 +1,9 @@
 use scorarium_client::{Priority, Source};
 
 use crate::enrich::SubTaskQueue;
-use crate::entity::Entity;
+use crate::entity::{Entity, EntityKind};
+use crate::link::{ExternalRecord, LinkKind};
+use crate::person::{self, Person};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
 use crate::value::Year;
 use crate::{Engine, Error, Result};
@@ -74,7 +76,124 @@ pub(crate) async fn edition(
         "Open Library edition {}: proposed {accepted}, already present {present}",
         edition.olid
     );
+    for olid in edition.authors {
+        queue.enqueue(author(
+            engine.clone(),
+            publication.id(),
+            olid,
+            queue.clone(),
+        ));
+    }
     Ok(())
+}
+
+/// Map Open Library's API ID keys to scorarium's [LinkKind] enum
+const AUTHOR_IDS: [(&str, LinkKind); 10] = [
+    ("wikidata", LinkKind::Wikidata),
+    ("viaf", LinkKind::Viaf),
+    ("isni", LinkKind::Isni),
+    ("gnd", LinkKind::Gnd),
+    ("lc_naf", LinkKind::Loc),
+    ("musicbrainz", LinkKind::MusicBrainz),
+    ("goodreads", LinkKind::Goodreads),
+    ("librarything", LinkKind::LibraryThing),
+    ("project_gutenberg", LinkKind::Gutenberg),
+    ("librivox", LinkKind::Librivox),
+];
+
+/// Look up Open Library's author record for `olid` for enrichment proposals
+pub(crate) async fn author(
+    engine: Engine,
+    publication: PublicationId,
+    olid: String,
+    queue: SubTaskQueue,
+) -> Result<()> {
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    log::debug!("enriching publication {publication} from Open Library author {olid}");
+    let Some(record) = engine
+        .client()
+        .open_library()
+        .author(&olid, Priority::Background)
+        .await?
+    else {
+        return Ok(());
+    };
+    let publication = Publication::load(&engine, publication)
+        .await?
+        .ok_or(Error::NotFound)?;
+
+    let this = ExternalRecord::new(LinkKind::OpenLibrary, &olid);
+    let mut matches = person::find_by_record(&engine, publication.library(), &this).await?;
+    if matches.is_empty() {
+        matches = person::find_by_name(&engine, publication.library(), &record.name).await?;
+        // A namesake linked to a different Open Library author is a different person.
+        matches.retain(|person| {
+            !person.links().iter().any(|link| {
+                link.record
+                    .as_ref()
+                    .is_some_and(|other| other.kind() == LinkKind::OpenLibrary && *other != this)
+            })
+        });
+    }
+
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    let person = match best_match(matches) {
+        Some(person) => {
+            let proposal = Proposal::Contributor {
+                person: person.clone(),
+                role: "author".into(),
+            };
+            publication.propose(Source::OpenLibrary, proposal).await?;
+            person
+        }
+        None => match publication
+            .propose_new_contributor(Source::OpenLibrary, &record.name, "author")
+            .await
+        {
+            Ok(person) => person,
+            Err(Error::InvalidValue(reason)) => {
+                log::warn!("Open Library author {olid}: {reason}");
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        },
+    };
+
+    // Links are proposals too; the person may be committed, and the user decides.
+    let mut links = vec![this];
+    for (key, kind) in AUTHOR_IDS {
+        if let Some(id) = record.remote_ids.get(key) {
+            links.push(ExternalRecord::new(kind, id));
+        }
+    }
+    for link in links {
+        if queue.is_cancelled() {
+            return Ok(());
+        }
+        let Some(url) = link.url(EntityKind::Person) else {
+            continue;
+        };
+        match person
+            .propose(Source::OpenLibrary, person::Proposal::Link(url))
+            .await
+        {
+            Ok(_) => {}
+            Err(Error::InvalidValue(reason)) => log::warn!("Open Library author {olid}: {reason}"),
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// Choose a committed person over a draft, and among equals the lowest id
+fn best_match(matches: Vec<Person>) -> Option<Person> {
+    matches
+        .into_iter()
+        .min_by_key(|person| (person.is_draft(), person.id().get()))
 }
 
 /// The first run of exactly four ASCII digits in a free-text date
@@ -110,6 +229,14 @@ mod tests {
         }
     }
 
+    /// Render a person link proposal as its URL
+    fn link_of(proposal: &entity::Proposal<Person>) -> String {
+        match &proposal.value {
+            person::Proposal::Link(url) => url.to_string(),
+            person::Proposal::Name(_) => panic!("expected a link proposal"),
+        }
+    }
+
     #[tokio::test]
     async fn an_isbn_import_proposes_the_edition_facts() {
         let dir = tempfile::tempdir().unwrap();
@@ -133,7 +260,7 @@ mod tests {
         assert_eq!(
             status,
             EnrichmentStatus {
-                successful: 1,
+                successful: 2,
                 pending: 0,
                 failed: 0,
                 cancelled: false
@@ -154,7 +281,76 @@ mod tests {
                 "publisher Dover Publications",
                 "year 1987",
                 "link https://openlibrary.org/books/OL7636066M",
+                "contributor Ludwig van Beethoven author",
             ]
         );
+
+        let proposals = publication.proposals().await.unwrap();
+        let Proposal::Contributor { person, .. } = &proposals[4].value else {
+            panic!("expected a contributor proposal");
+        };
+        assert!(person.is_draft());
+        let links: Vec<String> = person
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(link_of)
+            .collect();
+        assert_eq!(
+            links,
+            [
+                "https://openlibrary.org/authors/OL127077A",
+                "https://www.wikidata.org/wiki/Q255",
+                "https://viaf.org/viaf/32182557",
+                "https://isni.org/isni/0000000121268987",
+                "https://id.loc.gov/authorities/names/n79107741",
+                "https://musicbrainz.org/artist/1f9df192-a621-4f54-8850-2c5373b7eac9",
+                "https://www.librarything.com/author/beethovenludwigvan",
+                "https://www.gutenberg.org/ebooks/author/75",
+                "https://librivox.org/author/4437",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_author_already_in_the_library_is_proposed_not_duplicated() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut sonatas = library
+            .create_publication(
+                ImportSeed::Title("Piano sonatas".into()),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let beethoven = sonatas
+            .create_contributor("Ludwig van Beethoven", "composer")
+            .await
+            .unwrap();
+        sonatas.commit().await.unwrap();
+
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
+        let publication = library
+            .create_publication(
+                ImportSeed::Identifier(isbn),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+
+        let proposals = publication.proposals().await.unwrap();
+        let Proposal::Contributor { person, role } = &proposals[4].value else {
+            panic!("expected a contributor proposal");
+        };
+        assert_eq!(person.id(), beethoven.id());
+        assert_eq!(role, "author");
+        assert_eq!(library.people(None).await.unwrap().len(), 1);
     }
 }

@@ -12,6 +12,7 @@ use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
+use crate::search::same_name;
 use crate::suggest::{Candidate, CandidateScope};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -298,7 +299,6 @@ impl Person {
         Ok(())
     }
 
-    #[expect(dead_code)]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -694,6 +694,42 @@ pub(crate) async fn candidates(
             id: row.id,
             name: row.name,
             text: row.text,
+        })
+        .collect())
+}
+
+/// Find the people in `library`, drafts included, whose name is `name` after normalization
+pub(crate) async fn find_by_name(
+    engine: &Engine,
+    library: LibraryId,
+    name: &str,
+) -> Result<Vec<Person>> {
+    let mut conn = engine.begin_read().await?;
+    let mut people = Vec::new();
+    // Normalization happens in Rust, so SQL cannot compare names.
+    for candidate in candidates(&mut conn, CandidateScope::Library(library)).await? {
+        if same_name(&candidate.name, name) {
+            let person = Person::fetch(engine, &mut conn, PersonId::new(candidate.id)).await?;
+            people.extend(person);
+        }
+    }
+    Ok(people)
+}
+
+/// Find the people in `library`, drafts included, linked to `record`
+pub(crate) async fn find_by_record(
+    engine: &Engine,
+    library: LibraryId,
+    record: &ExternalRecord,
+) -> Result<Vec<Person>> {
+    let people = in_library(engine, library, None).await?;
+    Ok(people
+        .into_iter()
+        .filter(|person| {
+            person
+                .links()
+                .iter()
+                .any(|link| link.record.as_ref() == Some(record))
         })
         .collect())
 }

@@ -507,7 +507,6 @@ impl Publication {
     /// Create a draft person and propose that they contributed to the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    #[expect(dead_code)]
     pub(crate) async fn propose_new_contributor(
         &self,
         source: Source,
