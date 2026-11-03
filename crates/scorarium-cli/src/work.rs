@@ -8,7 +8,7 @@ use scorarium_engine::work::Work;
 use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, search};
+use crate::{audit, enrichment, person, reference, review, search};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -56,7 +56,38 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     for link in work.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
-    write_table(out, &rows)
+    if let Some(enrichment) = work.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
+        ));
+    }
+    for pending in work.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
+    write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::work::Proposal) -> (&'static str, String) {
+    use scorarium_engine::work::Proposal;
+
+    match value {
+        Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Key(key) => ("key", key.clone()),
+        Proposal::TimeSignature(signature) => ("time-signature", signature.clone()),
+        Proposal::Instrumentation(instrumentation) => ("instrumentation", instrumentation.clone()),
+        Proposal::CatalogNumber(number) => ("catalog-number", number.to_string()),
+        Proposal::Contributor { person, role } => {
+            ("contributor", format!("{} ({role})", person.name()))
+        }
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 /// Resolve the title or id of a work
@@ -110,11 +141,29 @@ pub(crate) async fn run(
         WorkCommand::DiscardChanges => {
             let reference = require(subject, "work")?;
             let work = resolve(library, reference).await?;
-            let Some(item) = work.review_item().await? else {
-                eyre::bail!("work '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
+            review::discard_changes(&work, "work", reference).await
+        }
+        WorkCommand::Accept { proposals } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            review::accept(&mut work, &proposals).await
+        }
+        WorkCommand::Reject { proposals } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            review::reject(&mut work, &proposals).await
+        }
+        WorkCommand::RejectAll => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            work.reject_all().await?;
             Ok(())
+        }
+        WorkCommand::Enrich => {
+            let work = resolve(library, require(subject, "work")?).await?;
+            enrichment::enrich(&work, out).await
+        }
+        WorkCommand::CancelEnrichment => {
+            let reference = require(subject, "work")?;
+            let work = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&work, "work", reference)
         }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;

@@ -12,7 +12,7 @@ use crate::command::{
 };
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, work};
+use crate::{audit, enrichment, person, reference, review, work};
 
 /// The kinds of identifier printed on a publication.
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -90,7 +90,11 @@ pub(crate) async fn list(
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(
+        out,
+        ["id", "draft", "title", "contributors", "year", "holdings"],
+        &rows,
+    )
 }
 
 pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre::Result<()> {
@@ -148,7 +152,41 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
     for link in publication.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
-    write_table(out, &rows)
+    if let Some(enrichment) = publication.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
+        ));
+    }
+    for pending in publication.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
+    write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::publication::Proposal) -> (&'static str, String) {
+    use scorarium_engine::publication::Proposal;
+
+    match value {
+        Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Publisher(publisher) => ("publisher", publisher.clone()),
+        Proposal::Year(year) => ("year", year.to_string()),
+        Proposal::Identifier(identifier) => (
+            "identifier",
+            format!("{} {}", identifier_kind(identifier.kind()), identifier),
+        ),
+        Proposal::Contributor { person, role } => {
+            ("contributor", format!("{} ({role})", person.name()))
+        }
+        Proposal::Contents(work) => ("work", work.title().to_string()),
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 fn identifier_kind(kind: scorarium_engine::publication::IdentifierKind) -> &'static str {
@@ -314,11 +352,29 @@ pub(crate) async fn run(
         PublicationCommand::DiscardChanges => {
             let reference = require(subject, "publication")?;
             let publication = resolve(library, reference).await?;
-            let Some(item) = publication.review_item().await? else {
-                eyre::bail!("publication '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
+            review::discard_changes(&publication, "publication", reference).await
+        }
+        PublicationCommand::Accept { proposals } => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            review::accept(&mut publication, &proposals).await
+        }
+        PublicationCommand::Reject { proposals } => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            review::reject(&mut publication, &proposals).await
+        }
+        PublicationCommand::RejectAll => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            publication.reject_all().await?;
             Ok(())
+        }
+        PublicationCommand::Enrich => {
+            let publication = resolve(library, require(subject, "publication")?).await?;
+            enrichment::enrich(&publication, out).await
+        }
+        PublicationCommand::CancelEnrichment => {
+            let reference = require(subject, "publication")?;
+            let publication = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&publication, "publication", reference)
         }
     }
 }

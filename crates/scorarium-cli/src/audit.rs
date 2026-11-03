@@ -33,7 +33,19 @@ pub(crate) async fn log(engine: &Engine, limit: usize, out: &mut impl Write) -> 
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(
+        out,
+        [
+            "timestamp",
+            "source",
+            "action",
+            "kind",
+            "id",
+            "title",
+            "field",
+        ],
+        &rows,
+    )
 }
 
 /// Print a specific entity's audit log
@@ -55,7 +67,7 @@ pub(crate) async fn entity_log<E: Entity>(
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(out, ["timestamp", "source", "action", "field"], &rows)
 }
 
 fn timestamp(event: &AuditEvent) -> String {

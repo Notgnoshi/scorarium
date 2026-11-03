@@ -33,7 +33,7 @@ async fn a_script_runs_until_quit() {
         "{out}"
     );
     assert!(
-        out.ends_with("1\tBooks      \tprivate\n2\tSheet music\tpublic\n"),
+        out.ends_with("1 \tBooks      \tprivate\n2 \tSheet music\tpublic\n"),
         "{out}"
     );
 }
@@ -47,7 +47,7 @@ async fn a_failing_script_stops_at_the_failing_line() {
     .await;
     let error = format!("{:#}", result.unwrap_err());
     assert!(error.starts_with("line 2: "), "{error}");
-    assert_eq!(out.lines().count(), 2);
+    assert_eq!(out.lines().count(), 4);
 }
 
 #[tokio::test]
@@ -61,7 +61,12 @@ async fn library_show_rejects_an_ambiguous_reference() {
     result.unwrap();
     assert_eq!(
         out,
-        "id          \t2\nname        \tSheet music\nvisibility  \tpublic\npublications\t4\n"
+        "field       \tvalue\n\
+         ------------\t-----------\n\
+         id          \t2\n\
+         name        \tSheet music\n\
+         visibility  \tpublic\n\
+         publications\t4\n"
     );
 
     let (out, result) = run(&engine, "library 2 show\n").await;
@@ -104,13 +109,17 @@ async fn library_create_rename_delete() {
     result.unwrap();
     assert_eq!(
         out,
-        "1\tBooks      \tprivate\n\
-         2\tSheet music\tpublic\n\
-         3\tMagazines  \tpublic\n\
-         4\tLiner notes\tprivate\n\
-         1\tBooks      \tprivate\n\
-         2\tSheet music\tpublic\n\
-         3\tPeriodicals\tprivate\n"
+        "id\tname       \tvisibility\n\
+         --\t-----------\t----------\n\
+         1 \tBooks      \tprivate\n\
+         2 \tSheet music\tpublic\n\
+         3 \tMagazines  \tpublic\n\
+         4 \tLiner notes\tprivate\n\
+         id\tname       \tvisibility\n\
+         --\t-----------\t----------\n\
+         1 \tBooks      \tprivate\n\
+         2 \tSheet music\tpublic\n\
+         3 \tPeriodicals\tprivate\n"
     );
 
     let (_, result) = run(&engine, "library create '  '\n").await;
@@ -133,7 +142,11 @@ async fn the_selected_library_fills_the_subject_slot() {
     );
     assert_eq!(
         out,
-        "id          \t1\nname        \tBooks\nvisibility  \tprivate\npublications\t3\n\
+        "field       \tvalue\n\
+         ------------\t-------\n\
+         id          \t1\nname        \tBooks\nvisibility  \tprivate\npublications\t3\n\
+         field       \tvalue\n\
+         ------------\t-------\n\
          id          \t1\nname        \tNovels\nvisibility  \tprivate\npublications\t3\n"
     );
 }
@@ -151,19 +164,21 @@ async fn publication_show_resolves_by_title() {
     result.unwrap();
     assert_eq!(
         out,
-        "id            \t2\t\n\
-         title         \t \tPro Git\n\
-         publisher     \t \tApress\n\
-         year          \t \t2014\n\
-         stars         \t \t3\n\
-         classification\t \tprose\n\
-         identifier    \t \tisbn 978-1-4842-0077-3\n\
-         identifier    \t \tplate-number P 123\n\
-         contributor   \t \tScott Chacon (author)\n\
-         holding       \t2\tphysical\n\
-         holding       \t8\tphysical: Shelf 3\n\
-         link          \t3\thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
-         link          \t4\thttps://git-scm.com/book/en/v2\n"
+        "field         \tid\tvalue\n\
+         --------------\t--\t-------------------------------------------------\n\
+         id            \t2 \t\n\
+         title         \t  \tPro Git\n\
+         publisher     \t  \tApress\n\
+         year          \t  \t2014\n\
+         stars         \t  \t3\n\
+         classification\t  \tprose\n\
+         identifier    \t  \tisbn 978-1-4842-0077-3\n\
+         identifier    \t  \tplate-number P 123\n\
+         contributor   \t  \tScott Chacon (author)\n\
+         holding       \t2 \tphysical\n\
+         holding       \t8 \tphysical: Shelf 3\n\
+         link          \t3 \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
+         link          \t4 \thttps://git-scm.com/book/en/v2\n"
     );
 }
 
@@ -180,20 +195,22 @@ async fn work_show_resolves_by_title() {
     result.unwrap();
     assert_eq!(
         out,
-        "id             \t7\t\n\
-         title          \t \tThe Isle of the Dead\n\
-         key            \t \tA minor\n\
-         instrumentation\t \tpiano\n\
-         stars          \t \t5\n\
-         classification \t \tmusic\n\
-         tags           \t \tfavorite, transcription, want-to-learn\n\
-         catalog-number \t \tOp. 29\n\
-         contributor    \t \tSergei Rachmaninoff (composer)\n\
-         publication    \t6\tThe Isle of the Dead\n\
-         link           \t2\thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
-         link           \t3\thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\
-         link           \t4\thttps://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)\n\
-         link           \t5\thttps://www.wikidata.org/wiki/Q629711\n"
+        "field          \tid\tvalue\n\
+         ---------------\t--\t---------------------------------------------------------------------\n\
+         id             \t7 \t\n\
+         title          \t  \tThe Isle of the Dead\n\
+         key            \t  \tA minor\n\
+         instrumentation\t  \tpiano\n\
+         stars          \t  \t5\n\
+         classification \t  \tmusic\n\
+         tags           \t  \tfavorite, transcription, want-to-learn\n\
+         catalog-number \t  \tOp. 29\n\
+         contributor    \t  \tSergei Rachmaninoff (composer)\n\
+         publication    \t6 \tThe Isle of the Dead\n\
+         link           \t2 \thttps://imslp.org/wiki/Isle_of_the_Dead,_Op.29_(Rachmaninoff,_Sergei)\n\
+         link           \t3 \thttps://musicbrainz.org/work/ab65bc19-0079-31a9-9521-5f6ea4c1c637\n\
+         link           \t4 \thttps://en.wikipedia.org/wiki/Isle_of_the_Dead_(Rachmaninoff)\n\
+         link           \t5 \thttps://www.wikidata.org/wiki/Q629711\n"
     );
 }
 
@@ -204,10 +221,12 @@ async fn person_list_shows_everyone_credited() {
     result.unwrap();
     assert_eq!(
         out,
-        "4\tAmbrose Bierce\tBierce, Ambrose\n\
-         2\tScott Chacon  \tChacon, Scott\n\
-         1\tDrew Neil     \tNeil, Drew\n\
-         3\tBen Straub    \tStraub, Ben\n"
+        "id\tname          \tsort-name\n\
+         --\t--------------\t---------------\n\
+         4 \tAmbrose Bierce\tBierce, Ambrose\n\
+         2 \tScott Chacon  \tChacon, Scott\n\
+         1 \tDrew Neil     \tNeil, Drew\n\
+         3 \tBen Straub    \tStraub, Ben\n"
     );
 
     let (out, result) = run(&engine, "library books person list --role composer\n").await;
@@ -227,7 +246,9 @@ async fn person_show_lists_each_credit_once() {
     result.unwrap();
     assert_eq!(
         out,
-        "id         \t10\t\n\
+        "field      \tid\tvalue\n\
+         -----------\t--\t----------------------------------------------------\n\
+         id         \t10\t\n\
          name       \t  \tSergei Rachmaninoff\n\
          sort-name  \t  \tRachmaninov, Sergei\n\
          link       \t4 \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
@@ -248,7 +269,9 @@ async fn tag_list_orders_by_use_count() {
     result.unwrap();
     assert_eq!(
         out,
-        "want-to-learn\t3\n\
+        "tag          \tcount\n\
+         -------------\t-----\n\
+         want-to-learn\t3\n\
          russian      \t2\n\
          anthology    \t1\n\
          learning     \t1\n\
@@ -267,11 +290,17 @@ async fn search_prints_the_same_columns_for_every_kind() {
     result.unwrap();
     assert_eq!(
         out,
-        "work\t2\tSheet music\t6\tPolichinelle\tOp. 3 No. 4 by Sergei Rachmaninoff\n\
-         publication\t1\tBooks\t2\tPro Git\tScott Chacon, Ben Straub\n\
-         publication\t2\tSheet music\t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
-         work       \t2\tSheet music\t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n\
-         person     \t2\tSheet music\t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
+        "kind\tlibrary\tlibrary-name\tid\ttitle       \tcontext\n\
+         ----\t-------\t------------\t--\t------------\t----------------------------------\n\
+         work\t2      \tSheet music \t6 \tPolichinelle\tOp. 3 No. 4 by Sergei Rachmaninoff\n\
+         kind       \tlibrary\tlibrary-name\tid\ttitle  \tcontext\n\
+         -----------\t-------\t------------\t--\t-------\t------------------------\n\
+         publication\t1      \tBooks       \t2 \tPro Git\tScott Chacon, Ben Straub\n\
+         kind       \tlibrary\tlibrary-name\tid\ttitle               \tcontext\n\
+         -----------\t-------\t------------\t--\t--------------------\t----------------------------------\n\
+         publication\t2      \tSheet music \t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
+         work       \t2      \tSheet music \t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n\
+         person     \t2      \tSheet music \t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
     );
 }
 
@@ -313,22 +342,27 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "Books\tpublication\t8 \tScorarium handbook\n\
-         Books\tpublication\t9\n\
-         Books\twork       \t11\tChapter 1\n\
-         Books\tperson     \t13\tGrace Hopper\n\
-         Books\tperson     \t14\tAda Lovelace\n"
+        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
+         Books  \twork       \t11\tChapter 1         \tdraft\n\
+         Books  \tperson     \t13\tGrace Hopper      \tdraft\n\
+         Books  \tperson     \t14\tAda Lovelace      \tdraft\n"
     );
 
     let (out, result) = run(&engine, "library books publication 9 show\n").await;
     result.unwrap();
     assert_eq!(
         out,
-        "id        \t9\t\n\
-         draft     \t \t\n\
-         title     \t \t\n\
-         identifier\t \tisbn 978-0-486-99999-9\n\
-         holding   \t9\tphysical\n"
+        "field     \tid\tvalue\n\
+         ----------\t--\t----------------------\n\
+         id        \t9 \t\n\
+         draft     \t  \t\n\
+         title     \t  \t\n\
+         identifier\t  \tisbn 978-0-486-99999-9\n\
+         holding   \t9 \tphysical\n\
+         enrichment\t  \tcompleted 1/1\n"
     );
 
     let (out, result) = run(
@@ -341,16 +375,20 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "Books\tpublication\t8 \tScorarium handbook\n\
-         Books\tpublication\t9\n\
-         Books\tperson     \t13\tGrace Hopper\n"
+        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
+         Books  \tperson     \t13\tGrace Hopper      \tdraft\n"
     );
 
     let (out, result) = run(&engine, "library books publication 8 show\n").await;
     result.unwrap();
     assert_eq!(
         out,
-        "id         \t8 \t\n\
+        "field      \tid\tvalue\n\
+         -----------\t--\t---------------------\n\
+         id         \t8 \t\n\
          draft      \t  \t\n\
          title      \t  \tScorarium handbook\n\
          contributor\t  \tGrace Hopper (author)\n\
@@ -366,7 +404,12 @@ async fn import_commit_review_discard() {
     )
     .await;
     result.unwrap();
-    assert_eq!(without_age(&out), "Books\tpublication\t9\n");
+    assert_eq!(
+        without_age(&out),
+        "library\tkind       \tid\ttitle\tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t-----\t-----\t-------------\t---------\n\
+         Books  \tpublication\t9 \t     \tdraft\tcompleted 1/1\n"
+    );
 
     let (_, result) = run(&engine, "library books publication 9 commit\n").await;
     assert_eq!(
@@ -440,15 +483,19 @@ async fn add_work_links_by_id_or_creates() {
     // The album is committed, so the new work is too and the review queue stays empty
     assert_eq!(
         out,
-        "id             \t6\t\n\
-         title          \t \tPolichinelle\n\
-         key            \t \tF-sharp minor\n\
-         instrumentation\t \tpiano\n\
-         classification \t \tmusic\n\
-         catalog-number \t \tOp. 3 No. 4\n\
-         contributor    \t \tSergei Rachmaninoff (composer)\n\
-         publication    \t4\tRussian piano album\n\
-         publication    \t5\tRachmaninoff masterpieces for solo piano\n\
+        "field          \tid\tvalue\n\
+         ---------------\t--\t----------------------------------------\n\
+         id             \t6 \t\n\
+         title          \t  \tPolichinelle\n\
+         key            \t  \tF-sharp minor\n\
+         instrumentation\t  \tpiano\n\
+         classification \t  \tmusic\n\
+         catalog-number \t  \tOp. 3 No. 4\n\
+         contributor    \t  \tSergei Rachmaninoff (composer)\n\
+         publication    \t4 \tRussian piano album\n\
+         publication    \t5 \tRachmaninoff masterpieces for solo piano\n\
+         field         \tid\tvalue\n\
+         --------------\t--\t-------------------\n\
          id            \t11\t\n\
          title         \t  \tPolichinelle\n\
          classification\t  \tmusic\n\
@@ -465,9 +512,115 @@ async fn add_work_links_by_id_or_creates() {
     assert_eq!(
         out,
         "8\n\
-         id     \t8\t\n\
-         draft  \t \t\n\
-         title  \t \t978-0-13-468599-2\n\
-         holding\t8\tphysical\n"
+         field  \tid\tvalue\n\
+         -------\t--\t-----------------\n\
+         id     \t8 \t\n\
+         draft  \t  \t\n\
+         title  \t  \t978-0-13-468599-2\n\
+         holding\t8 \tphysical\n"
+    );
+}
+
+#[tokio::test]
+async fn isbn_import_review() {
+    let engine = demo().await;
+    let (out, result) = run(
+        &engine,
+        "library books select\n\
+         import 978-0-486-25392-3\n\
+         wait\n\
+         review\n\
+         publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    let (id, tables) = out.split_once('\n').unwrap();
+    assert_eq!(id, "8");
+
+    let (listing, show) = tables.split_once("field").unwrap();
+    assert_eq!(
+        without_age(listing),
+        "library\tkind       \tid\ttitle               \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t--------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \t                    \tdraft\tcompleted 2/2\t5\n\
+         Books  \tperson     \t13\tLudwig van Beethoven\tdraft\t             \t9\n"
+    );
+    assert_eq!(
+        format!("field{show}"),
+        "field         \tid\tvalue\n\
+         --------------\t--\t-------------------------------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \t\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n\
+         proposal      \t1 \ttitle: Bagatelles, Rondos and Other Shorter Works for Piano (openlibrary)\n\
+         proposal      \t2 \tpublisher: Dover Publications (openlibrary)\n\
+         proposal      \t3 \tyear: 1987 (openlibrary)\n\
+         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+    );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 8 accept 1 2\n\
+         library books publication 8 reject 3\n\
+         library books publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "field         \tid\tvalue\n\
+         --------------\t--\t------------------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
+         publisher     \t  \tDover Publications\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n\
+         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+    );
+
+    let (_, result) = run(&engine, "library books publication 8 accept 3\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: no proposal '3'"
+    );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 8 reject-all\n\
+         library books publication 8 reject-all\n\
+         library books publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "field         \tid\tvalue\n\
+         --------------\t--\t----------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
+         publisher     \t  \tDover Publications\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n"
+    );
+
+    let (out, result) = run(&engine, "review\n").await;
+    result.unwrap();
+    assert_eq!(
+        without_age(&out),
+        "library\tkind       \tid\ttitle                                               \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n"
     );
 }

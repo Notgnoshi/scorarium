@@ -24,7 +24,11 @@ pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> e
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(
+        out,
+        ["kind", "library", "library-name", "id", "title", "context"],
+        &rows,
+    )
 }
 
 /// Return the kind, id, and label of an entity.

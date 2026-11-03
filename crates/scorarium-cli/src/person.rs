@@ -8,7 +8,7 @@ use scorarium_engine::person::{Person, PersonId};
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, reference, search};
+use crate::{audit, enrichment, reference, review, search};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -28,7 +28,7 @@ pub(crate) async fn list(
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(out, ["id", "name", "sort-name"], &rows)
 }
 
 /// Show a person with the publications and works they contributed to.
@@ -61,7 +61,31 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
             format!("{} ({roles})", work.title()),
         ));
     }
-    write_table(out, &rows)
+    if let Some(enrichment) = person.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
+        ));
+    }
+    for pending in person.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
+    write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::person::Proposal) -> (&'static str, String) {
+    use scorarium_engine::person::Proposal;
+
+    match value {
+        Proposal::Name(name) => ("name", name.clone()),
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 /// List the roles `person` holds among `contributors`.
@@ -128,11 +152,29 @@ pub(crate) async fn run(
         PersonCommand::DiscardChanges => {
             let reference = require(subject, "person")?;
             let person = resolve(library, reference).await?;
-            let Some(item) = person.review_item().await? else {
-                eyre::bail!("person '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
+            review::discard_changes(&person, "person", reference).await
+        }
+        PersonCommand::Accept { proposals } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            review::accept(&mut person, &proposals).await
+        }
+        PersonCommand::Reject { proposals } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            review::reject(&mut person, &proposals).await
+        }
+        PersonCommand::RejectAll => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            person.reject_all().await?;
             Ok(())
+        }
+        PersonCommand::Enrich => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            enrichment::enrich(&person, out).await
+        }
+        PersonCommand::CancelEnrichment => {
+            let reference = require(subject, "person")?;
+            let person = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&person, "person", reference)
         }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;

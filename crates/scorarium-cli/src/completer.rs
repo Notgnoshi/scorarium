@@ -334,6 +334,11 @@ mod tests {
                         "delete",
                         "commit",
                         "discard-changes",
+                        "accept",
+                        "reject",
+                        "reject-all",
+                        "enrich",
+                        "cancel-enrichment",
                         "audit"
                     ],
                     36

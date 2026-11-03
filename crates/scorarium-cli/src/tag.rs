@@ -14,5 +14,5 @@ pub(crate) async fn list(library: &Library, out: &mut impl Write) -> eyre::Resul
         .into_iter()
         .map(|(tag, count)| [tag.to_string(), count.to_string()])
         .collect();
-    write_table(out, &rows)
+    write_table(out, ["tag", "count"], &rows)
 }
