@@ -213,6 +213,10 @@ pub(crate) enum PublicationCommand {
     },
     /// Discard all proposed edits
     RejectAll,
+    /// Start background enrichment, or report the run already in progress
+    Enrich,
+    /// Cancel the enrichment task
+    CancelEnrichment,
     /// Print a publication's audit log
     Audit(AuditArgs),
 }
@@ -394,6 +398,10 @@ pub(crate) enum WorkCommand {
     },
     /// Discard all proposed edits
     RejectAll,
+    /// Start background enrichment, or report the run already in progress
+    Enrich,
+    /// Cancel the enrichment task
+    CancelEnrichment,
 }
 
 #[derive(Debug, Subcommand)]
@@ -566,6 +574,10 @@ pub(crate) enum PersonCommand {
     },
     /// Discard all proposed edit
     RejectAll,
+    /// Start background enrichment, or report the run already in progress
+    Enrich,
+    /// Cancel the enrichment task
+    CancelEnrichment,
 }
 
 #[derive(Debug, Subcommand)]

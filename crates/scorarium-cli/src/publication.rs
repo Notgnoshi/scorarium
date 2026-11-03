@@ -367,5 +367,14 @@ pub(crate) async fn run(
             publication.reject_all().await?;
             Ok(())
         }
+        PublicationCommand::Enrich => {
+            let publication = resolve(library, require(subject, "publication")?).await?;
+            enrichment::enrich(&publication, out).await
+        }
+        PublicationCommand::CancelEnrichment => {
+            let reference = require(subject, "publication")?;
+            let publication = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&publication, "publication", reference)
+        }
     }
 }

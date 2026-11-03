@@ -156,6 +156,15 @@ pub(crate) async fn run(
             work.reject_all().await?;
             Ok(())
         }
+        WorkCommand::Enrich => {
+            let work = resolve(library, require(subject, "work")?).await?;
+            enrichment::enrich(&work, out).await
+        }
+        WorkCommand::CancelEnrichment => {
+            let reference = require(subject, "work")?;
+            let work = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&work, "work", reference)
+        }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {

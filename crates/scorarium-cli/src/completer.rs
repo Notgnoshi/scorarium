@@ -337,6 +337,8 @@ mod tests {
                         "accept",
                         "reject",
                         "reject-all",
+                        "enrich",
+                        "cancel-enrichment",
                         "audit"
                     ],
                     36

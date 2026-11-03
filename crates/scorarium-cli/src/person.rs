@@ -167,6 +167,15 @@ pub(crate) async fn run(
             person.reject_all().await?;
             Ok(())
         }
+        PersonCommand::Enrich => {
+            let person = resolve(library, require(subject, "person")?).await?;
+            enrichment::enrich(&person, out).await
+        }
+        PersonCommand::CancelEnrichment => {
+            let reference = require(subject, "person")?;
+            let person = resolve(library, reference).await?;
+            enrichment::cancel_enrichment(&person, "person", reference)
+        }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {
