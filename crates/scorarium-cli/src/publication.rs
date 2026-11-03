@@ -12,7 +12,7 @@ use crate::command::{
 };
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, work};
+use crate::{audit, person, reference, review, work};
 
 /// The kinds of identifier printed on a publication.
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -314,11 +314,7 @@ pub(crate) async fn run(
         PublicationCommand::DiscardChanges => {
             let reference = require(subject, "publication")?;
             let publication = resolve(library, reference).await?;
-            let Some(item) = publication.review_item().await? else {
-                eyre::bail!("publication '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
-            Ok(())
+            review::discard_changes(&publication, "publication", reference).await
         }
     }
 }

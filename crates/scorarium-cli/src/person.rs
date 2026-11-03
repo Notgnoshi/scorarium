@@ -8,7 +8,7 @@ use scorarium_engine::person::{Person, PersonId};
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, reference, search};
+use crate::{audit, reference, review, search};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -128,11 +128,7 @@ pub(crate) async fn run(
         PersonCommand::DiscardChanges => {
             let reference = require(subject, "person")?;
             let person = resolve(library, reference).await?;
-            let Some(item) = person.review_item().await? else {
-                eyre::bail!("person '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
-            Ok(())
+            review::discard_changes(&person, "person", reference).await
         }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;

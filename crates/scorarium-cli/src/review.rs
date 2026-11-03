@@ -2,7 +2,7 @@ use std::io::Write;
 use std::time::SystemTime;
 
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Timestamp;
+use scorarium_engine::entity::{Entity, Timestamp};
 
 use crate::library::write_table;
 use crate::search::describe;
@@ -21,6 +21,19 @@ pub(crate) async fn run(engine: &Engine, out: &mut impl Write) -> eyre::Result<(
         })
         .collect();
     write_table(out, &rows)
+}
+
+/// Remove an entity from the review queue
+pub(crate) async fn discard_changes<E: Entity>(
+    entity: &E,
+    kind: &str,
+    reference: &str,
+) -> eyre::Result<()> {
+    let Some(item) = entity.review_item().await? else {
+        eyre::bail!("{kind} '{reference}' is not in the review queue");
+    };
+    item.discard().await?;
+    Ok(())
 }
 
 fn age(seconds: i64) -> String {

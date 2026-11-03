@@ -8,7 +8,7 @@ use scorarium_engine::work::Work;
 use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, search};
+use crate::{audit, person, reference, review, search};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -110,11 +110,7 @@ pub(crate) async fn run(
         WorkCommand::DiscardChanges => {
             let reference = require(subject, "work")?;
             let work = resolve(library, reference).await?;
-            let Some(item) = work.review_item().await? else {
-                eyre::bail!("work '{reference}' is not in the review queue");
-            };
-            item.discard().await?;
-            Ok(())
+            review::discard_changes(&work, "work", reference).await
         }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
