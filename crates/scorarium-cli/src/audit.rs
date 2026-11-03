@@ -18,9 +18,9 @@ pub(crate) async fn log(engine: &Engine, limit: usize, out: &mut impl Write) -> 
                 Some(AuditSubject::Library { id, label }) => {
                     ("library".to_string(), id.to_string(), label.clone())
                 }
-                Some(AuditSubject::Entity {
-                    kind, id, label, ..
-                }) => (kind.to_string(), id.to_string(), label.clone()),
+                Some(AuditSubject::Entity { id, label, .. }) => {
+                    (id.kind().to_string(), id.get().to_string(), label.clone())
+                }
             };
             [
                 timestamp(event),

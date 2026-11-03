@@ -6,7 +6,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
@@ -390,13 +390,7 @@ impl Entity for Person {
 
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
-            .entity_audit_log(
-                EntityKind::Person,
-                self.id.get(),
-                self.library,
-                before,
-                limit,
-            )
+            .entity_audit_log(AnyEntityId::Person(self.id), self.library, before, limit)
             .await
     }
 
@@ -782,8 +776,7 @@ pub(crate) async fn collect_orphan_people(
 
 fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
     AuditSubject::Entity {
-        kind: EntityKind::Person,
-        id: id.get(),
+        id: AnyEntityId::Person(id),
         library,
         label: name.to_string(),
     }

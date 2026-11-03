@@ -8,7 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -1021,7 +1021,7 @@ impl Entity for Work {
 
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
-            .entity_audit_log(EntityKind::Work, self.id.get(), self.library, before, limit)
+            .entity_audit_log(AnyEntityId::Work(self.id), self.library, before, limit)
             .await
     }
 
@@ -1580,8 +1580,7 @@ pub(crate) async fn tagged(engine: &Engine, library: LibraryId, tag: &Tag) -> Re
 
 fn audit_subject(id: WorkId, library: LibraryId, title: &str) -> AuditSubject {
     AuditSubject::Entity {
-        kind: EntityKind::Work,
-        id: id.get(),
+        id: AnyEntityId::Work(id),
         library,
         label: title.to_string(),
     }

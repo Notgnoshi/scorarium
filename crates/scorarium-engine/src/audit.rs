@@ -5,8 +5,11 @@ use std::str::FromStr;
 
 use sqlx::{Sqlite, SqliteConnection, Transaction};
 
-use crate::entity::{EntityKind, Timestamp};
+use crate::entity::{AnyEntityId, EntityKind, Timestamp};
 use crate::library::LibraryId;
+use crate::person::PersonId;
+use crate::publication::PublicationId;
+use crate::work::WorkId;
 use crate::{Engine, Error, Result};
 
 const MAX_EVENTS: usize = 3_000;
@@ -124,8 +127,7 @@ pub enum AuditSubject {
         label: String,
     },
     Entity {
-        kind: EntityKind,
-        id: i64,
+        id: AnyEntityId,
         library: LibraryId,
         label: String,
     },
@@ -245,14 +247,9 @@ async fn insert(
             None,
             Some(label),
         ),
-        Some(AuditSubject::Entity {
-            kind,
-            id,
-            library,
-            label,
-        }) => (
-            Some(kind.to_string()),
-            Some(*id),
+        Some(AuditSubject::Entity { id, library, label }) => (
+            Some(id.kind().to_string()),
+            Some(id.get()),
             Some(library.get()),
             Some(label),
         ),
@@ -299,8 +296,14 @@ impl AuditRow {
                 label,
             }),
             Some(kind) => Some(AuditSubject::Entity {
-                kind: kind.parse()?,
-                id: self.entity_id.ok_or_else(|| missing("entity_id"))?,
+                id: {
+                    let id = self.entity_id.ok_or_else(|| missing("entity_id"))?;
+                    match kind.parse()? {
+                        EntityKind::Publication => AnyEntityId::Publication(PublicationId::new(id)),
+                        EntityKind::Work => AnyEntityId::Work(WorkId::new(id)),
+                        EntityKind::Person => AnyEntityId::Person(PersonId::new(id)),
+                    }
+                },
                 library: LibraryId::new(
                     self.entity_library_id
                         .ok_or_else(|| missing("entity_library_id"))?,
@@ -352,13 +355,13 @@ impl Engine {
     /// Read an entities audit log, paginated as [Engine::audit_log]
     pub(crate) async fn entity_audit_log(
         &self,
-        kind: EntityKind,
-        id: i64,
+        id: AnyEntityId,
         library: LibraryId,
         before: Option<AuditId>,
         limit: usize,
     ) -> Result<Vec<AuditEvent>> {
-        let kind = kind.to_string();
+        let kind = id.kind().to_string();
+        let id = id.get();
         let before = before.map(|id| id.0);
         let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
@@ -398,8 +401,7 @@ mod tests {
             label: "Scores".into(),
         };
         let work = AuditSubject::Entity {
-            kind: EntityKind::Work,
-            id: 7,
+            id: AnyEntityId::Work(WorkId::new(7)),
             library: LibraryId::new(1),
             label: "Sonata".into(),
         };

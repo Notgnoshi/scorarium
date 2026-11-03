@@ -8,7 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -341,8 +341,7 @@ impl Publication {
 
     fn audit_subject(&self) -> AuditSubject {
         AuditSubject::Entity {
-            kind: EntityKind::Publication,
-            id: self.id.get(),
+            id: AnyEntityId::Publication(self.id),
             library: self.library,
             label: self.label(),
         }
@@ -1421,8 +1420,7 @@ impl Entity for Publication {
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
             .entity_audit_log(
-                EntityKind::Publication,
-                self.id.get(),
+                AnyEntityId::Publication(self.id),
                 self.library,
                 before,
                 limit,
@@ -2157,8 +2155,7 @@ mod tests {
         publication.commit().await.unwrap();
 
         let subject = Some(AuditSubject::Entity {
-            kind: EntityKind::Publication,
-            id: publication.id().get(),
+            id: AnyEntityId::Publication(publication.id()),
             library: library.id(),
             label: "Pro Git".into(),
         });
@@ -2567,8 +2564,7 @@ mod tests {
             [(
                 Action::Created,
                 Some(AuditSubject::Entity {
-                    kind: EntityKind::Publication,
-                    id: publication.id().get(),
+                    id: AnyEntityId::Publication(publication.id()),
                     library: library.id(),
                     label: "978-1-68050-127-8".into(),
                 })
