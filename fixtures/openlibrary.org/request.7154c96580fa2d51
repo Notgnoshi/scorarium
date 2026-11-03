@@ -1,0 +1,14 @@
+https://openlibrary.org/search.json?title=zzqx+wobblegromp+fnargle&limit=5&fields=key%2Ctitle%2Csubtitle%2Cauthor_name%2Cauthor_key%2Cfirst_publish_year%2Ccover_i%2Ceditions%2Ceditions.key%2Ceditions.isbn%2Ceditions.publisher%2Ceditions.publish_date%2Ceditions.title%2Ceditions.subtitle%2Ceditions.cover_i
+
+200
+server: nginx/1.30.6
+date: Tue, 03 Nov 2026 23:21:27 GMT
+content-type: application/json
+content-length: 156
+connection: keep-alive
+vary: Origin
+x-served-by: FastAPI
+server-timing: total;dur=40.8, solr;dur=15.6;desc="1 call"
+referrer-policy: no-referrer-when-downgrade
+
+{"numFound":0,"start":0,"numFoundExact":true,"num_found":0,"documentation_url":"https://openlibrary.org/dev/docs/api/search","q":"","offset":null,"docs":[]}
