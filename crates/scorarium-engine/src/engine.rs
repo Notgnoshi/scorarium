@@ -113,7 +113,6 @@ impl Engine {
         })
     }
 
-    #[expect(dead_code)]
     pub(crate) fn client(&self) -> &Client {
         &self.inner.client
     }

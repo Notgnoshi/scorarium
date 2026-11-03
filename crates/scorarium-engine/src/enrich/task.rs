@@ -59,7 +59,6 @@ pub(crate) struct SubTaskQueue {
 }
 
 impl SubTaskQueue {
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn enqueue(&self, subtask: impl Future<Output = Result<()>> + Send + 'static) {
         let mut subtasks = self.task.subtasks();
         if self.is_cancelled() {
@@ -82,7 +81,6 @@ impl SubTaskQueue {
     }
 
     /// Return whether the task was cancelled
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) fn is_cancelled(&self) -> bool {
         self.task.status.borrow().cancelled
     }

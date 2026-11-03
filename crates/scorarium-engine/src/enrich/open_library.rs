@@ -1,0 +1,160 @@
+use scorarium_client::{Priority, Source};
+
+use crate::enrich::SubTaskQueue;
+use crate::entity::Entity;
+use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
+use crate::value::Year;
+use crate::{Engine, Error, Result};
+
+/// Start Open Library enrichment for the given [IdentifierKind::Isbn] [Identifier]
+pub(crate) async fn edition(
+    engine: Engine,
+    publication: PublicationId,
+    isbn: Identifier,
+    queue: SubTaskQueue,
+) -> Result<()> {
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    log::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
+    let Some(edition) = engine
+        .client()
+        .open_library()
+        .edition_by_isbn(isbn.as_str(), Priority::Background)
+        .await?
+    else {
+        // A 404 is a definite answer, so there is nothing to propose.
+        return Ok(());
+    };
+    let publication = Publication::load(&engine, publication)
+        .await?
+        .ok_or(Error::NotFound)?;
+
+    let title = match &edition.subtitle {
+        Some(subtitle) => format!("{}: {subtitle}", edition.title),
+        None => edition.title.clone(),
+    };
+    let mut proposals = vec![Proposal::Title(title)];
+    proposals.extend(
+        edition
+            .publishers
+            .iter()
+            .map(|p| Proposal::Publisher(p.clone())),
+    );
+    if let Some(year) = edition.publish_date.as_deref().and_then(year) {
+        proposals.push(Proposal::Year(year));
+    }
+    for raw in edition.isbn_13.iter().chain(&edition.isbn_10) {
+        match Identifier::new(IdentifierKind::Isbn, raw) {
+            Ok(identifier) => proposals.push(Proposal::Identifier(identifier)),
+            Err(error) => log::warn!(
+                "Open Library edition {}: ISBN {raw:?}: {error}",
+                edition.olid
+            ),
+        }
+    }
+    proposals.push(Proposal::Link(edition.url().parse()?));
+
+    let (mut accepted, mut present) = (0, 0);
+    for proposal in proposals {
+        if queue.is_cancelled() {
+            return Ok(());
+        }
+        match publication.propose(Source::OpenLibrary, proposal).await {
+            Ok(Some(_)) => accepted += 1,
+            Ok(None) => present += 1,
+            // A retry cannot fix a value the engine rejects as invalid
+            Err(Error::InvalidValue(reason)) => {
+                log::warn!("Open Library edition {} invalid: {reason}", edition.olid);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    log::debug!(
+        "Open Library edition {}: proposed {accepted}, already present {present}",
+        edition.olid
+    );
+    Ok(())
+}
+
+/// The first run of exactly four ASCII digits in a free-text date
+fn year(publish_date: &str) -> Option<Year> {
+    publish_date
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|run| run.len() == 4)
+        .and_then(|run| run.parse().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::enrich::EnrichmentStatus;
+    use crate::entity;
+    use crate::holding::NewHolding;
+    use crate::publication::ImportSeed;
+
+    /// Render a proposal as "<field> <value>", since Proposal cannot derive PartialEq
+    fn describe(proposal: &entity::Proposal<Publication>) -> String {
+        match &proposal.value {
+            Proposal::Title(title) => format!("title {title}"),
+            Proposal::Publisher(publisher) => format!("publisher {publisher}"),
+            Proposal::Year(year) => format!("year {year}"),
+            Proposal::Identifier(identifier) => format!("identifier {identifier}"),
+            Proposal::Link(url) => format!("link {url}"),
+            Proposal::Contributor { person, role } => {
+                format!("contributor {} {role}", person.name())
+            }
+            Proposal::Contents(work) => format!("contents {}", work.title()),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_isbn_import_proposes_the_edition_facts() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
+        let publication = library
+            .create_publication(
+                ImportSeed::Identifier(isbn),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        let status = publication.enrichment().unwrap().status();
+        assert_eq!(
+            status,
+            EnrichmentStatus {
+                successful: 1,
+                pending: 0,
+                failed: 0,
+                cancelled: false
+            }
+        );
+
+        let proposals: Vec<String> = publication
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(describe)
+            .collect();
+        assert_eq!(
+            proposals,
+            [
+                "title Bagatelles, Rondos and Other Shorter Works for Piano",
+                "publisher Dover Publications",
+                "year 1987",
+                "link https://openlibrary.org/books/OL7636066M",
+            ]
+        );
+    }
+}

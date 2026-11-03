@@ -8,7 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::enrich::Enrichment;
+use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
@@ -367,7 +367,6 @@ impl Publication {
         entity::commit_rejection(tx, &collected).await
     }
 
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -1594,9 +1593,20 @@ impl Entity for Publication {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
+        let isbn = self
+            .identifiers
+            .iter()
+            .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+            .cloned();
+        let engine = self.engine.clone();
+        let id = self.id;
         Ok(self
             .engine
-            .start_enrichment(AnyEntityId::Publication(self.id), |_| {}))
+            .start_enrichment(AnyEntityId::Publication(id), |queue| {
+                if let Some(isbn) = isbn {
+                    queue.enqueue(open_library::edition(engine, id, isbn, queue.clone()));
+                }
+            }))
     }
 
     fn enrichment(&self) -> Option<Enrichment> {
@@ -2558,7 +2568,7 @@ mod tests {
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
-        let isbn = Identifier::new(IdentifierKind::Isbn, "978-1-68050-127-8").unwrap();
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-99999-9").unwrap();
         let mut publication = library
             .create_publication(
                 ImportSeed::Identifier(isbn.clone()),
@@ -2580,7 +2590,7 @@ mod tests {
                 Some(AuditSubject::Entity {
                     id: AnyEntityId::Publication(publication.id()),
                     library: library.id(),
-                    label: "978-1-68050-127-8".into(),
+                    label: "978-0-486-99999-9".into(),
                 })
             )]
         );

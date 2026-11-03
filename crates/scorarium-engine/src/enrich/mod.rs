@@ -1,4 +1,5 @@
+pub(crate) mod open_library;
 mod task;
 
-pub(crate) use task::Task;
 pub use task::{Enrichment, EnrichmentState, EnrichmentStatus};
+pub(crate) use task::{SubTaskQueue, Task};
