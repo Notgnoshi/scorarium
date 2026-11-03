@@ -315,7 +315,7 @@ fn best_match(matches: Vec<Person>) -> Option<Person> {
 }
 
 /// The first run of exactly four ASCII digits in a free-text date
-fn year(publish_date: &str) -> Option<Year> {
+pub(crate) fn year(publish_date: &str) -> Option<Year> {
     publish_date
         .split(|c: char| !c.is_ascii_digit())
         .find(|run| run.len() == 4)
