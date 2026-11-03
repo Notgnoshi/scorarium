@@ -147,7 +147,10 @@ mod tests {
             .unwrap();
         sheet_music
             .create_publication(
-                ImportSeed::Title("Pro Git handbook".into()),
+                ImportSeed::Title {
+                    title: "Pro Git handbook".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await

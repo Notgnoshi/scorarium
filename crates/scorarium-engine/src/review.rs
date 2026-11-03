@@ -263,7 +263,10 @@ mod tests {
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -292,7 +295,10 @@ mod tests {
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -316,7 +322,10 @@ mod tests {
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -356,7 +365,10 @@ mod tests {
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await

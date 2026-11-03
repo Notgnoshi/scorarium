@@ -377,7 +377,10 @@ mod tests {
         ] {
             let mut publication = library
                 .create_publication(
-                    ImportSeed::Title(title.into()),
+                    ImportSeed::Title {
+                        title: title.into(),
+                        record: None,
+                    },
                     NewHolding::Physical { location: None },
                 )
                 .await
@@ -432,7 +435,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut nocturnes = library
             .create_publication(
-                ImportSeed::Title("Chopin Nocturnes".into()),
+                ImportSeed::Title {
+                    title: "Chopin Nocturnes".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -453,7 +459,10 @@ mod tests {
         nocturnes.commit().await.unwrap();
         library
             .create_publication(
-                ImportSeed::Title("Nocturne album".into()),
+                ImportSeed::Title {
+                    title: "Nocturne album".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -514,7 +523,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut album = library
             .create_publication(
-                ImportSeed::Title("Romantic piano".into()),
+                ImportSeed::Title {
+                    title: "Romantic piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await

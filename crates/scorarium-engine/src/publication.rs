@@ -51,9 +51,15 @@ impl FromStr for PublicationId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportSeed {
     /// A user-entered title
-    Title(String),
+    Title {
+        title: String,
+        record: Option<ExternalRecord>,
+    },
     /// An identifier printed on the publication
-    Identifier(Identifier),
+    Identifier {
+        identifier: Identifier,
+        record: Option<ExternalRecord>,
+    },
 }
 
 /// The fields of a publication
@@ -1647,9 +1653,23 @@ pub(crate) async fn create(
     seed: ImportSeed,
     holding: NewHolding<'_>,
 ) -> Result<Publication> {
-    let (title, identifier) = match &seed {
-        ImportSeed::Title(title) => (Some(clean_title(title)?), None),
-        ImportSeed::Identifier(identifier) => (None, Some(identifier)),
+    let (title, identifier, record) = match seed {
+        ImportSeed::Title { title, record } => {
+            (Some(clean_title(&title)?.to_string()), None, record)
+        }
+        ImportSeed::Identifier { identifier, record } => (None, Some(identifier), record),
+    };
+    let link = match record {
+        Some(record) => Some((
+            record.url(EntityKind::Publication).ok_or_else(|| {
+                Error::InvalidValue(format!(
+                    "A {} record does not identify a publication.",
+                    record.kind()
+                ))
+            })?,
+            record,
+        )),
+        None => None,
     };
     let NewHolding::Physical { location } = holding;
     let location = clean_text(location);
@@ -1662,7 +1682,7 @@ pub(crate) async fn create(
     )
     .fetch_one(&mut *tx)
     .await?;
-    if let Some(identifier) = identifier {
+    if let Some(identifier) = &identifier {
         let kind = identifier.kind().to_string();
         sqlx::query!(
             "INSERT INTO publication_identifier (publication_id, kind, value) VALUES (?, ?, ?)",
@@ -1671,6 +1691,19 @@ pub(crate) async fn create(
             identifier.as_str()
         )
         .execute(&mut *tx)
+        .await?;
+    }
+    if let Some((url, record)) = &link {
+        let kind = record.kind().to_string();
+        sqlx::query_scalar!(
+            r#"INSERT INTO publication_link (publication_id, url, kind, external_id)
+               VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
+            id,
+            url.as_url().as_str(),
+            kind,
+            Some(record.id())
+        )
+        .fetch_one(&mut *tx)
         .await?;
     }
     sqlx::query!(
@@ -2179,6 +2212,7 @@ fn normalize_ismn(text: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::link::LinkKind;
 
     #[tokio::test]
     async fn publication_edits_audit_once_per_change() {
@@ -2189,7 +2223,10 @@ mod tests {
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical {
                     location: Some("Desk"),
                 },
@@ -2271,7 +2308,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                ImportSeed::Title {
+                    title: "Three gymnopedies for the piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2309,7 +2349,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut album = library
             .create_publication(
-                ImportSeed::Title("Russian piano album".into()),
+                ImportSeed::Title {
+                    title: "Russian piano album".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2325,7 +2368,10 @@ mod tests {
             .unwrap();
         let mut masterpieces = library
             .create_publication(
-                ImportSeed::Title("Rachmaninoff masterpieces for solo piano".into()),
+                ImportSeed::Title {
+                    title: "Rachmaninoff masterpieces for solo piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2363,14 +2409,20 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let publication = library
             .create_publication(
-                ImportSeed::Title("Pro Git".into()),
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut other = library
             .create_publication(
-                ImportSeed::Title("Scott Chacon".into()),
+                ImportSeed::Title {
+                    title: "Scott Chacon".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2414,14 +2466,20 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut a = library
             .create_publication(
-                ImportSeed::Title("Preludes, book one".into()),
+                ImportSeed::Title {
+                    title: "Preludes, book one".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut b = library
             .create_publication(
-                ImportSeed::Title("Preludes, book two".into()),
+                ImportSeed::Title {
+                    title: "Preludes, book two".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2458,7 +2516,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Preludes".into()),
+                ImportSeed::Title {
+                    title: "Preludes".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2490,7 +2551,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Preludes".into()),
+                ImportSeed::Title {
+                    title: "Preludes".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2524,7 +2588,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                ImportSeed::Title {
+                    title: "Three gymnopedies for the piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2569,7 +2636,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Three gymnopedies for the piano".into()),
+                ImportSeed::Title {
+                    title: "Three gymnopedies for the piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2595,13 +2665,26 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-99999-9").unwrap();
+        let record = ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M");
         let mut publication = library
             .create_publication(
-                ImportSeed::Identifier(isbn.clone()),
+                ImportSeed::Identifier {
+                    identifier: isbn.clone(),
+                    record: Some(record.clone()),
+                },
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
+        let links: Vec<(&str, Option<&ExternalRecord>)> = publication
+            .links()
+            .iter()
+            .map(|link| (link.url.as_url().as_str(), link.record.as_ref()))
+            .collect();
+        assert_eq!(
+            links,
+            [("https://openlibrary.org/books/OL7636066M", Some(&record))]
+        );
         let events: Vec<_> = publication
             .audit_log(None, 10)
             .await
