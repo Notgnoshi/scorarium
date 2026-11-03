@@ -1656,6 +1656,9 @@ pub(crate) async fn create(
     .await?
     .commit()
     .await?;
+    if identifier.is_some() {
+        publication.enrich().await?;
+    }
     Ok(publication)
 }
 
