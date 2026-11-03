@@ -90,7 +90,11 @@ pub(crate) async fn list(
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(
+        out,
+        ["id", "draft", "title", "contributors", "year", "holdings"],
+        &rows,
+    )
 }
 
 pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre::Result<()> {
@@ -148,7 +152,7 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
     for link in publication.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
-    write_table(out, &rows)
+    write_table(out, ["field", "id", "value"], &rows)
 }
 
 fn identifier_kind(kind: scorarium_engine::publication::IdentifierKind) -> &'static str {

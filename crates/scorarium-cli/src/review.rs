@@ -20,7 +20,7 @@ pub(crate) async fn run(engine: &Engine, out: &mut impl Write) -> eyre::Result<(
             [item.library_name, kind.to_string(), id, label, age(seconds)]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(out, ["library", "kind", "id", "title", "age"], &rows)
 }
 
 /// Remove an entity from the review queue

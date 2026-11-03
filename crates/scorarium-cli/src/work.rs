@@ -56,7 +56,7 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     for link in work.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
-    write_table(out, &rows)
+    write_table(out, ["field", "id", "value"], &rows)
 }
 
 /// Resolve the title or id of a work

@@ -28,7 +28,7 @@ pub(crate) async fn list(
             ]
         })
         .collect();
-    write_table(out, &rows)
+    write_table(out, ["id", "name", "sort-name"], &rows)
 }
 
 /// Show a person with the publications and works they contributed to.
@@ -61,7 +61,7 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
             format!("{} ({roles})", work.title()),
         ));
     }
-    write_table(out, &rows)
+    write_table(out, ["field", "id", "value"], &rows)
 }
 
 /// List the roles `person` holds among `contributors`.
