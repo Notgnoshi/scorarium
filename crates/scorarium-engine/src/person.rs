@@ -6,6 +6,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -508,6 +509,14 @@ impl Entity for Person {
         .await?
         .commit()
         .await
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        Ok(self.engine.start_enrichment(AnyEntityId::Person(self.id)))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Person(self.id))
     }
 }
 

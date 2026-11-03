@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
+use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -1171,6 +1172,14 @@ impl Entity for Work {
                 .await?;
         }
         tx.commit().await
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        Ok(self.engine.start_enrichment(AnyEntityId::Work(self.id)))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Work(self.id))
     }
 }
 

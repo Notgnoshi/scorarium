@@ -7,6 +7,7 @@ use std::str::FromStr;
 use scorarium_client::Source;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::enrich::Enrichment;
 use crate::library::LibraryId;
 use crate::person::{Person, PersonId};
 use crate::publication::{Publication, PublicationId};
@@ -184,6 +185,12 @@ pub trait Entity: Sized {
     ///
     /// Returns [Error::NotFound] if the entity has already been deleted.
     fn delete(self) -> impl Future<Output = Result<()>> + Send;
+
+    /// Start background metadata enrichment on the entity, or return the [Enrichment] handle in progress
+    fn enrich(&self) -> impl Future<Output = Result<Enrichment>> + Send;
+
+    /// Return the entity's background [Enrichment] task handle, if one exists
+    fn enrichment(&self) -> Option<Enrichment>;
 }
 
 /// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`

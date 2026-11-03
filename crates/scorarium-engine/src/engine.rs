@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use scorarium_client::{Client, UserAgent};
@@ -8,6 +9,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool};
 
 use crate::audit::Audited;
+use crate::enrich::Task;
+use crate::entity::AnyEntityId;
 use crate::{Error, Result};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
@@ -55,6 +58,7 @@ pub struct Engine {
 struct EngineInner {
     pool: SqlitePool,
     client: Client,
+    enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -103,6 +107,7 @@ impl Engine {
             inner: Arc::new(EngineInner {
                 pool,
                 client,
+                enrichments: Mutex::default(),
                 _temp_dir: temp_dir,
             }),
         })
@@ -111,6 +116,14 @@ impl Engine {
     #[expect(dead_code)]
     pub(crate) fn client(&self) -> &Client {
         &self.inner.client
+    }
+
+    /// Get the enrichment tasks in progress
+    pub(crate) fn enrichments(&self) -> MutexGuard<'_, HashMap<AnyEntityId, Arc<Task>>> {
+        self.inner
+            .enrichments
+            .lock()
+            .expect("enrichment registry lock poisoned")
     }
 
     /// Acquire a read-only connection for queries

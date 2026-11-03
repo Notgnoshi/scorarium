@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
+use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
@@ -1590,6 +1591,16 @@ impl Entity for Publication {
                 .await?;
         }
         tx.commit().await
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        Ok(self
+            .engine
+            .start_enrichment(AnyEntityId::Publication(self.id)))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Publication(self.id))
     }
 }
 
