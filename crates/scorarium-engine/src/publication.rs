@@ -1611,7 +1611,11 @@ impl Entity for Publication {
                 )
                 .await?;
         }
-        tx.commit().await
+        tx.commit().await?;
+        if let Some(enrichment) = self.enrichment() {
+            enrichment.cancel();
+        }
+        Ok(())
     }
 
     async fn enrich(&self) -> Result<Enrichment> {

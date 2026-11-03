@@ -30,9 +30,10 @@ pub(crate) async fn edition(
         // A 404 is a definite answer, so there is nothing to propose.
         return Ok(());
     };
-    let publication = Publication::load(&engine, publication)
-        .await?
-        .ok_or(Error::NotFound)?;
+    let Some(publication) = Publication::load(&engine, publication).await? else {
+        queue.cancel();
+        return Ok(());
+    };
 
     let title = match &edition.subtitle {
         Some(subtitle) => format!("{}: {subtitle}", edition.title),
@@ -236,9 +237,10 @@ pub(crate) async fn author(
     else {
         return Ok(());
     };
-    let publication = Publication::load(&engine, publication)
-        .await?
-        .ok_or(Error::NotFound)?;
+    let Some(publication) = Publication::load(&engine, publication).await? else {
+        queue.cancel();
+        return Ok(());
+    };
 
     let this = ExternalRecord::new(LinkKind::OpenLibrary, &olid);
     let mut matches = person::find_by_record(&engine, publication.library(), &this).await?;

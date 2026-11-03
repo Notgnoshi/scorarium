@@ -508,7 +508,11 @@ impl Entity for Person {
         )
         .await?
         .commit()
-        .await
+        .await?;
+        if let Some(enrichment) = self.enrichment() {
+            enrichment.cancel();
+        }
+        Ok(())
     }
 
     async fn enrich(&self) -> Result<Enrichment> {

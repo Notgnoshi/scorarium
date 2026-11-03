@@ -51,6 +51,16 @@ impl Task {
             .lock()
             .expect("enrichment subtasks lock poisoned")
     }
+
+    fn cancel(&self) {
+        // Holding the lock across the flag and the drain means a concurrent enqueue either pushes
+        // its subtask before the drain or sees the flag and spawns nothing.
+        let mut subtasks = self.subtasks();
+        self.status.send_modify(|status| status.cancelled = true);
+        for subtask in subtasks.drain(..) {
+            subtask.abort();
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +88,10 @@ impl SubTaskQueue {
             }
         });
         subtasks.push(handle.abort_handle());
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.task.cancel();
     }
 
     /// Return whether the task was cancelled
@@ -134,15 +148,7 @@ impl Enrichment {
 
     /// Abort the task's pending and in-flight subtasks and remove it from the task registry
     pub fn cancel(self) {
-        // Holding the lock across the flag and the drain means a concurrent enqueue either pushes
-        // its subtask before the drain or sees the flag and spawns nothing.
-        let mut subtasks = self.task.subtasks();
-        self.task
-            .status
-            .send_modify(|status| status.cancelled = true);
-        for subtask in subtasks.drain(..) {
-            subtask.abort();
-        }
+        self.task.cancel();
     }
 }
 
@@ -284,5 +290,24 @@ mod tests {
                 cancelled: true
             }
         );
+    }
+    #[tokio::test]
+    async fn a_subtask_can_end_its_task() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let root = AnyEntityId::Publication(PublicationId::new(1));
+        engine.start_enrichment(root, |queue| {
+            let task = queue.clone();
+            queue.enqueue(async move {
+                task.cancel();
+                Ok(())
+            });
+        });
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        assert!(engine.enrichment_of(root).is_none());
     }
 }
