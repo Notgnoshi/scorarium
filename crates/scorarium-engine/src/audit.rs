@@ -386,12 +386,11 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
 
     #[tokio::test]
     async fn audit_events_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = AuditSubject::Library {

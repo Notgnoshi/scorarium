@@ -18,6 +18,8 @@ pub mod work;
 mod demo;
 mod engine;
 mod error;
+#[cfg(test)]
+mod test;
 
 pub use engine::{Engine, EngineOptions};
 pub use error::{Error, Result};

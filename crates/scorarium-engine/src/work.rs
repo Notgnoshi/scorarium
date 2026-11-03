@@ -1845,7 +1845,6 @@ fn digit_runs(text: &str) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
@@ -1978,7 +1977,7 @@ mod tests {
     #[tokio::test]
     async fn delete_collects_orphan_people() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2023,7 +2022,7 @@ mod tests {
         use crate::publication::Proposal as PublicationProposal;
 
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();

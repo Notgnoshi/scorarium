@@ -12,3 +12,6 @@ reedline.workspace = true
 scorarium-engine.workspace = true
 shlex.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+scorarium-client = { workspace = true, features = ["fake-transport"] }

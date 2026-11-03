@@ -166,14 +166,13 @@ mod tests {
     use scorarium_client::Source;
 
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::publication::{ImportSeed, Proposal};
 
     #[tokio::test]
     async fn discard_refuses_an_entry_no_longer_queued() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
@@ -202,7 +201,7 @@ mod tests {
     #[tokio::test]
     async fn review_item_answers_for_a_queued_entity_only() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
@@ -226,7 +225,7 @@ mod tests {
     #[tokio::test]
     async fn a_committed_entity_with_proposals_is_queued_until_discarded() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();

@@ -112,13 +112,12 @@ fn parse_identifier(query: &str) -> Option<Identifier> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
     #[tokio::test]
     async fn search_honours_visibility_drafts_and_limit() {
-        let engine = Engine::demo(EngineOptions::default()).await.unwrap();
+        let engine = Engine::demo(crate::test::options()).await.unwrap();
 
         assert!(
             engine
@@ -170,7 +169,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_finds_a_publication_by_either_isbn_form() {
-        let engine = Engine::demo(EngineOptions::default()).await.unwrap();
+        let engine = Engine::demo(crate::test::options()).await.unwrap();
         // Imported as the ISBN-10 0-8065-0180-4 and stored as 978-0-8065-0180-2
         for query in ["0-8065-0180-4", "ISBN 0806501804", "9780806501802"] {
             let hits = engine.search(query, true, 10).await.unwrap();

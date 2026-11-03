@@ -262,13 +262,21 @@ impl Completer for ShellCompleter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use scorarium_client::fake::FakeTransport;
+    use scorarium_client::{Client, UserAgent};
     use scorarium_engine::EngineOptions;
 
     use super::*;
 
     #[tokio::test]
     async fn completion_follows_the_grammar() {
-        let engine = Engine::demo(EngineOptions::default()).await.unwrap();
+        let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
+        let transport = FakeTransport::new(&user_agent).expect("failed to open API fixtures");
+        let client = Client::with_transport(user_agent.clone(), Arc::new(transport));
+        let options = EngineOptions::new(user_agent).unwrap().client(client);
+        let engine = Engine::demo(options).await.unwrap();
         let handle = Handle::current();
         tokio::task::spawn_blocking(move || {
             let values = |selected: Option<LibraryId>, line: &str| -> Vec<(String, usize)> {

@@ -2131,12 +2131,11 @@ fn normalize_ismn(text: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
 
     #[tokio::test]
     async fn publication_edits_audit_once_per_change() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
@@ -2219,7 +2218,7 @@ mod tests {
     #[tokio::test]
     async fn commit_cascades_through_works_to_people() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2257,7 +2256,7 @@ mod tests {
     #[tokio::test]
     async fn delete_collects_orphans() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2311,7 +2310,7 @@ mod tests {
     #[tokio::test]
     async fn a_source_proposes_a_fact_once() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2362,7 +2361,7 @@ mod tests {
     #[tokio::test]
     async fn rejecting_the_last_proposal_naming_a_draft_collects_it() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2406,7 +2405,7 @@ mod tests {
     #[tokio::test]
     async fn accepting_contents_commits_the_proposed_work() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2438,7 +2437,7 @@ mod tests {
     #[tokio::test]
     async fn committing_a_draft_drops_its_proposals() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2472,7 +2471,7 @@ mod tests {
     #[tokio::test]
     async fn contributors_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2517,7 +2516,7 @@ mod tests {
     #[tokio::test]
     async fn tags_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2544,7 +2543,7 @@ mod tests {
     #[tokio::test]
     async fn identifier_seed() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();

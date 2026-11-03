@@ -814,7 +814,6 @@ fn sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::link::LinkKind;
     use crate::publication::ImportSeed;
@@ -822,7 +821,7 @@ mod tests {
     #[tokio::test]
     async fn links_collapse_on_record() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();

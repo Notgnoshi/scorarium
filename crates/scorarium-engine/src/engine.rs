@@ -2,21 +2,48 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use scorarium_client::{Client, UserAgent};
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool};
 
-use crate::Result;
 use crate::audit::Audited;
+use crate::{Error, Result};
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EngineOptions {
+    migrate_on_startup: bool,
+    client: Client,
+}
+
+impl EngineOptions {
+    /// Build default [EngineOptions] that uses the given [UserAgent]
+    ///
+    /// Providing contact information (an email) in the user agent is recommended because some APIs
+    /// increase their rate limits if contact info is provided.
+    pub fn new(user_agent: UserAgent) -> Result<EngineOptions> {
+        let client = Client::new(user_agent).map_err(Error::Generic)?;
+        Ok(EngineOptions {
+            migrate_on_startup: false,
+            client,
+        })
+    }
+
     /// Run migrations on startup, otherwise startup on an outdated database will fail.
     ///
     /// A missing database is always created and migrated.
-    pub migrate_on_startup: bool,
+    pub fn migrate_on_startup(mut self, migrate: bool) -> EngineOptions {
+        self.migrate_on_startup = migrate;
+        self
+    }
+
+    /// Dependency inject the API client
+    pub fn client(mut self, client: Client) -> EngineOptions {
+        self.client = client;
+        self
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -27,6 +54,7 @@ pub struct Engine {
 #[derive(Debug)]
 struct EngineInner {
     pool: SqlitePool,
+    client: Client,
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -35,17 +63,17 @@ impl Engine {
     pub async fn open(data_dir: impl AsRef<Path>, options: EngineOptions) -> Result<Engine> {
         let data_dir = data_dir.as_ref();
         std::fs::create_dir_all(data_dir)?;
-        Engine::new(data_dir, options.migrate_on_startup, None).await
+        Engine::new(data_dir, options.migrate_on_startup, options.client, None).await
     }
 
     /// Open a temporary engine filled with the demo libraries
     ///
     /// The temporary directory is cleaned up on shutdown. A fresh database is always migrated, so
     /// [EngineOptions::migrate_on_startup] has no effect.
-    pub async fn demo(_options: EngineOptions) -> Result<Engine> {
+    pub async fn demo(options: EngineOptions) -> Result<Engine> {
         let dir = tempfile::tempdir()?;
         let data_dir = dir.path().to_path_buf();
-        let engine = Engine::new(&data_dir, true, Some(dir)).await?;
+        let engine = Engine::new(&data_dir, true, options.client, Some(dir)).await?;
         crate::demo::populate(&engine).await?;
         Ok(engine)
     }
@@ -53,6 +81,7 @@ impl Engine {
     async fn new(
         data_dir: &Path,
         migrate_on_startup: bool,
+        client: Client,
         temp_dir: Option<tempfile::TempDir>,
     ) -> Result<Engine> {
         let path = data_dir.join("scorarium.db");
@@ -73,9 +102,15 @@ impl Engine {
         Ok(Engine {
             inner: Arc::new(EngineInner {
                 pool,
+                client,
                 _temp_dir: temp_dir,
             }),
         })
+    }
+
+    #[expect(dead_code)]
+    pub(crate) fn client(&self) -> &Client {
+        &self.inner.client
     }
 
     /// Acquire a read-only connection for queries

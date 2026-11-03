@@ -18,3 +18,6 @@ tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["time"] }
 url.workspace = true
+
+[dev-dependencies]
+scorarium-client = { workspace = true, features = ["fake-transport"] }
