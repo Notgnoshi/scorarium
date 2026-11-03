@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
 
-use crate::entity::AnyEntityId;
+use crate::entity::{AnyEntityId, Timestamp};
 use crate::{Engine, Result};
 
 /// The status of an [Enrichment] task
@@ -41,6 +41,7 @@ pub enum EnrichmentState {
 #[derive(Debug)]
 pub(crate) struct Task {
     root: AnyEntityId,
+    queued_at: Timestamp,
     status: watch::Sender<EnrichmentStatus>,
     subtasks: Mutex<Vec<AbortHandle>>,
 }
@@ -137,6 +138,24 @@ impl Enrichment {
         *self.status.borrow()
     }
 
+    /// Return the entity the task enriches
+    pub fn entity(&self) -> AnyEntityId {
+        self.task.root
+    }
+
+    /// Return when the task started
+    pub(crate) fn queued_at(&self) -> Timestamp {
+        self.task.queued_at
+    }
+
+    /// Return whether the task puts its entity in the review queue
+    pub(crate) fn needs_review(&self) -> bool {
+        matches!(
+            self.status().state(),
+            EnrichmentState::InProgress | EnrichmentState::Failed
+        )
+    }
+
     /// Wait for the next status change, or return at once if the task is over
     pub async fn changed(&mut self) {
         let state = self.status.borrow_and_update().state();
@@ -167,6 +186,7 @@ impl Engine {
         }
         let task = Arc::new(Task {
             root,
+            queued_at: chrono::Utc::now(),
             status: watch::Sender::new(EnrichmentStatus::default()),
             subtasks: Mutex::default(),
         });
@@ -187,6 +207,15 @@ impl Engine {
             return None;
         }
         Some(Enrichment::new(task))
+    }
+
+    /// Return every task whose entity belongs in the review queue
+    pub(crate) fn enrichments_to_review(&self) -> Vec<Enrichment> {
+        self.enrichments()
+            .values()
+            .map(Enrichment::new)
+            .filter(Enrichment::needs_review)
+            .collect()
     }
 
     /// Wait for all enrichment tasks to finish
