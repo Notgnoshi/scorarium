@@ -8,7 +8,7 @@ use scorarium_engine::person::{Person, PersonId};
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, reference, review, search};
+use crate::{audit, enrichment, reference, review, search};
 
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
@@ -59,6 +59,13 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
             "work",
             work.id().to_string(),
             format!("{} ({roles})", work.title()),
+        ));
+    }
+    if let Some(enrichment) = person.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
         ));
     }
     write_table(out, ["field", "id", "value"], &rows)

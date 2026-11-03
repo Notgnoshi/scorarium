@@ -8,7 +8,7 @@ use scorarium_engine::work::Work;
 use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, review, search};
+use crate::{audit, enrichment, person, reference, review, search};
 
 pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     let row = |label: &str, id: String, value: String| [label.to_string(), id, value];
@@ -55,6 +55,13 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
     }
     for link in work.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
+    }
+    if let Some(enrichment) = work.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
+        ));
     }
     write_table(out, ["field", "id", "value"], &rows)
 }

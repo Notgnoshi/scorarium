@@ -342,13 +342,13 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "library\tkind       \tid\ttitle\n\
-         -------\t-----------\t--\t------------------\n\
-         Books  \tpublication\t8 \tScorarium handbook\n\
-         Books  \tpublication\t9\n\
-         Books  \twork       \t11\tChapter 1\n\
-         Books  \tperson     \t13\tGrace Hopper\n\
-         Books  \tperson     \t14\tAda Lovelace\n"
+        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
+         Books  \twork       \t11\tChapter 1         \tdraft\n\
+         Books  \tperson     \t13\tGrace Hopper      \tdraft\n\
+         Books  \tperson     \t14\tAda Lovelace      \tdraft\n"
     );
 
     let (out, result) = run(&engine, "library books publication 9 show\n").await;
@@ -361,7 +361,8 @@ async fn import_commit_review_discard() {
          draft     \t  \t\n\
          title     \t  \t\n\
          identifier\t  \tisbn 978-0-486-99999-9\n\
-         holding   \t9 \tphysical\n"
+         holding   \t9 \tphysical\n\
+         enrichment\t  \tcompleted 1/1\n"
     );
 
     let (out, result) = run(
@@ -374,11 +375,11 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "library\tkind       \tid\ttitle\n\
-         -------\t-----------\t--\t------------------\n\
-         Books  \tpublication\t8 \tScorarium handbook\n\
-         Books  \tpublication\t9\n\
-         Books  \tperson     \t13\tGrace Hopper\n"
+        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
+         Books  \tperson     \t13\tGrace Hopper      \tdraft\n"
     );
 
     let (out, result) = run(&engine, "library books publication 8 show\n").await;
@@ -405,9 +406,9 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         without_age(&out),
-        "library\tkind       \tid\ttitle\n\
-         -------\t-----------\t--\t-----\n\
-         Books  \tpublication\t9\n"
+        "library\tkind       \tid\ttitle\tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t-----\t-----\t-------------\t---------\n\
+         Books  \tpublication\t9 \t     \tdraft\tcompleted 1/1\n"
     );
 
     let (_, result) = run(&engine, "library books publication 9 commit\n").await;

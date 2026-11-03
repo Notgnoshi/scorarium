@@ -12,7 +12,7 @@ use crate::command::{
 };
 use crate::library::write_table;
 use crate::reference::Target;
-use crate::{audit, person, reference, review, work};
+use crate::{audit, enrichment, person, reference, review, work};
 
 /// The kinds of identifier printed on a publication.
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -151,6 +151,13 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
     }
     for link in publication.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
+    }
+    if let Some(enrichment) = publication.enrichment() {
+        rows.push(row(
+            "enrichment",
+            String::new(),
+            enrichment::status(enrichment.status()),
+        ));
     }
     write_table(out, ["field", "id", "value"], &rows)
 }
