@@ -674,6 +674,36 @@ impl Publication {
         if self.classification == Some(classification) {
             return Ok(());
         }
+        let last_modified_at = self
+            .write_classification(tx, classification, AuditSource::User)
+            .await?;
+        self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Classify the publication unless the user or an earlier guess already has
+    pub(crate) async fn classify_if_unset(&self, classification: Classification) -> Result<bool> {
+        let mut tx = self.engine.begin_write().await?;
+        // Check inside the transaction so that a user's edit is never overwritten.
+        let mut current = self.clone();
+        current.refresh(&mut tx).await?;
+        if current.classification.is_some() {
+            return Ok(false);
+        }
+        current
+            .write_classification(tx, classification, AuditSource::Enrichment)
+            .await?;
+        Ok(true)
+    }
+
+    /// Write the classification to the publication and its unclassified works, audit it, and commit
+    async fn write_classification(
+        &self,
+        mut tx: Audited<'_>,
+        classification: Classification,
+        source: AuditSource,
+    ) -> Result<Timestamp> {
         let kind = classification.to_string();
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET kind = ?, last_modified_at = unixepoch() WHERE id = ?
@@ -686,7 +716,7 @@ impl Publication {
         let works = work::inherit_classification(&mut tx, self.id, classification).await?;
         let mut tx = tx
             .record(
-                AuditSource::User,
+                source,
                 Action::Updated,
                 Some(&self.audit_subject()),
                 Some(&Field::Classification.to_string()),
@@ -695,18 +725,11 @@ impl Publication {
         let field = work::Field::Classification.to_string();
         for subject in works {
             tx = tx
-                .record(
-                    AuditSource::User,
-                    Action::Updated,
-                    Some(&subject),
-                    Some(&field),
-                )
+                .record(source, Action::Updated, Some(&subject), Some(&field))
                 .await?;
         }
         tx.commit().await?;
-        self.classification = Some(classification);
-        self.last_modified_at = last_modified_at;
-        Ok(())
+        Ok(last_modified_at)
     }
 
     /// Tag the publication

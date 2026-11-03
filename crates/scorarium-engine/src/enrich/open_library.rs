@@ -1,3 +1,5 @@
+use scorarium_archive::fuzzy::normalize;
+use scorarium_client::open_library::Edition;
 use scorarium_client::{Priority, Source};
 
 use crate::enrich::SubTaskQueue;
@@ -5,7 +7,7 @@ use crate::entity::{Entity, EntityKind};
 use crate::link::{ExternalRecord, LinkKind};
 use crate::person::{self, Person};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
-use crate::value::Year;
+use crate::value::{Classification, Year};
 use crate::{Engine, Error, Result};
 
 /// Start Open Library enrichment for the given [IdentifierKind::Isbn] [Identifier]
@@ -76,6 +78,17 @@ pub(crate) async fn edition(
         "Open Library edition {}: proposed {accepted}, already present {present}",
         edition.olid
     );
+    if let Some(classification) = classify(&edition, publication.identifiers()) {
+        if queue.is_cancelled() {
+            return Ok(());
+        }
+        if publication.classify_if_unset(classification).await? {
+            log::debug!(
+                "Open Library edition {}: classified as {classification}",
+                edition.olid
+            );
+        }
+    }
     for olid in edition.authors {
         queue.enqueue(author(
             engine.clone(),
@@ -85,6 +98,109 @@ pub(crate) async fn edition(
         ));
     }
     Ok(())
+}
+
+/// Publishers that print only sheet music, as normalized phrases
+///
+/// Dover is deliberately absent because it publishes both music and prose.
+const MUSIC_PUBLISHERS: [&str; 12] = [
+    "schirmer",
+    "alfred music",
+    "alfred publishing",
+    "kalmus",
+    "boosey hawkes",
+    "faber music",
+    "schott",
+    "henle",
+    "barenreiter",
+    "peters",
+    "breitkopf",
+    "hal leonard",
+];
+
+/// Musical forms and instruments that mark a title as sheet music, as normalized words
+///
+/// Some prose titles contain these, but scores use them far more often
+const MUSIC_TERMS: [&str; 41] = [
+    "sonata",
+    "sonatas",
+    "etude",
+    "etudes",
+    "nocturne",
+    "nocturnes",
+    "prelude",
+    "preludes",
+    "fugue",
+    "fugues",
+    "concerto",
+    "concertos",
+    "symphony",
+    "symphonies",
+    "quartet",
+    "quartets",
+    "bagatelle",
+    "bagatelles",
+    "rondo",
+    "rondos",
+    "waltz",
+    "waltzes",
+    "mazurka",
+    "mazurkas",
+    "polonaise",
+    "polonaises",
+    "scherzo",
+    "scherzi",
+    "cantata",
+    "cantatas",
+    "piano",
+    "violin",
+    "viola",
+    "cello",
+    "guitar",
+    "flute",
+    "clarinet",
+    "oboe",
+    "organ",
+    "harp",
+    "clavier",
+];
+
+/// Catalog abbreviations that mark a title as sheet music when a number follows, as normalized words
+const CATALOG_PREFIXES: [&str; 7] = ["op", "opus", "bwv", "k", "kv", "hob", "d"];
+
+/// Guess whether the edition is sheet music
+fn classify(edition: &Edition, identifiers: &[Identifier]) -> Option<Classification> {
+    let ismn = identifiers
+        .iter()
+        .any(|identifier| identifier.kind() == IdentifierKind::Ismn);
+    let publisher = edition.publishers.iter().any(|publisher| {
+        let publisher = normalize(publisher);
+        MUSIC_PUBLISHERS
+            .iter()
+            .any(|house| contains_phrase(&publisher, house))
+    });
+    let title = normalize(&format!(
+        "{} {}",
+        edition.title,
+        edition.subtitle.as_deref().unwrap_or_default()
+    ));
+    let words: Vec<&str> = title.split(' ').collect();
+    let term = words.iter().any(|word| MUSIC_TERMS.contains(word));
+    // Normalizing "Op. 27" and "K.331" yields the prefix and the number as separate words.
+    let catalog = words.windows(2).any(|pair| {
+        CATALOG_PREFIXES.contains(&pair[0]) && pair[1].starts_with(|c: char| c.is_ascii_digit())
+    });
+    (ismn || publisher || term || catalog).then_some(Classification::Music)
+}
+
+/// Whether the words of `needle` occur consecutively in `haystack`, both already normalized
+fn contains_phrase(haystack: &str, needle: &str) -> bool {
+    let needle: Vec<&str> = needle.split(' ').collect();
+    haystack
+        .split(' ')
+        .collect::<Vec<_>>()
+        .windows(needle.len())
+        .any(|run| run == needle)
 }
 
 /// Map Open Library's API ID keys to scorarium's [LinkKind] enum
@@ -214,6 +330,46 @@ mod tests {
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
+    fn edition_titled(title: &str, publisher: &str) -> Edition {
+        Edition {
+            olid: "OL1M".into(),
+            title: title.into(),
+            subtitle: None,
+            authors: vec![],
+            contributions: vec![],
+            by_statement: None,
+            publishers: vec![publisher.into()],
+            publish_date: None,
+            isbn_10: vec![],
+            isbn_13: vec![],
+            number_of_pages: None,
+            covers: vec![],
+            works: vec![],
+        }
+    }
+
+    #[test]
+    fn a_music_signal_classifies_and_silence_does_not() {
+        let cases = [
+            ("Werke", "G. Henle Verlag", Some(Classification::Music)),
+            (
+                "Fifty-one exercises",
+                "G. Schirmer, Inc.",
+                Some(Classification::Music),
+            ),
+            ("Sonata for Two", "Somebody", Some(Classification::Music)),
+            ("Pro Git", "Apress", None),
+            ("Collected Essays", "Dover Publications", None),
+        ];
+        for (title, publisher, expected) in cases {
+            assert_eq!(
+                classify(&edition_titled(title, publisher), &[]),
+                expected,
+                "{title} / {publisher}"
+            );
+        }
+    }
+
     /// Render a proposal as "<field> <value>", since Proposal cannot derive PartialEq
     fn describe(proposal: &entity::Proposal<Publication>) -> String {
         match &proposal.value {
@@ -266,6 +422,12 @@ mod tests {
                 cancelled: false
             }
         );
+
+        let publication = Publication::load(&engine, publication.id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(publication.classification(), Some(Classification::Music));
 
         let proposals: Vec<String> = publication
             .proposals()
