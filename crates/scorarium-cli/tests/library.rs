@@ -520,3 +520,46 @@ async fn add_work_links_by_id_or_creates() {
          holding\t8 \tphysical\n"
     );
 }
+
+#[tokio::test]
+async fn isbn_import_review() {
+    let engine = demo().await;
+    let (out, result) = run(
+        &engine,
+        "library books select\n\
+         import 978-0-486-25392-3\n\
+         wait\n\
+         review\n\
+         publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    let (id, tables) = out.split_once('\n').unwrap();
+    assert_eq!(id, "8");
+
+    let (listing, show) = tables.split_once("field").unwrap();
+    assert_eq!(
+        without_age(listing),
+        "library\tkind       \tid\ttitle               \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t--------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \t                    \tdraft\tcompleted 2/2\t5\n\
+         Books  \tperson     \t13\tLudwig van Beethoven\tdraft\t             \t9\n"
+    );
+    assert_eq!(
+        format!("field{show}"),
+        "field         \tid\tvalue\n\
+         --------------\t--\t-------------------------------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \t\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n\
+         proposal      \t1 \ttitle: Bagatelles, Rondos and Other Shorter Works for Piano (openlibrary)\n\
+         proposal      \t2 \tpublisher: Dover Publications (openlibrary)\n\
+         proposal      \t3 \tyear: 1987 (openlibrary)\n\
+         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+    );
+}

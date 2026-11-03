@@ -68,7 +68,24 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
             enrichment::status(enrichment.status()),
         ));
     }
+    for pending in person.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
     write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::person::Proposal) -> (&'static str, String) {
+    use scorarium_engine::person::Proposal;
+
+    match value {
+        Proposal::Name(name) => ("name", name.clone()),
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 /// List the roles `person` holds among `contributors`.

@@ -159,7 +159,34 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
             enrichment::status(enrichment.status()),
         ));
     }
+    for pending in publication.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
     write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::publication::Proposal) -> (&'static str, String) {
+    use scorarium_engine::publication::Proposal;
+
+    match value {
+        Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Publisher(publisher) => ("publisher", publisher.clone()),
+        Proposal::Year(year) => ("year", year.to_string()),
+        Proposal::Identifier(identifier) => (
+            "identifier",
+            format!("{} {}", identifier_kind(identifier.kind()), identifier),
+        ),
+        Proposal::Contributor { person, role } => {
+            ("contributor", format!("{} ({role})", person.name()))
+        }
+        Proposal::Contents(work) => ("work", work.title().to_string()),
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 fn identifier_kind(kind: scorarium_engine::publication::IdentifierKind) -> &'static str {

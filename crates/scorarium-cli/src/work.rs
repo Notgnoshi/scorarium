@@ -63,7 +63,31 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
             enrichment::status(enrichment.status()),
         ));
     }
+    for pending in work.proposals().await? {
+        let (field, value) = proposal(&pending.value);
+        rows.push(row(
+            "proposal",
+            pending.id.to_string(),
+            format!("{field}: {value} ({})", pending.source),
+        ));
+    }
     write_table(out, ["field", "id", "value"], &rows)
+}
+
+fn proposal(value: &scorarium_engine::work::Proposal) -> (&'static str, String) {
+    use scorarium_engine::work::Proposal;
+
+    match value {
+        Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Key(key) => ("key", key.clone()),
+        Proposal::TimeSignature(signature) => ("time-signature", signature.clone()),
+        Proposal::Instrumentation(instrumentation) => ("instrumentation", instrumentation.clone()),
+        Proposal::CatalogNumber(number) => ("catalog-number", number.to_string()),
+        Proposal::Contributor { person, role } => {
+            ("contributor", format!("{} ({role})", person.name()))
+        }
+        Proposal::Link(url) => ("link", url.to_string()),
+    }
 }
 
 /// Resolve the title or id of a work
