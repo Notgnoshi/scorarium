@@ -333,7 +333,6 @@ fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::entity::Entity;
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
@@ -367,7 +366,7 @@ mod tests {
     #[tokio::test]
     async fn vocabulary_lists_alphabetically_and_exact_first() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -427,7 +426,7 @@ mod tests {
     #[tokio::test]
     async fn entity_suggestions_put_exact_first_and_include_drafts() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -509,7 +508,7 @@ mod tests {
     #[tokio::test]
     async fn work_numbers_tier_and_narrow_by_composer() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();

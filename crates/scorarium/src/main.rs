@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use scorarium_cli::{LogWriter, ShellArgs};
+use scorarium_client::UserAgent;
 use scorarium_engine::legacy::archive::Archive;
 use scorarium_engine::{Engine, EngineOptions};
 use scorarium_web::ServeArgs;
@@ -92,19 +93,14 @@ async fn main() -> color_eyre::Result<()> {
                     args.data_dir.display()
                 );
             }
+            let options = EngineOptions::new(UserAgent::new(args.contact.as_deref()))?;
             let engine = if args.demo {
                 tracing::info!("using an in-memory demo library");
-                Engine::demo(EngineOptions::default()).await?
+                Engine::demo(options).await?
             } else {
                 tracing::info!(data_dir = %args.data_dir.display(), "opening library");
                 // The shell may share the database with a running server, so it never migrates it.
-                Engine::open(
-                    &args.data_dir,
-                    EngineOptions {
-                        migrate_on_startup: false,
-                    },
-                )
-                .await?
+                Engine::open(&args.data_dir, options.migrate_on_startup(false)).await?
             };
             // The demo library is throwaway, so its history is too
             let history = (!args.demo).then(|| args.data_dir.join(".shell_history"));

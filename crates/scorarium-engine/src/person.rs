@@ -6,11 +6,13 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::enrich::Enrichment;
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
+use crate::search::same_name;
 use crate::suggest::{Candidate, CandidateScope};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
@@ -297,7 +299,6 @@ impl Person {
         Ok(())
     }
 
-    #[expect(dead_code)]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -390,13 +391,7 @@ impl Entity for Person {
 
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
-            .entity_audit_log(
-                EntityKind::Person,
-                self.id.get(),
-                self.library,
-                before,
-                limit,
-            )
+            .entity_audit_log(AnyEntityId::Person(self.id), self.library, before, limit)
             .await
     }
 
@@ -513,7 +508,21 @@ impl Entity for Person {
         )
         .await?
         .commit()
-        .await
+        .await?;
+        if let Some(enrichment) = self.enrichment() {
+            enrichment.cancel();
+        }
+        Ok(())
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        Ok(self
+            .engine
+            .start_enrichment(AnyEntityId::Person(self.id), |_| {}))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Person(self.id))
     }
 }
 
@@ -693,6 +702,42 @@ pub(crate) async fn candidates(
         .collect())
 }
 
+/// Find the people in `library`, drafts included, whose name is `name` after normalization
+pub(crate) async fn find_by_name(
+    engine: &Engine,
+    library: LibraryId,
+    name: &str,
+) -> Result<Vec<Person>> {
+    let mut conn = engine.begin_read().await?;
+    let mut people = Vec::new();
+    // Normalization happens in Rust, so SQL cannot compare names.
+    for candidate in candidates(&mut conn, CandidateScope::Library(library)).await? {
+        if same_name(&candidate.name, name) {
+            let person = Person::fetch(engine, &mut conn, PersonId::new(candidate.id)).await?;
+            people.extend(person);
+        }
+    }
+    Ok(people)
+}
+
+/// Find the people in `library`, drafts included, linked to `record`
+pub(crate) async fn find_by_record(
+    engine: &Engine,
+    library: LibraryId,
+    record: &ExternalRecord,
+) -> Result<Vec<Person>> {
+    let people = in_library(engine, library, None).await?;
+    Ok(people
+        .into_iter()
+        .filter(|person| {
+            person
+                .links()
+                .iter()
+                .any(|link| link.record.as_ref() == Some(record))
+        })
+        .collect())
+}
+
 /// Clear the draft mark of every draft person named as a contributor of `publication`
 ///
 /// Return the audit subject of each person committed, in id order.
@@ -782,8 +827,7 @@ pub(crate) async fn collect_orphan_people(
 
 fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
     AuditSubject::Entity {
-        kind: EntityKind::Person,
-        id: id.get(),
+        id: AnyEntityId::Person(id),
         library,
         label: name.to_string(),
     }
@@ -814,7 +858,6 @@ fn sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::link::LinkKind;
     use crate::publication::ImportSeed;
@@ -822,7 +865,7 @@ mod tests {
     #[tokio::test]
     async fn links_collapse_on_record() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();

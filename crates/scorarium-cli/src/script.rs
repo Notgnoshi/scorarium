@@ -1,9 +1,11 @@
 use std::io::{BufRead, Write};
+use std::time::Duration;
 
 use eyre::WrapErr;
 use scorarium_engine::Engine;
 
 use crate::command::{Flow, Shell};
+use crate::enrichment;
 
 /// Run the given scorarium script, writing its output to the given writer.
 pub async fn run_script(
@@ -22,5 +24,6 @@ pub async fn run_script(
             break;
         }
     }
+    enrichment::wait(engine, Some(Duration::from_secs(10))).await;
     Ok(())
 }

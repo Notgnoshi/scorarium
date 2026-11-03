@@ -8,7 +8,8 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::enrich::{Enrichment, open_library};
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
@@ -341,8 +342,7 @@ impl Publication {
 
     fn audit_subject(&self) -> AuditSubject {
         AuditSubject::Entity {
-            kind: EntityKind::Publication,
-            id: self.id.get(),
+            id: AnyEntityId::Publication(self.id),
             library: self.library,
             label: self.label(),
         }
@@ -367,7 +367,6 @@ impl Publication {
         entity::commit_rejection(tx, &collected).await
     }
 
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose(
         &self,
         source: Source,
@@ -508,7 +507,6 @@ impl Publication {
     /// Create a draft person and propose that they contributed to the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    #[expect(dead_code)]
     pub(crate) async fn propose_new_contributor(
         &self,
         source: Source,
@@ -676,6 +674,36 @@ impl Publication {
         if self.classification == Some(classification) {
             return Ok(());
         }
+        let last_modified_at = self
+            .write_classification(tx, classification, AuditSource::User)
+            .await?;
+        self.classification = Some(classification);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Classify the publication unless the user or an earlier guess already has
+    pub(crate) async fn classify_if_unset(&self, classification: Classification) -> Result<bool> {
+        let mut tx = self.engine.begin_write().await?;
+        // Check inside the transaction so that a user's edit is never overwritten.
+        let mut current = self.clone();
+        current.refresh(&mut tx).await?;
+        if current.classification.is_some() {
+            return Ok(false);
+        }
+        current
+            .write_classification(tx, classification, AuditSource::Enrichment)
+            .await?;
+        Ok(true)
+    }
+
+    /// Write the classification to the publication and its unclassified works, audit it, and commit
+    async fn write_classification(
+        &self,
+        mut tx: Audited<'_>,
+        classification: Classification,
+        source: AuditSource,
+    ) -> Result<Timestamp> {
         let kind = classification.to_string();
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET kind = ?, last_modified_at = unixepoch() WHERE id = ?
@@ -688,7 +716,7 @@ impl Publication {
         let works = work::inherit_classification(&mut tx, self.id, classification).await?;
         let mut tx = tx
             .record(
-                AuditSource::User,
+                source,
                 Action::Updated,
                 Some(&self.audit_subject()),
                 Some(&Field::Classification.to_string()),
@@ -697,18 +725,11 @@ impl Publication {
         let field = work::Field::Classification.to_string();
         for subject in works {
             tx = tx
-                .record(
-                    AuditSource::User,
-                    Action::Updated,
-                    Some(&subject),
-                    Some(&field),
-                )
+                .record(source, Action::Updated, Some(&subject), Some(&field))
                 .await?;
         }
         tx.commit().await?;
-        self.classification = Some(classification);
-        self.last_modified_at = last_modified_at;
-        Ok(())
+        Ok(last_modified_at)
     }
 
     /// Tag the publication
@@ -1421,8 +1442,7 @@ impl Entity for Publication {
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
             .entity_audit_log(
-                EntityKind::Publication,
-                self.id.get(),
+                AnyEntityId::Publication(self.id),
                 self.library,
                 before,
                 limit,
@@ -1591,7 +1611,32 @@ impl Entity for Publication {
                 )
                 .await?;
         }
-        tx.commit().await
+        tx.commit().await?;
+        if let Some(enrichment) = self.enrichment() {
+            enrichment.cancel();
+        }
+        Ok(())
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        let isbn = self
+            .identifiers
+            .iter()
+            .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+            .cloned();
+        let engine = self.engine.clone();
+        let id = self.id;
+        Ok(self
+            .engine
+            .start_enrichment(AnyEntityId::Publication(id), |queue| {
+                if let Some(isbn) = isbn {
+                    queue.enqueue(open_library::edition(engine, id, isbn, queue.clone()));
+                }
+            }))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Publication(self.id))
     }
 }
 
@@ -1647,6 +1692,9 @@ pub(crate) async fn create(
     .await?
     .commit()
     .await?;
+    if identifier.is_some() {
+        publication.enrich().await?;
+    }
     Ok(publication)
 }
 
@@ -2131,12 +2179,11 @@ fn normalize_ismn(text: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
 
     #[tokio::test]
     async fn publication_edits_audit_once_per_change() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
@@ -2158,8 +2205,7 @@ mod tests {
         publication.commit().await.unwrap();
 
         let subject = Some(AuditSubject::Entity {
-            kind: EntityKind::Publication,
-            id: publication.id().get(),
+            id: AnyEntityId::Publication(publication.id()),
             library: library.id(),
             label: "Pro Git".into(),
         });
@@ -2219,7 +2265,7 @@ mod tests {
     #[tokio::test]
     async fn commit_cascades_through_works_to_people() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2257,7 +2303,7 @@ mod tests {
     #[tokio::test]
     async fn delete_collects_orphans() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2311,7 +2357,7 @@ mod tests {
     #[tokio::test]
     async fn a_source_proposes_a_fact_once() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2362,7 +2408,7 @@ mod tests {
     #[tokio::test]
     async fn rejecting_the_last_proposal_naming_a_draft_collects_it() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2406,7 +2452,7 @@ mod tests {
     #[tokio::test]
     async fn accepting_contents_commits_the_proposed_work() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2438,7 +2484,7 @@ mod tests {
     #[tokio::test]
     async fn committing_a_draft_drops_its_proposals() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2472,7 +2518,7 @@ mod tests {
     #[tokio::test]
     async fn contributors_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2517,7 +2563,7 @@ mod tests {
     #[tokio::test]
     async fn tags_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2544,11 +2590,11 @@ mod tests {
     #[tokio::test]
     async fn identifier_seed() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
-        let isbn = Identifier::new(IdentifierKind::Isbn, "978-1-68050-127-8").unwrap();
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-99999-9").unwrap();
         let mut publication = library
             .create_publication(
                 ImportSeed::Identifier(isbn.clone()),
@@ -2568,10 +2614,9 @@ mod tests {
             [(
                 Action::Created,
                 Some(AuditSubject::Entity {
-                    kind: EntityKind::Publication,
-                    id: publication.id().get(),
+                    id: AnyEntityId::Publication(publication.id()),
                     library: library.id(),
-                    label: "978-1-68050-127-8".into(),
+                    label: "978-0-486-99999-9".into(),
                 })
             )]
         );

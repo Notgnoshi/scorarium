@@ -24,7 +24,7 @@ pub use crate::transport::{BoxFuture, ReqwestTransport, Transport};
 /// Identifies scorarium to the sources.
 ///
 /// Some APIs change their rate limits based on whether there's contact info in the User-Agent
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UserAgent {
     pub app: String,
     pub version: String,
@@ -113,6 +113,12 @@ pub struct Client {
     cache: Arc<Cache>,
     log: Arc<CallLog>,
     open_library: RateLimitedClient,
+}
+
+impl fmt::Debug for Client {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Client").finish_non_exhaustive()
+    }
 }
 
 impl Client {

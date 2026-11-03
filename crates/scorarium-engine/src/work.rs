@@ -8,7 +8,8 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
-use crate::entity::{self, AnyEntity, Entity, EntityKind, ProposalId, Timestamp};
+use crate::enrich::Enrichment;
+use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -1021,7 +1022,7 @@ impl Entity for Work {
 
     async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
         self.engine
-            .entity_audit_log(EntityKind::Work, self.id.get(), self.library, before, limit)
+            .entity_audit_log(AnyEntityId::Work(self.id), self.library, before, limit)
             .await
     }
 
@@ -1170,7 +1171,21 @@ impl Entity for Work {
                 )
                 .await?;
         }
-        tx.commit().await
+        tx.commit().await?;
+        if let Some(enrichment) = self.enrichment() {
+            enrichment.cancel();
+        }
+        Ok(())
+    }
+
+    async fn enrich(&self) -> Result<Enrichment> {
+        Ok(self
+            .engine
+            .start_enrichment(AnyEntityId::Work(self.id), |_| {}))
+    }
+
+    fn enrichment(&self) -> Option<Enrichment> {
+        self.engine.enrichment_of(AnyEntityId::Work(self.id))
     }
 }
 
@@ -1580,8 +1595,7 @@ pub(crate) async fn tagged(engine: &Engine, library: LibraryId, tag: &Tag) -> Re
 
 fn audit_subject(id: WorkId, library: LibraryId, title: &str) -> AuditSubject {
     AuditSubject::Entity {
-        kind: EntityKind::Work,
-        id: id.get(),
+        id: AnyEntityId::Work(id),
         library,
         label: title.to_string(),
     }
@@ -1845,7 +1859,6 @@ fn digit_runs(text: &str) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EngineOptions;
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
@@ -1978,7 +1991,7 @@ mod tests {
     #[tokio::test]
     async fn delete_collects_orphan_people() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
@@ -2023,7 +2036,7 @@ mod tests {
         use crate::publication::Proposal as PublicationProposal;
 
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();

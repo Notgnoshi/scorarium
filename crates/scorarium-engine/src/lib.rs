@@ -3,6 +3,7 @@ pub mod legacy;
 
 pub mod audit;
 pub mod contributor;
+pub mod enrich;
 pub mod entity;
 pub mod holding;
 pub mod library;
@@ -18,6 +19,8 @@ pub mod work;
 mod demo;
 mod engine;
 mod error;
+#[cfg(test)]
+mod test;
 
 pub use engine::{Engine, EngineOptions};
 pub use error::{Error, Result};

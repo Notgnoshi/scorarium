@@ -2397,6 +2397,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "scorarium-cli",
+ "scorarium-client",
  "scorarium-engine",
  "scorarium-web",
  "tokio",
@@ -2431,9 +2432,11 @@ dependencies = [
  "clap",
  "eyre",
  "reedline",
+ "scorarium-client",
  "scorarium-engine",
  "shlex",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

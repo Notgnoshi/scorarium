@@ -7,11 +7,12 @@ use std::str::FromStr;
 use scorarium_client::Source;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::enrich::Enrichment;
 use crate::library::LibraryId;
-use crate::person::Person;
-use crate::publication::Publication;
+use crate::person::{Person, PersonId};
+use crate::publication::{Publication, PublicationId};
 use crate::review::ReviewItem;
-use crate::work::Work;
+use crate::work::{Work, WorkId};
 use crate::{Engine, Error, Result};
 
 pub type Timestamp = chrono::DateTime<chrono::Utc>;
@@ -89,6 +90,42 @@ pub enum AnyEntity {
     Person(Person),
 }
 
+impl AnyEntity {
+    pub fn id(&self) -> AnyEntityId {
+        match self {
+            AnyEntity::Publication(publication) => AnyEntityId::Publication(publication.id()),
+            AnyEntity::Work(work) => AnyEntityId::Work(work.id()),
+            AnyEntity::Person(person) => AnyEntityId::Person(person.id()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AnyEntityId {
+    Publication(PublicationId),
+    Work(WorkId),
+    Person(PersonId),
+}
+
+impl AnyEntityId {
+    pub fn kind(self) -> EntityKind {
+        match self {
+            AnyEntityId::Publication(_) => EntityKind::Publication,
+            AnyEntityId::Work(_) => EntityKind::Work,
+            AnyEntityId::Person(_) => EntityKind::Person,
+        }
+    }
+
+    /// Return the raw database id
+    pub fn get(self) -> i64 {
+        match self {
+            AnyEntityId::Publication(id) => id.get(),
+            AnyEntityId::Work(id) => id.get(),
+            AnyEntityId::Person(id) => id.get(),
+        }
+    }
+}
+
 /// A trait to define the common bits of what it means to be an entity in the scorarium database.
 pub trait Entity: Sized {
     /// A strong type to represent this type of entity in the database
@@ -148,6 +185,12 @@ pub trait Entity: Sized {
     ///
     /// Returns [Error::NotFound] if the entity has already been deleted.
     fn delete(self) -> impl Future<Output = Result<()>> + Send;
+
+    /// Start background metadata enrichment on the entity, or return the [Enrichment] handle in progress
+    fn enrich(&self) -> impl Future<Output = Result<Enrichment>> + Send;
+
+    /// Return the entity's background [Enrichment] task handle, if one exists
+    fn enrichment(&self) -> Option<Enrichment>;
 }
 
 /// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`

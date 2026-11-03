@@ -1,6 +1,7 @@
 mod audit;
 mod command;
 mod completer;
+mod enrichment;
 mod interactive;
 mod library;
 mod log;

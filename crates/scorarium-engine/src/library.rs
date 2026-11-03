@@ -333,12 +333,12 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
-    use crate::{Engine, EngineOptions, Error};
+    use crate::{Engine, Error};
 
     #[tokio::test]
     async fn create_and_load() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let created = engine.create_library("  Scores ", true).await.unwrap();
@@ -354,7 +354,7 @@ mod tests {
     #[tokio::test]
     async fn edits_audit_once_per_change() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), EngineOptions::default())
+        let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
         let mut library = engine.create_library("Scores", false).await.unwrap();

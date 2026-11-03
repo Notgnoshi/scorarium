@@ -1,7 +1,18 @@
+use std::sync::Arc;
+
+use scorarium_client::fake::FakeTransport;
+use scorarium_client::{Client, UserAgent};
 use scorarium_engine::{Engine, EngineOptions};
 
+fn options() -> EngineOptions {
+    let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
+    let transport = FakeTransport::new(&user_agent).expect("failed to open API fixtures");
+    let client = Client::with_transport(user_agent.clone(), Arc::new(transport));
+    EngineOptions::new(user_agent).unwrap().client(client)
+}
+
 async fn demo() -> Engine {
-    Engine::demo(EngineOptions::default()).await.unwrap()
+    Engine::demo(options()).await.unwrap()
 }
 
 /// Run a script, returning what it printed and how it ended.
@@ -283,7 +294,7 @@ async fn import_commit_review_discard() {
         &engine,
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
-         import 978-0-13-468599-1\n\
+         import 978-0-486-99999-9\n\
          publication 8 add contributor 'Grace Hopper' author\n\
          publication 8 add contributor 'Ada Lovelace' editor\n\
          publication 8 add work 'Chapter 1'\n",
@@ -316,7 +327,7 @@ async fn import_commit_review_discard() {
         "id        \t9\t\n\
          draft     \t \t\n\
          title     \t \t\n\
-         identifier\t \tisbn 978-0-13-468599-1\n\
+         identifier\t \tisbn 978-0-486-99999-9\n\
          holding   \t9\tphysical\n"
     );
 
