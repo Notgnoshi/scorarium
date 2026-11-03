@@ -75,7 +75,7 @@ impl<'a> OpenLibrary<'a> {
     pub async fn search_title(
         &self,
         title: &str,
-        limit: u8,
+        limit: usize,
         priority: Priority,
     ) -> eyre::Result<Vec<WorkHit>> {
         let mut url = url(["search.json"])?;
