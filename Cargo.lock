@@ -2436,6 +2436,7 @@ dependencies = [
  "scorarium-engine",
  "shlex",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

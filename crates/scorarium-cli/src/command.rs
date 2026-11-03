@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::time::Duration;
 
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
@@ -45,6 +46,12 @@ enum Command {
     Audit(AuditArgs),
     /// List the review queue
     Review,
+    /// Wait for background enrichment to finish
+    Wait {
+        /// Give up after this many seconds; wait indefinitely when omitted
+        #[arg(value_name = "seconds")]
+        seconds: Option<u64>,
+    },
     /// Exit the shell
     #[command(alias = "exit")]
     Quit,
@@ -801,6 +808,9 @@ impl Shell {
             Command::Search { query } => search::run(&self.engine, &query, out).await?,
             Command::Audit(args) => audit::log(&self.engine, args.limit(), out).await?,
             Command::Review => review::run(&self.engine, out).await?,
+            Command::Wait { seconds } => {
+                crate::enrichment::wait(&self.engine, seconds.map(Duration::from_secs)).await
+            }
             Command::Quit => return Ok(Flow::Quit),
         }
         Ok(Flow::Continue)

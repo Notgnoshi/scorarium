@@ -294,7 +294,7 @@ async fn import_commit_review_discard() {
         &engine,
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
-         import 978-0-13-468599-1\n\
+         import 978-0-486-99999-9\n\
          publication 8 add contributor 'Grace Hopper' author\n\
          publication 8 add contributor 'Ada Lovelace' editor\n\
          publication 8 add work 'Chapter 1'\n",
@@ -327,7 +327,7 @@ async fn import_commit_review_discard() {
         "id        \t9\t\n\
          draft     \t \t\n\
          title     \t \t\n\
-         identifier\t \tisbn 978-0-13-468599-1\n\
+         identifier\t \tisbn 978-0-486-99999-9\n\
          holding   \t9\tphysical\n"
     );
 
