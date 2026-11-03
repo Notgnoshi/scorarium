@@ -1175,7 +1175,9 @@ impl Entity for Work {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
-        Ok(self.engine.start_enrichment(AnyEntityId::Work(self.id)))
+        Ok(self
+            .engine
+            .start_enrichment(AnyEntityId::Work(self.id), |_| {}))
     }
 
     fn enrichment(&self) -> Option<Enrichment> {

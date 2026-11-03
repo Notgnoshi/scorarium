@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio::sync::watch;
+use tokio::task::AbortHandle;
 
-use crate::Engine;
 use crate::entity::AnyEntityId;
+use crate::{Engine, Result};
 
 /// The status of an [Enrichment] task
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -39,7 +40,70 @@ pub enum EnrichmentState {
 
 #[derive(Debug)]
 pub(crate) struct Task {
+    root: AnyEntityId,
     status: watch::Sender<EnrichmentStatus>,
+    subtasks: Mutex<Vec<AbortHandle>>,
+}
+
+impl Task {
+    fn subtasks(&self) -> MutexGuard<'_, Vec<AbortHandle>> {
+        self.subtasks
+            .lock()
+            .expect("enrichment subtasks lock poisoned")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SubTaskQueue {
+    task: Arc<Task>,
+}
+
+impl SubTaskQueue {
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn enqueue(&self, subtask: impl Future<Output = Result<()>> + Send + 'static) {
+        let mut subtasks = self.task.subtasks();
+        if self.is_cancelled() {
+            return;
+        }
+        self.task.status.send_modify(|status| status.pending += 1);
+        let outcome = Outcome {
+            task: Arc::clone(&self.task),
+            succeeded: false,
+        };
+        let root = self.task.root;
+        let handle = tokio::spawn(async move {
+            let mut outcome = outcome;
+            match subtask.await {
+                Ok(()) => outcome.succeeded = true,
+                Err(e) => log::warn!("Enrichment subtask of {root:?} failed: {e}"),
+            }
+        });
+        subtasks.push(handle.abort_handle());
+    }
+
+    /// Return whether the task was cancelled
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.task.status.borrow().cancelled
+    }
+}
+
+struct Outcome {
+    task: Arc<Task>,
+    succeeded: bool,
+}
+
+impl Drop for Outcome {
+    fn drop(&mut self) {
+        self.task.status.send_modify(|status| {
+            status.pending -= 1;
+            if self.succeeded {
+                status.successful += 1;
+            } else {
+                status.failed += 1;
+            }
+        });
+    }
 }
 
 /// A handle of an [Enrichment] task
@@ -72,15 +136,25 @@ impl Enrichment {
 
     /// Abort the task's pending and in-flight subtasks and remove it from the task registry
     pub fn cancel(self) {
+        // Holding the lock across the flag and the drain means a concurrent enqueue either pushes
+        // its subtask before the drain or sees the flag and spawns nothing.
+        let mut subtasks = self.task.subtasks();
         self.task
             .status
             .send_modify(|status| status.cancelled = true);
+        for subtask in subtasks.drain(..) {
+            subtask.abort();
+        }
     }
 }
 
 impl Engine {
     /// Start an enrichment task on the given `root` entity, or return the one in progress
-    pub(crate) fn start_enrichment(&self, root: AnyEntityId) -> Enrichment {
+    pub(crate) fn start_enrichment(
+        &self,
+        root: AnyEntityId,
+        enqueue_subtasks: impl FnOnce(&SubTaskQueue),
+    ) -> Enrichment {
         let mut enrichments = self.enrichments();
         if let Some(task) = enrichments.get(&root)
             && task.status.borrow().state() == EnrichmentState::InProgress
@@ -88,10 +162,16 @@ impl Engine {
             return Enrichment::new(task);
         }
         let task = Arc::new(Task {
+            root,
             status: watch::Sender::new(EnrichmentStatus::default()),
+            subtasks: Mutex::default(),
         });
         enrichments.insert(root, Arc::clone(&task));
-        Enrichment::new(&task)
+        let enrichment = Enrichment::new(&task);
+        // The registry stays locked while the seeds are enqueued, so that no one can find the new
+        // task before its seeds are counted and mistake it for a finished one.
+        enqueue_subtasks(&SubTaskQueue { task });
+        enrichment
     }
 
     /// Return the enrichment task on for `root`, unless there is none or it was cancelled
@@ -129,5 +209,82 @@ impl Engine {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::Error;
+    use crate::publication::PublicationId;
+
+    #[tokio::test]
+    async fn subtasks_are_counted_as_they_finish() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let root = AnyEntityId::Publication(PublicationId::new(1));
+        engine.start_enrichment(root, |queue| {
+            let children = queue.clone();
+            queue.enqueue(async move {
+                children.enqueue(async { Err(Error::NotFound) });
+                Ok(())
+            });
+        });
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        let status = engine.enrichment_of(root).unwrap().status();
+        assert_eq!(
+            status,
+            EnrichmentStatus {
+                successful: 1,
+                pending: 0,
+                failed: 1,
+                cancelled: false
+            }
+        );
+        assert_eq!(status.state(), EnrichmentState::Failed);
+    }
+
+    #[tokio::test]
+    async fn cancel_aborts_a_blocked_subtask() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let root = AnyEntityId::Publication(PublicationId::new(1));
+        let (mut never_sent, blocked) = tokio::sync::oneshot::channel::<()>();
+        let enrichment = engine.start_enrichment(root, |queue| {
+            queue.enqueue(async move {
+                let _ = blocked.await;
+                Ok(())
+            });
+        });
+        assert_eq!(enrichment.status().state(), EnrichmentState::InProgress);
+
+        let kept = enrichment.clone();
+        enrichment.cancel();
+        assert_eq!(kept.status().state(), EnrichmentState::Cancelled);
+        assert!(engine.enrichment_of(root).is_none());
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), never_sent.closed())
+            .await
+            .unwrap();
+        assert_eq!(
+            kept.status(),
+            EnrichmentStatus {
+                successful: 0,
+                pending: 0,
+                failed: 1,
+                cancelled: true
+            }
+        );
     }
 }

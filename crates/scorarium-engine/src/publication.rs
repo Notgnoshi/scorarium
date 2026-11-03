@@ -1596,7 +1596,7 @@ impl Entity for Publication {
     async fn enrich(&self) -> Result<Enrichment> {
         Ok(self
             .engine
-            .start_enrichment(AnyEntityId::Publication(self.id)))
+            .start_enrichment(AnyEntityId::Publication(self.id), |_| {}))
     }
 
     fn enrichment(&self) -> Option<Enrichment> {
