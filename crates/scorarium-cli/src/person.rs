@@ -154,6 +154,19 @@ pub(crate) async fn run(
             let person = resolve(library, reference).await?;
             review::discard_changes(&person, "person", reference).await
         }
+        PersonCommand::Accept { proposals } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            review::accept(&mut person, &proposals).await
+        }
+        PersonCommand::Reject { proposals } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            review::reject(&mut person, &proposals).await
+        }
+        PersonCommand::RejectAll => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            person.reject_all().await?;
+            Ok(())
+        }
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {

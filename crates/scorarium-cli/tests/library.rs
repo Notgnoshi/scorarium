@@ -562,4 +562,65 @@ async fn isbn_import_review() {
          proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
          proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
     );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 8 accept 1 2\n\
+         library books publication 8 reject 3\n\
+         library books publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "field         \tid\tvalue\n\
+         --------------\t--\t------------------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
+         publisher     \t  \tDover Publications\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n\
+         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+    );
+
+    let (_, result) = run(&engine, "library books publication 8 accept 3\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: no proposal '3'"
+    );
+
+    let (out, result) = run(
+        &engine,
+        "library books publication 8 reject-all\n\
+         library books publication 8 reject-all\n\
+         library books publication 8 show\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "field         \tid\tvalue\n\
+         --------------\t--\t----------------------------------------------------\n\
+         id            \t8 \t\n\
+         draft         \t  \t\n\
+         title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
+         publisher     \t  \tDover Publications\n\
+         classification\t  \tmusic\n\
+         identifier    \t  \tisbn 978-0-486-25392-3\n\
+         holding       \t8 \tphysical\n\
+         enrichment    \t  \tcompleted 2/2\n"
+    );
+
+    let (out, result) = run(&engine, "review\n").await;
+    result.unwrap();
+    assert_eq!(
+        without_age(&out),
+        "library\tkind       \tid\ttitle                                               \tdraft\tenrichment   \tproposals\n\
+         -------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
+         Books  \tpublication\t8 \tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n"
+    );
 }

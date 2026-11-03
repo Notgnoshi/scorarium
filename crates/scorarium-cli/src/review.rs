@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::time::SystemTime;
 
-use scorarium_engine::Engine;
-use scorarium_engine::entity::{AnyEntity, Entity, Timestamp};
+use scorarium_engine::entity::{AnyEntity, Entity, ProposalId, Timestamp};
+use scorarium_engine::{Engine, Error};
 
 use crate::enrichment;
 use crate::library::write_table;
@@ -66,6 +66,39 @@ pub(crate) async fn discard_changes<E: Entity>(
     };
     item.discard().await?;
     Ok(())
+}
+
+pub(crate) async fn accept<E: Entity>(
+    entity: &mut E,
+    proposals: &[ProposalId],
+) -> eyre::Result<()> {
+    for &id in proposals {
+        entity
+            .accept(id)
+            .await
+            .map_err(|e| unknown_proposal(e, id))?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn reject<E: Entity>(
+    entity: &mut E,
+    proposals: &[ProposalId],
+) -> eyre::Result<()> {
+    for &id in proposals {
+        entity
+            .reject(id)
+            .await
+            .map_err(|e| unknown_proposal(e, id))?;
+    }
+    Ok(())
+}
+
+fn unknown_proposal(error: Error, id: ProposalId) -> eyre::Report {
+    match error {
+        Error::NotFound => eyre::eyre!("no proposal '{id}'"),
+        e => e.into(),
+    }
 }
 
 fn is_draft(entity: &AnyEntity) -> bool {

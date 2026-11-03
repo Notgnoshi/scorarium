@@ -4,6 +4,7 @@ use std::time::Duration;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
+use scorarium_engine::entity::ProposalId;
 use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::HttpUrl;
@@ -200,6 +201,18 @@ pub(crate) enum PublicationCommand {
     Commit,
     /// Remove a publication from the review queue
     DiscardChanges,
+    /// Apply the specified proposed edits
+    Accept {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard the given proposed edits
+    Reject {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard all proposed edits
+    RejectAll,
     /// Print a publication's audit log
     Audit(AuditArgs),
 }
@@ -369,6 +382,18 @@ pub(crate) enum WorkCommand {
     Commit,
     /// Remove a work from the review queue
     DiscardChanges,
+    /// Apply the given proposed edits
+    Accept {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard the given proposed edits
+    Reject {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard all proposed edits
+    RejectAll,
 }
 
 #[derive(Debug, Subcommand)]
@@ -529,6 +554,18 @@ pub(crate) enum PersonCommand {
     Commit,
     /// Remove a person from the review queue
     DiscardChanges,
+    /// Apply the given proposed edits
+    Accept {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard the given proposed edits
+    Reject {
+        #[arg(value_name = "proposal-id", required = true)]
+        proposals: Vec<ProposalId>,
+    },
+    /// Discard all proposed edit
+    RejectAll,
 }
 
 #[derive(Debug, Subcommand)]

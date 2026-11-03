@@ -354,5 +354,18 @@ pub(crate) async fn run(
             let publication = resolve(library, reference).await?;
             review::discard_changes(&publication, "publication", reference).await
         }
+        PublicationCommand::Accept { proposals } => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            review::accept(&mut publication, &proposals).await
+        }
+        PublicationCommand::Reject { proposals } => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            review::reject(&mut publication, &proposals).await
+        }
+        PublicationCommand::RejectAll => {
+            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            publication.reject_all().await?;
+            Ok(())
+        }
     }
 }

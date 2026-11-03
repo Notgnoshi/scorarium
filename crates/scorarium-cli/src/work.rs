@@ -143,6 +143,19 @@ pub(crate) async fn run(
             let work = resolve(library, reference).await?;
             review::discard_changes(&work, "work", reference).await
         }
+        WorkCommand::Accept { proposals } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            review::accept(&mut work, &proposals).await
+        }
+        WorkCommand::Reject { proposals } => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            review::reject(&mut work, &proposals).await
+        }
+        WorkCommand::RejectAll => {
+            let mut work = resolve(library, require(subject, "work")?).await?;
+            work.reject_all().await?;
+            Ok(())
+        }
         WorkCommand::Set { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {
