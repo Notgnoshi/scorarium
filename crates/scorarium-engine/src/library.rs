@@ -5,13 +5,14 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
+use crate::entity::AnyEntityId;
 use crate::holding::NewHolding;
-use crate::person::{self, Person};
-use crate::publication::{self, ImportSeed, Publication};
+use crate::person::{self, Person, PersonId};
+use crate::publication::{self, ImportSeed, Publication, PublicationId};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::value::Tag;
 use crate::work::{self, Work};
-use crate::{Engine, Error, Result};
+use crate::{Engine, Error, Result, asset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LibraryId(i64);
@@ -150,6 +151,16 @@ impl Library {
     /// Returns [Error::NotFound] if the library has already been deleted.
     pub async fn delete(self) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
+        let publications = sqlx::query_scalar!(
+            "SELECT id FROM publication WHERE library_id = ?",
+            self.id.get()
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let people =
+            sqlx::query_scalar!("SELECT id FROM person WHERE library_id = ?", self.id.get())
+                .fetch_all(&mut *tx)
+                .await?;
         let name = sqlx::query_scalar!(
             "DELETE FROM library WHERE id = ? RETURNING name",
             self.id.get()
@@ -165,7 +176,17 @@ impl Library {
         )
         .await?
         .commit()
-        .await
+        .await?;
+        for id in publications {
+            asset::remove_dir(
+                &self.engine,
+                AnyEntityId::Publication(PublicationId::new(id)),
+            );
+        }
+        for id in people {
+            asset::remove_dir(&self.engine, AnyEntityId::Person(PersonId::new(id)));
+        }
+        Ok(())
     }
 }
 

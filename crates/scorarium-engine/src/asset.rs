@@ -9,6 +9,7 @@ use tempfile::{NamedTempFile, TempPath};
 use tokio::io::{AsyncRead, AsyncWriteExt};
 
 use crate::audit::AuditSubject;
+use crate::entity::AnyEntityId;
 use crate::link::HttpUrl;
 use crate::{Engine, Error, Result};
 
@@ -171,21 +172,27 @@ pub(crate) fn unique_path(dir: &Path, filename: &str) -> PathBuf {
 /// Call this only after the transaction that deleted the entities commits.
 pub(crate) fn remove_dirs(engine: &Engine, deleted: &[AuditSubject]) {
     for subject in deleted {
-        let AuditSubject::Entity { id, .. } = subject else {
-            continue;
-        };
-        let dir = engine
-            .data_dir()
-            .join("assets")
-            .join(id.kind().to_string())
-            .join(id.get().to_string());
-        match std::fs::remove_dir_all(&dir) {
-            Err(e) if e.kind() != ErrorKind::NotFound => {
-                // The rows are already gone, so an error would tell the caller the delete failed.
-                log::warn!("failed to remove {}: {e}", dir.display());
-            }
-            _ => {}
+        if let AuditSubject::Entity { id, .. } = subject {
+            remove_dir(engine, *id);
         }
+    }
+}
+
+/// Remove the asset directory of the entity `id`
+///
+/// Call this only after the transaction that deleted the entity commits.
+pub(crate) fn remove_dir(engine: &Engine, id: AnyEntityId) {
+    let dir = engine
+        .data_dir()
+        .join("assets")
+        .join(id.kind().to_string())
+        .join(id.get().to_string());
+    match std::fs::remove_dir_all(&dir) {
+        Err(e) if e.kind() != ErrorKind::NotFound => {
+            // The rows are already gone, so an error would tell the caller the delete failed.
+            log::warn!("failed to remove {}: {e}", dir.display());
+        }
+        _ => {}
     }
 }
 
