@@ -136,6 +136,7 @@ pub enum Proposal {
     Contributor { person: Person, role: String },
     Contents(Work),
     Link(HttpUrl),
+    Cover(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -422,6 +423,7 @@ impl Publication {
                 ("contents", None)
             }
             Proposal::Link(url) => ("link", Some(url.to_string())),
+            Proposal::Cover(url) => ("cover", Some(url.to_string())),
         };
         let mut tx = self.engine.begin_write().await?;
         let current = Publication::fetch(&self.engine, &mut tx, self.id)
@@ -451,6 +453,8 @@ impl Publication {
                     link.url == *url || (link.record.is_some() && link.record == record)
                 })
             }
+            // A stored file cannot be compared to a URL.
+            Proposal::Cover(_) => false,
         };
         if has {
             return Ok(None);
@@ -1569,6 +1573,7 @@ impl Entity for Publication {
             }
             Proposal::Contents(work) => self.add_work(work.id()).await?,
             Proposal::Link(url) => self.add_link(url).await?,
+            Proposal::Cover(url) => self.set_cover(AssetSource::Url(url)).await?,
         }
         self.discard_proposal(proposal.id).await
     }
@@ -2031,6 +2036,7 @@ async fn from_row(
             Proposal::Contents(work)
         }
         "link" => Proposal::Link(stored_value(row.proposed_value, row.id)?.parse()?),
+        "cover" => Proposal::Cover(stored_value(row.proposed_value, row.id)?.parse()?),
         other => return Err(eyre::eyre!("unknown publication proposal field {other:?}").into()),
     };
     Ok(entity::Proposal {

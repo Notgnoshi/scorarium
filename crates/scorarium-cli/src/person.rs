@@ -85,6 +85,7 @@ fn proposal(value: &scorarium_engine::person::Proposal) -> (&'static str, String
     match value {
         Proposal::Name(name) => ("name", name.clone()),
         Proposal::Link(url) => ("link", url.to_string()),
+        Proposal::Profile(url) => ("profile", url.to_string()),
     }
 }
 

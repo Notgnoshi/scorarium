@@ -5,7 +5,7 @@ CREATE TABLE publication_proposal (
     work_id INTEGER,
     person_id INTEGER,
     field TEXT NOT NULL CHECK (
-        field IN ('title', 'publisher', 'year', 'identifier', 'contributor', 'contents', 'link')
+        field IN ('title', 'publisher', 'year', 'identifier', 'contributor', 'contents', 'link', 'cover')
     ),
     source TEXT NOT NULL,
     proposed_value TEXT CHECK (proposed_value <> ''),
@@ -51,7 +51,7 @@ CREATE TABLE person_proposal (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     library_id INTEGER NOT NULL,
     person_id INTEGER NOT NULL,
-    field TEXT NOT NULL CHECK (field IN ('name', 'link')),
+    field TEXT NOT NULL CHECK (field IN ('name', 'link', 'profile')),
     source TEXT NOT NULL,
     proposed_value TEXT NOT NULL CHECK (proposed_value <> ''),
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),

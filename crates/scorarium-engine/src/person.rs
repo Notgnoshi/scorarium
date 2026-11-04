@@ -81,6 +81,7 @@ impl FromStr for Field {
 pub enum Proposal {
     Name(String),
     Link(HttpUrl),
+    Profile(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -371,6 +372,7 @@ impl Person {
         let (field, text) = match &value {
             Proposal::Name(name) => ("name", clean_name(name)?.to_string()),
             Proposal::Link(url) => ("link", url.to_string()),
+            Proposal::Profile(url) => ("profile", url.to_string()),
         };
         let mut tx = self.engine.begin_write().await?;
         let current = Person::fetch(&self.engine, &mut tx, self.id)
@@ -384,6 +386,8 @@ impl Person {
                     link.url == *url || (link.record.is_some() && link.record == record)
                 })
             }
+            // A stored file cannot be compared to a URL.
+            Proposal::Profile(_) => false,
         };
         if has {
             return Ok(None);
@@ -487,6 +491,7 @@ impl Entity for Person {
         match proposal.value {
             Proposal::Name(name) => self.rename(&name, sort_name(&name)).await?,
             Proposal::Link(url) => self.add_link(url).await?,
+            Proposal::Profile(url) => self.set_profile(AssetSource::Url(url)).await?,
         }
         self.discard_proposal(proposal.id).await
     }
@@ -640,6 +645,7 @@ fn from_row(row: ProposalRow) -> Result<entity::Proposal<Person>> {
     let value = match row.field.as_str() {
         "name" => Proposal::Name(row.proposed_value),
         "link" => Proposal::Link(row.proposed_value.parse()?),
+        "profile" => Proposal::Profile(row.proposed_value.parse()?),
         other => return Err(eyre::eyre!("unknown person proposal field {other:?}").into()),
     };
     Ok(entity::Proposal {

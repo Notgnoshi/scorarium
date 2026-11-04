@@ -190,6 +190,7 @@ fn proposal(value: &scorarium_engine::publication::Proposal) -> (&'static str, S
         }
         Proposal::Contents(work) => ("work", work.title().to_string()),
         Proposal::Link(url) => ("link", url.to_string()),
+        Proposal::Cover(url) => ("cover", url.to_string()),
     }
 }
 
