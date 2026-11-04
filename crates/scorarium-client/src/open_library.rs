@@ -12,7 +12,7 @@ use crate::{Priority, UserAgent};
 const BASE: &str = "https://openlibrary.org/";
 
 /// only what [WorkHit], [AuthorHit], and [EditionHit] use
-const SEARCH_FIELDS: &str = "key,title,subtitle,author_name,author_key,first_publish_year,cover_i,editions,editions.key,editions.isbn,editions.publisher,editions.publish_date";
+const SEARCH_FIELDS: &str = "key,title,subtitle,author_name,author_key,first_publish_year,cover_i,editions,editions.key,editions.isbn,editions.publisher,editions.publish_date,editions.title,editions.subtitle,editions.cover_i";
 
 /// Open Library limits us to one request per second, and three per second for a request identified
 /// by a User-Agent carrying contact info
@@ -75,7 +75,7 @@ impl<'a> OpenLibrary<'a> {
     pub async fn search_title(
         &self,
         title: &str,
-        limit: u8,
+        limit: usize,
         priority: Priority,
     ) -> eyre::Result<Vec<WorkHit>> {
         let mut url = url(["search.json"])?;
@@ -169,6 +169,10 @@ pub struct AuthorHit {
 pub struct EditionHit {
     /// "OL7636066M"
     pub olid: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    /// A cover id for covers.openlibrary.org
+    pub cover_id: Option<i64>,
     pub isbn_13: Vec<String>,
     pub isbn_10: Vec<String>,
     pub publishers: Vec<String>,
@@ -270,6 +274,9 @@ struct RawEditionHits {
 #[derive(Deserialize)]
 struct RawEditionHit {
     key: String,
+    title: String,
+    subtitle: Option<String>,
+    cover_i: Option<i64>,
     /// The 13 and 10 character forms in one array
     #[serde(default)]
     isbn: Vec<String>,
@@ -313,6 +320,9 @@ impl From<RawEditionHit> for EditionHit {
         let (isbn_13, isbn_10) = raw.isbn.into_iter().partition(|isbn| isbn.len() == 13);
         EditionHit {
             olid: olid(&raw.key),
+            title: raw.title,
+            subtitle: raw.subtitle,
+            cover_id: raw.cover_i.filter(|id| *id > 0),
             isbn_13,
             isbn_10,
             publishers: raw.publisher,
@@ -478,6 +488,12 @@ mod tests {
         assert_eq!(edition.isbn_10, ["0486253929"]);
         assert_eq!(edition.publishers, ["Dover Publications"]);
         assert_eq!(edition.publish_date.as_deref(), Some("July 1, 1987"));
+        assert_eq!(
+            edition.title,
+            "Bagatelles, Rondos and Other Shorter Works for Piano"
+        );
+        assert_eq!(edition.subtitle, None);
+        assert_eq!(edition.cover_id, Some(310277));
     }
 
     #[tokio::test]

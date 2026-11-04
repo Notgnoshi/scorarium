@@ -871,7 +871,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
             .create_publication(
-                ImportSeed::Title("Russian piano album".into()),
+                ImportSeed::Title {
+                    title: "Russian piano album".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await

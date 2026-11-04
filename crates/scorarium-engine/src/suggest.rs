@@ -1,12 +1,18 @@
-use scorarium_archive::fuzzy::{normalize, rank};
+use std::time::Duration;
 
+use scorarium_archive::fuzzy::{normalize, rank};
+use scorarium_client::Priority;
+use scorarium_client::open_library::WorkHit;
+
+use crate::enrich::open_library;
 use crate::library::{self, LibraryId};
+use crate::link::{ExternalRecord, HttpUrl, LinkKind};
 use crate::person::{self, Person, PersonId};
-use crate::publication::{self, Publication, PublicationId};
+use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
 use crate::search::same_name;
-use crate::value::Tag;
+use crate::value::{Tag, Year};
 use crate::work::{self, CatalogNumber, Work, WorkId};
-use crate::{Engine, Result};
+use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SuggestField {
@@ -330,6 +336,87 @@ fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> V
     hits
 }
 
+/// An external publication that matched a title search
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalCandidate {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub contributors: Vec<String>,
+    pub publisher: Option<String>,
+    /// The edition's publication year
+    pub year: Option<Year>,
+    /// The edition's cover image, or the work's when the edition has none
+    pub cover: Option<HttpUrl>,
+    /// The ISBN or ISMN that identifies the edition
+    pub identifier: Option<Identifier>,
+    /// The source's own record, which names the source and links to its page
+    pub record: ExternalRecord,
+}
+
+/// Whether a query is worth making a rate-limited external search
+fn worth_searching(query: &str) -> bool {
+    if publication::looks_like_identifier(query) {
+        return false;
+    }
+    let mut words = query.split_whitespace();
+    match (words.next(), words.next()) {
+        (Some(_), Some(_)) => true,
+        (Some(word), None) => word.chars().count() >= 6,
+        (None, _) => false,
+    }
+}
+
+/// Describe an Open Library hit as a candidate, or `None` when it has no edition
+fn candidate(hit: WorkHit) -> Option<ExternalCandidate> {
+    let edition = hit.edition?;
+    let cover = edition.cover_id.or(hit.cover_id).and_then(|id| {
+        format!("https://covers.openlibrary.org/b/id/{id}-M.jpg")
+            .parse()
+            .ok()
+    });
+    let identifier = edition
+        .isbn_13
+        .iter()
+        .chain(&edition.isbn_10)
+        .find_map(|raw| Identifier::new(IdentifierKind::Isbn, raw).ok());
+    Some(ExternalCandidate {
+        title: edition.title,
+        subtitle: edition.subtitle,
+        contributors: hit.authors.into_iter().map(|author| author.name).collect(),
+        publisher: edition.publishers.into_iter().next(),
+        year: edition.publish_date.as_deref().and_then(open_library::year),
+        cover,
+        identifier,
+        record: ExternalRecord::new(LinkKind::OpenLibrary, edition.olid),
+    })
+}
+
+impl Engine {
+    /// Search external sources for publications with titles matching `query`, best match first
+    pub async fn suggest_external(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<ExternalCandidate>> {
+        let query = query.trim();
+        if limit == 0 || !worth_searching(query) {
+            return Ok(Vec::new());
+        }
+        let open_library = self.client().open_library();
+        let search = open_library.search_title(query, limit, Priority::Interactive);
+        let hits = match tokio::time::timeout(Duration::from_secs(3), search).await {
+            Ok(Ok(hits)) => hits,
+            Ok(Err(error)) => return Err(Error::Generic(error)),
+            Err(_) => {
+                return Err(Error::Generic(eyre::eyre!(
+                    "Open Library title search timed out"
+                )));
+            }
+        };
+        Ok(hits.into_iter().filter_map(candidate).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,7 +464,10 @@ mod tests {
         ] {
             let mut publication = library
                 .create_publication(
-                    ImportSeed::Title(title.into()),
+                    ImportSeed::Title {
+                        title: title.into(),
+                        record: None,
+                    },
                     NewHolding::Physical { location: None },
                 )
                 .await
@@ -432,7 +522,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut nocturnes = library
             .create_publication(
-                ImportSeed::Title("Chopin Nocturnes".into()),
+                ImportSeed::Title {
+                    title: "Chopin Nocturnes".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -453,7 +546,10 @@ mod tests {
         nocturnes.commit().await.unwrap();
         library
             .create_publication(
-                ImportSeed::Title("Nocturne album".into()),
+                ImportSeed::Title {
+                    title: "Nocturne album".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -514,7 +610,10 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut album = library
             .create_publication(
-                ImportSeed::Title("Romantic piano".into()),
+                ImportSeed::Title {
+                    title: "Romantic piano".into(),
+                    record: None,
+                },
                 NewHolding::Physical { location: None },
             )
             .await
@@ -563,5 +662,52 @@ mod tests {
         };
         let narrowed = library.suggest(only_beethoven, "op", 10).await.unwrap();
         assert_eq!(numbers(&narrowed), [("Op. 20", false)]);
+    }
+
+    #[tokio::test]
+    async fn external_suggestions_describe_each_matched_edition() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let candidates = engine
+            .suggest_external("bagatelles rondos", 5)
+            .await
+            .unwrap();
+        let title = "Bagatelles, Rondos and Other Shorter Works for Piano".to_string();
+        let contributors = vec!["Ludwig van Beethoven".to_string()];
+        assert_eq!(
+            candidates,
+            [
+                ExternalCandidate {
+                    title: title.clone(),
+                    subtitle: None,
+                    contributors: contributors.clone(),
+                    publisher: Some("Dover Publications, Incorporated".to_string()),
+                    year: Some("2013".parse().unwrap()),
+                    cover: None,
+                    identifier: Some(
+                        Identifier::new(IdentifierKind::Isbn, "9781306324717").unwrap()
+                    ),
+                    record: ExternalRecord::new(LinkKind::OpenLibrary, "OL38281852M"),
+                },
+                ExternalCandidate {
+                    title,
+                    subtitle: None,
+                    contributors,
+                    publisher: Some("Dover Publications".to_string()),
+                    year: Some("1987".parse().unwrap()),
+                    cover: Some(
+                        "https://covers.openlibrary.org/b/id/310277-M.jpg"
+                            .parse()
+                            .unwrap()
+                    ),
+                    identifier: Some(
+                        Identifier::new(IdentifierKind::Isbn, "9780486253923").unwrap()
+                    ),
+                    record: ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M"),
+                },
+            ]
+        );
     }
 }

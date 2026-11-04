@@ -282,7 +282,10 @@ async fn create(
 ) -> Result<Publication> {
     let mut publication = library
         .create_publication(
-            ImportSeed::Title(title.into()),
+            ImportSeed::Title {
+                title: title.into(),
+                record: None,
+            },
             NewHolding::Physical { location },
         )
         .await?;
