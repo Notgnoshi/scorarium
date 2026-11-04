@@ -1,5 +1,7 @@
+use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_DISPOSITION, HeaderMap};
@@ -19,6 +21,18 @@ pub enum AssetSource<'a> {
     },
     /// A file to download from the given HTTP URL
     Url(HttpUrl),
+}
+
+impl fmt::Debug for AssetSource<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AssetSource::Upload { filename, .. } => f
+                .debug_struct("Upload")
+                .field("filename", filename)
+                .finish(),
+            AssetSource::Url(url) => f.debug_tuple("Url").field(url).finish(),
+        }
+    }
 }
 
 /// A file in the staging directory, deleted on drop unless persisted
@@ -100,7 +114,6 @@ fn component(name: &str) -> Option<String> {
 
 impl Staged {
     /// Get the file's name, a single path component
-    #[expect(dead_code)]
     pub(crate) fn filename(&self) -> &str {
         &self.filename
     }
@@ -127,6 +140,29 @@ impl Staged {
         }
         self.path.persist(dest).map_err(|e| e.error)?;
         Ok(())
+    }
+}
+
+/// Choose a path in `dir` for `filename` that does not conflict with an existing file
+pub(crate) fn unique_path(dir: &Path, filename: &str) -> PathBuf {
+    let requested = dir.join(filename);
+    if !requested.exists() && requested.file_stem() != Some(OsStr::new("cover")) {
+        return requested;
+    }
+    // Only the requested name checks the stem, because every counted name for `cover` with no
+    // extension also has the stem `cover`.
+    let mut counter = 1;
+    loop {
+        let mut extension = OsString::from(counter.to_string());
+        if let Some(original) = requested.extension() {
+            extension.push(".");
+            extension.push(original);
+        }
+        let path = requested.with_extension(extension);
+        if !path.exists() {
+            return path;
+        }
+        counter += 1;
     }
 }
 
@@ -165,5 +201,16 @@ mod tests {
         assert_eq!(component("/"), None);
         assert_eq!(component(".."), None);
         assert_eq!(component(""), None);
+    }
+
+    #[test]
+    fn unique_path_counts_past_names_without_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("download"), b"").unwrap();
+        assert_eq!(
+            unique_path(dir.path(), "download"),
+            dir.path().join("download.1")
+        );
+        assert_eq!(unique_path(dir.path(), "cover"), dir.path().join("cover.1"));
     }
 }

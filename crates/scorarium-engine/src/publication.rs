@@ -1,4 +1,5 @@
 use std::fmt;
+use std::io::ErrorKind;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -7,7 +8,7 @@ use isbn::{Isbn, Isbn13, IsbnError};
 use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
-use crate::asset::{self, AssetSource};
+use crate::asset::{self, AssetSource, Staged};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
 use crate::enrich::{Enrichment, open_library};
@@ -290,6 +291,11 @@ impl Publication {
             let kind = match holding.kind.as_str() {
                 "physical" => HoldingKind::Physical {
                     location: holding.location,
+                },
+                "digital" => HoldingKind::Digital {
+                    file: engine.data_dir().join(holding.location.ok_or_else(|| {
+                        eyre::eyre!("digital holding {} has no file", holding.id)
+                    })?),
                 },
                 other => return Err(eyre::eyre!("unsupported holding kind {other:?}").into()),
             };
@@ -1003,20 +1009,16 @@ impl Publication {
 
     /// Add a holding for another copy the library owns, treating a blank location as none
     ///
-    /// Returns [Error::NotFound] if the publication has been deleted.
+    /// Store a digital holding's file in the publication's asset directory under its own name,
+    /// with a counter before the extension if that name is taken.
+    ///
+    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename or its URL
+    /// answers with an error status, and [Error::NotFound] if the publication has been deleted.
     pub async fn add_holding(&mut self, holding: NewHolding<'_>) -> Result<HoldingId> {
-        let NewHolding::Physical { location } = holding;
-        let location = clean_text(location);
+        let holding = stage_holding(&self.engine, holding).await?;
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let id = sqlx::query_scalar!(
-            r#"INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)
-               RETURNING id AS "id!""#,
-            self.id.get(),
-            location
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+        let holding = insert_holding(&self.engine, &mut tx, self.id, holding).await?;
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -1025,14 +1027,8 @@ impl Publication {
         .fetch_one(&mut *tx)
         .await?;
         self.commit_update(tx, Field::Holdings).await?;
-        let id = HoldingId::new(id);
-        self.holdings.push(Holding {
-            id,
-            kind: HoldingKind::Physical {
-                location: location.map(str::to_string),
-            },
-            loaned_to: None,
-        });
+        let id = holding.id;
+        self.holdings.push(holding);
         self.last_modified_at = last_modified_at;
         Ok(id)
     }
@@ -1063,8 +1059,16 @@ impl Publication {
         .fetch_one(&mut *tx)
         .await?;
         self.commit_update(tx, Field::Holdings).await?;
-        self.holdings.remove(position);
         self.last_modified_at = last_modified_at;
+        if let HoldingKind::Digital { file } = self.holdings.remove(position).kind {
+            match std::fs::remove_file(&file) {
+                Err(e) if e.kind() != ErrorKind::NotFound => {
+                    // The row is already gone, so an error would tell the caller the removal failed.
+                    log::warn!("failed to remove {}: {e}", file.display());
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
@@ -1744,8 +1748,7 @@ pub(crate) async fn create(
         )),
         None => None,
     };
-    let NewHolding::Physical { location } = holding;
-    let location = clean_text(location);
+    let holding = stage_holding(engine, holding).await?;
     let mut tx = engine.begin_write().await?;
     let library = library.get();
     let id = sqlx::query_scalar!(
@@ -1779,13 +1782,7 @@ pub(crate) async fn create(
         .fetch_one(&mut *tx)
         .await?;
     }
-    sqlx::query!(
-        "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)",
-        id,
-        location
-    )
-    .execute(&mut *tx)
-    .await?;
+    insert_holding(engine, &mut tx, PublicationId::new(id), holding).await?;
     let publication = Publication::fetch(engine, &mut tx, PublicationId::new(id))
         .await?
         .ok_or(Error::NotFound)?;
@@ -2047,6 +2044,72 @@ async fn from_row(
 /// Unwrap the value of proposal `id`, which every field but contents stores
 fn stored_value(value: Option<String>, id: i64) -> Result<String> {
     value.ok_or_else(|| eyre::eyre!("publication proposal {id} has no value").into())
+}
+
+/// A [NewHolding] whose file, if any, waits in the staging directory
+enum StagedHolding<'a> {
+    Physical { location: Option<&'a str> },
+    Digital(Staged),
+}
+
+/// Stage a new holding's file, treating a blank location as none
+///
+/// Call this before the write transaction begins, so a slow upload or download does not hold the
+/// write lock.
+async fn stage_holding<'a>(engine: &Engine, holding: NewHolding<'a>) -> Result<StagedHolding<'a>> {
+    Ok(match holding {
+        NewHolding::Physical { location } => StagedHolding::Physical {
+            location: clean_text(location),
+        },
+        NewHolding::Digital(source) => StagedHolding::Digital(asset::stage(engine, source).await?),
+    })
+}
+
+/// Insert a holding of `publication`, first moving any staged file into its asset directory
+async fn insert_holding(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    publication: PublicationId,
+    holding: StagedHolding<'_>,
+) -> Result<Holding> {
+    let (kind_name, location, kind) = match holding {
+        StagedHolding::Physical { location } => {
+            let location = location.map(str::to_string);
+            (
+                "physical",
+                location.clone(),
+                HoldingKind::Physical { location },
+            )
+        }
+        StagedHolding::Digital(staged) => {
+            let dir = engine
+                .data_dir()
+                .join(format!("assets/publication/{publication}"));
+            let file = asset::unique_path(&dir, staged.filename());
+            let relative = file
+                .strip_prefix(engine.data_dir())
+                .ok()
+                .and_then(Path::to_str)
+                .ok_or_else(|| eyre::eyre!("{} is not a UTF-8 data path", file.display()))?
+                .to_string();
+            staged.persist(&file)?;
+            ("digital", Some(relative), HoldingKind::Digital { file })
+        }
+    };
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)
+           RETURNING id AS "id!""#,
+        publication.get(),
+        kind_name,
+        location
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    Ok(Holding {
+        id: HoldingId::new(id),
+        kind,
+        loaned_to: None,
+    })
 }
 
 /// Remove a cover image that a committed transaction no longer refers to
@@ -2902,5 +2965,66 @@ mod tests {
         ] {
             assert!(!looks_like_identifier(input), "{input:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn digital_holdings() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let upload = |name: &str| {
+            NewHolding::Digital(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: name.into(),
+            })
+        };
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                upload("score.pdf"),
+            )
+            .await
+            .unwrap();
+        let assets = dir
+            .path()
+            .join(format!("assets/publication/{}", publication.id()));
+        let file = |holding: &Holding| match &holding.kind {
+            HoldingKind::Digital { file } => file.clone(),
+            other => panic!("expected a digital holding, got {other:?}"),
+        };
+        let first = publication.holdings()[0].clone();
+        assert_eq!(file(&first), assets.join("score.pdf"));
+        assert_eq!(std::fs::read(file(&first)).unwrap(), b"%PDF-1.4 not really");
+
+        let second = publication.add_holding(upload("score.pdf")).await.unwrap();
+        let third = publication.add_holding(upload("cover.png")).await.unwrap();
+        let names: Vec<_> = publication
+            .holdings()
+            .iter()
+            .map(|h| file(h).strip_prefix(&assets).unwrap().to_path_buf())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                PathBuf::from("score.pdf"),
+                PathBuf::from("score.1.pdf"),
+                PathBuf::from("cover.1.png"),
+            ]
+        );
+
+        publication.remove_holding(first.id).await.unwrap();
+        assert!(!assets.join("score.pdf").exists());
+        assert!(assets.join("score.1.pdf").exists());
+        publication.remove_holding(second).await.unwrap();
+        assert!(matches!(
+            publication.remove_holding(third).await,
+            Err(Error::InvalidValue(_))
+        ));
+        assert!(assets.join("cover.1.png").exists());
     }
 }

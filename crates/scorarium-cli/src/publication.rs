@@ -71,6 +71,7 @@ pub(crate) async fn list(
                 .iter()
                 .map(|holding| match holding.kind {
                     scorarium_engine::holding::HoldingKind::Physical { .. } => "physical",
+                    scorarium_engine::holding::HoldingKind::Digital { .. } => "digital",
                 })
                 .collect();
             [
@@ -142,6 +143,9 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
             } => format!("physical: {location}"),
             scorarium_engine::holding::HoldingKind::Physical { location: None } => {
                 "physical".to_string()
+            }
+            scorarium_engine::holding::HoldingKind::Digital { file } => {
+                format!("digital: {}", file.display())
             }
         };
         rows.push(row("holding", holding.id.to_string(), value));

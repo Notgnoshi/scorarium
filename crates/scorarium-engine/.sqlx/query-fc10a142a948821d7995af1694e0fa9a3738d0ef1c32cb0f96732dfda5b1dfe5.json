@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)\n               RETURNING id AS \"id!\"",
+  "query": "INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)\n           RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       null
     ]
   },
-  "hash": "8035a60217a0921a82f4aa410cf1c2f4f3953b07a2d3744be3581536e65102a3"
+  "hash": "fc10a142a948821d7995af1694e0fa9a3738d0ef1c32cb0f96732dfda5b1dfe5"
 }

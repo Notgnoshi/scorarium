@@ -1,6 +1,9 @@
 use std::fmt;
 use std::num::ParseIntError;
+use std::path::PathBuf;
 use std::str::FromStr;
+
+use crate::asset::AssetSource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HoldingId(i64);
@@ -42,9 +45,15 @@ pub struct Holding {
 pub enum HoldingKind {
     /// A printed copy
     Physical { location: Option<String> },
+    /// A digital file hosted by scorarium, at its absolute path
+    Digital { file: PathBuf },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum NewHolding<'a> {
-    Physical { location: Option<&'a str> },
+    Physical {
+        location: Option<&'a str>,
+    },
+    /// A file for the library to store
+    Digital(AssetSource<'a>),
 }
