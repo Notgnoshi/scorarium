@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, publisher, year AS \"year: u16\", stars AS \"stars: u8\",\n                      note, kind, draft AS \"draft: bool\",\n                      created_at AS \"created_at: Timestamp\",\n                      last_modified_at AS \"last_modified_at: Timestamp\"\n               FROM publication WHERE id = ?",
+  "query": "SELECT id, library_id, title, publisher, year AS \"year: u16\", stars AS \"stars: u8\",\n                      note, kind, cover, draft AS \"draft: bool\",\n                      created_at AS \"created_at: Timestamp\",\n                      last_modified_at AS \"last_modified_at: Timestamp\"\n               FROM publication WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -92,8 +92,19 @@
         }
       },
       {
-        "name": "draft: bool",
+        "name": "cover",
         "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "cover"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -137,10 +148,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "185bf233f3109c1e699418bd849844949be552c0bf801bfdc2afb659108d8522"
+  "hash": "ebc104b7d34bf5920d1dae1bf7ee334acab7e3e6c15b6b65422271a88fd657f4"
 }

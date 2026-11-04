@@ -1,11 +1,13 @@
 use std::fmt;
 use std::num::ParseIntError;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
 use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
+use crate::asset::{self, AssetSource};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
 use crate::enrich::{Enrichment, open_library};
@@ -18,7 +20,7 @@ use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
-use crate::{Engine, Error, Result, asset};
+use crate::{Engine, Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PublicationId(i64);
@@ -71,6 +73,7 @@ pub enum Field {
     Stars,
     Note,
     Classification,
+    Cover,
     Tags,
     Identifiers,
     Links,
@@ -88,6 +91,7 @@ impl fmt::Display for Field {
             Field::Stars => "stars",
             Field::Note => "note",
             Field::Classification => "classification",
+            Field::Cover => "cover",
             Field::Tags => "tags",
             Field::Identifiers => "identifiers",
             Field::Links => "links",
@@ -109,6 +113,7 @@ impl FromStr for Field {
             "stars" => Field::Stars,
             "note" => Field::Note,
             "classification" => Field::Classification,
+            "cover" => Field::Cover,
             "tags" => Field::Tags,
             "identifiers" => Field::Identifiers,
             "links" => Field::Links,
@@ -146,6 +151,7 @@ pub struct Publication {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    cover: Option<PathBuf>,
     tags: Vec<Tag>,
     identifiers: Vec<Identifier>,
     links: Vec<Link>,
@@ -163,6 +169,7 @@ struct PublicationRow {
     stars: Option<u8>,
     note: Option<String>,
     kind: Option<String>,
+    cover: Option<String>,
     draft: bool,
     created_at: Timestamp,
     last_modified_at: Timestamp,
@@ -192,6 +199,11 @@ impl Publication {
 
     pub fn classification(&self) -> Option<Classification> {
         self.classification
+    }
+
+    /// Get the absolute path of the publication's cover image
+    pub fn cover(&self) -> Option<&Path> {
+        self.cover.as_deref()
     }
 
     /// List the publication's tags alphabetically
@@ -301,6 +313,7 @@ impl Publication {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            cover: row.cover.map(|cover| engine.data_dir().join(cover)),
             tags,
             identifiers,
             links,
@@ -317,7 +330,7 @@ impl Publication {
         let row = sqlx::query_as!(
             PublicationRow,
             r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                      note, kind, draft AS "draft: bool",
+                      note, kind, cover, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
                FROM publication WHERE id = ?"#,
@@ -736,6 +749,60 @@ impl Publication {
         }
         tx.commit().await?;
         Ok(last_modified_at)
+    }
+
+    /// Replace the publication's cover image with the image from `source`
+    ///
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
+    /// [Error::NotFound] if the publication has been deleted.
+    pub async fn set_cover(&mut self, source: AssetSource<'_>) -> Result<()> {
+        let staged = asset::stage(&self.engine, source).await?;
+        let extension = staged.image_extension()?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let relative = format!("assets/publication/{}/cover.{extension}", self.id);
+        let path = self.engine.data_dir().join(&relative);
+        staged.persist(&path)?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET cover = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            relative,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Cover).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.cover.replace(path.clone())
+            && previous != path
+        {
+            remove_cover(&previous);
+        }
+        Ok(())
+    }
+
+    /// Remove the publication's cover image
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn clear_cover(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.cover.is_none() {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET cover = NULL, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Cover).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.cover.take() {
+            remove_cover(&previous);
+        }
+        Ok(())
     }
 
     /// Tag the publication
@@ -1622,6 +1689,7 @@ impl Entity for Publication {
                 .await?;
         }
         tx.commit().await?;
+        orphans.push(self.audit_subject());
         asset::remove_dirs(&self.engine, &orphans);
         if let Some(enrichment) = self.enrichment() {
             enrichment.cancel();
@@ -1743,7 +1811,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let rows = sqlx::query_as!(
         PublicationRow,
         r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                  note, kind, draft AS "draft: bool",
+                  note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
            FROM publication WHERE library_id = ? ORDER BY id"#,
@@ -1800,7 +1868,8 @@ pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publ
         PublicationRow,
         r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
-                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.note, publication.kind, publication.cover,
+                  publication.draft AS "draft: bool",
                   publication.created_at AS "created_at: Timestamp",
                   publication.last_modified_at AS "last_modified_at: Timestamp"
            FROM publication JOIN publication_work ON publication_work.publication_id = publication.id
@@ -1828,7 +1897,7 @@ pub(crate) async fn with_contributor(
     let rows = sqlx::query_as!(
         PublicationRow,
         r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                  note, kind, draft AS "draft: bool",
+                  note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
            FROM publication
@@ -1858,7 +1927,8 @@ pub(crate) async fn tagged(
         PublicationRow,
         r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
-                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.note, publication.kind, publication.cover,
+                  publication.draft AS "draft: bool",
                   publication.created_at AS "created_at: Timestamp",
                   publication.last_modified_at AS "last_modified_at: Timestamp"
            FROM publication JOIN tag ON tag.publication_id = publication.id
@@ -1977,6 +2047,15 @@ async fn from_row(
 /// Unwrap the value of proposal `id`, which every field but contents stores
 fn stored_value(value: Option<String>, id: i64) -> Result<String> {
     value.ok_or_else(|| eyre::eyre!("publication proposal {id} has no value").into())
+}
+
+/// Remove a cover image that a committed transaction no longer refers to
+fn remove_cover(path: &Path) {
+    // The row no longer names the file, so an error would tell the caller the update failed when
+    // it did not.
+    if let Err(e) = std::fs::remove_file(path) {
+        log::warn!("failed to remove {}: {e}", path.display());
+    }
 }
 
 fn clean_title(title: &str) -> Result<&str> {

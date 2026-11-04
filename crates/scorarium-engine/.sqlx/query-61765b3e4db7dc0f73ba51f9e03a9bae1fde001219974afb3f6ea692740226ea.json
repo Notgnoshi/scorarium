@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT publication.id, publication.library_id, publication.title, publication.publisher,\n                  publication.year AS \"year: u16\", publication.stars AS \"stars: u8\",\n                  publication.note, publication.kind, publication.draft AS \"draft: bool\",\n                  publication.created_at AS \"created_at: Timestamp\",\n                  publication.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication JOIN publication_work ON publication_work.publication_id = publication.id\n           WHERE publication_work.work_id = ?\n           ORDER BY publication.id",
+  "query": "SELECT id, library_id, title, publisher, year AS \"year: u16\", stars AS \"stars: u8\",\n                  note, kind, cover, draft AS \"draft: bool\",\n                  created_at AS \"created_at: Timestamp\",\n                  last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication WHERE library_id = ? ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -92,8 +92,19 @@
         }
       },
       {
-        "name": "draft: bool",
+        "name": "cover",
         "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "cover"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -137,10 +148,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "2ac51c060ccaea3f34e6abd0ccb3ae899e128e14956c8ab21f3d941a0e77f116"
+  "hash": "61765b3e4db7dc0f73ba51f9e03a9bae1fde001219974afb3f6ea692740226ea"
 }
