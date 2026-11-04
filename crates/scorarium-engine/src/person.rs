@@ -1,10 +1,12 @@
 use std::fmt;
 use std::num::ParseIntError;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
+use crate::asset::{self, AssetSource};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
@@ -91,6 +93,7 @@ pub struct Person {
     last_modified_at: Timestamp,
     name: String,
     sort_name: String,
+    profile: Option<PathBuf>,
     links: Vec<Link>,
 }
 
@@ -100,6 +103,7 @@ struct PersonRow {
     library_id: i64,
     name: String,
     sort_name: String,
+    profile: Option<String>,
     draft: bool,
     created_at: Timestamp,
     last_modified_at: Timestamp,
@@ -117,6 +121,11 @@ impl Person {
     /// List the person's links in the order they were added
     pub fn links(&self) -> &[Link] {
         &self.links
+    }
+
+    /// Get the absolute path of the person's profile image
+    pub fn profile(&self) -> Option<&Path> {
+        self.profile.as_deref()
     }
 
     async fn from_row(
@@ -142,6 +151,7 @@ impl Person {
             last_modified_at: row.last_modified_at,
             name: row.name,
             sort_name: row.sort_name,
+            profile: row.profile.map(|profile| engine.data_dir().join(profile)),
             links,
         })
     }
@@ -153,7 +163,7 @@ impl Person {
     ) -> Result<Option<Person>> {
         let row = sqlx::query_as!(
             PersonRow,
-            r#"SELECT id, library_id, name, sort_name, draft AS "draft: bool",
+            r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
                FROM person WHERE id = ?"#,
@@ -221,6 +231,60 @@ impl Person {
         self.name = name.to_string();
         self.sort_name = sort_name.to_string();
         self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Replace the person's profile image with the image from `source`
+    ///
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
+    /// [Error::NotFound] if the person has been deleted.
+    pub async fn set_profile(&mut self, source: AssetSource<'_>) -> Result<()> {
+        let staged = asset::stage(&self.engine, source).await?;
+        let extension = staged.image_extension()?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let relative = format!("assets/person/{}/profile.{extension}", self.id);
+        let path = self.engine.data_dir().join(&relative);
+        staged.persist(&path)?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET profile = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            relative,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Profile).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.profile.replace(path.clone())
+            && previous != path
+        {
+            remove_profile(&previous);
+        }
+        Ok(())
+    }
+
+    /// Remove the person's profile image
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn clear_profile(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.profile.is_none() {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET profile = NULL, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Profile).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.profile.take() {
+            remove_profile(&previous);
+        }
         Ok(())
     }
 
@@ -509,6 +573,7 @@ impl Entity for Person {
         .await?
         .commit()
         .await?;
+        asset::remove_dirs(&self.engine, &[self.audit_subject()]);
         if let Some(enrichment) = self.enrichment() {
             enrichment.cancel();
         }
@@ -638,7 +703,7 @@ pub(crate) async fn in_library(
         Some(role) => {
             sqlx::query_as!(
                 PersonRow,
-                r#"SELECT id, library_id, name, sort_name, draft AS "draft: bool",
+                r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
                           created_at AS "created_at: Timestamp",
                           last_modified_at AS "last_modified_at: Timestamp"
                    FROM person
@@ -658,7 +723,7 @@ pub(crate) async fn in_library(
         None => {
             sqlx::query_as!(
                 PersonRow,
-                r#"SELECT id, library_id, name, sort_name, draft AS "draft: bool",
+                r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
                           created_at AS "created_at: Timestamp",
                           last_modified_at AS "last_modified_at: Timestamp"
                    FROM person WHERE library_id = ? ORDER BY id"#,
@@ -825,6 +890,16 @@ pub(crate) async fn collect_orphan_people(
         .collect())
 }
 
+/// Remove a profile image that a committed transaction no longer refers to
+fn remove_profile(path: &Path) {
+    // The db record has already removed the path, so bubbling up an error would tell the caller the
+    // update failed, but that's not entirely true, because it's been removed from the db. So just
+    // log a warning and move on.
+    if let Err(e) = std::fs::remove_file(path) {
+        log::warn!("failed to remove {}: {e}", path.display());
+    }
+}
+
 fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
     AuditSubject::Entity {
         id: AnyEntityId::Person(id),
@@ -901,6 +976,70 @@ mod tests {
         assert_eq!(
             link.record,
             Some(ExternalRecord::new(LinkKind::Wikidata, "Q131861"))
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut person = publication
+            .create_contributor("Erik Satie", "composer")
+            .await
+            .unwrap();
+        let staging = dir.path().join("staging");
+        let upload = |bytes: &'static [u8]| AssetSource::Upload {
+            data: Box::new(bytes),
+            filename: "anything.bin".into(),
+        };
+        let png: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\0";
+        let jpeg: &[u8] = b"\xff\xd8\xff\xe0\0\0\0\0";
+
+        assert_eq!(person.profile(), None);
+        person.set_profile(upload(png)).await.unwrap();
+        let expected = dir
+            .path()
+            .join(format!("assets/person/{}/profile.png", person.id()));
+        assert_eq!(person.profile(), Some(expected.as_path()));
+        assert_eq!(std::fs::read(&expected).unwrap(), png);
+        assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+
+        assert!(matches!(
+            person.set_profile(upload(b"not an image")).await,
+            Err(Error::InvalidValue(_))
+        ));
+        assert_eq!(person.profile(), Some(expected.as_path()));
+        assert_eq!(std::fs::read_dir(&staging).unwrap().count(), 0);
+
+        person.set_profile(upload(jpeg)).await.unwrap();
+        let replaced = expected.with_extension("jpg");
+        assert_eq!(person.profile(), Some(replaced.as_path()));
+        assert!(!expected.exists());
+        assert_eq!(std::fs::read(&replaced).unwrap(), jpeg);
+
+        person.clear_profile().await.unwrap();
+        assert_eq!(person.profile(), None);
+        assert!(!replaced.exists());
+
+        person.set_profile(upload(png)).await.unwrap();
+        publication.delete().await.unwrap();
+        assert!(
+            !dir.path()
+                .join(format!("assets/person/{}", person.id()))
+                .exists()
         );
     }
 }

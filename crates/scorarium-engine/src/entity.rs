@@ -13,7 +13,7 @@ use crate::person::{Person, PersonId};
 use crate::publication::{Publication, PublicationId};
 use crate::review::ReviewItem;
 use crate::work::{Work, WorkId};
-use crate::{Engine, Error, Result};
+use crate::{Engine, Error, Result, asset};
 
 pub type Timestamp = chrono::DateTime<chrono::Utc>;
 
@@ -194,7 +194,13 @@ pub trait Entity: Sized {
 }
 
 /// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`
-pub(crate) async fn commit_rejection(tx: Audited<'_>, collected: &[AuditSubject]) -> Result<()> {
+///
+/// Remove the assets of each of `collected` once the rejection commits.
+pub(crate) async fn commit_rejection(
+    engine: &Engine,
+    tx: Audited<'_>,
+    collected: &[AuditSubject],
+) -> Result<()> {
     let Some((first, rest)) = collected.split_first() else {
         #[expect(
             deprecated,
@@ -220,5 +226,7 @@ pub(crate) async fn commit_rejection(tx: Audited<'_>, collected: &[AuditSubject]
             )
             .await?;
     }
-    tx.commit().await
+    tx.commit().await?;
+    asset::remove_dirs(engine, collected);
+    Ok(())
 }

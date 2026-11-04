@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -56,6 +56,7 @@ pub struct Engine {
 
 #[derive(Debug)]
 struct EngineInner {
+    data_dir: PathBuf,
     pool: SqlitePool,
     client: Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
@@ -103,14 +104,36 @@ impl Engine {
         if migrate {
             MIGRATOR.run(&pool).await.map_err(eyre::Report::new)?;
         }
+        let staging = data_dir.join("staging");
+        // don't want the CLI to remove the staging dir out from under a running server, so only
+        // remove it if we're also doing data migration.
+        if migrate {
+            match std::fs::remove_dir_all(&staging) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        std::fs::create_dir_all(&staging)?;
         Ok(Engine {
             inner: Arc::new(EngineInner {
+                // Asset paths handed to callers must not depend on the working directory.
+                data_dir: std::path::absolute(data_dir)?,
                 pool,
                 client,
                 enrichments: Mutex::default(),
                 _temp_dir: temp_dir,
             }),
         })
+    }
+
+    /// Get the directory holding the database and assets
+    pub(crate) fn data_dir(&self) -> &Path {
+        &self.inner.data_dir
+    }
+
+    /// Get the directory holding files that are not yet part of the library
+    pub(crate) fn staging_dir(&self) -> PathBuf {
+        self.inner.data_dir.join("staging")
     }
 
     pub(crate) fn client(&self) -> &Client {

@@ -18,7 +18,7 @@ use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
-use crate::{Engine, Error, Result};
+use crate::{Engine, Error, Result, asset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PublicationId(i64);
@@ -370,7 +370,7 @@ impl Publication {
         // deleting works can orphan people, so works first
         let mut collected = work::collect_orphan_works(&mut tx, self.library).await?;
         collected.extend(person::collect_orphan_people(&mut tx, self.library).await?);
-        entity::commit_rejection(tx, &collected).await
+        entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
     pub(crate) async fn propose(
@@ -1152,12 +1152,12 @@ impl Publication {
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
                 .await?;
         }
-        for subject in orphans {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
@@ -1174,6 +1174,7 @@ impl Publication {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1197,8 +1198,8 @@ impl Publication {
         if removed == 0 {
             return Ok(());
         }
-        let works = work::collect_orphan_works(&mut tx, self.library).await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -1214,7 +1215,7 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in works.iter().chain(&people) {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
@@ -1225,6 +1226,7 @@ impl Publication {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1392,17 +1394,18 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in people {
+        for subject in &people {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &people);
         self.contributors
             .retain(|contributor| !(contributor.person == person && contributor.role == role));
         self.last_modified_at = last_modified_at;
@@ -1572,17 +1575,18 @@ impl Entity for Publication {
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
                 .await?;
         }
-        for subject in orphans {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
@@ -1597,8 +1601,8 @@ impl Entity for Publication {
         sqlx::query!("DELETE FROM publication WHERE id = ?", self.id.get())
             .execute(&mut *tx)
             .await?;
-        let works = work::collect_orphan_works(&mut tx, self.library).await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -1607,7 +1611,7 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in works.iter().chain(&people) {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
@@ -1618,6 +1622,7 @@ impl Entity for Publication {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         if let Some(enrichment) = self.enrichment() {
             enrichment.cancel();
         }

@@ -17,7 +17,7 @@ use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
 use crate::value::{Classification, Stars, Tag, clean_text};
-use crate::{Engine, Error, Result};
+use crate::{Engine, Error, Result, asset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorkId(i64);
@@ -332,7 +332,7 @@ impl Work {
 
     async fn collect_orphans_and_commit(&self, mut tx: Audited<'_>) -> Result<()> {
         let collected = person::collect_orphan_people(&mut tx, self.library).await?;
-        entity::commit_rejection(tx, &collected).await
+        entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
     #[expect(dead_code)]
@@ -967,17 +967,18 @@ impl Work {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in people {
+        for subject in &people {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &people);
         self.contributors
             .retain(|contributor| !(contributor.person == person && contributor.role == role));
         self.last_modified_at = last_modified_at;
@@ -1127,17 +1128,18 @@ impl Entity for Work {
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
                 .await?;
         }
-        for subject in orphans {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
@@ -1172,6 +1174,7 @@ impl Entity for Work {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &people);
         if let Some(enrichment) = self.enrichment() {
             enrichment.cancel();
         }

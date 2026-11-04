@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, name, sort_name, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person WHERE library_id = ? ORDER BY id",
+  "query": "SELECT id, library_id, name, sort_name, profile, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person WHERE library_id = ? ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,19 @@
         }
       },
       {
-        "name": "draft: bool",
+        "name": "profile",
         "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -60,7 +71,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -71,7 +82,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 6,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -89,10 +100,11 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "b764f7a7f64609e53bbaaad68c3b816fe17479e698352660f66c1b68aa5e1e69"
+  "hash": "022d40b56aa1f72da6f5fdabc01433b2450f621b7182caddb12522226a01f46e"
 }
