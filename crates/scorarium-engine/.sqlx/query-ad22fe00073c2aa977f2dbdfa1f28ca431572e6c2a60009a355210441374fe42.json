@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, name, sort_name, draft AS \"draft: bool\",\n                      created_at AS \"created_at: Timestamp\",\n                      last_modified_at AS \"last_modified_at: Timestamp\"\n               FROM person WHERE id = ?",
+  "query": "SELECT id, library_id, name, sort_name, profile, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person\n                   WHERE library_id = ?\n                     AND (EXISTS (SELECT 1 FROM publication_contributor\n                                  WHERE person_id = person.id AND role = ?)\n                          OR EXISTS (SELECT 1 FROM work_contributor\n                                     WHERE person_id = person.id AND role = ?))\n                   ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,19 @@
         }
       },
       {
-        "name": "draft: bool",
+        "name": "profile",
         "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -60,7 +71,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -71,7 +82,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 6,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,17 +93,18 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       false,
       false,
       false,
       false,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "3383d7e6bada5b3b5cdcf23d9cda162c2ee422dd4ee890bf46e52e658b97662a"
+  "hash": "ad22fe00073c2aa977f2dbdfa1f28ca431572e6c2a60009a355210441374fe42"
 }

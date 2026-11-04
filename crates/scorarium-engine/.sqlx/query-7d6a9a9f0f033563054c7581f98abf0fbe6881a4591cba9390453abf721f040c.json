@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, publisher, year AS \"year: u16\", stars AS \"stars: u8\",\n                  note, kind, draft AS \"draft: bool\",\n                  created_at AS \"created_at: Timestamp\",\n                  last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication\n           WHERE id IN (SELECT publication_id FROM publication_contributor WHERE person_id = ?)\n           ORDER BY id",
+  "query": "SELECT publication.id, publication.library_id, publication.title, publication.publisher,\n                  publication.year AS \"year: u16\", publication.stars AS \"stars: u8\",\n                  publication.note, publication.kind, publication.cover,\n                  publication.draft AS \"draft: bool\",\n                  publication.created_at AS \"created_at: Timestamp\",\n                  publication.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication JOIN publication_work ON publication_work.publication_id = publication.id\n           WHERE publication_work.work_id = ?\n           ORDER BY publication.id",
   "describe": {
     "columns": [
       {
@@ -92,8 +92,19 @@
         }
       },
       {
-        "name": "draft: bool",
+        "name": "cover",
         "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "cover"
+          }
+        }
+      },
+      {
+        "name": "draft: bool",
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -137,10 +148,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "16352bb4ba9e78fb9a05ef1a233815fc2cf6afe6755892439da68069b3878d1d"
+  "hash": "7d6a9a9f0f033563054c7581f98abf0fbe6881a4591cba9390453abf721f040c"
 }

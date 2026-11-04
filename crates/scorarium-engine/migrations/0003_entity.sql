@@ -7,6 +7,7 @@ CREATE TABLE publication (
     note TEXT,
     stars INTEGER CHECK (stars BETWEEN 1 AND 5),
     kind TEXT CHECK (kind IN ('music', 'prose')),
+    cover TEXT,
     draft INTEGER NOT NULL DEFAULT 0 CHECK (draft IN (0, 1)),
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     last_modified_at INTEGER NOT NULL DEFAULT (unixepoch()),

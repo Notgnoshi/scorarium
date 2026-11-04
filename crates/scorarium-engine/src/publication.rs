@@ -1,11 +1,14 @@
 use std::fmt;
+use std::io::ErrorKind;
 use std::num::ParseIntError;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use isbn::{Isbn, Isbn13, IsbnError};
 use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
+use crate::asset::{self, AssetSource, Staged};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, clean_role};
 use crate::enrich::{Enrichment, open_library};
@@ -71,6 +74,7 @@ pub enum Field {
     Stars,
     Note,
     Classification,
+    Cover,
     Tags,
     Identifiers,
     Links,
@@ -88,6 +92,7 @@ impl fmt::Display for Field {
             Field::Stars => "stars",
             Field::Note => "note",
             Field::Classification => "classification",
+            Field::Cover => "cover",
             Field::Tags => "tags",
             Field::Identifiers => "identifiers",
             Field::Links => "links",
@@ -109,6 +114,7 @@ impl FromStr for Field {
             "stars" => Field::Stars,
             "note" => Field::Note,
             "classification" => Field::Classification,
+            "cover" => Field::Cover,
             "tags" => Field::Tags,
             "identifiers" => Field::Identifiers,
             "links" => Field::Links,
@@ -130,6 +136,7 @@ pub enum Proposal {
     Contributor { person: Person, role: String },
     Contents(Work),
     Link(HttpUrl),
+    Cover(HttpUrl),
 }
 
 #[derive(Clone, Debug)]
@@ -146,6 +153,7 @@ pub struct Publication {
     stars: Option<Stars>,
     note: Option<String>,
     classification: Option<Classification>,
+    cover: Option<PathBuf>,
     tags: Vec<Tag>,
     identifiers: Vec<Identifier>,
     links: Vec<Link>,
@@ -163,6 +171,7 @@ struct PublicationRow {
     stars: Option<u8>,
     note: Option<String>,
     kind: Option<String>,
+    cover: Option<String>,
     draft: bool,
     created_at: Timestamp,
     last_modified_at: Timestamp,
@@ -192,6 +201,11 @@ impl Publication {
 
     pub fn classification(&self) -> Option<Classification> {
         self.classification
+    }
+
+    /// Get the absolute path of the publication's cover image
+    pub fn cover(&self) -> Option<&Path> {
+        self.cover.as_deref()
     }
 
     /// List the publication's tags alphabetically
@@ -279,6 +293,11 @@ impl Publication {
                 "physical" => HoldingKind::Physical {
                     location: holding.location,
                 },
+                "digital" => HoldingKind::Digital {
+                    file: engine.data_dir().join(holding.location.ok_or_else(|| {
+                        eyre::eyre!("digital holding {} has no file", holding.id)
+                    })?),
+                },
                 other => return Err(eyre::eyre!("unsupported holding kind {other:?}").into()),
             };
             Ok(Holding {
@@ -301,6 +320,7 @@ impl Publication {
             stars: row.stars.map(Stars::try_from).transpose()?,
             note: row.note,
             classification: row.kind.as_deref().map(str::parse).transpose()?,
+            cover: row.cover.map(|cover| engine.data_dir().join(cover)),
             tags,
             identifiers,
             links,
@@ -317,7 +337,7 @@ impl Publication {
         let row = sqlx::query_as!(
             PublicationRow,
             r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                      note, kind, draft AS "draft: bool",
+                      note, kind, cover, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
                FROM publication WHERE id = ?"#,
@@ -370,7 +390,7 @@ impl Publication {
         // deleting works can orphan people, so works first
         let mut collected = work::collect_orphan_works(&mut tx, self.library).await?;
         collected.extend(person::collect_orphan_people(&mut tx, self.library).await?);
-        entity::commit_rejection(tx, &collected).await
+        entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
     pub(crate) async fn propose(
@@ -403,6 +423,7 @@ impl Publication {
                 ("contents", None)
             }
             Proposal::Link(url) => ("link", Some(url.to_string())),
+            Proposal::Cover(url) => ("cover", Some(url.to_string())),
         };
         let mut tx = self.engine.begin_write().await?;
         let current = Publication::fetch(&self.engine, &mut tx, self.id)
@@ -432,6 +453,8 @@ impl Publication {
                     link.url == *url || (link.record.is_some() && link.record == record)
                 })
             }
+            // A stored file cannot be compared to a URL.
+            Proposal::Cover(_) => false,
         };
         if has {
             return Ok(None);
@@ -738,6 +761,60 @@ impl Publication {
         Ok(last_modified_at)
     }
 
+    /// Replace the publication's cover image with the image from `source`
+    ///
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
+    /// [Error::NotFound] if the publication has been deleted.
+    pub async fn set_cover(&mut self, source: AssetSource<'_>) -> Result<()> {
+        let staged = asset::stage(&self.engine, source).await?;
+        let extension = staged.image_extension()?;
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let relative = format!("assets/publication/{}/cover.{extension}", self.id);
+        let path = self.engine.data_dir().join(&relative);
+        staged.persist(&path)?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET cover = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            relative,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Cover).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.cover.replace(path.clone())
+            && previous != path
+        {
+            remove_cover(&previous);
+        }
+        Ok(())
+    }
+
+    /// Remove the publication's cover image
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn clear_cover(&mut self) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.cover.is_none() {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET cover = NULL, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Cover).await?;
+        self.last_modified_at = last_modified_at;
+        if let Some(previous) = self.cover.take() {
+            remove_cover(&previous);
+        }
+        Ok(())
+    }
+
     /// Tag the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
@@ -936,20 +1013,16 @@ impl Publication {
 
     /// Add a holding for another copy the library owns, treating a blank location as none
     ///
-    /// Returns [Error::NotFound] if the publication has been deleted.
+    /// Store a digital holding's file in the publication's asset directory under its own name,
+    /// with a counter before the extension if that name is taken.
+    ///
+    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename or its URL
+    /// answers with an error status, and [Error::NotFound] if the publication has been deleted.
     pub async fn add_holding(&mut self, holding: NewHolding<'_>) -> Result<HoldingId> {
-        let NewHolding::Physical { location } = holding;
-        let location = clean_text(location);
+        let holding = stage_holding(&self.engine, holding).await?;
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let id = sqlx::query_scalar!(
-            r#"INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)
-               RETURNING id AS "id!""#,
-            self.id.get(),
-            location
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+        let holding = insert_holding(&self.engine, &mut tx, self.id, holding).await?;
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -958,14 +1031,8 @@ impl Publication {
         .fetch_one(&mut *tx)
         .await?;
         self.commit_update(tx, Field::Holdings).await?;
-        let id = HoldingId::new(id);
-        self.holdings.push(Holding {
-            id,
-            kind: HoldingKind::Physical {
-                location: location.map(str::to_string),
-            },
-            loaned_to: None,
-        });
+        let id = holding.id;
+        self.holdings.push(holding);
         self.last_modified_at = last_modified_at;
         Ok(id)
     }
@@ -996,8 +1063,16 @@ impl Publication {
         .fetch_one(&mut *tx)
         .await?;
         self.commit_update(tx, Field::Holdings).await?;
-        self.holdings.remove(position);
         self.last_modified_at = last_modified_at;
+        if let HoldingKind::Digital { file } = self.holdings.remove(position).kind {
+            match std::fs::remove_file(&file) {
+                Err(e) if e.kind() != ErrorKind::NotFound => {
+                    // The row is already gone, so an error would tell the caller the removal failed.
+                    log::warn!("failed to remove {}: {e}", file.display());
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 
@@ -1152,12 +1227,12 @@ impl Publication {
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
                 .await?;
         }
-        for subject in orphans {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
@@ -1174,6 +1249,7 @@ impl Publication {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1197,8 +1273,8 @@ impl Publication {
         if removed == 0 {
             return Ok(());
         }
-        let works = work::collect_orphan_works(&mut tx, self.library).await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -1214,7 +1290,7 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in works.iter().chain(&people) {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
@@ -1225,6 +1301,7 @@ impl Publication {
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1392,17 +1469,18 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in people {
+        for subject in &people {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &people);
         self.contributors
             .retain(|contributor| !(contributor.person == person && contributor.role == role));
         self.last_modified_at = last_modified_at;
@@ -1495,6 +1573,7 @@ impl Entity for Publication {
             }
             Proposal::Contents(work) => self.add_work(work.id()).await?,
             Proposal::Link(url) => self.add_link(url).await?,
+            Proposal::Cover(url) => self.set_cover(AssetSource::Url(url)).await?,
         }
         self.discard_proposal(proposal.id).await
     }
@@ -1572,17 +1651,18 @@ impl Entity for Publication {
                 .record(AuditSource::User, Action::Committed, Some(&subject), None)
                 .await?;
         }
-        for subject in orphans {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
                     Action::Deleted,
-                    Some(&subject),
+                    Some(subject),
                     None,
                 )
                 .await?;
         }
         tx.commit().await?;
+        asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
         Ok(())
@@ -1597,8 +1677,8 @@ impl Entity for Publication {
         sqlx::query!("DELETE FROM publication WHERE id = ?", self.id.get())
             .execute(&mut *tx)
             .await?;
-        let works = work::collect_orphan_works(&mut tx, self.library).await?;
-        let people = person::collect_orphan_people(&mut tx, self.library).await?;
+        let mut orphans = work::collect_orphan_works(&mut tx, self.library).await?;
+        orphans.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         let mut tx = tx
             .record(
                 AuditSource::User,
@@ -1607,7 +1687,7 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in works.iter().chain(&people) {
+        for subject in &orphans {
             tx = tx
                 .record(
                     AuditSource::OrphanCleanup,
@@ -1618,6 +1698,8 @@ impl Entity for Publication {
                 .await?;
         }
         tx.commit().await?;
+        orphans.push(self.audit_subject());
+        asset::remove_dirs(&self.engine, &orphans);
         if let Some(enrichment) = self.enrichment() {
             enrichment.cancel();
         }
@@ -1671,8 +1753,7 @@ pub(crate) async fn create(
         )),
         None => None,
     };
-    let NewHolding::Physical { location } = holding;
-    let location = clean_text(location);
+    let holding = stage_holding(engine, holding).await?;
     let mut tx = engine.begin_write().await?;
     let library = library.get();
     let id = sqlx::query_scalar!(
@@ -1706,13 +1787,7 @@ pub(crate) async fn create(
         .fetch_one(&mut *tx)
         .await?;
     }
-    sqlx::query!(
-        "INSERT INTO holding (publication_id, kind, location) VALUES (?, 'physical', ?)",
-        id,
-        location
-    )
-    .execute(&mut *tx)
-    .await?;
+    insert_holding(engine, &mut tx, PublicationId::new(id), holding).await?;
     let publication = Publication::fetch(engine, &mut tx, PublicationId::new(id))
         .await?
         .ok_or(Error::NotFound)?;
@@ -1738,7 +1813,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let rows = sqlx::query_as!(
         PublicationRow,
         r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                  note, kind, draft AS "draft: bool",
+                  note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
            FROM publication WHERE library_id = ? ORDER BY id"#,
@@ -1795,7 +1870,8 @@ pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publ
         PublicationRow,
         r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
-                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.note, publication.kind, publication.cover,
+                  publication.draft AS "draft: bool",
                   publication.created_at AS "created_at: Timestamp",
                   publication.last_modified_at AS "last_modified_at: Timestamp"
            FROM publication JOIN publication_work ON publication_work.publication_id = publication.id
@@ -1823,7 +1899,7 @@ pub(crate) async fn with_contributor(
     let rows = sqlx::query_as!(
         PublicationRow,
         r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
-                  note, kind, draft AS "draft: bool",
+                  note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
            FROM publication
@@ -1853,7 +1929,8 @@ pub(crate) async fn tagged(
         PublicationRow,
         r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
-                  publication.note, publication.kind, publication.draft AS "draft: bool",
+                  publication.note, publication.kind, publication.cover,
+                  publication.draft AS "draft: bool",
                   publication.created_at AS "created_at: Timestamp",
                   publication.last_modified_at AS "last_modified_at: Timestamp"
            FROM publication JOIN tag ON tag.publication_id = publication.id
@@ -1959,6 +2036,7 @@ async fn from_row(
             Proposal::Contents(work)
         }
         "link" => Proposal::Link(stored_value(row.proposed_value, row.id)?.parse()?),
+        "cover" => Proposal::Cover(stored_value(row.proposed_value, row.id)?.parse()?),
         other => return Err(eyre::eyre!("unknown publication proposal field {other:?}").into()),
     };
     Ok(entity::Proposal {
@@ -1972,6 +2050,81 @@ async fn from_row(
 /// Unwrap the value of proposal `id`, which every field but contents stores
 fn stored_value(value: Option<String>, id: i64) -> Result<String> {
     value.ok_or_else(|| eyre::eyre!("publication proposal {id} has no value").into())
+}
+
+/// A [NewHolding] whose file, if any, waits in the staging directory
+enum StagedHolding<'a> {
+    Physical { location: Option<&'a str> },
+    Digital(Staged),
+}
+
+/// Stage a new holding's file, treating a blank location as none
+///
+/// Call this before the write transaction begins, so a slow upload or download does not hold the
+/// write lock.
+async fn stage_holding<'a>(engine: &Engine, holding: NewHolding<'a>) -> Result<StagedHolding<'a>> {
+    Ok(match holding {
+        NewHolding::Physical { location } => StagedHolding::Physical {
+            location: clean_text(location),
+        },
+        NewHolding::Digital(source) => StagedHolding::Digital(asset::stage(engine, source).await?),
+    })
+}
+
+/// Insert a holding of `publication`, first moving any staged file into its asset directory
+async fn insert_holding(
+    engine: &Engine,
+    conn: &mut SqliteConnection,
+    publication: PublicationId,
+    holding: StagedHolding<'_>,
+) -> Result<Holding> {
+    let (kind_name, location, kind) = match holding {
+        StagedHolding::Physical { location } => {
+            let location = location.map(str::to_string);
+            (
+                "physical",
+                location.clone(),
+                HoldingKind::Physical { location },
+            )
+        }
+        StagedHolding::Digital(staged) => {
+            let dir = engine
+                .data_dir()
+                .join(format!("assets/publication/{publication}"));
+            let file = asset::unique_path(&dir, staged.filename());
+            let relative = file
+                .strip_prefix(engine.data_dir())
+                .ok()
+                .and_then(Path::to_str)
+                .ok_or_else(|| eyre::eyre!("{} is not a UTF-8 data path", file.display()))?
+                .to_string();
+            staged.persist(&file)?;
+            ("digital", Some(relative), HoldingKind::Digital { file })
+        }
+    };
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO holding (publication_id, kind, location) VALUES (?, ?, ?)
+           RETURNING id AS "id!""#,
+        publication.get(),
+        kind_name,
+        location
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+    Ok(Holding {
+        id: HoldingId::new(id),
+        kind,
+        loaned_to: None,
+    })
+}
+
+/// Remove a cover image that a committed transaction no longer refers to
+fn remove_cover(path: &Path) {
+    // The row no longer names the file, so an error would tell the caller the update failed when
+    // it did not.
+    if let Err(e) = std::fs::remove_file(path) {
+        log::warn!("failed to remove {}: {e}", path.display());
+    }
 }
 
 fn clean_title(title: &str) -> Result<&str> {
@@ -2818,5 +2971,66 @@ mod tests {
         ] {
             assert!(!looks_like_identifier(input), "{input:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn digital_holdings() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let upload = |name: &str| {
+            NewHolding::Digital(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: name.into(),
+            })
+        };
+        let mut publication = library
+            .create_publication(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                upload("score.pdf"),
+            )
+            .await
+            .unwrap();
+        let assets = dir
+            .path()
+            .join(format!("assets/publication/{}", publication.id()));
+        let file = |holding: &Holding| match &holding.kind {
+            HoldingKind::Digital { file } => file.clone(),
+            other => panic!("expected a digital holding, got {other:?}"),
+        };
+        let first = publication.holdings()[0].clone();
+        assert_eq!(file(&first), assets.join("score.pdf"));
+        assert_eq!(std::fs::read(file(&first)).unwrap(), b"%PDF-1.4 not really");
+
+        let second = publication.add_holding(upload("score.pdf")).await.unwrap();
+        let third = publication.add_holding(upload("cover.png")).await.unwrap();
+        let names: Vec<_> = publication
+            .holdings()
+            .iter()
+            .map(|h| file(h).strip_prefix(&assets).unwrap().to_path_buf())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                PathBuf::from("score.pdf"),
+                PathBuf::from("score.1.pdf"),
+                PathBuf::from("cover.1.png"),
+            ]
+        );
+
+        publication.remove_holding(first.id).await.unwrap();
+        assert!(!assets.join("score.pdf").exists());
+        assert!(assets.join("score.1.pdf").exists());
+        publication.remove_holding(second).await.unwrap();
+        assert!(matches!(
+            publication.remove_holding(third).await,
+            Err(Error::InvalidValue(_))
+        ));
+        assert!(assets.join("cover.1.png").exists());
     }
 }

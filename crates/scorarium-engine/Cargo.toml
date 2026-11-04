@@ -8,15 +8,17 @@ description = "The high level operations shared between the web server and CLI"
 [dependencies]
 chrono.workspace = true
 eyre.workspace = true
+infer.workspace = true
 isbn.workspace = true
 log.workspace = true
 percent-encoding.workspace = true
+reqwest.workspace = true
 scorarium-archive.workspace = true
 scorarium-client.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "rt", "sync", "time"] }
 url.workspace = true
 
 [dev-dependencies]

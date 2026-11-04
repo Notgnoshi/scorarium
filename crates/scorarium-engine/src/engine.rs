@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -19,6 +19,7 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!();
 pub struct EngineOptions {
     migrate_on_startup: bool,
     client: Client,
+    downloads: reqwest::Client,
 }
 
 impl EngineOptions {
@@ -27,10 +28,17 @@ impl EngineOptions {
     /// Providing contact information (an email) in the user agent is recommended because some APIs
     /// increase their rate limits if contact info is provided.
     pub fn new(user_agent: UserAgent) -> Result<EngineOptions> {
+        let downloads = reqwest::Client::builder()
+            .user_agent(user_agent.header().map_err(Error::Generic)?)
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(30))
+            .build()
+            .map_err(eyre::Report::new)?;
         let client = Client::new(user_agent).map_err(Error::Generic)?;
         Ok(EngineOptions {
             migrate_on_startup: false,
             client,
+            downloads,
         })
     }
 
@@ -56,8 +64,10 @@ pub struct Engine {
 
 #[derive(Debug)]
 struct EngineInner {
+    data_dir: PathBuf,
     pool: SqlitePool,
     client: Client,
+    downloads: reqwest::Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
     _temp_dir: Option<tempfile::TempDir>,
 }
@@ -67,7 +77,14 @@ impl Engine {
     pub async fn open(data_dir: impl AsRef<Path>, options: EngineOptions) -> Result<Engine> {
         let data_dir = data_dir.as_ref();
         std::fs::create_dir_all(data_dir)?;
-        Engine::new(data_dir, options.migrate_on_startup, options.client, None).await
+        Engine::new(
+            data_dir,
+            options.migrate_on_startup,
+            options.client,
+            options.downloads,
+            None,
+        )
+        .await
     }
 
     /// Open a temporary engine filled with the demo libraries
@@ -77,7 +94,14 @@ impl Engine {
     pub async fn demo(options: EngineOptions) -> Result<Engine> {
         let dir = tempfile::tempdir()?;
         let data_dir = dir.path().to_path_buf();
-        let engine = Engine::new(&data_dir, true, options.client, Some(dir)).await?;
+        let engine = Engine::new(
+            &data_dir,
+            true,
+            options.client,
+            options.downloads,
+            Some(dir),
+        )
+        .await?;
         crate::demo::populate(&engine).await?;
         Ok(engine)
     }
@@ -86,6 +110,7 @@ impl Engine {
         data_dir: &Path,
         migrate_on_startup: bool,
         client: Client,
+        downloads: reqwest::Client,
         temp_dir: Option<tempfile::TempDir>,
     ) -> Result<Engine> {
         let path = data_dir.join("scorarium.db");
@@ -103,18 +128,46 @@ impl Engine {
         if migrate {
             MIGRATOR.run(&pool).await.map_err(eyre::Report::new)?;
         }
+        let staging = data_dir.join("staging");
+        // don't want the CLI to remove the staging dir out from under a running server, so only
+        // remove it if we're also doing data migration.
+        if migrate {
+            match std::fs::remove_dir_all(&staging) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        std::fs::create_dir_all(&staging)?;
         Ok(Engine {
             inner: Arc::new(EngineInner {
+                // Asset paths handed to callers must not depend on the working directory.
+                data_dir: std::path::absolute(data_dir)?,
                 pool,
                 client,
+                downloads,
                 enrichments: Mutex::default(),
                 _temp_dir: temp_dir,
             }),
         })
     }
 
+    /// Get the directory holding the database and assets
+    pub(crate) fn data_dir(&self) -> &Path {
+        &self.inner.data_dir
+    }
+
+    /// Get the directory holding files that are not yet part of the library
+    pub(crate) fn staging_dir(&self) -> PathBuf {
+        self.inner.data_dir.join("staging")
+    }
+
     pub(crate) fn client(&self) -> &Client {
         &self.inner.client
+    }
+
+    /// Get the HTTP client for downloading files
+    pub(crate) fn downloads(&self) -> &reqwest::Client {
+        &self.inner.downloads
     }
 
     /// Get the enrichment tasks in progress

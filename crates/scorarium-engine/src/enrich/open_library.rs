@@ -384,6 +384,7 @@ mod tests {
                 format!("contributor {} {role}", person.name())
             }
             Proposal::Contents(work) => format!("contents {}", work.title()),
+            Proposal::Cover(url) => format!("cover {url}"),
         }
     }
 
@@ -391,7 +392,9 @@ mod tests {
     fn link_of(proposal: &entity::Proposal<Person>) -> String {
         match &proposal.value {
             person::Proposal::Link(url) => url.to_string(),
-            person::Proposal::Name(_) => panic!("expected a link proposal"),
+            person::Proposal::Name(_) | person::Proposal::Profile(_) => {
+                panic!("expected a link proposal")
+            }
         }
     }
 
