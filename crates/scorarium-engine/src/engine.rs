@@ -30,6 +30,8 @@ impl EngineOptions {
     pub fn new(user_agent: UserAgent) -> Result<EngineOptions> {
         let downloads = reqwest::Client::builder()
             .user_agent(user_agent.header().map_err(Error::Generic)?)
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(30))
             .build()
             .map_err(eyre::Report::new)?;
         let client = Client::new(user_agent).map_err(Error::Generic)?;
