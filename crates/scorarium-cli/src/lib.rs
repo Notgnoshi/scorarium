@@ -5,6 +5,7 @@ mod enrichment;
 mod interactive;
 mod library;
 mod log;
+mod password;
 mod person;
 mod publication;
 mod reference;

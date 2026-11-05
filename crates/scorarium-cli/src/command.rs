@@ -13,7 +13,7 @@ use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
 use crate::publication::{HoldingKind, IdentifierKind};
-use crate::{audit, person, publication, review, search, tag, work};
+use crate::{audit, password, person, publication, review, search, tag, work};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -47,6 +47,12 @@ enum Command {
     Audit(AuditArgs),
     /// List the review queue
     Review,
+    /// Manage the password
+    #[command(subcommand_value_name = "command")]
+    Password {
+        #[command(subcommand)]
+        command: PasswordCommand,
+    },
     /// Wait for background enrichment to finish
     Wait {
         /// Give up after this many seconds; wait indefinitely when omitted
@@ -56,6 +62,12 @@ enum Command {
     /// Exit the shell
     #[command(alias = "exit")]
     Quit,
+}
+
+#[derive(Debug, Subcommand)]
+enum PasswordCommand {
+    /// Set the password, replacing any current one
+    Set,
 }
 
 #[derive(Debug, Args)]
@@ -697,6 +709,7 @@ pub(crate) enum Flow {
 
 pub(crate) struct Shell {
     engine: Engine,
+    interactive: bool,
     /// The selected library's id.
     ///
     /// The library name is queried before the prompt is displayed to capture any library renames.
@@ -706,9 +719,10 @@ pub(crate) struct Shell {
 
 impl Shell {
     /// Start a session with no library selected.
-    pub(crate) fn new(engine: Engine) -> Shell {
+    pub(crate) fn new(engine: Engine, interactive: bool) -> Shell {
         Shell {
             engine,
+            interactive,
             selected: None,
             tree: tree(),
         }
@@ -857,6 +871,14 @@ impl Shell {
             Command::Search { query } => search::run(&self.engine, &query, out).await?,
             Command::Audit(args) => audit::log(&self.engine, args.limit(), out).await?,
             Command::Review => review::run(&self.engine, out).await?,
+            Command::Password { command } => match command {
+                PasswordCommand::Set => {
+                    if !self.interactive {
+                        eyre::bail!("setting the password is only allowed in interactive mode");
+                    }
+                    password::set(&self.engine, out).await?
+                }
+            },
             Command::Wait { seconds } => {
                 crate::enrichment::wait(&self.engine, seconds.map(Duration::from_secs)).await
             }

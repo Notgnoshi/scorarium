@@ -3,6 +3,7 @@ pub mod legacy;
 
 pub mod asset;
 pub mod audit;
+pub mod auth;
 pub mod contributor;
 pub mod enrich;
 pub mod entity;
