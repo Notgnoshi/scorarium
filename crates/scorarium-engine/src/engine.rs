@@ -9,6 +9,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool};
 
 use crate::audit::Audited;
+use crate::auth::{LoginThrottle, SessionStore};
 use crate::enrich::Task;
 use crate::entity::AnyEntityId;
 use crate::{Error, Result};
@@ -69,6 +70,8 @@ struct EngineInner {
     client: Client,
     downloads: reqwest::Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
+    sessions: SessionStore,
+    login_throttle: tokio::sync::Mutex<LoginThrottle>,
     demo: bool,
     _temp_dir: Option<tempfile::TempDir>,
 }
@@ -150,6 +153,8 @@ impl Engine {
                 client,
                 downloads,
                 enrichments: Mutex::default(),
+                sessions: SessionStore::default(),
+                login_throttle: tokio::sync::Mutex::default(),
                 demo,
                 _temp_dir: temp_dir,
             }),
@@ -186,6 +191,14 @@ impl Engine {
             .enrichments
             .lock()
             .expect("enrichment registry lock poisoned")
+    }
+
+    pub(crate) fn sessions(&self) -> &SessionStore {
+        &self.inner.sessions
+    }
+
+    pub(crate) async fn login_throttle(&self) -> tokio::sync::MutexGuard<'_, LoginThrottle> {
+        self.inner.login_throttle.lock().await
     }
 
     /// Acquire a read-only connection for queries

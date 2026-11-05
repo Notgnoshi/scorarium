@@ -2489,6 +2489,7 @@ dependencies = [
  "argon2",
  "chrono",
  "eyre",
+ "getrandom 0.4.3",
  "infer",
  "isbn",
  "log",
