@@ -407,7 +407,7 @@ mod tests {
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
         let publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Identifier {
                     identifier: isbn,
                     record: None,
@@ -491,7 +491,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut sonatas = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Piano sonatas".into(),
                     record: None,
@@ -508,7 +508,7 @@ mod tests {
 
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
         let publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Identifier {
                     identifier: isbn,
                     record: None,

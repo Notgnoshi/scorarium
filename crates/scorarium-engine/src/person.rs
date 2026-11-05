@@ -951,7 +951,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Russian piano album".into(),
                     record: None,
@@ -993,7 +993,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Gymnopedies".into(),
                     record: None,

@@ -281,7 +281,7 @@ async fn create(
     classification: Classification,
 ) -> Result<Publication> {
     let mut publication = library
-        .create_publication(
+        .import(
             ImportSeed::Title {
                 title: title.into(),
                 record: None,

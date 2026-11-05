@@ -191,13 +191,9 @@ impl Library {
 }
 
 impl Library {
-    /// Create a draft publication from `seed` with its first holding
-    pub async fn create_publication(
-        &self,
-        seed: ImportSeed,
-        holding: NewHolding<'_>,
-    ) -> Result<Publication> {
-        publication::create(&self.engine, self.id, seed, holding).await
+    /// Import a draft publication from `seed` with its first holding
+    pub async fn import(&self, seed: ImportSeed, holding: NewHolding<'_>) -> Result<Publication> {
+        publication::import(&self.engine, self.id, seed, holding).await
     }
 
     /// List every publication in the library, drafts included, oldest first

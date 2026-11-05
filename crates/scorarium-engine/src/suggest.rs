@@ -463,7 +463,7 @@ mod tests {
             ("Pro Git", "Apress"),
         ] {
             let mut publication = library
-                .create_publication(
+                .import(
                     ImportSeed::Title {
                         title: title.into(),
                         record: None,
@@ -521,7 +521,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut nocturnes = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Chopin Nocturnes".into(),
                     record: None,
@@ -545,7 +545,7 @@ mod tests {
             .unwrap();
         nocturnes.commit().await.unwrap();
         library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Nocturne album".into(),
                     record: None,
@@ -609,7 +609,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut album = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Romantic piano".into(),
                     record: None,

@@ -1974,7 +1974,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Three gymnopedies for the piano".into(),
                     record: None,
@@ -1989,7 +1989,7 @@ mod tests {
             .await
             .unwrap();
         let mut other = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Satie piano works".into(),
                     record: None,
@@ -2025,7 +2025,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut a = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Russian piano album".into(),
                     record: None,
@@ -2036,7 +2036,7 @@ mod tests {
             .unwrap();
         let prelude = a.create_work("Prelude").await.unwrap();
         let b = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Prelude edition".into(),
                     record: None,

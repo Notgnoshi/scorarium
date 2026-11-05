@@ -262,7 +262,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -294,7 +294,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -321,7 +321,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -364,7 +364,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
