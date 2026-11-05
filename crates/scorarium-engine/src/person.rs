@@ -489,7 +489,7 @@ impl Entity for Person {
             .ok_or(Error::NotFound)?;
         drop(conn);
         match proposal.value {
-            Proposal::Name(name) => self.rename(&name, sort_name(&name)).await?,
+            Proposal::Name(name) => self.rename(&name, derive_sort_name(&name)).await?,
             Proposal::Link(url) => self.add_link(url).await?,
             Proposal::Profile(url) => self.set_profile(AssetSource::Url(url)).await?,
         }
@@ -665,7 +665,7 @@ pub(crate) async fn insert(
     draft: bool,
 ) -> Result<Person> {
     let library = library.get();
-    let sort_name = sort_name(name);
+    let sort_name = derive_sort_name(name);
     let id = sqlx::query_scalar!(
         r#"INSERT INTO person (library_id, name, sort_name, draft) VALUES (?, ?, ?, ?)
            RETURNING id AS "id!""#,
@@ -928,7 +928,7 @@ pub(crate) fn clean_name(name: &str) -> Result<&str> {
 ///
 /// Compound surnames like "Ralph Vaughan Williams" come out wrong. That is acceptable because the
 /// heuristic only has to be right often enough that the user rarely retypes a name.
-fn sort_name(name: &str) -> String {
+pub fn derive_sort_name(name: &str) -> String {
     let mut parts: Vec<&str> = name.split_whitespace().collect();
     match parts.pop() {
         Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),

@@ -3,7 +3,7 @@ use std::io::Write;
 use scorarium_engine::contributor::Contributor;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
-use scorarium_engine::person::{Person, PersonId};
+use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
@@ -180,9 +180,7 @@ pub(crate) async fn run(
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {
-                PersonSet::Name { name } => {
-                    person.rename(&name, person.sort_name().to_string()).await?
-                }
+                PersonSet::Name { name } => person.rename(&name, derive_sort_name(&name)).await?,
                 PersonSet::SortName { sort_name } => {
                     person.rename(person.name().to_string(), &sort_name).await?
                 }
