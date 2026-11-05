@@ -41,7 +41,7 @@ pub(crate) async fn run(
         let history = FileBackedHistory::with_file(HIST_SIZE, path)?;
         editor = editor.with_history(Box::new(history));
     }
-    let mut shell = Shell::new(engine.clone());
+    let mut shell = Shell::new(engine.clone(), true);
     let mut stdout = std::io::stdout();
     loop {
         let label = match shell.selected().await? {

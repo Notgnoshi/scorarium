@@ -41,6 +41,7 @@ log = "0.4.35"
 percent-encoding = "2.3.2"
 reedline = { version = "0.52.1", features = ["external_printer"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] } # rustls allows musl for docker deployment
+rpassword = "7.5.4"
 rust-embed = { version = "8.13.0", features = ["mime-guess"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_html_form = "0.4.1"

@@ -316,7 +316,7 @@ mod tests {
             );
             assert_eq!(
                 values(Some("1".parse().unwrap()), "p"),
-                expected(&["publication", "person"], 0)
+                expected(&["password", "publication", "person"], 0)
             );
             assert_eq!(
                 values(None, "library books publication P"),
