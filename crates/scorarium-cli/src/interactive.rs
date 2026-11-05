@@ -66,11 +66,23 @@ pub(crate) async fn run(
         .await?;
         log.set_prompt_active(false);
         match signal? {
-            Signal::Success(line) => match shell.execute(&line, &mut stdout).await {
-                Ok(Flow::Continue) => stdout.flush()?,
-                Ok(Flow::Quit) => break,
-                Err(error) => eprintln!("{error:#}"),
-            },
+            Signal::Success(line) => {
+                // Biased so that the outcome of a ctrl-c does not depend on which wakeup the
+                // runtime saw first.
+                tokio::select! {
+                    biased;
+                    result = tokio::signal::ctrl_c() => {
+                        result?;
+                        writeln!(stdout, "cancelled")?;
+                        stdout.flush()?;
+                    }
+                    result = shell.execute(&line, &mut stdout) => match result {
+                        Ok(Flow::Continue) => stdout.flush()?,
+                        Ok(Flow::Quit) => break,
+                        Err(error) => eprintln!("{error:#}"),
+                    },
+                }
+            }
             Signal::CtrlD => break,
             // ctrl-c has already cleared the line
             _ => {}
