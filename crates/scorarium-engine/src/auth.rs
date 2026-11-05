@@ -168,13 +168,7 @@ impl Engine {
         if let Some(retry_after) = throttle.locked_for() {
             return Err(Error::Throttled { retry_after });
         }
-        let stored = {
-            let mut conn = self.begin_read().await?;
-            sqlx::query_scalar!("SELECT password_hash FROM password WHERE id = 1")
-                .fetch_optional(&mut *conn)
-                .await?
-        };
-        let Some(stored) = stored else {
+        let Some(stored) = self.stored_password_hash().await? else {
             throttle.record_failure();
             return Err(Error::WrongPassword);
         };
@@ -184,6 +178,16 @@ impl Engine {
         }
         throttle.reset();
         Ok(self.sessions().create())
+    }
+
+    /// Get the stored password hash, or `None` if the instance is unclaimed.
+    async fn stored_password_hash(&self) -> Result<Option<String>> {
+        let mut conn = self.begin_read().await?;
+        Ok(
+            sqlx::query_scalar!("SELECT password_hash FROM password WHERE id = 1")
+                .fetch_optional(&mut *conn)
+                .await?,
+        )
     }
 
     /// Check whether the token is a live session.
@@ -248,6 +252,49 @@ impl Engine {
             .await?;
         self.sessions().revoke_all();
         Ok(())
+    }
+
+    /// Change the password after verifying the current one, and start a session.
+    ///
+    /// End every other session, so the returned token is the only one that remains.
+    pub async fn change_password(&self, current: &str, new: &str) -> Result<Token> {
+        if self.is_demo() {
+            return Err(Error::Generic(eyre::eyre!("the demo has no password")));
+        }
+        if new.is_empty() {
+            return Err(Error::InvalidValue(
+                "The password must not be empty.".into(),
+            ));
+        }
+        // Attempting to change the password can be done without being logged in, so it needs to be
+        // throttled too.
+        //
+        // The lock spans the whole sequence so that no login or other change can interleave between
+        // verifying the current password and writing the new one.
+        let mut throttle = self.login_throttle().await;
+        if let Some(retry_after) = throttle.locked_for() {
+            return Err(Error::Throttled { retry_after });
+        }
+        let Some(stored) = self.stored_password_hash().await? else {
+            return Err(Error::Generic(eyre::eyre!("no password is set")));
+        };
+        if !verify_password(stored, current.to_owned()).await? {
+            throttle.record_failure();
+            return Err(Error::WrongPassword);
+        }
+        throttle.reset();
+
+        let hash = hash_password(new.to_owned()).await?;
+        let mut tx = self.begin_write().await?;
+        sqlx::query!("UPDATE password SET password_hash = ? WHERE id = 1", hash)
+            .execute(&mut *tx)
+            .await?;
+        tx.record(AuditSource::User, Action::PasswordChanged, None, None)
+            .await?
+            .commit()
+            .await?;
+        self.sessions().revoke_all();
+        Ok(self.sessions().create())
     }
 }
 
@@ -316,6 +363,31 @@ mod tests {
         assert!(engine.is_authenticated(&token));
         engine.replace_password("other").await.unwrap();
         assert!(!engine.is_authenticated(&token));
+    }
+
+    #[tokio::test]
+    async fn changing_the_password_keeps_only_the_new_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        engine.replace_password("secret").await.unwrap();
+        let old = engine.login("secret").await.unwrap();
+
+        assert!(matches!(
+            engine.change_password("wrong", "next").await,
+            Err(Error::WrongPassword)
+        ));
+        assert!(engine.is_authenticated(&old));
+
+        let new = engine.change_password("secret", "next").await.unwrap();
+        assert!(!engine.is_authenticated(&old));
+        assert!(engine.is_authenticated(&new));
+        assert!(matches!(
+            engine.login("secret").await,
+            Err(Error::WrongPassword)
+        ));
+        engine.login("next").await.unwrap();
     }
 
     #[tokio::test]
