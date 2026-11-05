@@ -193,6 +193,20 @@ impl<'a> Recorded<'a> {
         Ok(self)
     }
 
+    /// Record one audit event per subject, in order
+    pub(crate) async fn record_each(
+        mut self,
+        source: AuditSource,
+        action: Action,
+        subjects: &[AuditSubject],
+        field: Option<&str>,
+    ) -> Result<Recorded<'a>> {
+        for subject in subjects {
+            insert(&mut self.tx, source, action, Some(subject), field).await?;
+        }
+        Ok(self)
+    }
+
     pub(crate) async fn commit(mut self) -> Result<()> {
         let keep = MAX_EVENTS as i64;
         sqlx::query!(

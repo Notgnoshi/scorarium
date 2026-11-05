@@ -752,11 +752,9 @@ impl Publication {
             )
             .await?;
         let field = work::Field::Classification.to_string();
-        for subject in works {
-            tx = tx
-                .record(source, Action::Updated, Some(&subject), Some(&field))
-                .await?;
-        }
+        tx = tx
+            .record_each(source, Action::Updated, &works, Some(&field))
+            .await?;
         tx.commit().await?;
         Ok(last_modified_at)
     }
@@ -1222,32 +1220,21 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         let field = work::Field::Classification.to_string();
-        for subject in classified {
-            tx = tx
-                .record(
-                    AuditSource::User,
-                    Action::Updated,
-                    Some(&subject),
-                    Some(&field),
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(
+                AuditSource::User,
+                Action::Updated,
+                &classified,
+                Some(&field),
+            )
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
@@ -1290,16 +1277,9 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
@@ -1414,11 +1394,9 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
         tx.commit().await?;
         self.contributors.push(Contributor {
             person,
@@ -1469,16 +1447,9 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         self.contributors
@@ -1646,21 +1617,12 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in subjects {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &subjects, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
@@ -1687,16 +1649,9 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         orphans.push(self.audit_subject());
         asset::remove_dirs(&self.engine, &orphans);

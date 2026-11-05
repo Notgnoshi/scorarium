@@ -913,11 +913,9 @@ impl Work {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
         tx.commit().await?;
         self.contributors.push(Contributor {
             person,
@@ -967,16 +965,9 @@ impl Work {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         self.contributors
@@ -1123,21 +1114,12 @@ impl Entity for Work {
                 None,
             )
             .await?;
-        for subject in people {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &people, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
@@ -1163,16 +1145,9 @@ impl Entity for Work {
                 None,
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         if let Some(enrichment) = self.enrichment() {
