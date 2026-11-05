@@ -69,6 +69,7 @@ struct EngineInner {
     client: Client,
     downloads: reqwest::Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
+    demo: bool,
     _temp_dir: Option<tempfile::TempDir>,
 }
 
@@ -83,6 +84,7 @@ impl Engine {
             options.client,
             options.downloads,
             None,
+            false,
         )
         .await
     }
@@ -100,6 +102,7 @@ impl Engine {
             options.client,
             options.downloads,
             Some(dir),
+            true,
         )
         .await?;
         crate::demo::populate(&engine).await?;
@@ -112,6 +115,7 @@ impl Engine {
         client: Client,
         downloads: reqwest::Client,
         temp_dir: Option<tempfile::TempDir>,
+        demo: bool,
     ) -> Result<Engine> {
         let path = data_dir.join("scorarium.db");
         let migrate = migrate_on_startup || !path.exists();
@@ -146,6 +150,7 @@ impl Engine {
                 client,
                 downloads,
                 enrichments: Mutex::default(),
+                demo,
                 _temp_dir: temp_dir,
             }),
         })
@@ -154,6 +159,11 @@ impl Engine {
     /// Get the directory holding the database and assets
     pub(crate) fn data_dir(&self) -> &Path {
         &self.inner.data_dir
+    }
+
+    /// Check whether this is the temporary demo engine
+    pub(crate) fn is_demo(&self) -> bool {
+        self.inner.demo
     }
 
     /// Get the directory holding files that are not yet part of the library

@@ -86,6 +86,7 @@ pub enum Action {
     Committed,
     PasswordClaimed,
     PasswordChanged,
+    PasswordReset,
 }
 
 impl fmt::Display for Action {
@@ -98,6 +99,7 @@ impl fmt::Display for Action {
             Action::Committed => "committed",
             Action::PasswordClaimed => "password_claimed",
             Action::PasswordChanged => "password_changed",
+            Action::PasswordReset => "password_reset",
         })
     }
 }
@@ -114,6 +116,7 @@ impl FromStr for Action {
             "committed" => Action::Committed,
             "password_claimed" => Action::PasswordClaimed,
             "password_changed" => Action::PasswordChanged,
+            "password_reset" => Action::PasswordReset,
             other => return Err(eyre::eyre!("unknown audit action {other:?}").into()),
         })
     }

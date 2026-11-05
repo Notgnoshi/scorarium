@@ -4,7 +4,7 @@ CREATE TABLE audit_entry (
     source TEXT NOT NULL CHECK (source IN ('user', 'orphan_cleanup', 'merge', 'link_recognition', 'enrichment')),
     action TEXT NOT NULL CHECK (action IN (
         'created', 'updated', 'deleted', 'merged', 'committed',
-        'password_claimed', 'password_changed'
+        'password_claimed', 'password_changed', 'password_reset'
     )),
     entity_kind TEXT CHECK (entity_kind IN ('publication', 'work', 'person', 'library')),
     entity_id INTEGER,

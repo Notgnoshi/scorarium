@@ -2486,6 +2486,7 @@ dependencies = [
 name = "scorarium-engine"
 version = "0.1.0"
 dependencies = [
+ "argon2",
  "chrono",
  "eyre",
  "infer",
