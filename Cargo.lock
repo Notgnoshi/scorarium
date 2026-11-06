@@ -2031,7 +2031,6 @@ dependencies = [
  "log",
  "percent-encoding",
  "reqwest",
- "scorarium-archive",
  "scorarium-client",
  "sqlx",
  "tempfile",

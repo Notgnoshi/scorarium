@@ -17,7 +17,6 @@ isbn.workspace = true
 log.workspace = true
 percent-encoding.workspace = true
 reqwest.workspace = true
-scorarium-archive.workspace = true
 scorarium-client.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
