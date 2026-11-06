@@ -220,6 +220,12 @@ impl Library {
         tag_counts(&mut conn, self.id, include_drafts).await
     }
 
+    /// Query the roles found in the library, along with how many people hold each role.
+    pub async fn roles(&self, include_drafts: bool) -> Result<Vec<(Role, usize)>> {
+        let mut conn = self.engine.begin_read().await?;
+        role_counts(&mut conn, self.id, include_drafts).await
+    }
+
     /// List the publications and works in the library tagged `tag`, oldest first
     pub async fn tagged_with(&self, tag: &Tag) -> Result<(Vec<Publication>, Vec<Work>)> {
         let publications = publication::tagged(&self.engine, self.id, tag).await?;
@@ -261,6 +267,33 @@ pub(crate) async fn tag_counts(
     rows.into_iter()
         .map(|row| Ok((row.tag.parse()?, row.count as usize)))
         .collect()
+}
+
+pub(crate) async fn role_counts(
+    conn: &mut SqliteConnection,
+    library: LibraryId,
+    include_drafts: bool,
+) -> Result<Vec<(Role, usize)>> {
+    let rows = sqlx::query!(
+        r#"SELECT held.role, COUNT(DISTINCT held.person_id) AS "count: u32"
+           FROM (
+               SELECT person_id, role FROM publication_contributor WHERE library_id = ?1
+               UNION ALL
+               SELECT person_id, role FROM work_contributor WHERE library_id = ?1
+           ) AS held
+           JOIN person ON person.id = held.person_id
+           WHERE ?2 OR person.draft = 0
+           GROUP BY held.role
+           ORDER BY held.role"#,
+        library.get(),
+        include_drafts
+    )
+    .fetch_all(conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (Role::from_valid(row.role), row.count as usize))
+        .collect())
 }
 
 fn audit_subject(id: LibraryId, label: &str) -> AuditSubject {
@@ -351,6 +384,9 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
+    use crate::entity::Entity;
+    use crate::holding::NewHolding;
+    use crate::publication::ImportSeed;
     use crate::{Engine, Error};
 
     #[tokio::test]
@@ -400,6 +436,75 @@ mod tests {
                 (Action::Updated, "Music".into(), Some("visibility".into())),
                 (Action::Updated, "Scores".into(), Some("name".into())),
                 (Action::Created, "Scores".into(), None),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn roles_count_people_once_per_role() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let seed = |title: &str| ImportSeed::Title {
+            title: title.into(),
+            record: None,
+        };
+
+        // Satie is composer on both works, and editor on the publication and on one work, so the
+        // count has to be distinct across both contributor tables.
+        let mut gymnopedies = library
+            .import(
+                seed("Three gymnopedies"),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let satie = gymnopedies
+            .create_contributor("Erik Satie", "editor".parse().unwrap())
+            .await
+            .unwrap();
+        let mut first = gymnopedies.create_work("Gymnopedie No. 1").await.unwrap();
+        let mut second = gymnopedies.create_work("Gymnopedie No. 2").await.unwrap();
+        first
+            .add_contributor(satie.id(), "composer".parse().unwrap())
+            .await
+            .unwrap();
+        first
+            .add_contributor(satie.id(), "editor".parse().unwrap())
+            .await
+            .unwrap();
+        second
+            .add_contributor(satie.id(), "composer".parse().unwrap())
+            .await
+            .unwrap();
+        gymnopedies.commit().await.unwrap();
+
+        // An imported publication is a draft, and so are the people created through it.
+        let mut draft = library
+            .import(seed("Untitled"), NewHolding::Physical { location: None })
+            .await
+            .unwrap();
+        let pen_name = draft
+            .create_contributor("Pen Name", "author".parse().unwrap())
+            .await
+            .unwrap();
+        assert!(pen_name.is_draft());
+
+        assert_eq!(
+            library.roles(false).await.unwrap(),
+            vec![
+                ("composer".parse().unwrap(), 1),
+                ("editor".parse().unwrap(), 1)
+            ]
+        );
+        assert_eq!(
+            library.roles(true).await.unwrap(),
+            vec![
+                ("author".parse().unwrap(), 1),
+                ("composer".parse().unwrap(), 1),
+                ("editor".parse().unwrap(), 1)
             ]
         );
     }
