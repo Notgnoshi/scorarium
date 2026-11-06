@@ -11,23 +11,36 @@ use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, Publ
 use crate::value::{Classification, Year};
 use crate::{Engine, Error, Result};
 
-/// Start Open Library enrichment for the given [IdentifierKind::Isbn] [Identifier]
+/// How to ask Open Library for information on an edition
+pub(crate) enum EditionKey {
+    Olid(String),
+    Isbn(Identifier),
+}
+
+/// Start Open Library enrichment from the edition `key`
 pub(crate) async fn edition(
     engine: Engine,
     publication: PublicationId,
-    isbn: Identifier,
+    key: EditionKey,
     queue: SubTaskQueue,
 ) -> Result<()> {
     if queue.is_cancelled() {
         return Ok(());
     }
-    log::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
-    let Some(edition) = engine
-        .client()
-        .open_library()
-        .edition_by_isbn(isbn.as_str(), Priority::Background)
-        .await?
-    else {
+    let open_library = engine.client().open_library();
+    let edition = match &key {
+        EditionKey::Olid(olid) => {
+            log::debug!("enriching publication {publication} from Open Library by OLID {olid}");
+            open_library.edition(olid, Priority::Background).await?
+        }
+        EditionKey::Isbn(isbn) => {
+            log::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
+            open_library
+                .edition_by_isbn(isbn.as_str(), Priority::Background)
+                .await?
+        }
+    };
+    let Some(edition) = edition else {
         // A 404 is a definite answer, so there is nothing to propose.
         return Ok(());
     };
@@ -398,6 +411,39 @@ mod tests {
                 panic!("expected a link proposal")
             }
         }
+    }
+
+    #[tokio::test]
+    async fn a_candidate_import_enriches_from_its_edition() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Bagatelles".into(),
+                    record: Some(ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M")),
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        let status = publication.enrichment().unwrap().status();
+        assert_eq!(
+            status,
+            EnrichmentStatus {
+                successful: 2,
+                pending: 0,
+                failed: 0,
+                cancelled: false
+            }
+        );
     }
 
     #[tokio::test]

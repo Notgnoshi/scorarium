@@ -28,7 +28,11 @@ impl ReviewItem {
     ///
     /// Returns [Error::NotFound] if neither a task nor a draft nor a proposal remained to remove.
     pub async fn discard(self) -> Result<()> {
-        let cancelled = self.enrichment.map(Enrichment::cancel).is_some();
+        let cancelled = self.enrichment.is_some_and(|enrichment| {
+            let live = enrichment.needs_review();
+            enrichment.cancel();
+            live
+        });
         let result = match self.entity {
             AnyEntity::Publication(publication) => discard_entity(publication).await,
             AnyEntity::Work(work) => discard_entity(work).await,
@@ -485,7 +489,6 @@ mod tests {
             .propose_new_contributor(Source::OpenLibrary, "Pen Name", &"author".parse().unwrap())
             .await
             .unwrap();
-        publication.enrich().await.unwrap();
 
         publication.commit().await.unwrap();
 

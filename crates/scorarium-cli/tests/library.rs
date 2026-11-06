@@ -344,7 +344,7 @@ async fn import_commit_review_discard() {
         without_age(&out),
         "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
          -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\tcompleted 0/0\n\
          Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
          Books  \twork       \t11\tChapter 1         \tdraft\n\
          Books  \tperson     \t13\tGrace Hopper      \tdraft\n\
@@ -377,7 +377,7 @@ async fn import_commit_review_discard() {
         without_age(&out),
         "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
          -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \tScorarium handbook\tdraft\n\
+         Books  \tpublication\t8 \tScorarium handbook\tdraft\tcompleted 0/0\n\
          Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
          Books  \tperson     \t13\tGrace Hopper      \tdraft\n"
     );
@@ -393,7 +393,8 @@ async fn import_commit_review_discard() {
          title      \t  \tScorarium handbook\n\
          contributor\t  \tGrace Hopper (author)\n\
          holding    \t8 \tphysical: Desk\n\
-         work       \t11\tChapter 1\n"
+         work       \t11\tChapter 1\n\
+         enrichment \t  \tcompleted 0/0\n"
     );
 
     let (out, result) = run(
@@ -512,12 +513,13 @@ async fn add_work_links_by_id_or_creates() {
     assert_eq!(
         out,
         "8\n\
-         field  \tid\tvalue\n\
-         -------\t--\t-----------------\n\
-         id     \t8 \t\n\
-         draft  \t  \t\n\
-         title  \t  \t978-0-13-468599-2\n\
-         holding\t8 \tphysical\n"
+         field     \tid\tvalue\n\
+         ----------\t--\t-----------------\n\
+         id        \t8 \t\n\
+         draft     \t  \t\n\
+         title     \t  \t978-0-13-468599-2\n\
+         holding   \t8 \tphysical\n\
+         enrichment\t  \tcompleted 0/0\n"
     );
 }
 

@@ -15,7 +15,7 @@ use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
-use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
 use crate::person::{self, Person, PersonId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
@@ -1660,18 +1660,29 @@ impl Entity for Publication {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
-        let isbn = self
-            .identifiers
-            .iter()
-            .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
-            .cloned();
+        let olid = self.links.iter().find_map(|link| {
+            link.record
+                .as_ref()
+                .filter(|record| record.kind() == LinkKind::OpenLibrary)
+                .map(|record| record.id().to_string())
+        });
+        let key = match olid {
+            // If we have the OLID for this publication, use it, otherwise try to use the ISBN if it exists
+            Some(olid) => Some(open_library::EditionKey::Olid(olid)),
+            None => self
+                .identifiers
+                .iter()
+                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+                .cloned()
+                .map(open_library::EditionKey::Isbn),
+        };
         let engine = self.engine.clone();
         let id = self.id;
         Ok(self
             .engine
             .start_enrichment(AnyEntityId::Publication(id), |queue| {
-                if let Some(isbn) = isbn {
-                    queue.enqueue(open_library::edition(engine, id, isbn, queue.clone()));
+                if let Some(key) = key {
+                    queue.enqueue(open_library::edition(engine, id, key, queue.clone()));
                 }
             }))
     }
@@ -1682,6 +1693,8 @@ impl Entity for Publication {
 }
 
 /// Import a draft publication in `library` from `seed` with its first holding
+///
+/// Enrichment starts on every import. It finishes at once when there is nothing to look up.
 pub(crate) async fn import(
     engine: &Engine,
     library: LibraryId,
@@ -1753,9 +1766,7 @@ pub(crate) async fn import(
     .await?
     .commit()
     .await?;
-    if identifier.is_some() {
-        publication.enrich().await?;
-    }
+    publication.enrich().await?;
     Ok(publication)
 }
 
@@ -2793,6 +2804,7 @@ mod tests {
             )
             .await
             .unwrap();
+        engine.wait_for_enrichment().await;
         let links: Vec<(&str, Option<&ExternalRecord>)> = publication
             .links()
             .iter()
@@ -2802,6 +2814,11 @@ mod tests {
             links,
             [("https://openlibrary.org/books/OL7636066M", Some(&record))]
         );
+        let subject = Some(AuditSubject::Entity {
+            id: AnyEntityId::Publication(publication.id()),
+            library: library.id(),
+            label: "978-0-486-99999-9".into(),
+        });
         let events: Vec<_> = publication
             .audit_log(None, 10)
             .await
@@ -2809,16 +2826,13 @@ mod tests {
             .into_iter()
             .map(|e| (e.action, e.subject))
             .collect();
+        // Enrichment classifies the publication after it is created.
         assert_eq!(
             events,
-            [(
-                Action::Created,
-                Some(AuditSubject::Entity {
-                    id: AnyEntityId::Publication(publication.id()),
-                    library: library.id(),
-                    label: "978-0-486-99999-9".into(),
-                })
-            )]
+            [
+                (Action::Updated, subject.clone()),
+                (Action::Created, subject)
+            ]
         );
         assert!(matches!(
             publication.commit().await,
