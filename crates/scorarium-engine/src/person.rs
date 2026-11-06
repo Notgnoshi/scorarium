@@ -515,7 +515,11 @@ impl Entity for Person {
             deprecated,
             reason = "rejecting proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -531,7 +535,11 @@ impl Entity for Person {
             deprecated,
             reason = "rejecting proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -558,6 +566,8 @@ impl Entity for Person {
         .await?;
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Person(self.id));
         Ok(())
     }
 
@@ -629,7 +639,11 @@ impl Person {
             deprecated,
             reason = "discarding proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 }
 

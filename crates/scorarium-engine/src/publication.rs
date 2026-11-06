@@ -1551,7 +1551,11 @@ impl Entity for Publication {
         if rejected == 0 {
             return Err(Error::NotFound);
         }
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -1563,7 +1567,11 @@ impl Entity for Publication {
         )
         .execute(&mut *tx)
         .await?;
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -1615,6 +1623,8 @@ impl Entity for Publication {
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Publication(self.id));
         Ok(())
     }
 
@@ -1926,7 +1936,11 @@ impl Publication {
             deprecated,
             reason = "discarding a proposal does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 }
 

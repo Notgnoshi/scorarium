@@ -1067,7 +1067,11 @@ impl Entity for Work {
         if rejected == 0 {
             return Err(Error::NotFound);
         }
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -1076,7 +1080,11 @@ impl Entity for Work {
         sqlx::query!("DELETE FROM work_proposal WHERE work_id = ?", self.id.get())
             .execute(&mut *tx)
             .await?;
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -1112,6 +1120,8 @@ impl Entity for Work {
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Work(self.id));
         Ok(())
     }
 
@@ -1218,7 +1228,11 @@ impl Work {
             deprecated,
             reason = "discarding a proposal does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 }
 
