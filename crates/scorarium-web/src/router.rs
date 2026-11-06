@@ -1,5 +1,5 @@
-use axum::Router;
 use axum::routing::get;
+use axum::{Router, middleware};
 use scorarium_engine::Engine;
 use tower_http::trace::TraceLayer;
 
@@ -15,6 +15,10 @@ pub fn router(engine: Engine) -> Router {
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)
+        .layer(middleware::from_fn_with_state(
+            engine.clone(),
+            error::render,
+        ))
         .layer(trace)
         .with_state(engine)
 }

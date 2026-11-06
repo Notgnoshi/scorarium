@@ -1,5 +1,14 @@
+use askama::Template;
+use axum::Extension;
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
+use axum::middleware::Next;
+use axum::response::{Html, IntoResponse, Response};
+use scorarium_engine::Engine;
+
+use crate::page::Base;
+use crate::widget::breadcrumbs::Crumb;
+use crate::widget::header::Header;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -44,7 +53,53 @@ impl IntoResponse for Error {
             let chain = report.chain().map(ToString::to_string).collect::<Vec<_>>();
             tracing::error!(status = %status, error = %chain.join(": "));
         }
-        (status, report.to_string()).into_response()
+        let message = report.to_string();
+        (status, Extension(ErrorDetail { message })).into_response()
+    }
+}
+
+/// A tag on a response that tells the [`render`] middleware to replace it with an error page
+#[derive(Clone, Debug)]
+pub struct ErrorDetail {
+    pub message: String,
+}
+
+#[derive(Template)]
+#[template(path = "page/error.html")]
+struct ErrorPage {
+    base: Base,
+    status: StatusCode,
+    message: String,
+}
+
+/// Replace a response tagged with [`ErrorDetail`] by the rendered error page
+pub async fn render(State(engine): State<Engine>, request: Request, next: Next) -> Response {
+    let (mut parts, body) = request.into_parts();
+    let response = next.run(Request::from_parts(parts.clone(), body)).await;
+    let Some(ErrorDetail { message }) = response.extensions().get().cloned() else {
+        return response;
+    };
+
+    let status = response.status();
+    let header = Header::from_request_parts(&mut parts, &engine)
+        .await
+        .unwrap_or_default();
+    let title = format!(
+        "{} {}",
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("")
+    );
+    let page = ErrorPage {
+        base: Base::new(header, title, vec![Crumb::new("Libraries", "/")]), // TODO: Remove crumb once there's another usage of it to make the dead_code lint go away
+        status,
+        message,
+    };
+    match page.render() {
+        Ok(html) => (status, Html(html)).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to render the error page");
+            (status, page.message).into_response()
+        }
     }
 }
 
