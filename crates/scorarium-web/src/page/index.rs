@@ -13,7 +13,7 @@ struct Index {
 
 pub async fn get(header: Header) -> Result<Html<String>> {
     let page = Index {
-        base: Base::new(header, "Libraries"),
+        base: Base::new(header, "Libraries", vec![]),
     };
     Ok(Html(page.render()?))
 }
