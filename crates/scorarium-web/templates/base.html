@@ -9,11 +9,13 @@
         <script src="{{ crate::assets::url("common.js") }}"></script>
     </head>
     <body class="d-flex flex-column min-vh-100">
+        {{ base.header }}
         <main class="container flex-grow-1">
             {% block content %}{% endblock %}
         </main>
         <footer class="container mt-auto py-3 small text-end text-body-secondary">
-            <a class="link-secondary" href="https://github.com/Notgnoshi/scorarium"><i class="bi bi-github"></i> Scorarium on GitHub</a>
+            <a class="link-secondary"
+               href="https://github.com/Notgnoshi/scorarium"><i class="bi bi-github"></i> Scorarium on GitHub</a>
         </footer>
         <script src="{{ crate::assets::url("bootstrap.bundle.min.js") }}"></script>
     </body>
