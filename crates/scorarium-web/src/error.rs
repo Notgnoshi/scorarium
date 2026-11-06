@@ -31,6 +31,12 @@ impl From<scorarium_engine::Error> for Error {
     }
 }
 
+impl From<askama::Error> for Error {
+    fn from(e: askama::Error) -> Self {
+        Error::new(StatusCode::INTERNAL_SERVER_ERROR, e)
+    }
+}
+
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let Error { status, report } = self;

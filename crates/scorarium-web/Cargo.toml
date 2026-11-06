@@ -6,6 +6,7 @@ license.workspace = true
 description = "The scorarium web server"
 
 [dependencies]
+askama.workspace = true
 axum.workspace = true
 clap.workspace = true
 eyre.workspace = true
