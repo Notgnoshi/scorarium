@@ -80,7 +80,7 @@ pub(crate) async fn import(
             },
         );
     let publication = library
-        .create_publication(seed, NewHolding::Physical { location })
+        .import(seed, NewHolding::Physical { location })
         .await?;
     writeln!(out, "{}", publication.id())?;
     Ok(())

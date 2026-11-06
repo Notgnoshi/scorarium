@@ -146,7 +146,7 @@ mod tests {
             .find(|library| !library.is_private())
             .unwrap();
         sheet_music
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git handbook".into(),
                     record: None,

@@ -28,7 +28,11 @@ impl ReviewItem {
     ///
     /// Returns [Error::NotFound] if neither a task nor a draft nor a proposal remained to remove.
     pub async fn discard(self) -> Result<()> {
-        let cancelled = self.enrichment.map(Enrichment::cancel).is_some();
+        let cancelled = self.enrichment.is_some_and(|enrichment| {
+            let live = enrichment.needs_review();
+            enrichment.cancel();
+            live
+        });
         let result = match self.entity {
             AnyEntity::Publication(publication) => discard_entity(publication).await,
             AnyEntity::Work(work) => discard_entity(work).await,
@@ -113,6 +117,15 @@ async fn queued_by_database<E: Entity>(engine: &Engine, id: E::Id) -> Result<Opt
     ))
 }
 
+/// Return whether the database queues `root`, or `None` if it does not exist
+async fn is_queued_by_database(engine: &Engine, root: AnyEntityId) -> Result<Option<bool>> {
+    match root {
+        AnyEntityId::Publication(id) => queued_by_database::<Publication>(engine, id).await,
+        AnyEntityId::Work(id) => queued_by_database::<Work>(engine, id).await,
+        AnyEntityId::Person(id) => queued_by_database::<Person>(engine, id).await,
+    }
+}
+
 fn kind_rank(id: AnyEntityId) -> u8 {
     match id {
         AnyEntityId::Publication(_) => 0,
@@ -122,6 +135,17 @@ fn kind_rank(id: AnyEntityId) -> u8 {
 }
 
 impl Engine {
+    /// Forget the completed enrichment task of `root` unless it's still in the review queue
+    ///
+    /// Read the entity afresh, so callers need not hold an up-to-date copy.
+    pub(crate) async fn forget_enrichment_if_reviewed(&self, root: AnyEntityId) {
+        match is_queued_by_database(self, root).await {
+            Ok(Some(false)) => self.forget_completed_enrichment(root),
+            Ok(_) => {}
+            Err(error) => log::warn!("failed to check whether {root:?} is still queued: {error}"),
+        }
+    }
+
     /// List entities that are queued for review
     pub async fn review_queue(&self) -> Result<Vec<ReviewItem>> {
         let mut conn = self.begin_read().await?;
@@ -209,6 +233,17 @@ impl Engine {
                 item.entity.id().get(),
             )
         });
+
+        let queued: HashSet<AnyEntityId> = items.iter().map(|item| item.entity.id()).collect();
+        let unqueued: Vec<AnyEntityId> = self
+            .enrichments()
+            .keys()
+            .filter(|root| !queued.contains(root))
+            .copied()
+            .collect();
+        for root in unqueued {
+            self.forget_completed_enrichment(root);
+        }
         Ok(items)
     }
 
@@ -233,12 +268,7 @@ impl Engine {
         let mut count = usize::try_from(count).expect("a count is never negative");
         for enrichment in self.enrichments_to_review() {
             // The database count already includes entities that are drafts or have proposals.
-            let queued_by_database = match enrichment.entity() {
-                AnyEntityId::Publication(id) => queued_by_database::<Publication>(self, id).await?,
-                AnyEntityId::Work(id) => queued_by_database::<Work>(self, id).await?,
-                AnyEntityId::Person(id) => queued_by_database::<Person>(self, id).await?,
-            };
-            if queued_by_database == Some(false) {
+            if is_queued_by_database(self, enrichment.entity()).await? == Some(false) {
                 count += 1;
             }
         }
@@ -251,6 +281,7 @@ mod tests {
     use scorarium_client::Source;
 
     use super::*;
+    use crate::enrich::EnrichmentState;
     use crate::holding::NewHolding;
     use crate::publication::{ImportSeed, Proposal};
 
@@ -262,7 +293,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -294,7 +325,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -321,7 +352,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -364,7 +395,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -398,6 +429,77 @@ mod tests {
                 .await
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_completed_task_is_forgotten_once_its_entity_is_not_queued() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+        engine.start_enrichment(AnyEntityId::Publication(publication.id()), |queue| {
+            queue.enqueue(async { Ok(()) });
+        });
+        engine.wait_for_enrichment().await;
+        assert_eq!(
+            publication.enrichment().unwrap().status().state(),
+            EnrichmentState::Completed
+        );
+
+        engine.review_queue().await.unwrap();
+
+        assert!(publication.enrichment().is_none());
+    }
+
+    #[tokio::test]
+    async fn committing_a_draft_rejects_its_proposals() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Books", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Pro Git".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication
+            .propose(Source::OpenLibrary, Proposal::Publisher("Apress".into()))
+            .await
+            .unwrap();
+        let draft_person = publication
+            .propose_new_contributor(Source::OpenLibrary, "Pen Name", &"author".parse().unwrap())
+            .await
+            .unwrap();
+
+        publication.commit().await.unwrap();
+
+        assert!(publication.enrichment().is_none());
+        assert!(publication.proposals().await.unwrap().is_empty());
+        assert!(engine.review_queue().await.unwrap().is_empty());
+        assert!(
+            Person::load(&engine, draft_person.id())
+                .await
+                .unwrap()
+                .is_none()
         );
     }
 }

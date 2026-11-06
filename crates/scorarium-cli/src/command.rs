@@ -4,6 +4,7 @@ use std::time::Duration;
 use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
+use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::ProposalId;
 use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
@@ -303,7 +304,7 @@ pub(crate) enum PublicationAdd {
         #[arg(value_name = "person")]
         person: String,
         #[arg(value_name = "role")]
-        role: String,
+        role: Role,
         /// Force-create a new person
         #[arg(long)]
         new: bool,
@@ -350,7 +351,7 @@ pub(crate) enum PublicationRemove {
         #[arg(value_name = "person")]
         person: String,
         #[arg(value_name = "role")]
-        role: Option<String>,
+        role: Option<Role>,
     },
     /// A work the publication contains
     Work {
@@ -491,7 +492,7 @@ pub(crate) enum WorkAdd {
         #[arg(value_name = "person")]
         person: String,
         #[arg(value_name = "role")]
-        role: String,
+        role: Role,
         /// Force-create a new person
         #[arg(long)]
         new: bool,
@@ -520,7 +521,7 @@ pub(crate) enum WorkRemove {
         #[arg(value_name = "person")]
         person: String,
         #[arg(value_name = "role")]
-        role: Option<String>,
+        role: Option<Role>,
     },
 }
 
@@ -546,7 +547,7 @@ pub(crate) enum PersonCommand {
     List {
         /// Keep only persons credited with this role
         #[arg(long, value_name = "role")]
-        role: Option<String>,
+        role: Option<Role>,
     },
     /// Show a person
     Show,

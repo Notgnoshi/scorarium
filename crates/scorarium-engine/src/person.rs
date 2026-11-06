@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::contributor::Role;
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
@@ -489,7 +490,7 @@ impl Entity for Person {
             .ok_or(Error::NotFound)?;
         drop(conn);
         match proposal.value {
-            Proposal::Name(name) => self.rename(&name, sort_name(&name)).await?,
+            Proposal::Name(name) => self.rename(&name, derive_sort_name(&name)).await?,
             Proposal::Link(url) => self.add_link(url).await?,
             Proposal::Profile(url) => self.set_profile(AssetSource::Url(url)).await?,
         }
@@ -514,7 +515,11 @@ impl Entity for Person {
             deprecated,
             reason = "rejecting proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -530,7 +535,11 @@ impl Entity for Person {
             deprecated,
             reason = "rejecting proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -557,6 +566,8 @@ impl Entity for Person {
         .await?;
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Person(self.id));
         Ok(())
     }
 
@@ -628,7 +639,11 @@ impl Person {
             deprecated,
             reason = "discarding proposals does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Person(self.id))
+            .await;
+        Ok(())
     }
 }
 
@@ -665,7 +680,7 @@ pub(crate) async fn insert(
     draft: bool,
 ) -> Result<Person> {
     let library = library.get();
-    let sort_name = sort_name(name);
+    let sort_name = derive_sort_name(name);
     let id = sqlx::query_scalar!(
         r#"INSERT INTO person (library_id, name, sort_name, draft) VALUES (?, ?, ?, ?)
            RETURNING id AS "id!""#,
@@ -701,11 +716,11 @@ pub(crate) async fn name(
 pub(crate) async fn in_library(
     engine: &Engine,
     library: LibraryId,
-    role: Option<&str>,
+    role: Option<&Role>,
 ) -> Result<Vec<Person>> {
     let mut conn = engine.begin_read().await?;
     let library = library.get();
-    let rows = match role.map(str::trim) {
+    let rows = match role.map(Role::as_str) {
         Some(role) => {
             sqlx::query_as!(
                 PersonRow,
@@ -928,7 +943,7 @@ pub(crate) fn clean_name(name: &str) -> Result<&str> {
 ///
 /// Compound surnames like "Ralph Vaughan Williams" come out wrong. That is acceptable because the
 /// heuristic only has to be right often enough that the user rarely retypes a name.
-fn sort_name(name: &str) -> String {
+pub fn derive_sort_name(name: &str) -> String {
     let mut parts: Vec<&str> = name.split_whitespace().collect();
     match parts.pop() {
         Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),
@@ -951,7 +966,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Russian piano album".into(),
                     record: None,
@@ -961,7 +976,7 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Sergei Rachmaninoff", "composer")
+            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
             .await
             .unwrap();
         for url in [
@@ -993,7 +1008,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Gymnopedies".into(),
                     record: None,
@@ -1003,7 +1018,7 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap();
         let staging = dir.path().join("staging");

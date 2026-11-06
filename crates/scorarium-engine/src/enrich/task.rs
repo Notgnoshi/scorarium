@@ -209,6 +209,17 @@ impl Engine {
         Some(Enrichment::new(task))
     }
 
+    /// Forget the enrichment task of `root` if it finished without failures
+    pub(crate) fn forget_completed_enrichment(&self, root: AnyEntityId) {
+        let mut enrichments = self.enrichments();
+        if enrichments
+            .get(&root)
+            .is_some_and(|task| task.status.borrow().state() == EnrichmentState::Completed)
+        {
+            enrichments.remove(&root);
+        }
+    }
+
     /// Return every task whose entity belongs in the review queue
     pub(crate) fn enrichments_to_review(&self) -> Vec<Enrichment> {
         self.enrichments()

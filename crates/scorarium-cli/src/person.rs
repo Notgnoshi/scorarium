@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use scorarium_engine::contributor::Contributor;
+use scorarium_engine::contributor::{Contributor, Role};
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
-use scorarium_engine::person::{Person, PersonId};
+use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 
 use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
 use crate::library::write_table;
@@ -13,7 +13,7 @@ use crate::{audit, enrichment, reference, review, search};
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
     library: &Library,
-    role: Option<&str>,
+    role: Option<&Role>,
     out: &mut impl Write,
 ) -> eyre::Result<()> {
     let mut people = library.people(role).await?;
@@ -135,7 +135,7 @@ pub(crate) async fn run(
     match command {
         PersonCommand::List { role } => {
             reject(subject, "person", "list")?;
-            list(library, role.as_deref(), out).await
+            list(library, role.as_ref(), out).await
         }
         PersonCommand::Show => {
             let person = resolve(library, require(subject, "person")?).await?;
@@ -180,9 +180,7 @@ pub(crate) async fn run(
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {
-                PersonSet::Name { name } => {
-                    person.rename(&name, person.sort_name().to_string()).await?
-                }
+                PersonSet::Name { name } => person.rename(&name, derive_sort_name(&name)).await?,
                 PersonSet::SortName { sort_name } => {
                     person.rename(person.name().to_string(), &sort_name).await?
                 }

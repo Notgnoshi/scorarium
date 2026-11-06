@@ -216,16 +216,9 @@ pub(crate) async fn commit_rejection(
             None,
         )
         .await?;
-    for subject in rest {
-        tx = tx
-            .record(
-                AuditSource::OrphanCleanup,
-                Action::Deleted,
-                Some(subject),
-                None,
-            )
-            .await?;
-    }
+    tx = tx
+        .record_each(AuditSource::OrphanCleanup, Action::Deleted, rest, None)
+        .await?;
     tx.commit().await?;
     asset::remove_dirs(engine, collected);
     Ok(())

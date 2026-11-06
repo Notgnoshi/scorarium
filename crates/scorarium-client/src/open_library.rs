@@ -58,6 +58,16 @@ impl<'a> OpenLibrary<'a> {
         Ok(raw.map(Edition::from))
     }
 
+    /// Look up an edition by an OLID
+    pub async fn edition(&self, olid: &str, priority: Priority) -> eyre::Result<Option<Edition>> {
+        let url = url(["books", &format!("{olid}.json")])?;
+        let raw: Option<RawEdition> = self
+            .client
+            .get_json(url, HeaderMap::new(), priority)
+            .await?;
+        Ok(raw.map(Edition::from))
+    }
+
     /// Look up an author by an OLID like "OL127077A".
     pub async fn author(&self, olid: &str, priority: Priority) -> eyre::Result<Option<Author>> {
         let url = url(["authors", &format!("{olid}.json")])?;
@@ -433,6 +443,26 @@ mod tests {
         assert_eq!(edition.isbn_13, ["9780486253923"]);
         assert_eq!(edition.authors, ["OL127077A"]);
         assert_eq!(edition.works, ["OL1258206W"]);
+    }
+
+    #[tokio::test]
+    async fn an_olid_resolves_to_an_edition() {
+        let client = client();
+
+        let edition = client
+            .open_library()
+            .edition("OL7636066M", Priority::Interactive)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(edition.olid, "OL7636066M");
+        assert_eq!(
+            edition.title,
+            "Bagatelles, Rondos and Other Shorter Works for Piano"
+        );
+        assert_eq!(edition.publishers, ["Dover Publications"]);
+        assert_eq!(edition.isbn_13, ["9780486253923"]);
     }
 
     /// A valid ISMN is an identifier Open Library will never hold.

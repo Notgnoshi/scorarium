@@ -10,12 +10,12 @@ use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource, Staged};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::contributor::{Contributor, clean_role};
+use crate::contributor::{Contributor, Role};
 use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
-use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
 use crate::person::{self, Person, PersonId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
@@ -133,7 +133,7 @@ pub enum Proposal {
     Publisher(String),
     Year(Year),
     Identifier(Identifier),
-    Contributor { person: Person, role: String },
+    Contributor { person: Person, role: Role },
     Contents(Work),
     Link(HttpUrl),
     Cover(HttpUrl),
@@ -278,7 +278,7 @@ impl Publication {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
-            role: contributor.role,
+            role: Role::from_valid(contributor.role),
         })
         .collect();
         let holdings = sqlx::query!(
@@ -416,7 +416,7 @@ impl Publication {
                 role,
             } => {
                 person = Some(proposed);
-                ("contributor", Some(clean_role(role)?.to_string()))
+                ("contributor", Some(role.as_str().to_string()))
             }
             Proposal::Contents(proposed) => {
                 work = Some(proposed);
@@ -540,10 +540,9 @@ impl Publication {
         &self,
         source: Source,
         name: &str,
-        role: &str,
+        role: &Role,
     ) -> Result<Person> {
         let name = person::clean_name(name)?;
-        let role = clean_role(role)?;
         let mut tx = self.engine.begin_write().await?;
         Publication::fetch(&self.engine, &mut tx, self.id)
             .await?
@@ -558,7 +557,7 @@ impl Publication {
             self.id.get(),
             person.id().get(),
             source,
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -752,11 +751,9 @@ impl Publication {
             )
             .await?;
         let field = work::Field::Classification.to_string();
-        for subject in works {
-            tx = tx
-                .record(source, Action::Updated, Some(&subject), Some(&field))
-                .await?;
-        }
+        tx = tx
+            .record_each(source, Action::Updated, &works, Some(&field))
+            .await?;
         tx.commit().await?;
         Ok(last_modified_at)
     }
@@ -1222,32 +1219,21 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         let field = work::Field::Classification.to_string();
-        for subject in classified {
-            tx = tx
-                .record(
-                    AuditSource::User,
-                    Action::Updated,
-                    Some(&subject),
-                    Some(&field),
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(
+                AuditSource::User,
+                Action::Updated,
+                &classified,
+                Some(&field),
+            )
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
@@ -1290,16 +1276,9 @@ impl Publication {
                 Some(&Field::Contents.to_string()),
             )
             .await?;
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.last_modified_at = last_modified_at;
@@ -1317,10 +1296,9 @@ impl Publication {
     pub async fn create_contributor(
         &mut self,
         name: impl AsRef<str>,
-        role: impl AsRef<str>,
+        role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
-        let role = clean_role(role.as_ref())?;
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
@@ -1330,7 +1308,7 @@ impl Publication {
             self.library.get(),
             self.id.get(),
             person.id().get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -1360,7 +1338,7 @@ impl Publication {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
-            role: role.to_string(),
+            role,
         });
         self.last_modified_at = last_modified_at;
         Ok(person)
@@ -1372,8 +1350,7 @@ impl Publication {
     ///
     /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
     /// person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: impl AsRef<str>) -> Result<()> {
-        let role = clean_role(role.as_ref())?;
+    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let name = person::name(&mut tx, self.library, person)
@@ -1386,7 +1363,7 @@ impl Publication {
             self.library.get(),
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -1414,17 +1391,11 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor {
-            person,
-            name,
-            role: role.to_string(),
-        });
+        self.contributors.push(Contributor { person, name, role });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1432,12 +1403,7 @@ impl Publication {
     /// Remove a contributor from the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn remove_contributor(
-        &mut self,
-        person: PersonId,
-        role: impl AsRef<str>,
-    ) -> Result<()> {
-        let role = role.as_ref().trim();
+    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(
@@ -1445,7 +1411,7 @@ impl Publication {
              WHERE publication_id = ? AND person_id = ? AND role = ?",
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -1469,20 +1435,13 @@ impl Publication {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         self.contributors
-            .retain(|contributor| !(contributor.person == person && contributor.role == role));
+            .retain(|contributor| !(contributor.person == person && contributor.role == *role));
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1569,7 +1528,7 @@ impl Entity for Publication {
             Proposal::Year(year) => self.set_year(Some(year)).await?,
             Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
             Proposal::Contributor { person, role } => {
-                self.add_contributor(person.id(), role).await?
+                self.add_contributor(person.id(), role.clone()).await?
             }
             Proposal::Contents(work) => self.add_work(work.id()).await?,
             Proposal::Link(url) => self.add_link(url).await?,
@@ -1592,7 +1551,11 @@ impl Entity for Publication {
         if rejected == 0 {
             return Err(Error::NotFound);
         }
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -1604,7 +1567,11 @@ impl Entity for Publication {
         )
         .execute(&mut *tx)
         .await?;
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -1646,25 +1613,18 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in subjects {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &subjects, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Publication(self.id));
         Ok(())
     }
 
@@ -1687,16 +1647,9 @@ impl Entity for Publication {
                 None,
             )
             .await?;
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         orphans.push(self.audit_subject());
         asset::remove_dirs(&self.engine, &orphans);
@@ -1707,18 +1660,29 @@ impl Entity for Publication {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
-        let isbn = self
-            .identifiers
-            .iter()
-            .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
-            .cloned();
+        let olid = self.links.iter().find_map(|link| {
+            link.record
+                .as_ref()
+                .filter(|record| record.kind() == LinkKind::OpenLibrary)
+                .map(|record| record.id().to_string())
+        });
+        let key = match olid {
+            // If we have the OLID for this publication, use it, otherwise try to use the ISBN if it exists
+            Some(olid) => Some(open_library::EditionKey::Olid(olid)),
+            None => self
+                .identifiers
+                .iter()
+                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+                .cloned()
+                .map(open_library::EditionKey::Isbn),
+        };
         let engine = self.engine.clone();
         let id = self.id;
         Ok(self
             .engine
             .start_enrichment(AnyEntityId::Publication(id), |queue| {
-                if let Some(isbn) = isbn {
-                    queue.enqueue(open_library::edition(engine, id, isbn, queue.clone()));
+                if let Some(key) = key {
+                    queue.enqueue(open_library::edition(engine, id, key, queue.clone()));
                 }
             }))
     }
@@ -1728,8 +1692,10 @@ impl Entity for Publication {
     }
 }
 
-/// Create a draft publication in `library` from `seed` with its first holding
-pub(crate) async fn create(
+/// Import a draft publication in `library` from `seed` with its first holding
+///
+/// Enrichment starts on every import. It finishes at once when there is nothing to look up.
+pub(crate) async fn import(
     engine: &Engine,
     library: LibraryId,
     seed: ImportSeed,
@@ -1800,9 +1766,7 @@ pub(crate) async fn create(
     .await?
     .commit()
     .await?;
-    if identifier.is_some() {
-        publication.enrich().await?;
-    }
+    publication.enrich().await?;
     Ok(publication)
 }
 
@@ -1983,7 +1947,11 @@ impl Publication {
             deprecated,
             reason = "discarding a proposal does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Publication(self.id))
+            .await;
+        Ok(())
     }
 }
 
@@ -2023,7 +1991,7 @@ async fn from_row(
                 .ok_or(Error::NotFound)?;
             Proposal::Contributor {
                 person,
-                role: stored_value(row.proposed_value, row.id)?,
+                role: Role::from_valid(stored_value(row.proposed_value, row.id)?),
             }
         }
         "contents" => {
@@ -2375,7 +2343,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Books", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -2460,7 +2428,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Three gymnopedies for the piano".into(),
                     record: None,
@@ -2471,11 +2439,11 @@ mod tests {
             .unwrap();
         let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
         let person = work
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap();
         let editor = publication
-            .create_contributor("Isidor Philipp", "editor")
+            .create_contributor("Isidor Philipp", "editor".parse().unwrap())
             .await
             .unwrap();
         assert!(publication.is_draft());
@@ -2501,7 +2469,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut album = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Russian piano album".into(),
                     record: None,
@@ -2512,15 +2480,15 @@ mod tests {
             .unwrap();
         let mut prelude = album.create_work("Prelude in C-sharp minor").await.unwrap();
         let composer = prelude
-            .create_contributor("Sergei Rachmaninoff", "composer")
+            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
             .await
             .unwrap();
         let editor = album
-            .create_contributor("Alexander Siloti", "editor")
+            .create_contributor("Alexander Siloti", "editor".parse().unwrap())
             .await
             .unwrap();
         let mut masterpieces = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Rachmaninoff masterpieces for solo piano".into(),
                     record: None,
@@ -2561,7 +2529,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Pro Git".into(),
                     record: None,
@@ -2571,7 +2539,7 @@ mod tests {
             .await
             .unwrap();
         let mut other = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Scott Chacon".into(),
                     record: None,
@@ -2618,7 +2586,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut a = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Preludes, book one".into(),
                     record: None,
@@ -2628,7 +2596,7 @@ mod tests {
             .await
             .unwrap();
         let mut b = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Preludes, book two".into(),
                     record: None,
@@ -2668,7 +2636,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Preludes".into(),
                     record: None,
@@ -2703,7 +2671,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Preludes".into(),
                     record: None,
@@ -2719,7 +2687,11 @@ mod tests {
             .await
             .unwrap();
         let person = work
-            .propose_new_contributor(Source::OpenLibrary, "Erik Satie", "composer")
+            .propose_new_contributor(
+                Source::OpenLibrary,
+                "Erik Satie",
+                &"composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         let id = publication.proposals().await.unwrap()[0].id;
@@ -2740,7 +2712,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Three gymnopedies for the piano".into(),
                     record: None,
@@ -2750,16 +2722,19 @@ mod tests {
             .await
             .unwrap();
         let satie = publication
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap()
             .id();
-        publication.add_contributor(satie, "editor").await.unwrap();
+        publication
+            .add_contributor(satie, "editor".parse().unwrap())
+            .await
+            .unwrap();
         publication.reload().await.unwrap();
         let contributor = |role: &str| Contributor {
             person: satie,
             name: "Erik Satie".into(),
-            role: role.into(),
+            role: role.parse().unwrap(),
         };
         assert_eq!(
             publication.contributors(),
@@ -2767,14 +2742,14 @@ mod tests {
         );
 
         publication
-            .remove_contributor(satie, "composer")
+            .remove_contributor(satie, &"composer".parse().unwrap())
             .await
             .unwrap();
         publication.reload().await.unwrap();
         assert_eq!(publication.contributors(), [contributor("editor")]);
 
         publication
-            .remove_contributor(satie, "editor")
+            .remove_contributor(satie, &"editor".parse().unwrap())
             .await
             .unwrap();
         assert!(Person::load(&engine, satie).await.unwrap().is_none());
@@ -2788,7 +2763,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Three gymnopedies for the piano".into(),
                     record: None,
@@ -2820,7 +2795,7 @@ mod tests {
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-99999-9").unwrap();
         let record = ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M");
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Identifier {
                     identifier: isbn.clone(),
                     record: Some(record.clone()),
@@ -2829,6 +2804,7 @@ mod tests {
             )
             .await
             .unwrap();
+        engine.wait_for_enrichment().await;
         let links: Vec<(&str, Option<&ExternalRecord>)> = publication
             .links()
             .iter()
@@ -2838,6 +2814,11 @@ mod tests {
             links,
             [("https://openlibrary.org/books/OL7636066M", Some(&record))]
         );
+        let subject = Some(AuditSubject::Entity {
+            id: AnyEntityId::Publication(publication.id()),
+            library: library.id(),
+            label: "978-0-486-99999-9".into(),
+        });
         let events: Vec<_> = publication
             .audit_log(None, 10)
             .await
@@ -2845,16 +2826,13 @@ mod tests {
             .into_iter()
             .map(|e| (e.action, e.subject))
             .collect();
+        // Enrichment classifies the publication after it is created.
         assert_eq!(
             events,
-            [(
-                Action::Created,
-                Some(AuditSubject::Entity {
-                    id: AnyEntityId::Publication(publication.id()),
-                    library: library.id(),
-                    label: "978-0-486-99999-9".into(),
-                })
-            )]
+            [
+                (Action::Updated, subject.clone()),
+                (Action::Created, subject)
+            ]
         );
         assert!(matches!(
             publication.commit().await,
@@ -2987,7 +2965,7 @@ mod tests {
             })
         };
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Gymnopedies".into(),
                     record: None,

@@ -7,7 +7,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::contributor::{Contributor, clean_role};
+use crate::contributor::{Contributor, Role};
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
@@ -108,7 +108,7 @@ pub enum Proposal {
     TimeSignature(String),
     Instrumentation(String),
     CatalogNumber(CatalogNumber),
-    Contributor { person: Person, role: String },
+    Contributor { person: Person, role: Role },
     Link(HttpUrl),
 }
 
@@ -237,7 +237,7 @@ impl Work {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
-            role: contributor.role,
+            role: Role::from_valid(contributor.role),
         })
         .collect();
         Ok(Work {
@@ -367,7 +367,7 @@ impl Work {
             ),
             Proposal::CatalogNumber(number) => ("catalog_number", number.to_string(), None),
             Proposal::Contributor { person, role } => {
-                ("contributor", clean_role(role)?.to_string(), Some(person))
+                ("contributor", role.as_str().to_string(), Some(person))
             }
             Proposal::Link(url) => ("link", url.to_string(), None),
         };
@@ -384,7 +384,7 @@ impl Work {
             Proposal::Contributor { person, .. } => current
                 .contributors
                 .iter()
-                .any(|c| c.person == person.id() && c.role == text),
+                .any(|c| c.person == person.id() && c.role.as_str() == text),
             Proposal::Link(url) => {
                 let record = ExternalRecord::recognize(EntityKind::Work, url);
                 current.links.iter().any(|link| {
@@ -435,10 +435,9 @@ impl Work {
         &self,
         source: Source,
         name: &str,
-        role: &str,
+        role: &Role,
     ) -> Result<Person> {
         let name = person::clean_name(name)?;
-        let role = clean_role(role)?;
         let mut tx = self.engine.begin_write().await?;
         Work::fetch(&self.engine, &mut tx, self.id)
             .await?
@@ -453,7 +452,7 @@ impl Work {
             self.id.get(),
             person.id().get(),
             source,
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -818,10 +817,9 @@ impl Work {
     pub async fn create_contributor(
         &mut self,
         name: impl AsRef<str>,
-        role: impl AsRef<str>,
+        role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
-        let role = clean_role(role.as_ref())?;
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
@@ -830,7 +828,7 @@ impl Work {
             self.library.get(),
             self.id.get(),
             person.id().get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -860,7 +858,7 @@ impl Work {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
-            role: role.to_string(),
+            role,
         });
         self.last_modified_at = last_modified_at;
         Ok(person)
@@ -871,8 +869,7 @@ impl Work {
     /// Commit the person if it is a draft and the work is committed.
     ///
     /// Returns [Error::NotFound] if the work has been deleted or its library has no such person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: impl AsRef<str>) -> Result<()> {
-        let role = clean_role(role.as_ref())?;
+    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let name = person::name(&mut tx, self.library, person)
@@ -885,7 +882,7 @@ impl Work {
             self.library.get(),
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -913,17 +910,11 @@ impl Work {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in committed {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &committed, None)
+            .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor {
-            person,
-            name,
-            role: role.to_string(),
-        });
+        self.contributors.push(Contributor { person, name, role });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -931,19 +922,14 @@ impl Work {
     /// Remove a contributor from the work
     ///
     /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn remove_contributor(
-        &mut self,
-        person: PersonId,
-        role: impl AsRef<str>,
-    ) -> Result<()> {
-        let role = role.as_ref().trim();
+    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(
             "DELETE FROM work_contributor WHERE work_id = ? AND person_id = ? AND role = ?",
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -967,20 +953,13 @@ impl Work {
                 Some(&Field::Contributors.to_string()),
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         self.contributors
-            .retain(|contributor| !(contributor.person == person && contributor.role == role));
+            .retain(|contributor| !(contributor.person == person && contributor.role == *role));
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1067,7 +1046,7 @@ impl Entity for Work {
             }
             Proposal::CatalogNumber(number) => self.add_catalog_number(number).await?,
             Proposal::Contributor { person, role } => {
-                self.add_contributor(person.id(), role).await?
+                self.add_contributor(person.id(), role.clone()).await?
             }
             Proposal::Link(url) => self.add_link(url).await?,
         }
@@ -1088,7 +1067,11 @@ impl Entity for Work {
         if rejected == 0 {
             return Err(Error::NotFound);
         }
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 
     async fn reject_all(&mut self) -> Result<()> {
@@ -1097,7 +1080,11 @@ impl Entity for Work {
         sqlx::query!("DELETE FROM work_proposal WHERE work_id = ?", self.id.get())
             .execute(&mut *tx)
             .await?;
-        self.collect_orphans_and_commit(tx).await
+        self.collect_orphans_and_commit(tx).await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<()> {
@@ -1123,25 +1110,18 @@ impl Entity for Work {
                 None,
             )
             .await?;
-        for subject in people {
-            tx = tx
-                .record(AuditSource::User, Action::Committed, Some(&subject), None)
-                .await?;
-        }
-        for subject in &orphans {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::User, Action::Committed, &people, None)
+            .await?;
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &orphans, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &orphans);
         self.draft = false;
         self.last_modified_at = last_modified_at;
+        self.engine
+            .forget_completed_enrichment(AnyEntityId::Work(self.id));
         Ok(())
     }
 
@@ -1163,16 +1143,9 @@ impl Entity for Work {
                 None,
             )
             .await?;
-        for subject in &people {
-            tx = tx
-                .record(
-                    AuditSource::OrphanCleanup,
-                    Action::Deleted,
-                    Some(subject),
-                    None,
-                )
-                .await?;
-        }
+        tx = tx
+            .record_each(AuditSource::OrphanCleanup, Action::Deleted, &people, None)
+            .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         if let Some(enrichment) = self.enrichment() {
@@ -1255,7 +1228,11 @@ impl Work {
             deprecated,
             reason = "discarding a proposal does not need an audit event"
         )]
-        tx.commit_unaudited().await
+        tx.commit_unaudited().await?;
+        self.engine
+            .forget_enrichment_if_reviewed(AnyEntityId::Work(self.id))
+            .await;
+        Ok(())
     }
 }
 
@@ -1289,7 +1266,7 @@ async fn from_row(
                 .ok_or(Error::NotFound)?;
             Proposal::Contributor {
                 person,
-                role: row.proposed_value,
+                role: Role::from_valid(row.proposed_value),
             }
         }
         "link" => Proposal::Link(row.proposed_value.parse()?),
@@ -1497,7 +1474,7 @@ pub(crate) async fn number_candidates(
            WHERE w.library_id = ?1
              AND (?2 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c
                                         WHERE c.work_id = w.id AND c.person_id = ?2
-                                          AND lower(c.role) = 'composer'))
+                                          AND c.role = 'composer'))
            ORDER BY n.id"#,
         library.get(),
         composer.map(PersonId::get)
@@ -1999,7 +1976,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut publication = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Three gymnopedies for the piano".into(),
                     record: None,
@@ -2010,11 +1987,11 @@ mod tests {
             .unwrap();
         let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
         let composer = work
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap();
         let mut other = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Satie piano works".into(),
                     record: None,
@@ -2050,7 +2027,7 @@ mod tests {
             .unwrap();
         let library = engine.create_library("Sheet music", false).await.unwrap();
         let mut a = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Russian piano album".into(),
                     record: None,
@@ -2061,7 +2038,7 @@ mod tests {
             .unwrap();
         let prelude = a.create_work("Prelude").await.unwrap();
         let b = library
-            .create_publication(
+            .import(
                 ImportSeed::Title {
                     title: "Prelude edition".into(),
                     record: None,

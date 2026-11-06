@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
 use scorarium_engine::value::Tag;
@@ -203,11 +204,9 @@ pub(crate) async fn run(
                 WorkAdd::Link { url } => work.add_link(url).await?,
                 WorkAdd::Contributor { person, role, new } => {
                     match person::target(library, &person, new).await? {
-                        Target::Existing(person) => {
-                            work.add_contributor(person.id(), &role).await?
-                        }
+                        Target::Existing(person) => work.add_contributor(person.id(), role).await?,
                         Target::New => {
-                            work.create_contributor(&person, &role).await?;
+                            work.create_contributor(&person, role).await?;
                         }
                     }
                 }
@@ -225,7 +224,7 @@ pub(crate) async fn run(
                 }
                 WorkRemove::Contributor { person, role } => {
                     let person = person::resolve(library, &person).await?.id();
-                    let roles: Vec<String> = match role {
+                    let roles: Vec<Role> = match role {
                         Some(role) => vec![role],
                         None => work
                             .contributors()

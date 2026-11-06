@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT n.work_id, n.value, w.title,\n                  n.value || ' ' || w.title || ' '\n                  || coalesce((SELECT group_concat(person.name, ' ')\n                               FROM work_contributor c JOIN person ON person.id = c.person_id\n                               WHERE c.work_id = w.id), '')\n                  AS \"text!: String\"\n           FROM work_catalog_number n JOIN work w ON w.id = n.work_id\n           WHERE w.library_id = ?1\n             AND (?2 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c\n                                        WHERE c.work_id = w.id AND c.person_id = ?2\n                                          AND lower(c.role) = 'composer'))\n           ORDER BY n.id",
+  "query": "SELECT n.work_id, n.value, w.title,\n                  n.value || ' ' || w.title || ' '\n                  || coalesce((SELECT group_concat(person.name, ' ')\n                               FROM work_contributor c JOIN person ON person.id = c.person_id\n                               WHERE c.work_id = w.id), '')\n                  AS \"text!: String\"\n           FROM work_catalog_number n JOIN work w ON w.id = n.work_id\n           WHERE w.library_id = ?1\n             AND (?2 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c\n                                        WHERE c.work_id = w.id AND c.person_id = ?2\n                                          AND c.role = 'composer'))\n           ORDER BY n.id",
   "describe": {
     "columns": [
       {
@@ -53,5 +53,5 @@
       null
     ]
   },
-  "hash": "0bb9032f46e9dd763b8c3b01393b075c151e794389fa35e1a0a17f5bd59bb0a5"
+  "hash": "6c7314cdb053062c160fff0ca3141e1327b17119f479330d517c78128636394a"
 }
