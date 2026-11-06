@@ -1,0 +1,12 @@
+{% if !parents.is_empty() %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            {% for crumb in parents %}
+                <li class="breadcrumb-item">
+                    <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+                </li>
+            {% endfor %}
+            <li class="breadcrumb-item active" aria-current="page">{{ current }}</li>
+        </ol>
+    </nav>
+{% endif %}

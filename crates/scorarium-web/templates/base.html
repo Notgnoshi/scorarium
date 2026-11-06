@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{{ base.title }} - Scorarium</title>
+        <link rel="stylesheet" href="{{ crate::assets::url("bootstrap.min.css") }}">
+        <link rel="stylesheet" href="{{ crate::assets::url("bootstrap-icons.min.css") }}">
+        <script src="{{ crate::assets::url("common.js") }}"></script>
+    </head>
+    <body class="d-flex flex-column min-vh-100">
+        {{ base.header }}
+        <main class="container flex-grow-1">
+            {{ base.breadcrumbs }}
+            {% block content %}{% endblock %}
+        </main>
+        <footer class="container mt-auto py-3 small text-end text-body-secondary">
+            <a class="link-secondary"
+               href="https://github.com/Notgnoshi/scorarium"><i class="bi bi-github"></i> Scorarium on GitHub</a>
+        </footer>
+        <script src="{{ crate::assets::url("bootstrap.bundle.min.js") }}"></script>
+    </body>
+</html>

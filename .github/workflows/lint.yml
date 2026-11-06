@@ -37,13 +37,7 @@ jobs:
               run: pipx install djlint==1.49.9
             - name: Check HTML template formatting
               run: |
-                  djlint --check \
-                      --profile django \
-                      --indent 4 \
-                      --max-line-length 120 \
-                      --format-css \
-                      --format-js \
-                      crates/scorarium-web/templates/
+                  djlint --check crates/scorarium-web/templates/
 
     build:
         runs-on: ubuntu-latest

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ status.as_u16() }} {{ status.canonical_reason().unwrap_or("") }}</h1>
+    <p>{{ message }}</p>
+{% endblock %}

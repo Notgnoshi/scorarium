@@ -167,7 +167,7 @@ impl Engine {
     }
 
     /// Check whether this is the temporary demo engine
-    pub(crate) fn is_demo(&self) -> bool {
+    pub fn is_demo(&self) -> bool {
         self.inner.demo
     }
 
