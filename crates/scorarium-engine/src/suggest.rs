@@ -4,6 +4,7 @@ use scorarium_archive::fuzzy::{normalize, rank};
 use scorarium_client::Priority;
 use scorarium_client::open_library::WorkHit;
 
+use crate::contributor::Role;
 use crate::enrich::open_library;
 use crate::library::{self, LibraryId};
 use crate::link::{ExternalRecord, HttpUrl, LinkKind};
@@ -40,7 +41,7 @@ pub enum Suggested {
         number: Option<CatalogNumber>,
     },
     Person(Person),
-    Role(String),
+    Role(Role),
     Publisher(String),
     Tag {
         tag: Tag,
@@ -173,19 +174,15 @@ pub(crate) async fn suggest(
             )
             .fetch_all(&mut *conn)
             .await?;
-            let mut roles: Vec<String> = Vec::new();
-            for role in stored {
-                if !roles.iter().any(|kept| kept.eq_ignore_ascii_case(&role)) {
+            let mut roles: Vec<Role> = stored.into_iter().map(Role::from_valid).collect();
+            for role in CONVENTIONAL_ROLES {
+                let role = role.parse().expect("a literal role");
+                if !roles.contains(&role) {
                     roles.push(role);
                 }
             }
-            for role in CONVENTIONAL_ROLES {
-                if !roles.iter().any(|kept| kept.eq_ignore_ascii_case(role)) {
-                    roles.push(role.to_string());
-                }
-            }
-            roles.sort_by_key(|role| role.to_ascii_lowercase());
-            ranked(query, roles, String::as_str, Suggested::Role)
+            roles.sort();
+            ranked(query, roles, Role::as_str, Suggested::Role)
         }
         SuggestField::Publisher => {
             let publishers = sqlx::query_scalar!(
@@ -429,7 +426,8 @@ mod tests {
             .iter()
             .map(|suggestion| {
                 let value = match &suggestion.item {
-                    Suggested::Role(value) | Suggested::Publisher(value) => value.as_str(),
+                    Suggested::Role(value) => value.as_str(),
+                    Suggested::Publisher(value) => value.as_str(),
                     other => panic!("unexpected suggestion {other:?}"),
                 };
                 (value, suggestion.exact)
@@ -476,7 +474,7 @@ mod tests {
         }
         let mut album = library.publications().await.unwrap().remove(0);
         album
-            .create_contributor("Sergei Rachmaninoff", "Composer")
+            .create_contributor("Sergei Rachmaninoff", "Composer".parse().unwrap())
             .await
             .unwrap();
 
@@ -499,14 +497,14 @@ mod tests {
             .unwrap();
         assert_eq!(publishers.len(), 2);
 
-        // The stored spelling replaces the seeded "composer" and sorts among the seeds
+        // The stored "Composer" and the seeded "composer" are one role
         let roles = library.suggest(SuggestField::Role, "", 10).await.unwrap();
         assert_eq!(
             values(&roles),
             [
                 ("arranger", false),
                 ("author", false),
-                ("Composer", false),
+                ("composer", false),
                 ("editor", false),
                 ("translator", false),
             ]
@@ -531,12 +529,12 @@ mod tests {
             .await
             .unwrap();
         let chopin = nocturnes
-            .create_contributor("Frederic Chopin", "composer")
+            .create_contributor("Frederic Chopin", "composer".parse().unwrap())
             .await
             .unwrap();
         let mut nocturne = nocturnes.create_work("Nocturne").await.unwrap();
         nocturne
-            .add_contributor(chopin.id(), "composer")
+            .add_contributor(chopin.id(), "composer".parse().unwrap())
             .await
             .unwrap();
         nocturne
@@ -619,11 +617,11 @@ mod tests {
             .await
             .unwrap();
         let chopin = album
-            .create_contributor("Frederic Chopin", "composer")
+            .create_contributor("Frederic Chopin", "composer".parse().unwrap())
             .await
             .unwrap();
         let beethoven = album
-            .create_contributor("Ludwig van Beethoven", "Composer")
+            .create_contributor("Ludwig van Beethoven", "Composer".parse().unwrap())
             .await
             .unwrap();
         for (title, number, composer) in [
@@ -633,12 +631,14 @@ mod tests {
             ("Septet", "Op. 20", beethoven.id()),
         ] {
             let mut work = album.create_work(title).await.unwrap();
-            work.add_contributor(composer, "Composer").await.unwrap();
+            work.add_contributor(composer, "Composer".parse().unwrap())
+                .await
+                .unwrap();
             work.add_catalog_number(number.parse().unwrap())
                 .await
                 .unwrap();
             if title == "Ballade" {
-                work.add_contributor(beethoven.id(), "arranger")
+                work.add_contributor(beethoven.id(), "arranger".parse().unwrap())
                     .await
                     .unwrap();
             }
@@ -656,7 +656,7 @@ mod tests {
         let same = library.suggest(everyone, "Op. 9/2", 10).await.unwrap();
         assert_eq!(numbers(&same)[0], ("Op. 9 No. 2", true));
 
-        // The "Composer" spelling counts; the arranger role on the Ballade does not
+        // The "Composer" spelling counts as composer; the arranger role on the Ballade does not
         let only_beethoven = SuggestField::WorkNumber {
             composer: Some(beethoven.id()),
         };

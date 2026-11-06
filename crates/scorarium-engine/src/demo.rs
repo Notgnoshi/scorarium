@@ -29,7 +29,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         ))
         .await?;
     practical_vim
-        .create_contributor("Drew Neil", "author")
+        .create_contributor("Drew Neil", "author".parse()?)
         .await?;
     for tag in ["editor", "reference"] {
         practical_vim.add_tag(tag.parse()?).await?;
@@ -48,8 +48,12 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     pro_git.set_publisher(Some("Apress")).await?;
     pro_git.set_year(Some(Year::try_from(2014)?)).await?;
     pro_git.set_stars(Some(Stars::try_from(3)?)).await?;
-    pro_git.create_contributor("Scott Chacon", "author").await?;
-    pro_git.create_contributor("Ben Straub", "author").await?;
+    pro_git
+        .create_contributor("Scott Chacon", "author".parse()?)
+        .await?;
+    pro_git
+        .create_contributor("Ben Straub", "author".parse()?)
+        .await?;
     for url in [
         "https://openlibrary.org/books/OL26372169M/Pro_Git",
         "https://git-scm.com/book/en/v2",
@@ -70,7 +74,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
     let mut ambrose_bierce = bierce
-        .create_contributor("Ambrose Bierce", "author")
+        .create_contributor("Ambrose Bierce", "author".parse()?)
         .await?;
     for url in [
         "https://www.wikidata.org/wiki/Q191050",
@@ -86,7 +90,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     ] {
         let mut writing = bierce.create_work(title).await?;
         writing
-            .add_contributor(ambrose_bierce.id(), "author")
+            .add_contributor(ambrose_bierce.id(), "author".parse()?)
             .await?;
         if title == "The Devil's Dictionary" {
             writing
@@ -116,11 +120,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         "Sergei Rachmaninoff",
     ] {
         russian_album
-            .create_contributor(composer, "composer")
+            .create_contributor(composer, "composer".parse()?)
             .await?;
     }
     let mut rachmaninoff = sheet_music
-        .people(Some("composer"))
+        .people(Some(&"composer".parse()?))
         .await?
         .into_iter()
         .find(|person| person.name() == "Sergei Rachmaninoff")
@@ -174,7 +178,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .await?;
     masterpieces.set_publisher(Some("Dover")).await?;
     masterpieces
-        .add_contributor(rachmaninoff.id(), "composer")
+        .add_contributor(rachmaninoff.id(), "composer".parse()?)
         .await?;
     masterpieces.add_work(prelude.id()).await?;
     let mut polichinelle = piano_piece(
@@ -197,10 +201,10 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .set_publisher(Some("State Music Publishers"))
         .await?;
     isle_of_the_dead
-        .add_contributor(rachmaninoff.id(), "composer")
+        .add_contributor(rachmaninoff.id(), "composer".parse()?)
         .await?;
     let mut kirkor = isle_of_the_dead
-        .create_contributor("Georgy Kirkor", "arranger")
+        .create_contributor("Georgy Kirkor", "arranger".parse()?)
         .await?;
     for url in [
         "https://imslp.org/wiki/Category:Kirkor,_Georgy",
@@ -216,7 +220,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         Some("5/8"),
     )
     .await?;
-    tone_poem.add_contributor(kirkor.id(), "arranger").await?;
+    tone_poem
+        .add_contributor(kirkor.id(), "arranger".parse()?)
+        .await?;
     tone_poem.add_catalog_number("Op. 29".parse()?).await?;
     tone_poem.set_stars(Some(Stars::try_from(5)?)).await?;
     for tag in ["transcription", "want-to-learn"] {
@@ -250,7 +256,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_link("https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)".parse()?)
         .await?;
     let satie = gymnopedies
-        .create_contributor("Erik Satie", "composer")
+        .create_contributor("Erik Satie", "composer".parse()?)
         .await?
         .id();
     for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
@@ -305,6 +311,6 @@ async fn piano_piece(
     work.set_key(Some(key)).await?;
     work.set_time_signature(time_signature).await?;
     work.set_instrumentation(Some("piano")).await?;
-    work.add_contributor(composer, "composer").await?;
+    work.add_contributor(composer, "composer".parse()?).await?;
     Ok(work)
 }

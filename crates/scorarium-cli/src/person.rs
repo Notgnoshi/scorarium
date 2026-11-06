@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use scorarium_engine::contributor::Contributor;
+use scorarium_engine::contributor::{Contributor, Role};
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
@@ -13,7 +13,7 @@ use crate::{audit, enrichment, reference, review, search};
 /// List the contributors in a library, keeping only those with the given role.
 pub(crate) async fn list(
     library: &Library,
-    role: Option<&str>,
+    role: Option<&Role>,
     out: &mut impl Write,
 ) -> eyre::Result<()> {
     let mut people = library.people(role).await?;
@@ -135,7 +135,7 @@ pub(crate) async fn run(
     match command {
         PersonCommand::List { role } => {
             reject(subject, "person", "list")?;
-            list(library, role.as_deref(), out).await
+            list(library, role.as_ref(), out).await
         }
         PersonCommand::Show => {
             let person = resolve(library, require(subject, "person")?).await?;

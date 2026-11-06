@@ -10,7 +10,7 @@ use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource, Staged};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
-use crate::contributor::{Contributor, clean_role};
+use crate::contributor::{Contributor, Role};
 use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
@@ -133,7 +133,7 @@ pub enum Proposal {
     Publisher(String),
     Year(Year),
     Identifier(Identifier),
-    Contributor { person: Person, role: String },
+    Contributor { person: Person, role: Role },
     Contents(Work),
     Link(HttpUrl),
     Cover(HttpUrl),
@@ -278,7 +278,7 @@ impl Publication {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
-            role: contributor.role,
+            role: Role::from_valid(contributor.role),
         })
         .collect();
         let holdings = sqlx::query!(
@@ -416,7 +416,7 @@ impl Publication {
                 role,
             } => {
                 person = Some(proposed);
-                ("contributor", Some(clean_role(role)?.to_string()))
+                ("contributor", Some(role.as_str().to_string()))
             }
             Proposal::Contents(proposed) => {
                 work = Some(proposed);
@@ -540,10 +540,9 @@ impl Publication {
         &self,
         source: Source,
         name: &str,
-        role: &str,
+        role: &Role,
     ) -> Result<Person> {
         let name = person::clean_name(name)?;
-        let role = clean_role(role)?;
         let mut tx = self.engine.begin_write().await?;
         Publication::fetch(&self.engine, &mut tx, self.id)
             .await?
@@ -558,7 +557,7 @@ impl Publication {
             self.id.get(),
             person.id().get(),
             source,
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -1297,10 +1296,9 @@ impl Publication {
     pub async fn create_contributor(
         &mut self,
         name: impl AsRef<str>,
-        role: impl AsRef<str>,
+        role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
-        let role = clean_role(role.as_ref())?;
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
@@ -1310,7 +1308,7 @@ impl Publication {
             self.library.get(),
             self.id.get(),
             person.id().get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?;
@@ -1340,7 +1338,7 @@ impl Publication {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
-            role: role.to_string(),
+            role,
         });
         self.last_modified_at = last_modified_at;
         Ok(person)
@@ -1352,8 +1350,7 @@ impl Publication {
     ///
     /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
     /// person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: impl AsRef<str>) -> Result<()> {
-        let role = clean_role(role.as_ref())?;
+    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let name = person::name(&mut tx, self.library, person)
@@ -1366,7 +1363,7 @@ impl Publication {
             self.library.get(),
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -1398,11 +1395,7 @@ impl Publication {
             .record_each(AuditSource::User, Action::Committed, &committed, None)
             .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor {
-            person,
-            name,
-            role: role.to_string(),
-        });
+        self.contributors.push(Contributor { person, name, role });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1410,12 +1403,7 @@ impl Publication {
     /// Remove a contributor from the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn remove_contributor(
-        &mut self,
-        person: PersonId,
-        role: impl AsRef<str>,
-    ) -> Result<()> {
-        let role = role.as_ref().trim();
+    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(
@@ -1423,7 +1411,7 @@ impl Publication {
              WHERE publication_id = ? AND person_id = ? AND role = ?",
             self.id.get(),
             person.get(),
-            role
+            role.as_str()
         )
         .execute(&mut *tx)
         .await?
@@ -1453,7 +1441,7 @@ impl Publication {
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
         self.contributors
-            .retain(|contributor| !(contributor.person == person && contributor.role == role));
+            .retain(|contributor| !(contributor.person == person && contributor.role == *role));
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1540,7 +1528,7 @@ impl Entity for Publication {
             Proposal::Year(year) => self.set_year(Some(year)).await?,
             Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
             Proposal::Contributor { person, role } => {
-                self.add_contributor(person.id(), role).await?
+                self.add_contributor(person.id(), role.clone()).await?
             }
             Proposal::Contents(work) => self.add_work(work.id()).await?,
             Proposal::Link(url) => self.add_link(url).await?,
@@ -1978,7 +1966,7 @@ async fn from_row(
                 .ok_or(Error::NotFound)?;
             Proposal::Contributor {
                 person,
-                role: stored_value(row.proposed_value, row.id)?,
+                role: Role::from_valid(stored_value(row.proposed_value, row.id)?),
             }
         }
         "contents" => {
@@ -2426,11 +2414,11 @@ mod tests {
             .unwrap();
         let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
         let person = work
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap();
         let editor = publication
-            .create_contributor("Isidor Philipp", "editor")
+            .create_contributor("Isidor Philipp", "editor".parse().unwrap())
             .await
             .unwrap();
         assert!(publication.is_draft());
@@ -2467,11 +2455,11 @@ mod tests {
             .unwrap();
         let mut prelude = album.create_work("Prelude in C-sharp minor").await.unwrap();
         let composer = prelude
-            .create_contributor("Sergei Rachmaninoff", "composer")
+            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
             .await
             .unwrap();
         let editor = album
-            .create_contributor("Alexander Siloti", "editor")
+            .create_contributor("Alexander Siloti", "editor".parse().unwrap())
             .await
             .unwrap();
         let mut masterpieces = library
@@ -2674,7 +2662,11 @@ mod tests {
             .await
             .unwrap();
         let person = work
-            .propose_new_contributor(Source::OpenLibrary, "Erik Satie", "composer")
+            .propose_new_contributor(
+                Source::OpenLibrary,
+                "Erik Satie",
+                &"composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         let id = publication.proposals().await.unwrap()[0].id;
@@ -2705,16 +2697,19 @@ mod tests {
             .await
             .unwrap();
         let satie = publication
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap()
             .id();
-        publication.add_contributor(satie, "editor").await.unwrap();
+        publication
+            .add_contributor(satie, "editor".parse().unwrap())
+            .await
+            .unwrap();
         publication.reload().await.unwrap();
         let contributor = |role: &str| Contributor {
             person: satie,
             name: "Erik Satie".into(),
-            role: role.into(),
+            role: role.parse().unwrap(),
         };
         assert_eq!(
             publication.contributors(),
@@ -2722,14 +2717,14 @@ mod tests {
         );
 
         publication
-            .remove_contributor(satie, "composer")
+            .remove_contributor(satie, &"composer".parse().unwrap())
             .await
             .unwrap();
         publication.reload().await.unwrap();
         assert_eq!(publication.contributors(), [contributor("editor")]);
 
         publication
-            .remove_contributor(satie, "editor")
+            .remove_contributor(satie, &"editor".parse().unwrap())
             .await
             .unwrap();
         assert!(Person::load(&engine, satie).await.unwrap().is_none());

@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::NewHolding;
 use scorarium_engine::library::Library;
@@ -281,10 +282,10 @@ pub(crate) async fn run(
                 PublicationAdd::Contributor { person, role, new } => {
                     match person::target(library, &person, new).await? {
                         Target::Existing(person) => {
-                            publication.add_contributor(person.id(), &role).await?
+                            publication.add_contributor(person.id(), role).await?
                         }
                         Target::New => {
-                            publication.create_contributor(&person, &role).await?;
+                            publication.create_contributor(&person, role).await?;
                         }
                     }
                 }
@@ -318,7 +319,7 @@ pub(crate) async fn run(
                 }
                 PublicationRemove::Contributor { person, role } => {
                     let person = person::resolve(library, &person).await?.id();
-                    let roles: Vec<String> = match role {
+                    let roles: Vec<Role> = match role {
                         Some(role) => vec![role],
                         None => publication
                             .contributors()

@@ -5,6 +5,7 @@ use std::str::FromStr;
 use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
+use crate::contributor::Role;
 use crate::entity::AnyEntityId;
 use crate::holding::NewHolding;
 use crate::person::{self, Person, PersonId};
@@ -207,7 +208,7 @@ impl Library {
     }
 
     /// List people in the library with the given role
-    pub async fn people(&self, role: Option<&str>) -> Result<Vec<Person>> {
+    pub async fn people(&self, role: Option<&Role>) -> Result<Vec<Person>> {
         person::in_library(&self.engine, self.id, role).await
     }
 

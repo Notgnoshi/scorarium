@@ -2,6 +2,7 @@ use scorarium_archive::fuzzy::normalize;
 use scorarium_client::open_library::Edition;
 use scorarium_client::{Priority, Source};
 
+use crate::contributor::Role;
 use crate::enrich::SubTaskQueue;
 use crate::entity::{Entity, EntityKind};
 use crate::link::{ExternalRecord, LinkKind};
@@ -259,17 +260,18 @@ pub(crate) async fn author(
     if queue.is_cancelled() {
         return Ok(());
     }
+    let author: Role = "author".parse().expect("a literal role");
     let person = match best_match(matches) {
         Some(person) => {
             let proposal = Proposal::Contributor {
                 person: person.clone(),
-                role: "author".into(),
+                role: author,
             };
             publication.propose(Source::OpenLibrary, proposal).await?;
             person
         }
         None => match publication
-            .propose_new_contributor(Source::OpenLibrary, &record.name, "author")
+            .propose_new_contributor(Source::OpenLibrary, &record.name, &author)
             .await
         {
             Ok(person) => person,
@@ -501,7 +503,7 @@ mod tests {
             .await
             .unwrap();
         let beethoven = sonatas
-            .create_contributor("Ludwig van Beethoven", "composer")
+            .create_contributor("Ludwig van Beethoven", "composer".parse().unwrap())
             .await
             .unwrap();
         sonatas.commit().await.unwrap();
@@ -526,7 +528,7 @@ mod tests {
             panic!("expected a contributor proposal");
         };
         assert_eq!(person.id(), beethoven.id());
-        assert_eq!(role, "author");
+        assert_eq!(role.as_str(), "author");
         assert_eq!(library.people(None).await.unwrap().len(), 1);
     }
 }

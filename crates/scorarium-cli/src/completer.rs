@@ -210,7 +210,7 @@ impl ShellCompleter {
                     Suggested::Tag { tag, count } => {
                         (tag.to_string(), Some(format!("{count} tagged")))
                     }
-                    Suggested::Role(role) => (role, None),
+                    Suggested::Role(role) => (role.to_string(), None),
                     _ => return None,
                 };
                 let value = shlex::try_quote(&value).ok()?.into_owned();

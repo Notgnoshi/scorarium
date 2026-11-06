@@ -8,6 +8,7 @@ use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource};
 use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::contributor::Role;
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
@@ -701,11 +702,11 @@ pub(crate) async fn name(
 pub(crate) async fn in_library(
     engine: &Engine,
     library: LibraryId,
-    role: Option<&str>,
+    role: Option<&Role>,
 ) -> Result<Vec<Person>> {
     let mut conn = engine.begin_read().await?;
     let library = library.get();
-    let rows = match role.map(str::trim) {
+    let rows = match role.map(Role::as_str) {
         Some(role) => {
             sqlx::query_as!(
                 PersonRow,
@@ -961,7 +962,7 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Sergei Rachmaninoff", "composer")
+            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
             .await
             .unwrap();
         for url in [
@@ -1003,7 +1004,7 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Erik Satie", "composer")
+            .create_contributor("Erik Satie", "composer".parse().unwrap())
             .await
             .unwrap();
         let staging = dir.path().join("staging");
