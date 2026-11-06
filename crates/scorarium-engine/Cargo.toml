@@ -8,7 +8,9 @@ description = "The high level operations shared between the web server and CLI"
 [dependencies]
 argon2.workspace = true
 chrono.workspace = true
+deunicode.workspace = true
 eyre.workspace = true
+frizbee.workspace = true
 getrandom.workspace = true
 infer.workspace = true
 isbn.workspace = true

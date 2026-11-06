@@ -21,6 +21,7 @@ pub mod work;
 mod demo;
 mod engine;
 mod error;
+mod fuzzy;
 #[cfg(test)]
 mod test;
 

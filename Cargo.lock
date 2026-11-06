@@ -2510,7 +2510,9 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "chrono",
+ "deunicode",
  "eyre",
+ "frizbee",
  "getrandom 0.4.3",
  "infer",
  "isbn",

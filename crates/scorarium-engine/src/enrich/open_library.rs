@@ -1,10 +1,10 @@
-use scorarium_archive::fuzzy::normalize;
 use scorarium_client::open_library::Edition;
 use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
 use crate::enrich::SubTaskQueue;
 use crate::entity::{Entity, EntityKind};
+use crate::fuzzy::normalize;
 use crate::link::{ExternalRecord, LinkKind};
 use crate::person::{self, Person};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
