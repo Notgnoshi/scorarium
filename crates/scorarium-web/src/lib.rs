@@ -1,42 +1,12 @@
-pub mod links;
-pub mod publication_post;
-pub mod router;
-mod serve;
-pub mod session;
+use std::net::SocketAddr;
 
-use scorarium_engine::legacy::archive::Archive;
-use scorarium_engine::legacy::client::Client;
+#[derive(Debug, clap::Args)]
+pub struct ServeArgs {
+    /// Address and port to serve on.
+    #[arg(short, long, env = "SCORARIUM_BIND", default_value = "0.0.0.0:3000")]
+    pub bind: SocketAddr,
 
-pub use crate::router::router;
-pub use crate::serve::{ServeArgs, serve};
-
-/// Shared state for all request handlers.
-pub struct AppState {
-    pub archive: Archive,
-    pub sources: Client,
-    pub sessions: session::SessionStore,
-    pub throttle: session::LoginThrottle,
-    /// Whether the login cookie is marked Secure
-    pub secure_cookies: bool,
-    pub demo: bool,
-}
-
-impl AppState {
-    pub fn new(archive: Archive, sources: Client, secure_cookies: bool) -> Self {
-        Self {
-            archive,
-            sources,
-            sessions: session::SessionStore::default(),
-            throttle: session::LoginThrottle::default(),
-            secure_cookies,
-            demo: false,
-        }
-    }
-
-    pub fn demo(archive: Archive, sources: Client) -> Self {
-        Self {
-            demo: true,
-            ..Self::new(archive, sources, true)
-        }
-    }
+    /// Allow the login cookie over plain HTTP
+    #[arg(long, env = "SCORARIUM_INSECURE_COOKIES")]
+    pub insecure_cookies: bool,
 }
