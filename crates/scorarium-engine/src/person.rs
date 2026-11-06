@@ -917,7 +917,7 @@ fn remove_profile(path: &Path) {
     // update failed, but that's not entirely true, because it's been removed from the db. So just
     // log a warning and move on.
     if let Err(e) = std::fs::remove_file(path) {
-        log::warn!("failed to remove {}: {e}", path.display());
+        tracing::warn!("failed to remove {}: {e}", path.display());
     }
 }
 

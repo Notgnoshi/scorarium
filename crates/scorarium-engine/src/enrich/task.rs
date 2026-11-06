@@ -85,7 +85,7 @@ impl SubTaskQueue {
             let mut outcome = outcome;
             match subtask.await {
                 Ok(()) => outcome.succeeded = true,
-                Err(e) => log::warn!("Enrichment subtask of {root:?} failed: {e}"),
+                Err(e) => tracing::error!("Enrichment subtask of {root:?} failed: {e}"),
             }
         });
         subtasks.push(handle.abort_handle());

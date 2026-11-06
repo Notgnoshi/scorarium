@@ -1065,7 +1065,7 @@ impl Publication {
             match std::fs::remove_file(&file) {
                 Err(e) if e.kind() != ErrorKind::NotFound => {
                     // The row is already gone, so an error would tell the caller the removal failed.
-                    log::warn!("failed to remove {}: {e}", file.display());
+                    tracing::warn!("failed to remove {}: {e}", file.display());
                 }
                 _ => {}
             }
@@ -2091,7 +2091,7 @@ fn remove_cover(path: &Path) {
     // The row no longer names the file, so an error would tell the caller the update failed when
     // it did not.
     if let Err(e) = std::fs::remove_file(path) {
-        log::warn!("failed to remove {}: {e}", path.display());
+        tracing::warn!("failed to remove {}: {e}", path.display());
     }
 }
 

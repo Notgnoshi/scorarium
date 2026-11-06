@@ -30,11 +30,11 @@ pub(crate) async fn edition(
     let open_library = engine.client().open_library();
     let edition = match &key {
         EditionKey::Olid(olid) => {
-            log::debug!("enriching publication {publication} from Open Library by OLID {olid}");
+            tracing::debug!("enriching publication {publication} from Open Library by OLID {olid}");
             open_library.edition(olid, Priority::Background).await?
         }
         EditionKey::Isbn(isbn) => {
-            log::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
+            tracing::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
             open_library
                 .edition_by_isbn(isbn.as_str(), Priority::Background)
                 .await?
@@ -66,7 +66,7 @@ pub(crate) async fn edition(
     for raw in edition.isbn_13.iter().chain(&edition.isbn_10) {
         match Identifier::new(IdentifierKind::Isbn, raw) {
             Ok(identifier) => proposals.push(Proposal::Identifier(identifier)),
-            Err(error) => log::warn!(
+            Err(error) => tracing::error!(
                 "Open Library edition {}: ISBN {raw:?}: {error}",
                 edition.olid
             ),
@@ -84,12 +84,12 @@ pub(crate) async fn edition(
             Ok(None) => present += 1,
             // A retry cannot fix a value the engine rejects as invalid
             Err(Error::InvalidValue(reason)) => {
-                log::warn!("Open Library edition {} invalid: {reason}", edition.olid);
+                tracing::error!("Open Library edition {} invalid: {reason}", edition.olid);
             }
             Err(error) => return Err(error),
         }
     }
-    log::debug!(
+    tracing::debug!(
         "Open Library edition {}: proposed {accepted}, already present {present}",
         edition.olid
     );
@@ -98,7 +98,7 @@ pub(crate) async fn edition(
             return Ok(());
         }
         if publication.classify_if_unset(classification).await? {
-            log::debug!(
+            tracing::debug!(
                 "Open Library edition {}: classified as {classification}",
                 edition.olid
             );
@@ -242,7 +242,7 @@ pub(crate) async fn author(
     if queue.is_cancelled() {
         return Ok(());
     }
-    log::debug!("enriching publication {publication} from Open Library author {olid}");
+    tracing::debug!("enriching publication {publication} from Open Library author {olid}");
     let Some(record) = engine
         .client()
         .open_library()
@@ -289,7 +289,7 @@ pub(crate) async fn author(
         {
             Ok(person) => person,
             Err(Error::InvalidValue(reason)) => {
-                log::warn!("Open Library author {olid}: {reason}");
+                tracing::error!("Open Library author {olid} invalid: {reason}");
                 return Ok(());
             }
             Err(error) => return Err(error),
@@ -315,7 +315,9 @@ pub(crate) async fn author(
             .await
         {
             Ok(_) => {}
-            Err(Error::InvalidValue(reason)) => log::warn!("Open Library author {olid}: {reason}"),
+            Err(Error::InvalidValue(reason)) => {
+                tracing::error!("Open Library author {olid} invalid: {reason}")
+            }
             Err(error) => return Err(error),
         }
     }
