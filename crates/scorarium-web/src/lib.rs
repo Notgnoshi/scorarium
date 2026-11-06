@@ -1,3 +1,4 @@
+mod assets;
 mod error;
 mod router;
 mod serve;

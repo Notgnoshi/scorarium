@@ -9,6 +9,7 @@ description = "The scorarium web server"
 axum.workspace = true
 clap.workspace = true
 eyre.workspace = true
+rust-embed.workspace = true
 scorarium-engine.workspace = true
 tokio.workspace = true
 tower-http.workspace = true

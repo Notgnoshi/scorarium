@@ -28,7 +28,10 @@ echo "Vendored Bootstrap v$version"
 version=$(latest icons)
 curl -fsSL -o "$tmp/icons.zip" "https://github.com/twbs/icons/releases/download/v$version/bootstrap-icons-$version.zip"
 
-mkdir -p "$dest/fonts"
-unzip -q -o -j "$tmp/icons.zip" "bootstrap-icons-$version/bootstrap-icons.min.css" -d "$dest"
-unzip -q -o -j "$tmp/icons.zip" "bootstrap-icons-$version/fonts/bootstrap-icons.woff2" -d "$dest/fonts"
+# The server serves assets out of a flat directory
+unzip -q -o -j "$tmp/icons.zip" \
+    "bootstrap-icons-$version/bootstrap-icons.min.css" \
+    "bootstrap-icons-$version/fonts/bootstrap-icons.woff2" \
+    -d "$dest"
+sed -i 's|url("fonts/|url("|g' "$dest/bootstrap-icons.min.css"
 echo "Vendored Bootstrap Icons v$version"
