@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use scorarium_archive::fuzzy::{normalize, rank};
 use scorarium_client::Priority;
 use scorarium_client::open_library::WorkHit;
 
 use crate::contributor::Role;
 use crate::enrich::open_library;
+use crate::fuzzy::{normalize, rank};
 use crate::library::{self, LibraryId};
 use crate::link::{ExternalRecord, HttpUrl, LinkKind};
 use crate::person::{self, Person, PersonId};

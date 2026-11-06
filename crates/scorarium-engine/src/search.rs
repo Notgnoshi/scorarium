@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use scorarium_archive::fuzzy::{normalize, rank};
-
 use crate::entity::{AnyEntity, Entity, EntityKind};
+use crate::fuzzy::{normalize, rank};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};

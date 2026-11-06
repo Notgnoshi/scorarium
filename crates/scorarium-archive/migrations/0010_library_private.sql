@@ -1,2 +1,0 @@
-ALTER TABLE library ADD COLUMN private INTEGER NOT NULL DEFAULT 1 CHECK (private IN (0, 1));
-ALTER TABLE publication DROP COLUMN private;

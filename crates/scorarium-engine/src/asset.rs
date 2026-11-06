@@ -190,7 +190,7 @@ pub(crate) fn remove_dir(engine: &Engine, id: AnyEntityId) {
     match std::fs::remove_dir_all(&dir) {
         Err(e) if e.kind() != ErrorKind::NotFound => {
             // The rows are already gone, so an error would tell the caller the delete failed.
-            log::warn!("failed to remove {}: {e}", dir.display());
+            tracing::error!("failed to remove {}: {e}", dir.display());
         }
         _ => {}
     }

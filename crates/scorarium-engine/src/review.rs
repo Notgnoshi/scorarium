@@ -142,7 +142,9 @@ impl Engine {
         match is_queued_by_database(self, root).await {
             Ok(Some(false)) => self.forget_completed_enrichment(root),
             Ok(_) => {}
-            Err(error) => log::warn!("failed to check whether {root:?} is still queued: {error}"),
+            Err(error) => {
+                tracing::warn!("failed to check whether {root:?} is still queued: {error}")
+            }
         }
     }
 

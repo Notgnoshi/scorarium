@@ -1,9 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use scorarium_cli::{LogWriter, ShellArgs};
 use scorarium_client::UserAgent;
-use scorarium_engine::legacy::archive::Archive;
 use scorarium_engine::{Engine, EngineOptions};
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
@@ -50,19 +49,6 @@ enum Command {
     Shell(ShellArgs),
 }
 
-/// Open the archive the global flags point at.
-async fn open_archive(data_dir: &Path, demo: bool) -> color_eyre::Result<Archive> {
-    if demo {
-        tracing::info!("using an in-memory demo library");
-        let archive = Archive::in_memory().await?;
-        archive.populate_demo().await?;
-        Ok(archive)
-    } else {
-        tracing::info!(data_dir = %data_dir.display(), "opening library");
-        Ok(Archive::open(data_dir, true).await?)
-    }
-}
-
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -72,10 +58,8 @@ async fn main() -> color_eyre::Result<()> {
         .from_env_lossy();
 
     match args.command {
-        Command::Serve(serve) => {
+        Command::Serve(_) => {
             tracing_subscriber::fmt().with_env_filter(filter).init();
-            let archive = open_archive(&args.data_dir, args.demo).await?;
-            scorarium_web::serve(serve, archive, args.demo, args.contact.as_deref()).await?;
         }
         Command::Shell(shell) => {
             // Use a custom writer so that the logs don't corrupt the interactive prompt

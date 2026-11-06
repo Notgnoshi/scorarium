@@ -1,2 +1,0 @@
-[common]
-database-url-var = "SCORARIUM_ARCHIVE_DATABASE_URL"
