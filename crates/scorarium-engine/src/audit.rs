@@ -166,7 +166,10 @@ impl<'a> Audited<'a> {
         field: Option<&str>,
     ) -> Result<Recorded<'a>> {
         insert(&mut self.tx, source, action, subject, field).await?;
-        Ok(Recorded { tx: self.tx })
+        Ok(Recorded {
+            tx: self.tx,
+            pending: vec![describe(source, action, subject, field)],
+        })
     }
 
     /// Commit the transaction without recording an audit event.
@@ -179,6 +182,8 @@ impl<'a> Audited<'a> {
 
 pub(crate) struct Recorded<'a> {
     tx: Transaction<'a, Sqlite>,
+    /// The log lines to emit once the transaction commits.
+    pending: Vec<String>,
 }
 
 impl<'a> Recorded<'a> {
@@ -190,6 +195,7 @@ impl<'a> Recorded<'a> {
         field: Option<&str>,
     ) -> Result<Recorded<'a>> {
         insert(&mut self.tx, source, action, subject, field).await?;
+        self.pending.push(describe(source, action, subject, field));
         Ok(self)
     }
 
@@ -203,6 +209,8 @@ impl<'a> Recorded<'a> {
     ) -> Result<Recorded<'a>> {
         for subject in subjects {
             insert(&mut self.tx, source, action, Some(subject), field).await?;
+            self.pending
+                .push(describe(source, action, Some(subject), field));
         }
         Ok(self)
     }
@@ -217,6 +225,9 @@ impl<'a> Recorded<'a> {
         .execute(&mut *self.tx)
         .await?;
         self.tx.commit().await?;
+        for line in &self.pending {
+            tracing::info!("{line}");
+        }
         Ok(())
     }
 }
@@ -247,6 +258,30 @@ impl DerefMut for Recorded<'_> {
     fn deref_mut(&mut self) -> &mut SqliteConnection {
         &mut self.tx
     }
+}
+
+/// Describe an audit event in one line, for the log
+fn describe(
+    source: AuditSource,
+    action: Action,
+    subject: Option<&AuditSubject>,
+    field: Option<&str>,
+) -> String {
+    let mut line = format!("{source} {action}");
+    match subject {
+        None => {}
+        Some(AuditSubject::Library { id, label }) => {
+            line.push_str(&format!(" library {id} {label:?}"));
+        }
+        Some(AuditSubject::Entity { id, label, .. }) => {
+            line.push_str(&format!(" {} {} {label:?}", id.kind(), id.get()));
+        }
+    }
+    if let Some(field) = field {
+        line.push(' ');
+        line.push_str(field);
+    }
+    line
 }
 
 async fn insert(
