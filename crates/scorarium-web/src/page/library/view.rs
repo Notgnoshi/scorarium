@@ -5,7 +5,6 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::contributor::Contributor;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::value::{Tag, Year};
@@ -13,6 +12,7 @@ use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
+use crate::page::library::entity::group_contributors;
 use crate::page::{Base, Crumb};
 use crate::widget::header::Header;
 use crate::widget::stars::Stars;
@@ -126,22 +126,6 @@ pub(super) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::
         .ok_or(scorarium_engine::Error::NotFound)?)
 }
 
-/// Order contributors for display: authors and composers first, then the rest
-fn order_contributors(contributors: &[Contributor]) -> Vec<&Contributor> {
-    let mut ordered: Vec<&Contributor> = contributors.iter().collect();
-    ordered.sort_by_key(|c| {
-        let primary = matches!(c.role.as_str(), "author" | "composer");
-        (!primary, c.sort_name.to_lowercase())
-    });
-    let mut seen = Vec::new();
-    ordered.retain(|c| {
-        let first = !seen.contains(&c.person);
-        seen.push(c.person);
-        first
-    });
-    ordered
-}
-
 /// Sort summaries by the column, empties last in either direction, title breaking ties
 fn sort_summaries(summaries: &mut [Summary], sort: Sort) {
     // An absent value sorts after any present one, whichever way the present ones are ordered.
@@ -191,11 +175,11 @@ pub async fn get(
         .iter()
         .filter(|publication| !publication.is_draft())
         .map(|publication| {
-            let contributors = order_contributors(publication.contributors());
+            let contributors = group_contributors(publication.contributors());
             Summary {
                 title: publication.title().unwrap_or_default().to_owned(),
                 contributor_sort_name: contributors.first().map(|c| c.sort_name.clone()),
-                contributors: contributors.into_iter().map(|c| c.name.clone()).collect(),
+                contributors: contributors.into_iter().map(|c| c.name).collect(),
                 year: publication.year(),
                 stars: publication.stars().map(Into::into),
                 tags: publication.tags().to_vec(),
@@ -224,22 +208,6 @@ pub async fn get(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn order_contributors_puts_primary_roles_first_and_lists_a_person_once() {
-        let contributor = |id: &str, name: &str, sort_name: &str, role: &str| Contributor {
-            person: id.parse().unwrap(),
-            name: name.into(),
-            sort_name: sort_name.into(),
-            role: role.parse().unwrap(),
-        };
-        let satie_editor = contributor("1", "Erik Satie", "Satie, Erik", "editor");
-        let satie_composer = contributor("1", "Erik Satie", "Satie, Erik", "composer");
-        let debussy = contributor("2", "Claude Debussy", "Debussy, Claude", "author");
-        let all = [satie_editor, satie_composer.clone(), debussy.clone()];
-        let ordered = order_contributors(&all);
-        assert_eq!(ordered, [&debussy, &satie_composer]);
-    }
 
     #[test]
     fn sort_parses_direction_and_rejects_unknown_columns() {
