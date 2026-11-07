@@ -123,7 +123,7 @@
                             {% for contributor in work.contributors %}
                                 {%- if !loop.first %}, {% endif -%}
                                 <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
-                            {% endfor %}
+                            {%- endfor %}
                         </td>
                     </tr>
                 {% endfor %}

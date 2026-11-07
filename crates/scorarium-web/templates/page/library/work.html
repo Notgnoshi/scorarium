@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>
+        {{ title }}
+        {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+    </h1>
+    {% if !catalog_numbers.is_empty() %}
+        <p>
+            {% for number in catalog_numbers %}
+                {%- if !loop.first %} . {% endif -%}
+                {{ number }}
+            {%- endfor %}
+        </p>
+    {% endif %}
+    {% if key.is_some() || time_signature.is_some() || instrumentation.is_some() %}
+        <p>
+            {% if let Some(key) = key %}{{ key }}{% endif %}
+            {%- if key.is_some() && (time_signature.is_some() || instrumentation.is_some()) %} . {% endif -%}
+            {% if let Some(time_signature) = time_signature %}{{ time_signature }}{% endif %}
+            {%- if time_signature.is_some() && instrumentation.is_some() %} . {% endif -%}
+            {% if let Some(instrumentation) = instrumentation %}{{ instrumentation }}{% endif %}
+        </p>
+    {% endif %}
+    {% if classification == Some(Classification::Music) %}
+        <p>
+            <i class="bi bi-music-note-beamed" title="Sheet music"></i>
+        </p>
+    {% else if classification == Some(Classification::Prose) %}
+        <p>
+            <i class="bi bi-book" title="Prose"></i>
+        </p>
+    {% endif %}
+    {% if logged_in %}
+        {% if let Some(stars) = stars %}<p>{{ stars }}</p>{% endif %}
+    {% endif %}
+    <dl>
+        {% if !contributors.is_empty() %}
+            <dt>Contributors</dt>
+            {% for contributor in contributors %}
+                <dd>
+                    <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                    ({{ contributor.roles|join(", ") }})
+                </dd>
+            {% endfor %}
+        {% endif %}
+        {% if !links.is_empty() %}
+            <dt>Links</dt>
+            {% for link in links %}
+                <dd>
+                    <a href="{{ link.href }}" target="_blank" rel="noopener">{{ link.label }}</a>
+                </dd>
+            {% endfor %}
+        {% endif %}
+        {% if logged_in && !tags.is_empty() %}
+            <dt>Tags</dt>
+            <dd>
+                {% for tag in tags %}<span class="badge text-bg-secondary">{{ tag }}</span>{% endfor %}
+            </dd>
+        {% endif %}
+        {% if logged_in %}
+            {% if let Some(note) = note %}
+                <dt>Note</dt>
+                <dd>
+                    <pre style="white-space: pre-wrap">{{ note }}</pre>
+                </dd>
+            {% endif %}
+        {% endif %}
+    </dl>
+    {% if !publications.is_empty() %}
+        <h2>Publications</h2>
+        <table class="table">
+            <thead class="text-nowrap">
+                <tr>
+                    <th>Title</th>
+                    <th>Contributors</th>
+                    <th>Year</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for publication in publications %}
+                    <tr>
+                        <td>
+                            <a href="/library/{{ library }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                            {% if publication.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                        </td>
+                        <td>
+                            {% for contributor in publication.contributors %}
+                                {%- if !loop.first %}, {% endif -%}
+                                <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            {%- endfor %}
+                        </td>
+                        <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}
