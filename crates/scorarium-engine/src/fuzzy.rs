@@ -33,6 +33,14 @@ fn typo_budget(word: &str) -> u16 {
 
 /// Return indices of the candidates that fuzzily match the typed text, best first.
 pub(crate) fn rank<S: AsRef<str>>(typed: &str, candidates: &[S]) -> Vec<usize> {
+    score(typed, candidates)
+        .into_iter()
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Score every candidate that fuzzily matches the typed text, best first
+pub(crate) fn score<S: AsRef<str>>(typed: &str, candidates: &[S]) -> Vec<(usize, u32)> {
     let typed = normalize(typed);
     if typed.is_empty() {
         return Vec::new();
@@ -71,7 +79,7 @@ pub(crate) fn rank<S: AsRef<str>>(typed: &str, candidates: &[S]) -> Vec<usize> {
         .filter_map(|(i, total)| Some((i, total?)))
         .collect();
     hits.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    hits.into_iter().map(|(i, _)| i).collect()
+    hits
 }
 
 #[cfg(test)]
