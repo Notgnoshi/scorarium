@@ -32,7 +32,7 @@ const LIMIT: usize = 50;
 pub async fn get(
     viewer: Viewer,
     State(engine): State<Engine>,
-    header: Header,
+    mut header: Header,
     axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Response> {
     let query = query.q.as_deref().unwrap_or_default().trim().to_owned();
@@ -42,6 +42,7 @@ pub async fn get(
         let results = engine.search(&query, viewer.is_logged_in(), LIMIT).await?;
         (format!("Search results for \"{query}\""), results)
     };
+    header.query = query.clone();
     let page = Search {
         base: Base::new(header, title, Vec::new()),
         logged_in: viewer.is_logged_in(),

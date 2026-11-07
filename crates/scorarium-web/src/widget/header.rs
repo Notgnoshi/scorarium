@@ -13,6 +13,7 @@ pub struct Header {
     demo: bool,
     logged_in: bool,
     login_url: String,
+    pub query: String,
 }
 
 impl FromRequestParts<Engine> for Header {
@@ -24,6 +25,7 @@ impl FromRequestParts<Engine> for Header {
             demo: engine.is_demo(),
             logged_in: viewer.is_logged_in(),
             login_url: auth::login_url(&parts.method, &parts.uri),
+            query: String::new(),
         })
     }
 }
