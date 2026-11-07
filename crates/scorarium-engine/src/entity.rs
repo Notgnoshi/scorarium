@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use scorarium_client::Source;
 
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::enrich::Enrichment;
 use crate::library::LibraryId;
 use crate::person::{Person, PersonId};
@@ -148,12 +148,12 @@ pub trait Entity: Sized {
     fn created_at(&self) -> Timestamp;
     fn last_modified_at(&self) -> Timestamp;
 
-    /// Get an audit log of change events for this entity
+    /// Read a page of the entity's audit log, newest first, starting `offset` events in
     fn audit_log(
         &self,
-        before: Option<AuditId>,
+        offset: usize,
         limit: usize,
-    ) -> impl Future<Output = Result<Vec<AuditEvent>>> + Send;
+    ) -> impl Future<Output = Result<AuditPage>> + Send;
 
     /// Look up this entity in the review queue, if it exists
     fn review_item(&self) -> impl Future<Output = Result<Option<ReviewItem>>> + Send;

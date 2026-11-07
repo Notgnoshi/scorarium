@@ -160,6 +160,7 @@ impl Engine {
     /// Log in with the password and start a session.
     pub async fn login(&self, password: &str) -> Result<Token> {
         if self.is_demo() {
+            tracing::info!("logged in");
             return Ok(self.sessions().create());
         }
         // The lock spans the whole sequence so that concurrent guesses are counted before they are
@@ -173,10 +174,12 @@ impl Engine {
             return Err(Error::WrongPassword);
         };
         if !verify_password(stored, password.to_owned()).await? {
+            tracing::warn!("rejected a login with the wrong password");
             throttle.record_failure();
             return Err(Error::WrongPassword);
         }
         throttle.reset();
+        tracing::info!("logged in");
         Ok(self.sessions().create())
     }
 
@@ -198,6 +201,7 @@ impl Engine {
     /// End the session with this token.
     pub fn logout(&self, token: &Token) {
         self.sessions().revoke(token);
+        tracing::info!("logged out");
     }
 
     pub async fn password_state(&self) -> Result<PasswordState> {
@@ -320,9 +324,10 @@ mod tests {
         );
 
         let actions: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .iter()
             .map(|e| e.action)
             .collect();

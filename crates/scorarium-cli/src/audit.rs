@@ -9,8 +9,9 @@ use crate::library::write_table;
 /// Print the full global audit log of every library
 pub(crate) async fn log(engine: &Engine, limit: usize, out: &mut impl Write) -> eyre::Result<()> {
     let rows: Vec<[String; 7]> = engine
-        .audit_log(None, limit)
+        .audit_log(0, limit)
         .await?
+        .events
         .iter()
         .map(|event| {
             let (kind, id, label) = match &event.subject {
@@ -55,8 +56,9 @@ pub(crate) async fn entity_log<E: Entity>(
     out: &mut impl Write,
 ) -> eyre::Result<()> {
     let rows: Vec<[String; 4]> = entity
-        .audit_log(None, limit)
+        .audit_log(0, limit)
         .await?
+        .events
         .iter()
         .map(|event| {
             [

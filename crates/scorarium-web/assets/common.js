@@ -6,3 +6,11 @@ function applyTheme() {
 
 applyTheme();
 darkQuery.addEventListener("change", applyTheme);
+
+// Delegated on the document so the listener works from <head> and covers every form that opts in.
+document.addEventListener("submit", (event) => {
+    const message = event.target.dataset.confirm;
+    if (message && !confirm(message)) {
+        event.preventDefault();
+    }
+});

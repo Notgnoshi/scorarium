@@ -220,6 +220,22 @@ impl Library {
         tag_counts(&mut conn, self.id, include_drafts).await
     }
 
+    /// Count the publications in the library
+    ///
+    /// Leave drafts out unless `include_drafts` is set.
+    pub async fn publication_count(&self, include_drafts: bool) -> Result<usize> {
+        let mut conn = self.engine.begin_read().await?;
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) AS "count: u32" FROM publication
+               WHERE library_id = ? AND (? OR draft = 0)"#,
+            self.id.get(),
+            include_drafts
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(row.count as usize)
+    }
+
     /// Query the roles found in the library, along with how many people hold each role.
     pub async fn roles(&self, include_drafts: bool) -> Result<Vec<(Role, usize)>> {
         let mut conn = self.engine.begin_read().await?;
@@ -418,9 +434,10 @@ mod tests {
         library.delete().await.unwrap();
 
         let events: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| {
                 let Some(AuditSubject::Library { label, .. }) = e.subject else {

@@ -1,0 +1,5 @@
+<span class="text-nowrap" title="{{ stars }} of 5 stars">
+    {% for i in 1..=5 %}
+        <i class="bi {% if i <= stars %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+    {% endfor %}
+</span>

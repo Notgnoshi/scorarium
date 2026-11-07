@@ -1,4 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
+    <div class="list-group">
+        {% for library in libraries %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>
+                    <a href="/library/{{ library.id }}">{{ library.name }}</a>
+                    {% if library.private %}
+                        <i class="bi bi-lock-fill" title="Private"></i>
+                    {% endif %}
+                </span>
+                <span class="text-body-secondary">{{ library.publications }} publication{{ library.publications|pluralize }}</span>
+            </div>
+        {% endfor %}
+    </div>
+    {% if libraries.is_empty() && !logged_in %}
+        <p><a href="/login?next=/">Log in</a> to view libraries</p>
+    {% endif %}
+    {% if logged_in %}
+        {% if let Some(error) = error %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endif %}
+        <form method="post" action="/library" class="mt-3">
+            <div class="input-group">
+                <input class="form-control" type="text" name="name" placeholder="Library name" required>
+                <button class="btn btn-secondary" type="submit">
+                    <i class="bi bi-plus-lg"></i> Add library
+                </button>
+            </div>
+        </form>
+    {% endif %}
 {% endblock %}

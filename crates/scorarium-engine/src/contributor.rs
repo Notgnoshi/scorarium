@@ -9,6 +9,7 @@ use crate::{Error, Result};
 pub struct Contributor {
     pub person: PersonId,
     pub name: String,
+    pub sort_name: String,
     pub role: Role,
 }
 

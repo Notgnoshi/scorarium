@@ -7,6 +7,8 @@ use scorarium_client::{Client, UserAgent};
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{ConnectOptions, Sqlite, SqlitePool};
+use tracing::instrument::WithSubscriber;
+use tracing::subscriber::NoSubscriber;
 
 use crate::audit::Audited;
 use crate::auth::{LoginThrottle, SessionStore};
@@ -108,7 +110,10 @@ impl Engine {
             true,
         )
         .await?;
-        crate::demo::populate(&engine).await?;
+        // Silence logs while awaiting the demo population future to avoid startup spam.
+        crate::demo::populate(&engine)
+            .with_subscriber(NoSubscriber::new())
+            .await?;
         Ok(engine)
     }
 
