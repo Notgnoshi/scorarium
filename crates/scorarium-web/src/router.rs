@@ -31,7 +31,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .route("/library/{id}/people", get(page::library::people::get))
         .route(
             "/library/{id}/people/{role}",
-            get(page::library::people::get_role),
+            get(page::library::people::get),
         )
         .route(
             "/library/{id}/edit",

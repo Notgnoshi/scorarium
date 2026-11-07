@@ -10,6 +10,7 @@ use scorarium_engine::entity::EntityKind;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::PersonSummary;
 use scorarium_engine::value::Classification;
+use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
@@ -28,42 +29,27 @@ struct People {
     people: Vec<PersonSummary>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct Params {
+    id: String,
+    role: Option<String>,
+}
+
 pub async fn get(
     viewer: Viewer,
     method: Method,
     uri: Uri,
     State(engine): State<Engine>,
     header: Header,
-    Path(library): Path<String>,
+    Path(params): Path<Params>,
 ) -> Result<Response> {
-    render(viewer, method, uri, engine, header, &library, None).await
-}
-
-pub async fn get_role(
-    viewer: Viewer,
-    method: Method,
-    uri: Uri,
-    State(engine): State<Engine>,
-    header: Header,
-    Path((library, role)): Path<(String, String)>,
-) -> Result<Response> {
-    render(viewer, method, uri, engine, header, &library, Some(&role)).await
-}
-
-async fn render(
-    viewer: Viewer,
-    method: Method,
-    uri: Uri,
-    engine: Engine,
-    header: Header,
-    library: &str,
-    role: Option<&str>,
-) -> Result<Response> {
-    let library = view::load(&engine, library).await?;
+    let library = view::load(&engine, &params.id).await?;
     if library.is_private() && !viewer.is_logged_in() {
         return Ok(login_redirect(&method, &uri).into_response());
     }
-    let role = role
+    let role = params
+        .role
+        .as_deref()
         .map(Role::from_str)
         .transpose()
         .map_err(|_| scorarium_engine::Error::NotFound)?;
