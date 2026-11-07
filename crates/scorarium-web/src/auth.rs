@@ -3,6 +3,7 @@ use std::convert::Infallible;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{Method, Uri};
+use axum::response::Redirect;
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -97,4 +98,26 @@ pub fn login_url(method: &Method, uri: &Uri) -> String {
     }
     let next = uri.path_and_query().map_or(uri.path(), |pq| pq.as_str());
     format!("/login?next={}", utf8_percent_encode(next, URL_ENCODE))
+}
+
+/// A live session, which a page takes to require login
+///
+/// Extracting it from a logged-out request redirects to the login page.
+pub struct Session;
+
+impl FromRequestParts<Engine> for Session {
+    type Rejection = Redirect;
+
+    async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, Redirect> {
+        let Ok(cookie) = SessionCookie::from_request_parts(parts, engine).await;
+        match cookie.token() {
+            Some(token) if engine.is_authenticated(&token) => Ok(Session),
+            _ => Err(login_redirect(&parts.method, &parts.uri)),
+        }
+    }
+}
+
+/// Build the redirect to the login page that returns to `uri` afterwards
+pub fn login_redirect(method: &Method, uri: &Uri) -> Redirect {
+    Redirect::to(&login_url(method, uri))
 }

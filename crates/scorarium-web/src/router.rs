@@ -18,6 +18,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .route("/", get(page::index::get))
         .route("/login", get(page::login::get).post(page::login::post))
         .route("/logout", post(page::logout::post))
+        .route("/settings", get(page::settings::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)
