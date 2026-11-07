@@ -7,6 +7,7 @@ use scorarium_engine::work::CatalogNumber;
 use crate::page::library::entity::group_contributors;
 
 pub(crate) struct Hit {
+    pub library: LibraryId,
     pub href: String,
     pub title: String,
     pub detail: Option<String>,
@@ -21,6 +22,7 @@ impl Hit {
     pub(crate) fn new(library: LibraryId, library_name: String, entity: &AnyEntity) -> Hit {
         match entity {
             AnyEntity::Publication(publication) => Hit {
+                library,
                 href: format!("/library/{library}/publication/{}", publication.id()),
                 title: publication.title().unwrap_or("Untitled").to_owned(),
                 detail: detail(publication.contributors(), &[]),
@@ -30,6 +32,7 @@ impl Hit {
                 tags: publication.tags().to_vec(),
             },
             AnyEntity::Work(work) => Hit {
+                library,
                 href: format!("/library/{library}/work/{}", work.id()),
                 title: work.title().to_owned(),
                 detail: detail(work.contributors(), work.catalog_numbers()),
@@ -39,6 +42,7 @@ impl Hit {
                 tags: work.tags().to_vec(),
             },
             AnyEntity::Person(person) => Hit {
+                library,
                 href: format!("/library/{library}/person/{}", person.id()),
                 title: person.name().to_owned(),
                 detail: None,
