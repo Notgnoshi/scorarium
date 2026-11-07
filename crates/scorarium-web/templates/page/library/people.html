@@ -1,14 +1,18 @@
 {% extends "base.html" %}
+{% import "widget/sort.html" as sort %}
 {% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     {{ nav }}
     <table class="table align-middle">
         <thead class="text-nowrap">
             <tr>
-                <th>Name</th>
+                {% call sort::header(sort, Column::Name, "Name") %}
+                {% endcall %}
                 <th>Roles</th>
-                <th>Publications</th>
-                <th>Works</th>
+                {% call sort::header(sort, Column::Publications, "Publications") %}
+                {% endcall %}
+                {% call sort::header(sort, Column::Works, "Works") %}
+                {% endcall %}
             </tr>
         </thead>
         <tbody>

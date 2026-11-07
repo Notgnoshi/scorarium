@@ -7,6 +7,11 @@ pub(crate) trait Column: Copy + Eq + Default + 'static {
 
     /// Name the column as it appears in the `sort` query parameter
     fn name(self) -> &'static str;
+
+    /// Check whether the first click on the column sorts it in descending order
+    fn descending_first(self) -> bool {
+        false
+    }
 }
 
 /// A column and direction, parsed from `[-]column`
@@ -36,7 +41,12 @@ impl<C: Column> TryFrom<String> for Sort<C> {
 
 impl<C: Column> Sort<C> {
     pub fn href(&self, column: C) -> String {
-        let descending = self.is(column, false);
+        let first = column.descending_first();
+        let descending = if self.is(column, first) {
+            !first
+        } else {
+            first
+        };
         format!(
             "?sort={}{}",
             if descending { "-" } else { "" },
@@ -70,6 +80,10 @@ mod tests {
                 Test::Year => "year",
             }
         }
+
+        fn descending_first(self) -> bool {
+            self == Test::Year
+        }
     }
 
     #[test]
@@ -85,5 +99,6 @@ mod tests {
         assert_eq!(year.href(Test::Year), "?sort=year");
         assert_eq!(year.href(Test::Title), "?sort=title");
         assert_eq!(Sort::default().href(Test::Title), "?sort=-title");
+        assert_eq!(Sort::default().href(Test::Year), "?sort=-year");
     }
 }
