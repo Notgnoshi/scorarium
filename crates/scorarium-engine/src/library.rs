@@ -236,7 +236,7 @@ impl Library {
         Ok(row.count as usize)
     }
 
-    /// Query the roles found in the library, along with how many people hold each role.
+    /// Count the people holding each role in the library, alphabetically by role
     pub async fn roles(&self, include_drafts: bool) -> Result<Vec<(Role, usize)>> {
         let mut conn = self.engine.begin_read().await?;
         role_counts(&mut conn, self.id, include_drafts).await
@@ -293,12 +293,18 @@ pub(crate) async fn role_counts(
     let rows = sqlx::query!(
         r#"SELECT held.role, COUNT(DISTINCT held.person_id) AS "count: u32"
            FROM (
-               SELECT person_id, role FROM publication_contributor WHERE library_id = ?1
+               SELECT pc.person_id, pc.role, publication.draft
+               FROM publication_contributor AS pc
+               JOIN publication ON publication.id = pc.publication_id
+               WHERE pc.library_id = ?1
                UNION ALL
-               SELECT person_id, role FROM work_contributor WHERE library_id = ?1
+               SELECT wc.person_id, wc.role, work.draft
+               FROM work_contributor AS wc
+               JOIN work ON work.id = wc.work_id
+               WHERE wc.library_id = ?1
            ) AS held
            JOIN person ON person.id = held.person_id
-           WHERE ?2 OR person.draft = 0
+           WHERE ?2 OR (person.draft = 0 AND held.draft = 0)
            GROUP BY held.role
            ORDER BY held.role"#,
         library.get(),
@@ -508,6 +514,10 @@ mod tests {
             .await
             .unwrap();
         assert!(pen_name.is_draft());
+        draft
+            .add_contributor(satie.id(), "arranger".parse().unwrap())
+            .await
+            .unwrap();
 
         assert_eq!(
             library.roles(false).await.unwrap(),
@@ -519,6 +529,7 @@ mod tests {
         assert_eq!(
             library.roles(true).await.unwrap(),
             vec![
+                ("arranger".parse().unwrap(), 1),
                 ("author".parse().unwrap(), 1),
                 ("composer".parse().unwrap(), 1),
                 ("editor".parse().unwrap(), 1)
