@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT person.id, person.name, person.sort_name, person.profile, held.role AS \"role!\"\n           FROM person\n           JOIN (\n               SELECT pc.person_id, pc.role, publication.draft\n               FROM publication_contributor AS pc\n               JOIN publication ON publication.id = pc.publication_id\n               WHERE pc.library_id = ?1\n               UNION ALL\n               SELECT wc.person_id, wc.role, work.draft\n               FROM work_contributor AS wc\n               JOIN work ON work.id = wc.work_id\n               WHERE wc.library_id = ?1\n           ) AS held ON held.person_id = person.id\n           WHERE person.library_id = ?1 AND (?2 OR (person.draft = 0 AND held.draft = 0))\n           GROUP BY person.id, held.role\n           ORDER BY person.id, held.role",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "sort_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "sort_name"
+          }
+        }
+      },
+      {
+        "name": "profile",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "name": "role!",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e889698abae24228084a241ea9fc196a400c1d89890939a72dc61e6b7b46a073"
+}

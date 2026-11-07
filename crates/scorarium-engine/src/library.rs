@@ -8,7 +8,7 @@ use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::contributor::Role;
 use crate::entity::AnyEntityId;
 use crate::holding::NewHolding;
-use crate::person::{self, Person, PersonId};
+use crate::person::{self, Person, PersonId, PersonSummary};
 use crate::publication::{self, ImportSeed, Publication, PublicationId};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::value::Tag;
@@ -210,6 +210,15 @@ impl Library {
     /// List people in the library with the given role
     pub async fn people(&self, role: Option<&Role>) -> Result<Vec<Person>> {
         person::in_library(&self.engine, self.id, role).await
+    }
+
+    /// Summarize the people in the library, alphabetically by sort name
+    pub async fn people_summary(
+        &self,
+        role: Option<&Role>,
+        include_drafts: bool,
+    ) -> Result<Vec<PersonSummary>> {
+        person::summarize(&self.engine, self.id, role, include_drafts).await
     }
 
     /// Count the publications and works with each tag in the library, alphabetically by tag

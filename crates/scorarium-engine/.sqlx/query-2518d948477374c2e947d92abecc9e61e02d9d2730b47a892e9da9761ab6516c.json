@@ -1,0 +1,40 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT credited.person_id,\n                  COUNT(DISTINCT credited.publication_id) AS \"publications: u32\",\n                  COUNT(DISTINCT credited.work_id) AS \"works: u32\"\n           FROM (\n               SELECT pc.person_id, pc.publication_id, NULL AS work_id\n               FROM publication_contributor AS pc\n               JOIN publication ON publication.id = pc.publication_id\n               WHERE pc.library_id = ?1 AND (?2 OR publication.draft = 0)\n               UNION ALL\n               SELECT wc.person_id, publication.id AS publication_id, wc.work_id\n               FROM work_contributor AS wc\n               JOIN work ON work.id = wc.work_id\n               LEFT JOIN publication_work AS pw ON pw.work_id = wc.work_id\n               LEFT JOIN publication ON publication.id = pw.publication_id\n                                    AND (?2 OR publication.draft = 0)\n               WHERE wc.library_id = ?1 AND (?2 OR work.draft = 0)\n           ) AS credited\n           GROUP BY credited.person_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "person_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "publications: u32",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "works: u32",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2518d948477374c2e947d92abecc9e61e02d9d2730b47a892e9da9761ab6516c"
+}
