@@ -1,0 +1,18 @@
+{% macro kind(kind, classification) %}
+    {% if kind == EntityKind::Person %}
+        <i class="bi bi-person" title="Person"></i>
+    {% else if classification == Some(Classification::Music) %}
+        <i class="bi bi-music-note-beamed" title="Sheet music"></i>
+    {% else if classification == Some(Classification::Prose) %}
+        <i class="bi bi-book" title="Prose"></i>
+    {% else %}
+        <i class="bi bi-question-circle" title="Unclassified"></i>
+    {% endif %}
+    {% if kind == EntityKind::Person %}
+        Person
+    {% else if kind == EntityKind::Publication %}
+        Publication
+    {% else %}
+        Work
+    {% endif %}
+{% endmacro %}

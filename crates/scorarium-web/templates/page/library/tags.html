@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+    {{ nav }}
+    {% if tags.is_empty() %}
+        <p>No tags.</p>
+    {% else %}
+        <div class="d-flex flex-wrap gap-2">
+            {% for (tag, count) in tags %}
+                <a class="badge text-bg-secondary text-decoration-none fs-6"
+                   href="/library/{{ library }}/tag/{{ tag }}">{{ tag }} <span class="opacity-75">{{ count }}</span></a>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

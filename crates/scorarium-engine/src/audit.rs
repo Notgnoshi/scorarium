@@ -143,6 +143,7 @@ pub struct AuditEvent {
     pub source: AuditSource,
     pub action: Action,
     pub subject: Option<AuditSubject>,
+    pub subject_exists: bool,
     pub field: Option<String>,
 }
 
@@ -335,6 +336,7 @@ struct AuditRow {
     entity_library_id: Option<i64>,
     entity_label: Option<String>,
     field: Option<String>,
+    subject_exists: bool,
 }
 
 impl AuditRow {
@@ -369,6 +371,7 @@ impl AuditRow {
             source: self.source.parse()?,
             action: self.action.parse()?,
             subject,
+            subject_exists: self.subject_exists,
             field: self.field,
         })
     }
@@ -400,10 +403,20 @@ impl Engine {
             .await?;
         let rows = sqlx::query_as!(
             AuditRow,
-            r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
-                      entity_kind, entity_id, entity_library_id, entity_label, field
+            r#"SELECT audit_entry.id, audit_entry.created_at AS "created_at: Timestamp",
+                      source, action, entity_kind, entity_id, entity_library_id, entity_label,
+                      field,
+                      (library.id IS NOT NULL OR publication.id IS NOT NULL
+                       OR work.id IS NOT NULL OR person.id IS NOT NULL) AS "subject_exists!: bool"
                FROM audit_entry
-               ORDER BY id DESC
+               LEFT JOIN library ON entity_kind = 'library' AND library.id = entity_id
+               LEFT JOIN publication ON entity_kind = 'publication'
+                   AND publication.id = entity_id AND publication.library_id = entity_library_id
+               LEFT JOIN work ON entity_kind = 'work'
+                   AND work.id = entity_id AND work.library_id = entity_library_id
+               LEFT JOIN person ON entity_kind = 'person'
+                   AND person.id = entity_id AND person.library_id = entity_library_id
+               ORDER BY audit_entry.id DESC
                LIMIT ?2 OFFSET ?1"#,
             offset,
             limit
@@ -445,11 +458,21 @@ impl Engine {
         .await?;
         let rows = sqlx::query_as!(
             AuditRow,
-            r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
-                      entity_kind, entity_id, entity_library_id, entity_label, field
+            r#"SELECT audit_entry.id, audit_entry.created_at AS "created_at: Timestamp",
+                      source, action, entity_kind, entity_id, entity_library_id, entity_label,
+                      field,
+                      (library.id IS NOT NULL OR publication.id IS NOT NULL
+                       OR work.id IS NOT NULL OR person.id IS NOT NULL) AS "subject_exists!: bool"
                FROM audit_entry
+               LEFT JOIN library ON entity_kind = 'library' AND library.id = entity_id
+               LEFT JOIN publication ON entity_kind = 'publication'
+                   AND publication.id = entity_id AND publication.library_id = entity_library_id
+               LEFT JOIN work ON entity_kind = 'work'
+                   AND work.id = entity_id AND work.library_id = entity_library_id
+               LEFT JOIN person ON entity_kind = 'person'
+                   AND person.id = entity_id AND person.library_id = entity_library_id
                WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3
-               ORDER BY id DESC
+               ORDER BY audit_entry.id DESC
                LIMIT ?5 OFFSET ?4"#,
             kind,
             id,
@@ -472,6 +495,9 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity::Entity;
+    use crate::holding::NewHolding;
+    use crate::publication::ImportSeed;
 
     #[tokio::test]
     async fn audit_events_round_trip() {
@@ -528,5 +554,45 @@ mod tests {
             page.events.iter().map(|e| e.action).collect::<Vec<_>>(),
             [Action::Updated, Action::Created]
         );
+    }
+
+    #[tokio::test]
+    async fn subject_exists_follows_the_subject() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Scores", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+        let subjects_exist = async || {
+            let events = engine.audit_log(0, 100).await.unwrap().events;
+            let exist = |library: bool| {
+                events
+                    .iter()
+                    .filter(|e| matches!(e.subject, Some(AuditSubject::Library { .. })) == library)
+                    .map(|e| e.subject_exists)
+                    .collect::<Vec<_>>()
+            };
+            (exist(true), exist(false))
+        };
+
+        let (library_events, publication_events) = subjects_exist().await;
+        assert!(library_events.iter().all(|&exists| exists));
+        assert!(!publication_events.is_empty() && publication_events.iter().all(|&exists| exists));
+
+        publication.delete().await.unwrap();
+        let (library_events, publication_events) = subjects_exist().await;
+        assert!(library_events.iter().all(|&exists| exists));
+        assert!(publication_events.iter().all(|&exists| !exists));
     }
 }

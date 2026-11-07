@@ -28,6 +28,13 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/library/{id}/person/{person}",
             get(page::library::person::get),
         )
+        .route("/library/{id}/people", get(page::library::people::get))
+        .route(
+            "/library/{id}/people/{role}",
+            get(page::library::people::get),
+        )
+        .route("/library/{id}/tags", get(page::library::tags::get))
+        .route("/library/{id}/tag/{tag}", get(page::library::tag::get))
         .route(
             "/library/{id}/edit",
             get(page::library::edit::get).post(page::library::edit::post),

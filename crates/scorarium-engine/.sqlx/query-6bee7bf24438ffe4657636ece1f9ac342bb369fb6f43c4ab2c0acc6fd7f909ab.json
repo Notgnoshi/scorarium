@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, created_at AS \"created_at: Timestamp\", source, action,\n                      entity_kind, entity_id, entity_library_id, entity_label, field\n               FROM audit_entry\n               ORDER BY id DESC\n               LIMIT ?2 OFFSET ?1",
+  "query": "SELECT audit_entry.id, audit_entry.created_at AS \"created_at: Timestamp\",\n                      source, action, entity_kind, entity_id, entity_library_id, entity_label,\n                      field,\n                      (library.id IS NOT NULL OR publication.id IS NOT NULL\n                       OR work.id IS NOT NULL OR person.id IS NOT NULL) AS \"subject_exists!: bool\"\n               FROM audit_entry\n               LEFT JOIN library ON entity_kind = 'library' AND library.id = entity_id\n               LEFT JOIN publication ON entity_kind = 'publication'\n                   AND publication.id = entity_id AND publication.library_id = entity_library_id\n               LEFT JOIN work ON entity_kind = 'work'\n                   AND work.id = entity_id AND work.library_id = entity_library_id\n               LEFT JOIN person ON entity_kind = 'person'\n                   AND person.id = entity_id AND person.library_id = entity_library_id\n               WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3\n               ORDER BY audit_entry.id DESC\n               LIMIT ?5 OFFSET ?4",
   "describe": {
     "columns": [
       {
@@ -101,10 +101,16 @@
             "name": "field"
           }
         }
+      },
+      {
+        "name": "subject_exists!: bool",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 5
     },
     "nullable": [
       false,
@@ -115,8 +121,9 @@
       true,
       true,
       true,
-      true
+      true,
+      false
     ]
   },
-  "hash": "72c34f113083a3aa73a8e4d5da892ce55b5f6f4f3a6f06cc5cc08483e8178916"
+  "hash": "6bee7bf24438ffe4657636ece1f9ac342bb369fb6f43c4ab2c0acc6fd7f909ab"
 }

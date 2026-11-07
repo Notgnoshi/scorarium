@@ -1,43 +1,19 @@
 {% extends "base.html" %}
-{% macro sort_header(column, label) %}
-    <th>
-        <a class="link-body-emphasis text-decoration-none" href="{{ sort.href(*column) }}">
-            {{ label }}
-            {% if sort.is(*column, false) %}
-                <i class="bi bi-caret-up-fill" title="Sorted ascending"></i>
-            {% else if sort.is(*column, true) %}
-                <i class="bi bi-caret-down-fill" title="Sorted descending"></i>
-            {% else %}
-                <i class="bi bi-chevron-expand opacity-50" title="Sort by this column"></i>
-            {% endif %}
-        </a>
-    </th>
-{% endmacro %}
+{% import "widget/tag.html" as badge %}
+{% import "widget/sort.html" as sort %}
 {% block content %}
-    <h1 class="d-flex justify-content-between align-items-center">
-        <span>
-            {{ name }}
-            {% if private %}
-                <i class="bi bi-lock-fill" title="Private"></i>
-            {% endif %}
-        </span>
-        {% if logged_in %}
-            <a class="btn btn-outline-secondary btn-sm"
-               href="/library/{{ id }}/edit"
-               title="Edit library"><i class="bi bi-pencil"></i> Edit</a>
-        {% endif %}
-    </h1>
+    {{ nav }}
     <table class="table">
         <thead class="text-nowrap">
             <tr>
-                {% call sort_header(Column::Title, "Title") %}
+                {% call sort::header(sort, Column::Title, "Title") %}
                 {% endcall %}
-                {% call sort_header(Column::Contributors, "Contributors") %}
+                {% call sort::header(sort, Column::Contributors, "Contributors") %}
                 {% endcall %}
-                {% call sort_header(Column::Year, "Year") %}
+                {% call sort::header(sort, Column::Year, "Year") %}
                 {% endcall %}
                 {% if logged_in %}
-                    {% call sort_header(Column::Stars, "Stars") %}
+                    {% call sort::header(sort, Column::Stars, "Stars") %}
                     {% endcall %}
                     <th>Tags</th>
                 {% endif %}
@@ -59,7 +35,10 @@
                     {% if logged_in %}
                         <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
                         <td>
-                            {% for tag in publication.tags %}<span class="badge text-bg-secondary">{{ tag }}</span>{% endfor %}
+                            {% for tag in publication.tags %}
+                                {% call badge::badge(id, tag) %}
+                                {% endcall %}
+                            {% endfor %}
                         </td>
                     {% endif %}
                 </tr>

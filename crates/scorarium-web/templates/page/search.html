@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "widget/tag.html" as badge %}
+{% import "widget/kind.html" as kind %}
 {% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     <h1>{{ base.title }}</h1>
@@ -38,26 +40,15 @@
                         </td>
                         <td>{{ hit.library_name }}</td>
                         <td class="text-nowrap">
-                            {% if hit.kind == EntityKind::Person %}
-                                <i class="bi bi-person" title="Person"></i>
-                            {% else if hit.classification == Some(Classification::Music) %}
-                                <i class="bi bi-music-note-beamed" title="Sheet music"></i>
-                            {% else if hit.classification == Some(Classification::Prose) %}
-                                <i class="bi bi-book" title="Prose"></i>
-                            {% else %}
-                                <i class="bi bi-question-circle" title="Unclassified"></i>
-                            {% endif %}
-                            {% if hit.kind == EntityKind::Person %}
-                                Person
-                            {% else if hit.kind == EntityKind::Publication %}
-                                Publication
-                            {% else %}
-                                Work
-                            {% endif %}
+                            {% call kind::kind(hit.kind, hit.classification) %}
+                            {% endcall %}
                         </td>
                         {% if logged_in %}
                             <td>
-                                {% for tag in hit.tags %}<span class="badge text-bg-secondary">{{ tag }}</span>{% endfor %}
+                                {% for tag in hit.tags %}
+                                    {% call badge::badge(hit.library, tag) %}
+                                    {% endcall %}
+                                {% endfor %}
                             </td>
                         {% endif %}
                     </tr>

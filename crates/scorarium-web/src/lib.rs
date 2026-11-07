@@ -6,6 +6,7 @@ mod hit;
 mod page;
 mod router;
 mod serve;
+mod sort;
 mod widget;
 
 pub use router::{SESSION_COOKIE, router};

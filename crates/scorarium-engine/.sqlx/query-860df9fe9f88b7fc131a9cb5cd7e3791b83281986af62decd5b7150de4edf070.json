@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT held.role, COUNT(DISTINCT held.person_id) AS \"count: u32\"\n           FROM (\n               SELECT pc.person_id, pc.role, publication.draft\n               FROM publication_contributor AS pc\n               JOIN publication ON publication.id = pc.publication_id\n               WHERE pc.library_id = ?1\n               UNION ALL\n               SELECT wc.person_id, wc.role, work.draft\n               FROM work_contributor AS wc\n               JOIN work ON work.id = wc.work_id\n               WHERE wc.library_id = ?1\n           ) AS held\n           JOIN person ON person.id = held.person_id\n           WHERE ?2 OR (person.draft = 0 AND held.draft = 0)\n           GROUP BY held.role\n           ORDER BY held.role",
+  "describe": {
+    "columns": [
+      {
+        "name": "role",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "name": "count: u32",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "860df9fe9f88b7fc131a9cb5cd7e3791b83281986af62decd5b7150de4edf070"
+}

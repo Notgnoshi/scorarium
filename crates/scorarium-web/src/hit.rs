@@ -1,4 +1,5 @@
 use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::library::LibraryId;
 use scorarium_engine::search::SearchHit;
 use scorarium_engine::value::{Classification, Tag};
 use scorarium_engine::work::CatalogNumber;
@@ -6,6 +7,7 @@ use scorarium_engine::work::CatalogNumber;
 use crate::page::library::entity::group_contributors;
 
 pub(crate) struct Hit {
+    pub library: LibraryId,
     pub href: String,
     pub title: String,
     pub detail: Option<String>,
@@ -15,12 +17,12 @@ pub(crate) struct Hit {
     pub tags: Vec<Tag>,
 }
 
-impl From<&SearchHit> for Hit {
-    fn from(hit: &SearchHit) -> Hit {
-        let library = hit.library;
-        let library_name = hit.library_name.clone();
-        match &hit.entity {
+impl Hit {
+    /// Present `entity`, which belongs to `library`
+    pub(crate) fn new(library: LibraryId, library_name: String, entity: &AnyEntity) -> Hit {
+        match entity {
             AnyEntity::Publication(publication) => Hit {
+                library,
                 href: format!("/library/{library}/publication/{}", publication.id()),
                 title: publication.title().unwrap_or("Untitled").to_owned(),
                 detail: detail(publication.contributors(), &[]),
@@ -30,6 +32,7 @@ impl From<&SearchHit> for Hit {
                 tags: publication.tags().to_vec(),
             },
             AnyEntity::Work(work) => Hit {
+                library,
                 href: format!("/library/{library}/work/{}", work.id()),
                 title: work.title().to_owned(),
                 detail: detail(work.contributors(), work.catalog_numbers()),
@@ -39,6 +42,7 @@ impl From<&SearchHit> for Hit {
                 tags: work.tags().to_vec(),
             },
             AnyEntity::Person(person) => Hit {
+                library,
                 href: format!("/library/{library}/person/{}", person.id()),
                 title: person.name().to_owned(),
                 detail: None,
@@ -48,6 +52,12 @@ impl From<&SearchHit> for Hit {
                 tags: Vec::new(),
             },
         }
+    }
+}
+
+impl From<&SearchHit> for Hit {
+    fn from(hit: &SearchHit) -> Hit {
+        Hit::new(hit.library, hit.library_name.clone(), &hit.entity)
     }
 }
 
