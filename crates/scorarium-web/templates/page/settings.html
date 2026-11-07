@@ -3,6 +3,7 @@
     <h1>{{ base.title }}</h1>
     {% if changed %}<div class="alert alert-success">Password changed.</div>{% endif %}
     <div class="list-group mb-3">
+        <a class="list-group-item list-group-item-action" href="/settings/audit">Audit log</a>
         {% if password %}<a class="list-group-item list-group-item-action"
                             href="/settings/password">Change password</a>{% endif %}
     </div>

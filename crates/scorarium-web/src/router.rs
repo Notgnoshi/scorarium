@@ -30,6 +30,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/settings/password",
             get(page::password::get).post(page::password::post),
         )
+        .route("/settings/audit", get(page::audit::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)

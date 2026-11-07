@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod index;
 pub mod library;
 pub mod login;
