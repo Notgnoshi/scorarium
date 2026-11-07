@@ -15,6 +15,7 @@ use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
 use crate::page::library::entity::{self, group_contributors};
 use crate::page::{Base, Crumb};
+use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::library_nav::{Active, LibraryNav};
 use crate::widget::stars::Stars;
@@ -40,15 +41,23 @@ struct Summary {
     tags: Vec<Tag>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Column {
+    #[default]
     Title,
     Contributors,
     Year,
     Stars,
 }
 
-impl Column {
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[
+        Column::Title,
+        Column::Contributors,
+        Column::Year,
+        Column::Stars,
+    ];
+
     fn name(self) -> &'static str {
         match self {
             Column::Title => "title",
@@ -59,59 +68,7 @@ impl Column {
     }
 }
 
-/// A column and direction, parsed from `[-]column`
-#[derive(Clone, Copy, Deserialize)]
-#[serde(try_from = "String")]
-struct Sort {
-    column: Column,
-    descending: bool,
-}
-
-impl Default for Sort {
-    fn default() -> Self {
-        Sort {
-            column: Column::Title,
-            descending: false,
-        }
-    }
-}
-
-impl TryFrom<String> for Sort {
-    type Error = String;
-
-    fn try_from(value: String) -> std::result::Result<Self, Self::Error> {
-        let (descending, name) = match value.strip_prefix('-') {
-            Some(name) => (true, name),
-            None => (false, value.as_str()),
-        };
-        let column = [
-            Column::Title,
-            Column::Contributors,
-            Column::Year,
-            Column::Stars,
-        ]
-        .into_iter()
-        .find(|column| column.name() == name)
-        .ok_or_else(|| format!("unknown sort column {value:?}"))?;
-        Ok(Sort { column, descending })
-    }
-}
-
-impl Sort {
-    fn href(&self, column: Column) -> String {
-        let descending = self.is(column, false);
-        format!(
-            "?sort={}{}",
-            if descending { "-" } else { "" },
-            column.name()
-        )
-    }
-
-    /// Check whether `column` is active in the given direction
-    fn is(&self, column: Column, descending: bool) -> bool {
-        self.column == column && self.descending == descending
-    }
-}
+type Sort = sort::Sort<Column>;
 
 #[derive(Deserialize)]
 pub(crate) struct Query {
@@ -209,21 +166,6 @@ pub async fn get(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sort_parses_direction_and_rejects_unknown_columns() {
-        let year = Sort::try_from("-year".to_owned()).unwrap();
-        assert!(year.is(Column::Year, true));
-        assert!(
-            Sort::try_from("title".to_owned())
-                .unwrap()
-                .is(Column::Title, false)
-        );
-        assert!(Sort::try_from("bogus".to_owned()).is_err());
-        assert_eq!(year.href(Column::Year), "?sort=year");
-        assert_eq!(year.href(Column::Title), "?sort=title");
-        assert_eq!(Sort::default().href(Column::Title), "?sort=-title");
-    }
 
     #[test]
     fn sort_puts_empty_values_last_in_either_direction() {
