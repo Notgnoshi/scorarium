@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col-auto">
+            <div class="border rounded d-flex flex-column align-items-center justify-content-center text-center text-body-secondary p-2"
+                 style="width: 10rem;
+                        height: 14rem">
+                {% if classification == Some(Classification::Music) %}
+                    <i class="bi bi-music-note-beamed fs-1" title="Sheet music"></i>
+                {% else if classification == Some(Classification::Prose) %}
+                    <i class="bi bi-book fs-1" title="Prose"></i>
+                {% else %}
+                    <i class="bi bi-journal fs-1" title="Unclassified"></i>
+                {% endif %}
+                <span>{{ title }}</span>
+            </div>
+        </div>
+        <div class="col">
+            <h1>
+                {{ title }}
+                {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+            </h1>
+            {% if publisher.is_some() || year.is_some() || classification.is_some() %}
+                <p>
+                    {% if classification == Some(Classification::Music) %}
+                        <i class="bi bi-music-note-beamed" title="Sheet music"></i>
+                    {% else if classification == Some(Classification::Prose) %}
+                        <i class="bi bi-book" title="Prose"></i>
+                    {% endif %}
+                    {% if let Some(publisher) = publisher %}{{ publisher }}{% endif %}
+                    {%- if publisher.is_some() && year.is_some() %},{% endif %}
+                    {% if let Some(year) = year %}{{ year }}{% endif %}
+                </p>
+            {% endif %}
+            {% if logged_in %}
+                {% if let Some(stars) = stars %}<p>{{ stars }}</p>{% endif %}
+            {% endif %}
+            <dl>
+                {% if !contributors.is_empty() %}
+                    <dt>Contributors</dt>
+                    {% for contributor in contributors %}
+                        <dd>
+                            <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            ({{ contributor.roles|join(", ") }})
+                        </dd>
+                    {% endfor %}
+                {% endif %}
+                {% if !identifiers.is_empty() %}
+                    <dt>Identifiers</dt>
+                    {% for identifier in identifiers %}
+                        <dd>
+                            {% if let Some(label) = identifier.label %}{{ label }}{% endif %}
+                            {{ identifier.value }}
+                        </dd>
+                    {% endfor %}
+                {% endif %}
+                {% if !links.is_empty() %}
+                    <dt>Links</dt>
+                    {% for link in links %}
+                        <dd>
+                            <a href="{{ link.href }}" target="_blank" rel="noopener">{{ link.label }}</a>
+                        </dd>
+                    {% endfor %}
+                {% endif %}
+                {% if logged_in && !tags.is_empty() %}
+                    <dt>Tags</dt>
+                    <dd>
+                        {% for tag in tags %}<span class="badge text-bg-secondary">{{ tag }}</span>{% endfor %}
+                    </dd>
+                {% endif %}
+                {% if logged_in %}
+                    {% if let Some(note) = note %}
+                        <dt>Note</dt>
+                        <dd>
+                            <pre style="white-space: pre-wrap">{{ note }}</pre>
+                        </dd>
+                    {% endif %}
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    {% if !holdings.is_empty() %}
+        <h2>Holdings</h2>
+        <ul class="list-group">
+            {% for holding in holdings %}
+                <li class="list-group-item">
+                    {% if holding.physical %}
+                        <i class="bi bi-journal-bookmark" title="Physical copy"></i>
+                    {% else %}
+                        <i class="bi bi-file-earmark" title="Digital file"></i>
+                    {% endif %}
+                    {% if logged_in %}
+                        {% if let Some(location) = holding.location %}{{ location }}{% endif %}
+                        {% if let Some(loaned_to) = holding.loaned_to %}
+                            <span class="text-body-secondary">on loan to {{ loaned_to }}</span>
+                        {% endif %}
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    {% if !works.is_empty() %}
+        <h2>Contents</h2>
+        <table class="table">
+            <thead class="text-nowrap">
+                <tr>
+                    <th>Title</th>
+                    {% if numbered %}<th>Catalog No.</th>{% endif %}
+                    <th>Contributors</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for work in works %}
+                    <tr>
+                        <td>
+                            <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
+                            {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                        </td>
+                        {% if numbered %}
+                            <td>{% if let Some(number) = work.catalog_number %}{{ number }}{% endif %}</td>
+                        {% endif %}
+                        <td>
+                            {% for contributor in work.contributors %}
+                                {%- if !loop.first %}, {% endif -%}
+                                <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            {%- endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col-auto">
+            <div class="border rounded d-flex flex-column align-items-center justify-content-center text-center text-body-secondary p-2"
+                 style="width: 10rem;
+                        height: 14rem">
+                <i class="bi bi-person fs-1" title="Person"></i>
+                <span>{{ name }}</span>
+            </div>
+        </div>
+        <div class="col">
+            <h1>
+                {{ name }}
+                {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+            </h1>
+            <p class="text-body-secondary">{{ sort_name }}</p>
+            <dl>
+                {% if !links.is_empty() %}
+                    <dt>Links</dt>
+                    {% for link in links %}
+                        <dd>
+                            <a href="{{ link.href }}" target="_blank" rel="noopener">{{ link.label }}</a>
+                        </dd>
+                    {% endfor %}
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+    {% if !publications.is_empty() %}
+        <h2>Publications</h2>
+        <ul class="list-group">
+            {% for publication in publications %}
+                <li class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <a href="/library/{{ library }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                            {% if publication.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            {% if !publication.roles.is_empty() %}({{ publication.roles|join(", ") }}){% endif %}
+                        </div>
+                        {% if let Some(year) = publication.year %}<span class="text-body-secondary">{{ year }}</span>{% endif %}
+                    </div>
+                    {% if !publication.works.is_empty() %}
+                        <ul>
+                            {% for work in publication.works %}
+                                <li>
+                                    <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
+                                    {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                                    {% if !work.roles.is_empty() %}({{ work.roles|join(", ") }}){% endif %}
+                                    {% if let Some(number) = work.catalog_number %}
+                                        <span class="text-body-secondary">{{ number }}</span>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endblock %}

@@ -46,8 +46,15 @@
         <tbody>
             {% for publication in publications %}
                 <tr>
-                    <td>{{ publication.title }}</td>
-                    <td>{{ publication.contributors|join(", ") }}</td>
+                    <td>
+                        <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                    </td>
+                    <td>
+                        {% for contributor in publication.contributors %}
+                            {%- if !loop.first %}, {% endif -%}
+                            <a href="/library/{{ id }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                        {%- endfor %}
+                    </td>
                     <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
                     {% if logged_in %}
                         <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
