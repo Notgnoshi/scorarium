@@ -225,7 +225,7 @@ impl Work {
         .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
         .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
-            "SELECT work_contributor.person_id, person.name, work_contributor.role
+            "SELECT work_contributor.person_id, person.name, person.sort_name, work_contributor.role
              FROM work_contributor JOIN person ON person.id = work_contributor.person_id
              WHERE work_contributor.work_id = ?
              ORDER BY work_contributor.id",
@@ -237,6 +237,7 @@ impl Work {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
+            sort_name: contributor.sort_name,
             role: Role::from_valid(contributor.role),
         })
         .collect();
@@ -396,7 +397,7 @@ impl Work {
             return Ok(None);
         }
         if let Some(person) = person
-            && person::name(&mut tx, self.library, person.id())
+            && person::names(&mut tx, self.library, person.id())
                 .await?
                 .is_none()
         {
@@ -858,6 +859,7 @@ impl Work {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
+            sort_name: person.sort_name().to_string(),
             role,
         });
         self.last_modified_at = last_modified_at;
@@ -872,7 +874,7 @@ impl Work {
     pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let name = person::name(&mut tx, self.library, person)
+        let (name, sort_name) = person::names(&mut tx, self.library, person)
             .await?
             .ok_or(Error::NotFound)?;
         let inserted = sqlx::query!(
@@ -914,7 +916,12 @@ impl Work {
             .record_each(AuditSource::User, Action::Committed, &committed, None)
             .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor { person, name, role });
+        self.contributors.push(Contributor {
+            person,
+            name,
+            sort_name,
+            role,
+        });
         self.last_modified_at = last_modified_at;
         Ok(())
     }

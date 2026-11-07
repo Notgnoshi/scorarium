@@ -266,7 +266,8 @@ impl Publication {
         .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
         .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
-            "SELECT publication_contributor.person_id, person.name, publication_contributor.role
+            "SELECT publication_contributor.person_id, person.name, person.sort_name,
+                    publication_contributor.role
              FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
              WHERE publication_contributor.publication_id = ?
              ORDER BY publication_contributor.id",
@@ -278,6 +279,7 @@ impl Publication {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
+            sort_name: contributor.sort_name,
             role: Role::from_valid(contributor.role),
         })
         .collect();
@@ -460,7 +462,7 @@ impl Publication {
             return Ok(None);
         }
         if let Some(person) = person
-            && person::name(&mut tx, self.library, person.id())
+            && person::names(&mut tx, self.library, person.id())
                 .await?
                 .is_none()
         {
@@ -1338,6 +1340,7 @@ impl Publication {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
+            sort_name: person.sort_name().to_string(),
             role,
         });
         self.last_modified_at = last_modified_at;
@@ -1353,7 +1356,7 @@ impl Publication {
     pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let name = person::name(&mut tx, self.library, person)
+        let (name, sort_name) = person::names(&mut tx, self.library, person)
             .await?
             .ok_or(Error::NotFound)?;
         let inserted = sqlx::query!(
@@ -1395,7 +1398,12 @@ impl Publication {
             .record_each(AuditSource::User, Action::Committed, &committed, None)
             .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor { person, name, role });
+        self.contributors.push(Contributor {
+            person,
+            name,
+            sort_name,
+            role,
+        });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -2734,6 +2742,7 @@ mod tests {
         let contributor = |role: &str| Contributor {
             person: satie,
             name: "Erik Satie".into(),
+            sort_name: "Satie, Erik".into(),
             role: role.parse().unwrap(),
         };
         assert_eq!(
