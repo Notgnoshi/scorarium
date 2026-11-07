@@ -1,0 +1,24 @@
+{% import "widget/suggestion.html" as suggestion %}
+{% import "widget/thumbnail.html" as thumbnail %}
+{% if hits.is_empty() %}
+    {% call suggestion::empty() %}
+    {% endcall %}
+{% else %}
+    {% for hit in hits %}
+        {% call suggestion::link(hit.href) %}
+            <span class="d-flex align-items-center gap-2">
+                {% call thumbnail::thumbnail(hit.kind, hit.classification) %}
+                {% endcall %}
+                <span class="d-flex flex-column overflow-hidden">
+                    <span class="text-truncate" title="{{ hit.title }}">{{ hit.title }}</span>
+                    {% if let Some(detail) = hit.detail %}
+                        <span class="small text-body-secondary text-truncate" title="{{ detail }}">{{ detail }}</span>
+                    {% endif %}
+                </span>
+            </span>
+        {% endcall %}
+    {% endfor %}
+    {% call suggestion::link("/search?q=" ~ query|urlencode) %}
+        All results
+    {% endcall %}
+{% endif %}

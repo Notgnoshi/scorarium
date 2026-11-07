@@ -1,10 +1,11 @@
+use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
 use tower_http::trace::TraceLayer;
 
 use crate::auth::CookieSettings;
-use crate::{assets, error, page};
+use crate::{api, assets, error, page};
 
 /// The name of the cookie that carries the session token
 pub const SESSION_COOKIE: &str = "session";
@@ -48,6 +49,13 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             engine.clone(),
             error::render,
         ))
+        // API routes don't use the error page middleware.
+        .nest(
+            "/api",
+            Router::new()
+                .route("/search", get(api::search::get))
+                .fallback(|| async { StatusCode::NOT_FOUND }),
+        )
         .layer(trace)
         .layer(Extension(CookieSettings {
             secure: secure_cookies,
