@@ -324,9 +324,10 @@ mod tests {
         );
 
         let actions: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .iter()
             .map(|e| e.action)
             .collect();

@@ -434,9 +434,10 @@ mod tests {
         library.delete().await.unwrap();
 
         let events: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| {
                 let Some(AuditSubject::Library { label, .. }) = e.subject else {

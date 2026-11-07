@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) FROM audit_entry\n             WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "52d7bdddd79b298e4847ae22eb3bfae085e7934eebce669564a2efeb0b9824a7"
+}

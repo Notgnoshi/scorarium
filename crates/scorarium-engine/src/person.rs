@@ -7,7 +7,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource};
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::Role;
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
@@ -458,9 +458,9 @@ impl Entity for Person {
         self.last_modified_at
     }
 
-    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+    async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
         self.engine
-            .entity_audit_log(AnyEntityId::Person(self.id), self.library, before, limit)
+            .entity_audit_log(AnyEntityId::Person(self.id), self.library, offset, limit)
             .await
     }
 

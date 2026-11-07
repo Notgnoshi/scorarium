@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, created_at AS \"created_at: Timestamp\", source, action,\n                      entity_kind, entity_id, entity_library_id, entity_label, field\n               FROM audit_entry\n               WHERE ?1 IS NULL OR id < ?1\n               ORDER BY id DESC\n               LIMIT ?2",
+  "query": "SELECT id, created_at AS \"created_at: Timestamp\", source, action,\n                      entity_kind, entity_id, entity_library_id, entity_label, field\n               FROM audit_entry\n               ORDER BY id DESC\n               LIMIT ?2 OFFSET ?1",
   "describe": {
     "columns": [
       {
@@ -118,5 +118,5 @@
       true
     ]
   },
-  "hash": "fe87f0030e76ee16f03cd03dd3159634490d2183c429e7fadcd3734a87758a7d"
+  "hash": "72c34f113083a3aa73a8e4d5da892ce55b5f6f4f3a6f06cc5cc08483e8178916"
 }

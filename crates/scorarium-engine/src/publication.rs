@@ -9,7 +9,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource, Staged};
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
 use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
@@ -1490,12 +1490,12 @@ impl Entity for Publication {
         self.last_modified_at
     }
 
-    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+    async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
         self.engine
             .entity_audit_log(
                 AnyEntityId::Publication(self.id),
                 self.library,
-                before,
+                offset,
                 limit,
             )
             .await
@@ -2376,9 +2376,10 @@ mod tests {
             label: "Pro Git".into(),
         });
         let events: Vec<_> = publication
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| (e.action, e.subject, e.field))
             .collect();
@@ -2829,9 +2830,10 @@ mod tests {
             label: "978-0-486-99999-9".into(),
         });
         let events: Vec<_> = publication
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| (e.action, e.subject))
             .collect();

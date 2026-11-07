@@ -3,7 +3,7 @@ use std::num::ParseIntError;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use sqlx::{Sqlite, SqliteConnection, Transaction};
+use sqlx::{Connection, Sqlite, SqliteConnection, Transaction};
 
 use crate::entity::{AnyEntityId, EntityKind, Timestamp};
 use crate::library::LibraryId;
@@ -378,63 +378,94 @@ fn size_to_id(limit: usize) -> i64 {
     i64::try_from(limit).unwrap_or(i64::MAX)
 }
 
+/// One page of the audit log
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditPage {
+    /// Newest first
+    pub events: Vec<AuditEvent>,
+    /// Events in the whole log, or on the entity
+    pub total: usize,
+}
+
 impl Engine {
-    /// Read audit events newest first, below `before` when given, at most `limit`
-    pub async fn audit_log(
-        &self,
-        before: Option<AuditId>,
-        limit: usize,
-    ) -> Result<Vec<AuditEvent>> {
-        let before = before.map(|id| id.0);
+    /// Read a page of the audit log, newest first, starting `offset` events in
+    pub async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
+        let offset = size_to_id(offset);
         let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
+        // One transaction so that the total and the page see the same snapshot.
+        let mut tx = conn.begin().await?;
+        let total = sqlx::query_scalar!("SELECT COUNT(*) FROM audit_entry")
+            .fetch_one(&mut *tx)
+            .await?;
         let rows = sqlx::query_as!(
             AuditRow,
             r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
                       entity_kind, entity_id, entity_library_id, entity_label, field
                FROM audit_entry
-               WHERE ?1 IS NULL OR id < ?1
                ORDER BY id DESC
-               LIMIT ?2"#,
-            before,
+               LIMIT ?2 OFFSET ?1"#,
+            offset,
             limit
         )
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *tx)
         .await?;
-        rows.into_iter().map(AuditRow::into_event).collect()
+        Ok(AuditPage {
+            events: rows
+                .into_iter()
+                .map(AuditRow::into_event)
+                .collect::<Result<_>>()?,
+            total: usize::try_from(total).map_err(eyre::Report::from)?,
+        })
     }
 
-    /// Read an entities audit log, paginated as [Engine::audit_log]
+    /// Read a page of an entity's audit log, as [Engine::audit_log]
     pub(crate) async fn entity_audit_log(
         &self,
         id: AnyEntityId,
         library: LibraryId,
-        before: Option<AuditId>,
+        offset: usize,
         limit: usize,
-    ) -> Result<Vec<AuditEvent>> {
+    ) -> Result<AuditPage> {
         let kind = id.kind().to_string();
         let id = id.get();
-        let before = before.map(|id| id.0);
+        let library = library.get();
+        let offset = size_to_id(offset);
         let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
+        let mut tx = conn.begin().await?;
+        let total = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM audit_entry
+             WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3",
+            kind,
+            id,
+            library
+        )
+        .fetch_one(&mut *tx)
+        .await?;
         let rows = sqlx::query_as!(
             AuditRow,
             r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
                       entity_kind, entity_id, entity_library_id, entity_label, field
                FROM audit_entry
                WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3
-                 AND (?4 IS NULL OR id < ?4)
                ORDER BY id DESC
-               LIMIT ?5"#,
+               LIMIT ?5 OFFSET ?4"#,
             kind,
             id,
-            library.get(),
-            before,
+            library,
+            offset,
             limit
         )
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *tx)
         .await?;
-        rows.into_iter().map(AuditRow::into_event).collect()
+        Ok(AuditPage {
+            events: rows
+                .into_iter()
+                .map(AuditRow::into_event)
+                .collect::<Result<_>>()?,
+            total: usize::try_from(total).map_err(eyre::Report::from)?,
+        })
     }
 }
 
@@ -477,7 +508,7 @@ mod tests {
             .unwrap();
         tx.commit().await.unwrap();
 
-        let events = engine.audit_log(None, 10).await.unwrap();
+        let events = engine.audit_log(0, 10).await.unwrap().events;
         let subjects: Vec<_> = events
             .iter()
             .map(|e| (e.action, e.subject.clone(), e.field.clone()))
@@ -489,6 +520,13 @@ mod tests {
                 (Action::Updated, Some(work), Some("title".to_string())),
                 (Action::Created, Some(library), None),
             ]
+        );
+
+        let page = engine.audit_log(1, 10).await.unwrap();
+        assert_eq!(page.total, 3);
+        assert_eq!(
+            page.events.iter().map(|e| e.action).collect::<Vec<_>>(),
+            [Action::Updated, Action::Created]
         );
     }
 }
