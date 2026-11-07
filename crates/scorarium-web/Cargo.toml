@@ -14,6 +14,10 @@ eyre.workspace = true
 percent-encoding.workspace = true
 rust-embed.workspace = true
 scorarium-engine.workspace = true
+serde.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+scorarium-test.workspace = true

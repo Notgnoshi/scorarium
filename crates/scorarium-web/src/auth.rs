@@ -4,6 +4,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{Method, Uri};
 use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use scorarium_engine::Engine;
 use scorarium_engine::auth::Token;
@@ -18,8 +19,14 @@ const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~')
     .remove(b'/');
 
+#[derive(Clone, Copy)]
+pub(crate) struct CookieSettings {
+    pub(crate) secure: bool,
+}
+
 pub struct SessionCookie {
     jar: CookieJar,
+    secure: bool,
 }
 
 impl FromRequestParts<Engine> for SessionCookie {
@@ -27,11 +34,26 @@ impl FromRequestParts<Engine> for SessionCookie {
 
     async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, Infallible> {
         let jar = CookieJar::from_request_parts(parts, engine).await?;
-        Ok(SessionCookie { jar })
+        let secure = parts
+            .extensions
+            .get::<CookieSettings>()
+            .is_none_or(|settings| settings.secure);
+        Ok(SessionCookie { jar, secure })
     }
 }
 
 impl SessionCookie {
+    pub fn set(self, token: &Token) -> CookieJar {
+        // SameSite=Lax withholds the cookie from cross-site POSTs, which protects every form that
+        // relies on the session from CSRF.
+        let cookie = Cookie::build((SESSION_COOKIE, token.as_str().to_owned()))
+            .http_only(true)
+            .same_site(SameSite::Lax)
+            .path("/")
+            .secure(self.secure);
+        self.jar.add(cookie)
+    }
+
     fn token(&self) -> Option<Token> {
         self.jar
             .get(SESSION_COOKIE)

@@ -70,5 +70,5 @@ impl TestApp {
 fn server(engine: &Engine) -> TestServer {
     TestServer::builder()
         .save_cookies()
-        .build(scorarium_web::router(engine.clone()))
+        .build(scorarium_web::router(engine.clone(), true))
 }
