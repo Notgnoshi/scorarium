@@ -79,6 +79,21 @@ pub(crate) fn group_contributors(
     people
 }
 
+/// Label a role as a listing, so that "composer" reads "Composers"
+pub(crate) fn plural_role_label(role: &Role) -> String {
+    let mut chars = role.as_str().chars();
+    let mut label: String = chars
+        .next()
+        .into_iter()
+        .flat_map(char::to_uppercase)
+        .collect();
+    label.push_str(chars.as_str());
+    if !label.ends_with('s') {
+        label.push('s');
+    }
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
