@@ -19,6 +19,10 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .route("/library", post(page::index::post))
         .route("/library/{id}", get(page::library::view::get))
         .route(
+            "/library/{id}/publication/{publication}",
+            get(page::library::publication::get),
+        )
+        .route(
             "/library/{id}/edit",
             get(page::library::edit::get).post(page::library::edit::post),
         )

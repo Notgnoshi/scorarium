@@ -1,5 +1,49 @@
+use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
+use scorarium_engine::entity::Entity;
+use scorarium_engine::library::LibraryId;
+use scorarium_engine::link::Link;
 use scorarium_engine::person::PersonId;
+
+use crate::auth::Viewer;
+use crate::error::Result;
+
+/// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
+pub(super) async fn load<E: Entity>(
+    engine: &Engine,
+    library: LibraryId,
+    id: &str,
+    viewer: &Viewer,
+) -> Result<E> {
+    let id: E::Id = id.parse().map_err(|_| scorarium_engine::Error::NotFound)?;
+    match E::load(engine, id).await? {
+        Some(entity)
+            if entity.library() == library && (!entity.is_draft() || viewer.is_logged_in()) =>
+        {
+            Ok(entity)
+        }
+        _ => Err(scorarium_engine::Error::NotFound.into()),
+    }
+}
+
+/// A link rendered as the recognized site's name, or the URL's host for a generic link
+pub(super) struct ExternalLink {
+    pub href: String,
+    pub label: String,
+}
+
+impl From<&Link> for ExternalLink {
+    fn from(link: &Link) -> ExternalLink {
+        let label = match &link.record {
+            Some(record) => record.kind().to_string(),
+            None => link.url.as_url().host_str().unwrap_or_default().to_owned(),
+        };
+        ExternalLink {
+            href: link.url.to_string(),
+            label,
+        }
+    }
+}
 
 /// A contributor to a publication or work, with every role they hold on it
 #[derive(Debug, PartialEq, Eq)]
