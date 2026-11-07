@@ -7,7 +7,7 @@
     {% if !catalog_numbers.is_empty() %}
         <p>
             {% for number in catalog_numbers %}
-                {%- if !loop.first %} . {% endif -%}
+                {%- if !loop.first %} • {% endif -%}
                 {{ number }}
             {%- endfor %}
         </p>
@@ -15,9 +15,9 @@
     {% if key.is_some() || time_signature.is_some() || instrumentation.is_some() %}
         <p>
             {% if let Some(key) = key %}{{ key }}{% endif %}
-            {%- if key.is_some() && (time_signature.is_some() || instrumentation.is_some()) %} . {% endif -%}
+            {%- if key.is_some() && (time_signature.is_some() || instrumentation.is_some()) %} • {% endif -%}
             {% if let Some(time_signature) = time_signature %}{{ time_signature }}{% endif %}
-            {%- if time_signature.is_some() && instrumentation.is_some() %} . {% endif -%}
+            {%- if time_signature.is_some() && instrumentation.is_some() %} • {% endif -%}
             {% if let Some(instrumentation) = instrumentation %}{{ instrumentation }}{% endif %}
         </p>
     {% endif %}

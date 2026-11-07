@@ -4,6 +4,7 @@ pub mod library;
 pub mod login;
 pub mod logout;
 pub mod password;
+pub mod search;
 pub mod settings;
 
 use axum::http::StatusCode;
