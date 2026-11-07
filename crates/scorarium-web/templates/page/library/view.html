@@ -21,7 +21,11 @@
                 <i class="bi bi-lock-fill" title="Private"></i>
             {% endif %}
         </span>
-        {% if logged_in %}<a class="btn btn-outline-secondary btn-sm" href="/library/{{ id }}/edit">Edit</a>{% endif %}
+        {% if logged_in %}
+            <a class="btn btn-outline-secondary btn-sm"
+               href="/library/{{ id }}/edit"
+               title="Edit library"><i class="bi bi-pencil"></i> Edit</a>
+        {% endif %}
     </h1>
     <table class="table">
         <thead class="text-nowrap">

@@ -32,12 +32,14 @@ struct Edit {
     id: LibraryId,
     name: String,
     private: bool,
+    publications: usize,
     error: Option<String>,
 }
 
 fn render(
     header: Header,
     library: &Library,
+    publications: usize,
     status: StatusCode,
     error: Option<String>,
 ) -> Result<Response> {
@@ -53,6 +55,7 @@ fn render(
         id: library.id(),
         name: library.name().to_owned(),
         private: library.is_private(),
+        publications,
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -65,7 +68,8 @@ pub async fn get(
     Path(id): Path<String>,
 ) -> Result<Response> {
     let library = load(&engine, &id).await?;
-    render(header, &library, StatusCode::OK, None)
+    let publications = library.publication_count(true).await?;
+    render(header, &library, publications, StatusCode::OK, None)
 }
 
 pub async fn post(
@@ -89,7 +93,17 @@ pub async fn post(
         Ok(()) => Ok(Redirect::to(&format!("/library/{}", library.id())).into_response()),
         Err(e) => {
             let (status, error) = form_error(e)?;
-            render(header, &library, status, Some(error))
+            let publications = library.publication_count(true).await?;
+            render(header, &library, publications, status, Some(error))
         }
     }
+}
+
+pub async fn delete(
+    _session: Session,
+    State(engine): State<Engine>,
+    Path(id): Path<String>,
+) -> Result<Redirect> {
+    load(&engine, &id).await?.delete().await?;
+    Ok(Redirect::to("/"))
 }

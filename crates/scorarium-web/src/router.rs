@@ -22,6 +22,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/library/{id}/edit",
             get(page::library::edit::get).post(page::library::edit::post),
         )
+        .route("/library/{id}/delete", post(page::library::edit::delete))
         .route("/login", get(page::login::get).post(page::login::post))
         .route("/logout", post(page::logout::post))
         .route("/settings", get(page::settings::get))

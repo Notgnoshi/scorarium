@@ -68,3 +68,16 @@ async fn edit_with_a_blank_name_changes_nothing() {
     assert_eq!(library.name(), "Old");
     assert!(library.is_private());
 }
+
+#[tokio::test]
+async fn delete_removes_the_library() {
+    let app = TestApp::demo().await;
+    let library = app.engine.create_library("Doomed", true).await.unwrap();
+    let response = app
+        .server
+        .post(&format!("/library/{}/delete", library.id()))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/");
+    assert!(app.engine.library(library.id()).await.unwrap().is_none());
+}
