@@ -1,7 +1,8 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 
 use crate::entity::{AnyEntity, Entity, EntityKind};
-use crate::fuzzy::{normalize, rank};
+use crate::fuzzy::{normalize, score};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
@@ -57,10 +58,14 @@ impl Engine {
 
         // Ranking and loading are separate statements, so an entity deleted in between is left out
         // rather than failing the search.
-        let ranked = rank(query, &texts);
+        let mut ranked = score(query, &texts);
+        // score() is already best first, and a stable sort keeps that within a score. Break rank
+        // ties in favor of Persons, because a user searching "Chopin" should get the person entity
+        // ranked first over all of Chopin's works.
+        ranked.sort_by_key(|&(i, score)| (Reverse(score), candidates[i].0 != EntityKind::Person));
         let total_hits = ranked.len();
         let mut entities = Vec::new();
-        for i in ranked.into_iter().take(limit) {
+        for (i, _) in ranked.into_iter().take(limit) {
             let (kind, Candidate { id, .. }) = candidates[i];
             let entity = match kind {
                 EntityKind::Publication => {
@@ -202,6 +207,10 @@ mod tests {
                 .hits
                 .is_empty()
         );
+
+        // On equal score the person leads the items credited to them
+        let hits = engine.search("rachmaninoff", true, 10).await.unwrap().hits;
+        assert!(matches!(hits[0].entity, AnyEntity::Person(_)));
     }
 
     #[tokio::test]
