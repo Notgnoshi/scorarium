@@ -314,6 +314,13 @@ impl CandidateScope {
             CandidateScope::Committed { include_private } => (None, false, include_private),
         }
     }
+
+    pub(crate) fn includes_tags(self) -> bool {
+        match self {
+            CandidateScope::Library(_) => false,
+            CandidateScope::Committed { include_private } => include_private,
+        }
+    }
 }
 
 fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> Vec<(i64, bool)> {

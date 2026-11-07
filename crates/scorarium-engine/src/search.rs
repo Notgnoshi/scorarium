@@ -167,6 +167,22 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+
+        // Tags are private
+        assert!(
+            engine
+                .search("anthology", false, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !engine
+                .search("anthology", true, 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
