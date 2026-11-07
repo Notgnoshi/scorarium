@@ -1,6 +1,6 @@
 use askama::Template;
 
-#[derive(Debug, Template)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Template)]
 #[template(path = "widget/stars.html")]
 pub struct Stars {
     stars: u8,
