@@ -7,12 +7,13 @@ use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::LibraryId;
+use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Tag, Year};
 use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
-use crate::page::library::entity::group_contributors;
+use crate::page::library::entity::{self, group_contributors};
 use crate::page::{Base, Crumb};
 use crate::widget::header::Header;
 use crate::widget::stars::Stars;
@@ -29,10 +30,10 @@ struct Library {
     sort: Sort,
 }
 
-#[derive(Default)]
 struct Summary {
+    id: PublicationId,
     title: String,
-    contributors: Vec<String>,
+    contributors: Vec<entity::Contributor>,
     contributor_sort_name: Option<String>,
     year: Option<Year>,
     stars: Option<Stars>,
@@ -177,9 +178,10 @@ pub async fn get(
         .map(|publication| {
             let contributors = group_contributors(publication.contributors());
             Summary {
+                id: publication.id(),
                 title: publication.title().unwrap_or_default().to_owned(),
                 contributor_sort_name: contributors.first().map(|c| c.sort_name.clone()),
-                contributors: contributors.into_iter().map(|c| c.name).collect(),
+                contributors,
                 year: publication.year(),
                 stars: publication.stars().map(Into::into),
                 tags: publication.tags().to_vec(),
@@ -227,9 +229,13 @@ mod tests {
     #[test]
     fn sort_puts_empty_values_last_in_either_direction() {
         let summary = |title: &str, year: Option<u16>| Summary {
+            id: "1".parse().unwrap(),
             title: title.into(),
+            contributors: Vec::new(),
+            contributor_sort_name: None,
             year: year.map(|y| Year::try_from(y).unwrap()),
-            ..Default::default()
+            stars: None,
+            tags: Vec::new(),
         };
         let titles = |summaries: &[Summary]| {
             summaries
@@ -263,8 +269,13 @@ mod tests {
     #[test]
     fn sort_compares_titles_case_insensitively() {
         let summary = |title: &str| Summary {
+            id: "1".parse().unwrap(),
             title: title.into(),
-            ..Default::default()
+            contributors: Vec::new(),
+            contributor_sort_name: None,
+            year: None,
+            stars: None,
+            tags: Vec::new(),
         };
         let mut summaries = vec![summary("Zebra"), summary("aardvark"), summary("Mouse")];
         sort_summaries(&mut summaries, Sort::default());
