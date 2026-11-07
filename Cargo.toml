@@ -12,6 +12,7 @@ license = "MIT"
 scorarium-cli = { path = "crates/scorarium-cli" }
 scorarium-client = { path = "crates/scorarium-client" }
 scorarium-engine = { path = "crates/scorarium-engine" }
+scorarium-test = { path = "crates/scorarium-test" }
 scorarium-web = { path = "crates/scorarium-web" }
 
 # External crates

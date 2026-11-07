@@ -9,6 +9,7 @@ toolchain, and we aspire to keep all dependencies up-to-date.
 * `scorarium-engine` provides business logic shared between the web server and developer CLI
 * `scorarium-cli` provides the `scorarium shell` command shell
 * `scorarium-web` provides the web server
+* `scorarium-test` provides fixtures shared by the crates' tests
 * `scorarium` is the binary, a thin wrapper that dispatches to subcommands such as `serve`
 
 It's a "usual" Rust project, so you can use `cargo` as normal:

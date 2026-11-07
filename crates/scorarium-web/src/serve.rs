@@ -17,9 +17,12 @@ pub struct ServeArgs {
 pub async fn serve(args: ServeArgs, engine: Engine) -> eyre::Result<()> {
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     tracing::info!(bind = %args.bind, "serving");
-    axum::serve(listener, crate::router::router(engine))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        crate::router::router(engine, !args.insecure_cookies),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     Ok(())
 }
 
