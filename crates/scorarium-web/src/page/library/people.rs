@@ -17,13 +17,14 @@ use crate::page::library::entity::plural_role_label;
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
 use crate::widget::header::Header;
+use crate::widget::library_nav::{Active, LibraryNav};
 
 #[derive(Template)]
 #[template(path = "page/library/people.html")]
 struct People {
     base: Base,
     library: LibraryId,
-    heading: String,
+    nav: LibraryNav,
     people: Vec<PersonSummary>,
 }
 
@@ -80,10 +81,14 @@ async fn render(
         }
         None => "People".to_owned(),
     };
+    let active = match &role {
+        Some(role) => Active::Role(role.clone()),
+        None => Active::People,
+    };
     let page = People {
-        base: Base::new(header, heading.clone(), parents),
+        base: Base::new(header, heading, parents),
         library: library.id(),
-        heading,
+        nav: LibraryNav::load(&library, viewer.is_logged_in(), active).await?,
         people,
     };
     Ok(Html(page.render()?).into_response())

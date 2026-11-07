@@ -1,14 +1,7 @@
 {% extends "base.html" %}
 {% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
-    <h1>{{ heading }}</h1>
-    <p class="text-body-secondary">
-        {% if people.len() == 1 %}
-            1 person
-        {% else %}
-            {{ people.len() }} people
-        {% endif %}
-    </p>
+    {{ nav }}
     <table class="table align-middle">
         <thead class="text-nowrap">
             <tr>

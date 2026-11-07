@@ -16,6 +16,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, group_contributors};
 use crate::page::{Base, Crumb};
 use crate::widget::header::Header;
+use crate::widget::library_nav::{Active, LibraryNav};
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
@@ -24,8 +25,7 @@ struct Library {
     base: Base,
     logged_in: bool,
     id: LibraryId,
-    name: String,
-    private: bool,
+    nav: LibraryNav,
     publications: Vec<Summary>,
     sort: Sort,
 }
@@ -199,8 +199,7 @@ pub async fn get(
         base: Base::new(header, library.name(), vec![Crumb::new("Libraries", "/")]),
         logged_in: viewer.is_logged_in(),
         id: library.id(),
-        name: library.name().to_owned(),
-        private: library.is_private(),
+        nav: LibraryNav::load(&library, viewer.is_logged_in(), Active::Publications).await?,
         publications,
         sort,
     };
