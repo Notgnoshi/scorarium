@@ -16,4 +16,4 @@ tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]
-scorarium-client = { workspace = true, features = ["fake-transport"] }
+scorarium-test.workspace = true

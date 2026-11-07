@@ -5,6 +5,9 @@ use tower_http::trace::TraceLayer;
 
 use crate::{assets, error, page};
 
+/// The name of the cookie that carries the session token
+pub const SESSION_COOKIE: &str = "session";
+
 pub fn router(engine: Engine) -> Router {
     let trace = TraceLayer::new_for_http()
         .on_request(())
