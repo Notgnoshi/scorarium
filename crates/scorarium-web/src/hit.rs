@@ -1,4 +1,5 @@
 use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::library::LibraryId;
 use scorarium_engine::search::SearchHit;
 use scorarium_engine::value::{Classification, Tag};
 use scorarium_engine::work::CatalogNumber;
@@ -15,11 +16,10 @@ pub(crate) struct Hit {
     pub tags: Vec<Tag>,
 }
 
-impl From<&SearchHit> for Hit {
-    fn from(hit: &SearchHit) -> Hit {
-        let library = hit.library;
-        let library_name = hit.library_name.clone();
-        match &hit.entity {
+impl Hit {
+    /// Present `entity`, which belongs to `library`
+    pub(crate) fn new(library: LibraryId, library_name: String, entity: &AnyEntity) -> Hit {
+        match entity {
             AnyEntity::Publication(publication) => Hit {
                 href: format!("/library/{library}/publication/{}", publication.id()),
                 title: publication.title().unwrap_or("Untitled").to_owned(),
@@ -48,6 +48,12 @@ impl From<&SearchHit> for Hit {
                 tags: Vec::new(),
             },
         }
+    }
+}
+
+impl From<&SearchHit> for Hit {
+    fn from(hit: &SearchHit) -> Hit {
+        Hit::new(hit.library, hit.library_name.clone(), &hit.entity)
     }
 }
 

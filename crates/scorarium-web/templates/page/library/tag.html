@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "widget/kind.html" as kind %}
+{% import "widget/tag.html" as badge %}
+{% import "widget/thumbnail.html" as thumbnail %}
+{% block content %}
+    {{ nav }}
+    <h2>{{ tag }}</h2>
+    {% if hits.is_empty() %}
+        <p>No items.</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="text-nowrap">
+                <tr>
+                    <th>Title</th>
+                    <th>Kind</th>
+                    <th>Tags</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for hit in hits %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {% call thumbnail::thumbnail(hit.kind, hit.classification) %}
+                                {% endcall %}
+                                <div>
+                                    <a href="{{ hit.href }}">{{ hit.title }}</a>
+                                    {% if let Some(detail) = hit.detail %}
+                                        <div class="small text-body-secondary">{{ detail }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-nowrap">
+                            {% call kind::kind(hit.kind, hit.classification) %}
+                            {% endcall %}
+                        </td>
+                        <td>
+                            {% for hit_tag in hit.tags %}
+                                {% call badge::badge(library, hit_tag) %}
+                                {% endcall %}
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}
