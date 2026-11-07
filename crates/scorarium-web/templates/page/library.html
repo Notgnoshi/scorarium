@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1 class="d-flex justify-content-between align-items-center">
+        <span>
+            {{ name }}
+            {% if private %}
+                <i class="bi bi-lock-fill" title="Private"></i>
+            {% endif %}
+        </span>
+        {% if logged_in %}<a class="btn btn-outline-secondary btn-sm" href="/library/{{ id }}/edit">Edit</a>{% endif %}
+    </h1>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Contributors</th>
+                <th>Year</th>
+                {% if logged_in %}
+                    <th>Stars</th>
+                    <th>Tags</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for publication in publications %}
+                <tr>
+                    <td>{{ publication.title }}</td>
+                    <td>{{ publication.contributors|join(", ") }}</td>
+                    <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                    {% if logged_in %}
+                        <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
+                        <td>
+                            {% for tag in publication.tags %}<span class="badge text-bg-secondary">{{ tag }}</span>{% endfor %}
+                        </td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}

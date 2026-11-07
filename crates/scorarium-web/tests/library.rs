@@ -20,3 +20,21 @@ async fn create_requires_login_and_makes_a_private_library() {
     assert!(library.is_private());
     response.assert_header("location", format!("/library/{}", library.id()));
 }
+
+#[tokio::test]
+async fn private_library_redirects_anonymous_to_login() {
+    let app = TestApp::logged_out(false).await;
+    let library = app.engine.create_library("Secret", true).await.unwrap();
+    let path = format!("/library/{}", library.id());
+    let response = app.server.get(&path).await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", format!("/login?next={path}"));
+    app.server
+        .get("/library/999999")
+        .await
+        .assert_status_not_found();
+    app.server
+        .get("/library/abc")
+        .await
+        .assert_status_not_found();
+}

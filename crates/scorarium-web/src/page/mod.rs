@@ -1,4 +1,5 @@
 pub mod index;
+pub mod library;
 pub mod login;
 pub mod logout;
 pub mod password;
