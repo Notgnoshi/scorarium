@@ -1,4 +1,5 @@
 mod assets;
+mod auth;
 mod error;
 mod page;
 mod router;

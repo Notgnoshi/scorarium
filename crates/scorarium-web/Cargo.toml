@@ -8,8 +8,10 @@ description = "The scorarium web server"
 [dependencies]
 askama.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 clap.workspace = true
 eyre.workspace = true
+percent-encoding.workspace = true
 rust-embed.workspace = true
 scorarium-engine.workspace = true
 tokio.workspace = true
