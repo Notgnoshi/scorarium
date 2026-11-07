@@ -16,6 +16,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .on_failure(());
     Router::new()
         .route("/", get(page::index::get))
+        .route("/library", post(page::index::post))
         .route("/login", get(page::login::get).post(page::login::post))
         .route("/logout", post(page::logout::post))
         .route("/settings", get(page::settings::get))
