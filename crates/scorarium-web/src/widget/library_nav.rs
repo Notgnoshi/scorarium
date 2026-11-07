@@ -13,6 +13,7 @@ pub struct LibraryNav {
     private: bool,
     logged_in: bool,
     publications: usize,
+    tags: Option<usize>,
     people: usize,
     roles: Vec<(Role, usize)>,
     active: Active,
@@ -30,6 +31,11 @@ pub enum Active {
 impl LibraryNav {
     /// Load the counts for the navigation bar of `library`
     pub async fn load(library: &Library, logged_in: bool, active: Active) -> Result<LibraryNav> {
+        let tags = if logged_in {
+            Some(library.tags(false).await?.len())
+        } else {
+            None
+        };
         let mut roles = library.roles(false).await?;
         roles.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         Ok(LibraryNav {
@@ -38,6 +44,7 @@ impl LibraryNav {
             private: library.is_private(),
             logged_in,
             publications: library.publication_count(false).await?,
+            tags,
             people: library.people_summary(None, false).await?.len(),
             roles,
             active,

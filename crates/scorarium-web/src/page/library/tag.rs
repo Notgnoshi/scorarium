@@ -60,6 +60,7 @@ pub async fn get(
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
+        Crumb::new("Tags", format!("/library/{}/tags", library.id())),
     ];
     let page = Tagged {
         base: Base::new(header, tag.to_string(), parents),

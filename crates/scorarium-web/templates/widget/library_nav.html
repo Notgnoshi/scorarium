@@ -17,6 +17,13 @@
             Publications <span class="badge text-bg-secondary">{{ publications }}</span>
         </a>
     </li>
+    {% if let Some(tags) = tags %}
+        <li class="nav-item">
+            <a class="nav-link{% if active == Active::Tags %} active{% endif %}" href="/library/{{ id }}/tags">
+                Tags <span class="badge text-bg-secondary">{{ tags }}</span>
+            </a>
+        </li>
+    {% endif %}
     <li class="nav-item">
         <a class="nav-link{% if active == Active::People %} active{% endif %}" href="/library/{{ id }}/people">
             People <span class="badge text-bg-secondary">{{ people }}</span>
