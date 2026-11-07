@@ -1,4 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
+    <div class="list-group">
+        {% for library in libraries %}
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>
+                    <a href="/library/{{ library.id }}">{{ library.name }}</a>
+                    {% if library.private %}
+                        <i class="bi bi-lock-fill" title="Private"></i>
+                    {% endif %}
+                </span>
+                <span class="text-body-secondary">{{ library.publications }} publication{{ library.publications|pluralize }}</span>
+            </div>
+        {% endfor %}
+    </div>
 {% endblock %}
