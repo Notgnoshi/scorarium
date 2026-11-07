@@ -99,4 +99,35 @@
             {% endfor %}
         </ul>
     {% endif %}
+    {% if !works.is_empty() %}
+        <h2>Contents</h2>
+        <table class="table">
+            <thead class="text-nowrap">
+                <tr>
+                    <th>Title</th>
+                    {% if numbered %}<th>Catalog No.</th>{% endif %}
+                    <th>Contributors</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for work in works %}
+                    <tr>
+                        <td>
+                            <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
+                            {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                        </td>
+                        {% if numbered %}
+                            <td>{% if let Some(number) = work.catalog_number %}{{ number }}{% endif %}</td>
+                        {% endif %}
+                        <td>
+                            {% for contributor in work.contributors %}
+                                {%- if !loop.first %}, {% endif -%}
+                                <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
 {% endblock %}

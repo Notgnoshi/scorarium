@@ -8,6 +8,7 @@ use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::IdentifierKind;
 use scorarium_engine::value::{Classification, Tag, Year};
+use scorarium_engine::work::{CatalogNumber, WorkId};
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
@@ -35,6 +36,8 @@ struct Publication {
     tags: Vec<Tag>,
     note: Option<String>,
     holdings: Vec<Holding>,
+    works: Vec<Work>,
+    numbered: bool,
 }
 
 /// An identifier with the label its kind is shown under
@@ -48,6 +51,44 @@ struct Holding {
     /// The shelf location of a physical copy, or the filename of a digital one
     location: Option<String>,
     loaned_to: Option<String>,
+}
+
+struct Work {
+    id: WorkId,
+    draft: bool,
+    title: String,
+    /// The work's first catalog number, which is its most confidently recognized one
+    catalog_number: Option<CatalogNumber>,
+    contributors: Vec<entity::Contributor>,
+}
+
+impl From<&scorarium_engine::work::Work> for Work {
+    fn from(work: &scorarium_engine::work::Work) -> Work {
+        Work {
+            id: work.id(),
+            draft: work.is_draft(),
+            title: work.title().to_owned(),
+            catalog_number: work.catalog_numbers().first().cloned(),
+            contributors: group_contributors(work.contributors()),
+        }
+    }
+}
+
+/// Order contents by first contributor, then catalog number, then title
+fn sort_contents(works: &mut [Work]) {
+    works.sort_by_cached_key(|work| {
+        let sort_name = work
+            .contributors
+            .first()
+            .map(|c| c.sort_name.to_lowercase());
+        (
+            sort_name.is_none(),
+            sort_name,
+            work.catalog_number.is_none(),
+            work.catalog_number.clone(),
+            work.title.to_lowercase(),
+        )
+    });
 }
 
 impl From<&scorarium_engine::publication::Identifier> for Identifier {
@@ -98,6 +139,16 @@ pub async fn get(
     let publication: scorarium_engine::publication::Publication =
         entity::load(&engine, library.id(), &publication, &viewer).await?;
 
+    let mut works: Vec<Work> = publication
+        .works()
+        .await?
+        .iter()
+        .filter(|work| viewer.is_logged_in() || !work.is_draft())
+        .map(Into::into)
+        .collect();
+    sort_contents(&mut works);
+    let numbered = works.iter().any(|work| work.catalog_number.is_some());
+
     let title = publication.title().unwrap_or("Untitled");
     let parents = vec![
         Crumb::new("Libraries", "/"),
@@ -119,6 +170,8 @@ pub async fn get(
         tags: publication.tags().to_vec(),
         note: publication.note().map(ToOwned::to_owned),
         holdings: publication.holdings().iter().map(Into::into).collect(),
+        works,
+        numbered,
     };
     Ok(Html(page.render()?).into_response())
 }
