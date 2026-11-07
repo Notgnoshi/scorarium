@@ -11,6 +11,7 @@ pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> e
     let rows: Vec<[String; 6]> = engine
         .search(query, true, 20)
         .await?
+        .hits
         .into_iter()
         .map(|hit| {
             let (kind, id, title) = describe(&hit.entity);
