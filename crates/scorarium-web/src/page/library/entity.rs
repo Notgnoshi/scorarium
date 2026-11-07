@@ -47,7 +47,7 @@ impl From<&Link> for ExternalLink {
 
 /// A contributor to a publication or work, with every role they hold on it
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct Contributor {
+pub(crate) struct Contributor {
     pub person: PersonId,
     pub name: String,
     pub sort_name: String,
@@ -55,7 +55,7 @@ pub(super) struct Contributor {
 }
 
 /// Group an entity's contributors by person for display
-pub(super) fn group_contributors(
+pub(crate) fn group_contributors(
     contributors: &[scorarium_engine::contributor::Contributor],
 ) -> Vec<Contributor> {
     let is_primary = |role: &Role| matches!(role.as_str(), "author" | "composer");

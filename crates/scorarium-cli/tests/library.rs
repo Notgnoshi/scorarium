@@ -287,9 +287,9 @@ async fn search_prints_the_same_columns_for_every_kind() {
          publication\t1      \tBooks       \t2 \tPro Git\tScott Chacon, Ben Straub\n\
          kind       \tlibrary\tlibrary-name\tid\ttitle               \tcontext\n\
          -----------\t-------\t------------\t--\t--------------------\t----------------------------------\n\
+         person     \t2      \tSheet music \t11\tGeorgy Kirkor       \tKirkor, Georgy\n\
          publication\t2      \tSheet music \t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
-         work       \t2      \tSheet music \t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n\
-         person     \t2      \tSheet music \t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
+         work       \t2      \tSheet music \t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n"
     );
 }
 

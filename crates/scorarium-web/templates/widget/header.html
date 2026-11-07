@@ -1,15 +1,31 @@
 <nav class="navbar navbar-expand bg-body-tertiary">
-    <div class="container justify-content-start">
-        <a class="navbar-brand" href="/">Scorarium</a>
-        {% if demo %}
-            <span class="badge text-bg-warning" title="This is a demo instance with a temporary database">Demo</span>
-        {% endif %}
-        <div class="ms-auto">
-            {% if logged_in %}
-                <a class="nav-link" href="/settings">Settings</a>
-            {% else %}
-                <a class="nav-link" href="{{ login_url }}">Log in</a>
-            {% endif %}
+    <div class="container">
+        <div class="row flex-grow-1 g-2 align-items-center">
+            <div class="col order-1 d-flex align-items-center">
+                <a class="navbar-brand" href="/">Scorarium</a>
+                {% if demo %}
+                    <span class="badge text-bg-warning"
+                          title="This is a demo instance with a temporary database">Demo</span>
+                {% endif %}
+            </div>
+            <form class="col-12 col-md-6 col-xl-5 col-xxl-4 order-3 order-md-2"
+                  role="search"
+                  method="get"
+                  action="/search">
+                <div class="d-flex gap-2">
+                    <div class="flex-grow-1">{{ self.search_box() }}</div>
+                    <button class="btn btn-outline-secondary" type="submit">
+                        <i class="bi bi-search" title="Search"></i>
+                    </button>
+                </div>
+            </form>
+            <div class="col order-2 order-md-3 d-flex justify-content-end">
+                {% if logged_in %}
+                    <a class="nav-link" href="/settings">Settings</a>
+                {% else %}
+                    <a class="nav-link" href="{{ login_url }}">Log in</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 </nav>

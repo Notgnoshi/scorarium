@@ -14,3 +14,20 @@ document.addEventListener("submit", (event) => {
         event.preventDefault();
     }
 });
+
+// Focus the navbar search box on "/", unless the slash is being typed into something editable.
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+    }
+    const target = event.target;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+    }
+    const search = document.getElementById("q");
+    if (search) {
+        event.preventDefault();
+        search.focus();
+        search.select();
+    }
+});

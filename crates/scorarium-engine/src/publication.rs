@@ -1806,6 +1806,7 @@ pub(crate) async fn candidates(
     scope: CandidateScope,
 ) -> Result<Vec<Candidate>> {
     let (library, include_drafts, include_private) = scope.binds();
+    let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
                   coalesce(p.title, '') || ' '
@@ -1813,14 +1814,17 @@ pub(crate) async fn candidates(
                                FROM publication_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.publication_id = p.id), '') || ' '
                   || coalesce((SELECT group_concat(value || ' ' || replace(value, '-', ''), ' ')
-                               FROM publication_identifier WHERE publication_id = p.id), '')
+                               FROM publication_identifier WHERE publication_id = p.id), '') || ' '
+                  || coalesce((SELECT group_concat(tag, ' ') FROM tag
+                               WHERE publication_id = p.id AND ?4), '')
                   AS "text!: String"
            FROM publication p JOIN library l ON l.id = p.library_id
            WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 OR p.draft = 0) AND (?3 OR l.private = 0)
            ORDER BY p.id"#,
         library,
         include_drafts,
-        include_private
+        include_private,
+        include_tags
     )
     .fetch_all(conn)
     .await?;
