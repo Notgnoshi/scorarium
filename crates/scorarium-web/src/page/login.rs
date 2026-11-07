@@ -2,13 +2,13 @@ use askama::Template;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use scorarium_engine::Engine;
 use scorarium_engine::auth::PasswordState;
-use scorarium_engine::{Engine, Error as EngineError};
 use serde::Deserialize;
 
 use crate::auth::{SessionCookie, Viewer};
 use crate::error::Result;
-use crate::page::Base;
+use crate::page::{Base, form_error};
 use crate::widget::header::Header;
 
 #[derive(Deserialize)]
@@ -106,24 +106,9 @@ pub async fn post(
     };
     match result {
         Ok(token) => Ok((cookie.set(&token), Redirect::to(&next)).into_response()),
-        Err(EngineError::WrongPassword) => {
-            let error = "Wrong password.".to_owned();
-            render(header, state, next, StatusCode::UNAUTHORIZED, Some(error))
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            render(header, state, next, status, Some(error))
         }
-        Err(EngineError::Throttled { retry_after }) => {
-            let minutes = retry_after.as_secs().div_ceil(60);
-            let error = format!("Try again in {minutes} minutes.");
-            render(
-                header,
-                state,
-                next,
-                StatusCode::TOO_MANY_REQUESTS,
-                Some(error),
-            )
-        }
-        Err(EngineError::InvalidValue(message)) => {
-            render(header, state, next, StatusCode::BAD_REQUEST, Some(message))
-        }
-        Err(e) => Err(e.into()),
     }
 }

@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    <div class="list-group mb-3"></div>
+    {% if changed %}<div class="alert alert-success">Password changed.</div>{% endif %}
+    <div class="list-group mb-3">
+        {% if password %}<a class="list-group-item list-group-item-action"
+                            href="/settings/password">Change password</a>{% endif %}
+    </div>
     <form method="post" action="/logout">
         <button class="btn btn-outline-secondary" type="submit">Log out</button>
     </form>

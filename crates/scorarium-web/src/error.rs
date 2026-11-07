@@ -7,7 +7,6 @@ use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 
 use crate::page::Base;
-use crate::widget::breadcrumbs::Crumb;
 use crate::widget::header::Header;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -90,7 +89,7 @@ pub async fn render(State(engine): State<Engine>, request: Request, next: Next) 
         status.canonical_reason().unwrap_or("")
     );
     let page = ErrorPage {
-        base: Base::new(header, title, vec![Crumb::new("Libraries", "/")]), // TODO: Remove crumb once there's another usage of it to make the dead_code lint go away
+        base: Base::new(header, title, vec![]),
         status,
         message,
     };

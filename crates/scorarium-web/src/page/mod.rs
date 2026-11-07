@@ -1,8 +1,12 @@
 pub mod index;
 pub mod login;
 pub mod logout;
+pub mod password;
 pub mod settings;
 
+use axum::http::StatusCode;
+
+use crate::error::Result;
 use crate::widget::breadcrumbs::{Breadcrumbs, Crumb};
 use crate::widget::header::Header;
 
@@ -25,5 +29,22 @@ impl Base {
             breadcrumbs: Breadcrumbs::new(parents, title.clone()),
             title,
         }
+    }
+}
+
+/// Map an engine error that a form shows inline to its status and message, or propagate it
+pub fn form_error(e: scorarium_engine::Error) -> Result<(StatusCode, String)> {
+    use scorarium_engine::Error as E;
+    match e {
+        E::WrongPassword => Ok((StatusCode::UNAUTHORIZED, "Wrong password.".to_owned())),
+        E::Throttled { retry_after } => {
+            let minutes = retry_after.as_secs().div_ceil(60);
+            Ok((
+                StatusCode::TOO_MANY_REQUESTS,
+                format!("Try again in {minutes} minutes."),
+            ))
+        }
+        E::InvalidValue(message) => Ok((StatusCode::BAD_REQUEST, message)),
+        e => Err(e.into()),
     }
 }
