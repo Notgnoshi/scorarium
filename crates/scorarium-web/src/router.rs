@@ -1,4 +1,4 @@
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
 use tower_http::trace::TraceLayer;
@@ -17,6 +17,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
     Router::new()
         .route("/", get(page::index::get))
         .route("/login", get(page::login::get).post(page::login::post))
+        .route("/logout", post(page::logout::post))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)

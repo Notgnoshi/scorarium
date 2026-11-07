@@ -4,7 +4,7 @@ use scorarium_test::TestApp;
 use scorarium_web::SESSION_COOKIE;
 
 #[tokio::test]
-async fn claiming_sets_the_password_and_logs_in() {
+async fn claim_logs_in_and_logout_revokes() {
     let app = TestApp::logged_out(false).await;
     let response = app
         .server
@@ -18,6 +18,11 @@ async fn claiming_sets_the_password_and_logs_in() {
     );
     let token = Token::from(response.cookie(SESSION_COOKIE).value());
     assert!(app.engine.is_authenticated(&token));
+    app.server
+        .post("/logout")
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    assert!(!app.engine.is_authenticated(&token));
 }
 
 #[tokio::test]

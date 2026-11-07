@@ -54,10 +54,14 @@ impl SessionCookie {
         self.jar.add(cookie)
     }
 
-    fn token(&self) -> Option<Token> {
+    pub fn token(&self) -> Option<Token> {
         self.jar
             .get(SESSION_COOKIE)
             .map(|cookie| Token::from(cookie.value()))
+    }
+
+    pub fn clear(self) -> CookieJar {
+        self.jar.remove(Cookie::build(SESSION_COOKIE).path("/"))
     }
 }
 

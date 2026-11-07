@@ -1,5 +1,6 @@
 pub mod index;
 pub mod login;
+pub mod logout;
 
 use crate::widget::breadcrumbs::{Breadcrumbs, Crumb};
 use crate::widget::header::Header;
