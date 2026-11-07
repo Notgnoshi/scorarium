@@ -1,0 +1,35 @@
+<nav aria-label="Pagination">
+    <ul class="pagination">
+        <li class="page-item{% if page <= 1 %} disabled{% endif %}">
+            <a class="page-link"
+               href="{{ path }}?page=1"
+               title="First page"
+               aria-label="First page"><i class="bi bi-chevron-double-left"></i></a>
+        </li>
+        <li class="page-item{% if page <= 1 %} disabled{% endif %}">
+            <a class="page-link" href="{{ path }}?page={{ previous }}">Previous</a>
+        </li>
+        {% for entry in window %}
+            {% if let Some(n) = entry %}
+                <li class="page-item{% if *n == page %} active{% endif %}">
+                    <a class="page-link" href="{{ path }}?page={{ n }}">{{ n }}</a>
+                </li>
+            {% else %}
+                {# djlint:off #}
+                <li class="page-item disabled">
+                    <span class="page-link">&hellip;</span>
+                </li>
+                {# djlint:on #}
+            {% endif %}
+        {% endfor %}
+        <li class="page-item{% if page >= pages %} disabled{% endif %}">
+            <a class="page-link" href="{{ path }}?page={{ next }}">Next</a>
+        </li>
+        <li class="page-item{% if page == pages %} disabled{% endif %}">
+            <a class="page-link"
+               href="{{ path }}?page={{ pages }}"
+               title="Last page"
+               aria-label="Last page"><i class="bi bi-chevron-double-right"></i></a>
+        </li>
+    </ul>
+</nav>
