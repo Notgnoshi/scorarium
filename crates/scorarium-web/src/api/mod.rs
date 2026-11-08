@@ -1,3 +1,4 @@
+pub mod contents;
 pub mod contributor;
 mod query;
 pub mod search;

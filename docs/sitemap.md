@@ -3,6 +3,8 @@
 | URL                                                              | Method | Description                      |
 | ---------------------------------------------------------------- | ------ | -------------------------------- |
 | `/`                                                              | GET    | Home page listing libraries      |
+| `/api/library/{id}/publication/{publication}/contents/add`       | POST   | Add a work to a publication      |
+| `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
 | `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |
 | `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |

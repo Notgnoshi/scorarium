@@ -17,6 +17,7 @@ use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::classification_input::ClassificationInput;
+use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
 use crate::widget::identifiers_input::{self, IdentifiersInput};
@@ -61,6 +62,7 @@ struct Edit {
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
+    contents: Contents,
     destination: String,
     error: Option<String>,
 }
@@ -141,7 +143,7 @@ impl Edit {
             url: format!("/api/library/{}/suggest/{field}", self.library),
             placeholder: String::new(),
             value: value.to_owned(),
-            picked_id: None,
+            picked: None,
             pick_required: None,
             attrs: vec![],
         }
@@ -178,6 +180,7 @@ async fn render(
             links: publication.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(publication, None),
+        contents: Contents::new(publication, &publication.works().await?),
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
     };

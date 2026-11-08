@@ -1,9 +1,10 @@
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::link::{Link, LinkId};
 use scorarium_engine::person::PersonId;
+use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 
 use crate::auth::Viewer;
 use crate::error::Result;
@@ -24,6 +25,25 @@ pub(crate) async fn load<E: Entity>(
             Ok(entity)
         }
         _ => Err(scorarium_engine::Error::NotFound.into()),
+    }
+}
+
+/// Look up a submitted entity id that must belong to `library`
+///
+/// A malformed id, a deleted entity, and another library's entity are all reported as
+/// "That {noun} is not in this library."
+pub(crate) async fn in_library<E: Entity>(
+    engine: &Engine,
+    library: LibraryId,
+    id: &str,
+    noun: &str,
+) -> scorarium_engine::Result<E> {
+    let not_here =
+        || scorarium_engine::Error::InvalidValue(format!("That {noun} is not in this library."));
+    let id: E::Id = id.parse().map_err(|_| not_here())?;
+    match E::load(engine, id).await? {
+        Some(entity) if entity.library() == library => Ok(entity),
+        _ => Err(not_here()),
     }
 }
 
@@ -60,6 +80,56 @@ pub(crate) struct Contributor {
     pub name: String,
     pub sort_name: String,
     pub roles: Vec<Role>,
+}
+
+/// A work as listed in a publication's contents
+#[derive(Debug)]
+pub(crate) struct ContainedWork {
+    pub id: WorkId,
+    pub draft: bool,
+    pub title: String,
+    /// The work's first catalog number, which is its most confidently recognized one
+    pub catalog_number: Option<CatalogNumber>,
+    pub contributors: Vec<Contributor>,
+}
+
+impl ContainedWork {
+    /// Get the lowercase sort name of the first composer or author
+    pub fn primary_sort_name(&self) -> Option<String> {
+        self.contributors
+            .iter()
+            .find(|c| c.roles.iter().any(is_primary))
+            .map(|c| c.sort_name.to_lowercase())
+    }
+}
+
+impl From<&Work> for ContainedWork {
+    fn from(work: &Work) -> ContainedWork {
+        ContainedWork {
+            id: work.id(),
+            draft: work.is_draft(),
+            title: work.title().to_owned(),
+            catalog_number: work.catalog_numbers().first().cloned(),
+            contributors: group_contributors(work.contributors()),
+        }
+    }
+}
+
+/// Sort works in book order
+pub(crate) fn book_order(works: &mut [ContainedWork]) {
+    works.sort_by_cached_key(|work| {
+        let sort_name = work
+            .contributors
+            .first()
+            .map(|c| c.sort_name.to_lowercase());
+        (
+            sort_name.is_none(),
+            sort_name,
+            work.catalog_number.is_none(),
+            work.catalog_number.clone(),
+            work.title.to_lowercase(),
+        )
+    });
 }
 
 /// Check whether the role is composer or author

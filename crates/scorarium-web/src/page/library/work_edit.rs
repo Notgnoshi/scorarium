@@ -141,7 +141,7 @@ impl Edit {
             url: format!("/api/library/{}/suggest/{field}", self.library),
             placeholder: String::new(),
             value: value.to_owned(),
-            picked_id: None,
+            picked: None,
             pick_required: None,
             attrs: vec![],
         }

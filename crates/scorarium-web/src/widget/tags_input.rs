@@ -21,7 +21,7 @@ impl TagsInput {
             url: format!("/api/library/{}/suggest/tag", self.library),
             placeholder: "Add a tag".to_owned(),
             value: String::new(),
-            picked_id: None,
+            picked: None,
             pick_required: None,
             // The pattern mirrors the engine's tag rule, so the browser refuses a tag that would
             // fail the whole Save. Uppercase passes because the engine lowercases it.

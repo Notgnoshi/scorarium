@@ -4,8 +4,7 @@ use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::{Contributed, Entity};
-use scorarium_engine::library::LibraryId;
-use scorarium_engine::person::{Person, PersonId};
+use scorarium_engine::person::Person;
 use serde::Deserialize;
 
 use crate::auth::{ApiSession, Viewer};
@@ -32,20 +31,6 @@ fn invalid(message: &str) -> scorarium_engine::Error {
     scorarium_engine::Error::InvalidValue(message.to_owned())
 }
 
-/// Parse a person id that must belong to `library`
-async fn person_in(
-    engine: &Engine,
-    library: LibraryId,
-    id: &str,
-) -> scorarium_engine::Result<PersonId> {
-    let not_here = || invalid("That person is not in this library.");
-    let id: PersonId = id.parse().map_err(|_| not_here())?;
-    match Person::load(engine, id).await? {
-        Some(person) if person.library() == library => Ok(id),
-        _ => Err(not_here()),
-    }
-}
-
 async fn apply_add<E: Contributed>(
     engine: &Engine,
     entity: &mut E,
@@ -56,8 +41,8 @@ async fn apply_add<E: Contributed>(
         "" => Err(invalid("Pick a person from the list.")),
         "new" => entity.create_contributor(&form.name, role).await.map(drop),
         id => {
-            let person = person_in(engine, entity.library(), id).await?;
-            entity.add_contributor(person, role).await
+            let person: Person = entity::in_library(engine, entity.library(), id, "person").await?;
+            entity.add_contributor(person.id(), role).await
         }
     }
 }
@@ -68,8 +53,9 @@ async fn apply_remove<E: Contributed>(
     form: &RemoveForm,
 ) -> scorarium_engine::Result<()> {
     let role: Role = form.role.parse()?;
-    let person = person_in(engine, entity.library(), &form.person).await?;
-    entity.remove_contributor(person, &role).await
+    let person: Person =
+        entity::in_library(engine, entity.library(), &form.person, "person").await?;
+    entity.remove_contributor(person.id(), &role).await
 }
 
 /// Render the section with the outcome of an action

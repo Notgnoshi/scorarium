@@ -97,6 +97,14 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                     post(api::contributor::remove::<Work>),
                 )
                 .route(
+                    "/library/{id}/publication/{publication}/contents/add",
+                    post(api::contents::add),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contents/remove",
+                    post(api::contents::remove),
+                )
+                .route(
                     "/library/{id}/publication/{publication}/contributor/add",
                     post(api::contributor::add::<Publication>),
                 )

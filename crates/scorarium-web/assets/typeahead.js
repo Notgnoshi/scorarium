@@ -74,8 +74,11 @@ function attachTypeahead(input) {
             close();
         } else if (document.activeElement === input) {
             open();
-            // The fragment lists its best match first, so Enter takes it without arrowing down.
-            highlight(entries()[0]);
+            // The fragment lists its best match first, so Enter takes it without arrowing down,
+            // unless the field opts out because its free text is usually the intended value.
+            if (!("noDefaultPick" in input.dataset)) {
+                highlight(entries()[0]);
+            }
         }
     }
 

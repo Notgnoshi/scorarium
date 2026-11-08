@@ -48,7 +48,7 @@ impl Contributors {
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
             value: String::new(),
-            picked_id: Some("person".to_owned()),
+            picked: Some(("person", String::new())),
             pick_required: Some("Pick a person from the list".to_owned()),
             attrs: vec![],
         }
@@ -62,7 +62,7 @@ impl Contributors {
             url: format!("/api/library/{}/suggest/role", self.library),
             placeholder: "Role".to_owned(),
             value: String::new(),
-            picked_id: None,
+            picked: None,
             pick_required: None,
             attrs: vec![("required", String::new())],
         }

@@ -17,7 +17,7 @@ use askama::Template;
 /// 1. `link(href)` renders a link
 /// 2. `value(text)` renders a button carrying a `data-value` that inputs `text` into the form
 /// 3. `pick(id, text)` renders a button that, like `value()`, inputs `text`, but also records `id`
-///    in the hidden input listed by [Typeahead::picked_id]
+///    in the hidden input listed by [Typeahead::picked]
 /// 4. `empty()` renders `No matches`
 #[derive(Debug, Template)]
 #[template(path = "widget/typeahead.html")]
@@ -31,8 +31,8 @@ pub struct Typeahead {
     pub placeholder: String,
     /// The current text
     pub value: String,
-    /// A hidden input used by `pick()` to store the ID of the picked entity
-    pub picked_id: Option<String>,
+    /// The hidden input that stores the picked entity's id: its field name and initial value
+    pub picked: Option<(&'static str, String)>,
     /// The validation error message to display when a pick is *required* (to disallow free text entry)
     pub pick_required: Option<String>,
     /// Any extra attributes to add to the `<input>`
