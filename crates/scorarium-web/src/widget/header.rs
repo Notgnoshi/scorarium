@@ -35,6 +35,7 @@ impl Header {
     /// The navbar search box, echoing the results page's query
     fn search_box(&self) -> Typeahead {
         Typeahead {
+            id: "q".to_owned(),
             name: "q".to_owned(),
             url: "/api/search".to_owned(),
             placeholder: "Search...".to_owned(),

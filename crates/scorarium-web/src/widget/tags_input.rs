@@ -16,6 +16,7 @@ impl TagsInput {
     /// Build the add box, which suggests the library's tags
     fn typeahead(&self) -> Typeahead {
         Typeahead {
+            id: "tag".to_owned(),
             name: "tag".to_owned(),
             url: format!("/api/library/{}/suggest/tag", self.library),
             placeholder: "Add a tag".to_owned(),

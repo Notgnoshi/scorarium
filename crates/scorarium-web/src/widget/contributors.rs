@@ -43,6 +43,7 @@ impl Contributors {
     /// Build the person picker, whose pick is posted as `person`
     fn person(&self) -> Typeahead {
         Typeahead {
+            id: "name".to_owned(),
             name: "name".to_owned(),
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
@@ -56,6 +57,7 @@ impl Contributors {
     /// Build the role field, which suggests the library's roles and the conventional five
     fn role(&self) -> Typeahead {
         Typeahead {
+            id: "role".to_owned(),
             name: "role".to_owned(),
             url: format!("/api/library/{}/suggest/role", self.library),
             placeholder: "Role".to_owned(),

@@ -136,6 +136,7 @@ impl Edit {
     /// Build a vocabulary field with suggestions from the library
     fn typeahead(&self, field: &str, value: &str) -> Typeahead {
         Typeahead {
+            id: field.to_owned(),
             name: field.to_owned(),
             url: format!("/api/library/{}/suggest/{field}", self.library),
             placeholder: String::new(),

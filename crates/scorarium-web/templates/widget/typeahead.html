@@ -1,18 +1,18 @@
 <div class="dropdown">
     <input class="form-control"
            type="search"
-           id="{{ name }}"
+           id="{{ id }}"
            name="{{ name }}"
            value="{{ value }}"
            placeholder="{{ placeholder }}"
            autocomplete="off"
            role="combobox"
            aria-autocomplete="list"
-           aria-controls="{{ name }}-menu"
+           aria-controls="{{ id }}-menu"
            aria-expanded="false"
            data-typeahead="{{ url }}"
            {% if let Some(message) = pick_required %}data-pick-required="{{ message }}"{% endif %}
            {% for (attr, attr_value) in attrs %} {{ attr }}="{{ attr_value }}"{% endfor %}>
-    {% if let Some(id) = picked_id %}<input type="hidden" name="{{ id }}">{% endif %}
-    <div class="dropdown-menu w-100" id="{{ name }}-menu" role="listbox" data-bs-popper="static"></div>
+    {% if let Some(picked) = picked_id %}<input type="hidden" name="{{ picked }}">{% endif %}
+    <div class="dropdown-menu w-100" id="{{ id }}-menu" role="listbox" data-bs-popper="static"></div>
 </div>

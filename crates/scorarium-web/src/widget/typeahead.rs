@@ -22,7 +22,9 @@ use askama::Template;
 #[derive(Debug, Template)]
 #[template(path = "widget/typeahead.html")]
 pub struct Typeahead {
-    /// The form field name and the element id
+    /// The element id, unique on the page
+    pub id: String,
+    /// The form field name
     pub name: String,
     /// The route that returns the suggestion fragment for `?q=`
     pub url: String,
