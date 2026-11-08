@@ -9,7 +9,6 @@ use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::EntityKind;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::PersonSummary;
-use scorarium_engine::value::Classification;
 use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};

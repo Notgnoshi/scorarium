@@ -4,9 +4,9 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::entity::{AnyEntity, Entity};
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::value::{Classification, Tag};
+use scorarium_engine::value::Tag;
 use serde::Deserialize;
 
 use crate::auth::Session;

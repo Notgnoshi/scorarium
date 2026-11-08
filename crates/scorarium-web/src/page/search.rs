@@ -2,8 +2,6 @@ use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::EntityKind;
-use scorarium_engine::value::Classification;
 use serde::Deserialize;
 
 use crate::auth::Viewer;
