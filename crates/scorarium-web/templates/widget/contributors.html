@@ -28,7 +28,10 @@
         </table>
     {% endif %}
     <form class="row g-2" hx-post="{{ api }}/contributor/add" hx-target="#contributors">
-        <div class="col position-relative" data-pick-icon>
+        <div class="col position-relative"
+             data-pick-icon="person"
+             data-existing="bi-person-check"
+             data-new="bi-person-plus">
             {{ self.person() }}
             <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
         </div>
