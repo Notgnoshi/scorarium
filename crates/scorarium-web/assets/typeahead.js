@@ -45,9 +45,15 @@ function attachTypeahead(input) {
         // Aborting the older request keeps a slow response from overwriting a newer one.
         controller?.abort();
         controller = new AbortController();
+        const params = new URLSearchParams({ q: text });
+        const sibling = input.dataset.typeaheadWith;
+        const value = sibling && input.form?.elements[sibling]?.value;
+        if (value) {
+            params.set(sibling, value);
+        }
         let html;
         try {
-            const response = await fetch(`${input.dataset.typeahead}?q=${encodeURIComponent(text)}`, {
+            const response = await fetch(`${input.dataset.typeahead}?${params}`, {
                 signal: controller.signal,
             });
             if (!response.ok) {
