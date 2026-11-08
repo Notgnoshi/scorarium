@@ -1,31 +1,58 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    <div class="list-group">
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
         {% for library in libraries %}
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-                <span>
-                    <a href="/library/{{ library.id }}">{{ library.name }}</a>
-                    {% if library.private %}
-                        <i class="bi bi-lock-fill" title="Private"></i>
-                    {% endif %}
-                </span>
-                <span class="text-body-secondary">{{ library.publications }} publication{{ library.publications|pluralize }}</span>
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h2 class="card-title fs-5 d-flex justify-content-between">
+                            <a class="stretched-link link-body-emphasis text-decoration-none"
+                               href="/library/{{ library.id }}">{{ library.name }}</a>
+                            {% if library.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
+                        </h2>
+                        <p class="card-text text-body-secondary mb-0">
+                            {{ library.publications }} publication{{ library.publications|pluralize }}
+                            {% if library.composers > 0 || library.authors > 0 %}
+                                <br>
+                                {% if library.composers > 0 %}
+                                    {{ library.composers }} composer{{ library.composers|pluralize }}
+                                {%- endif %}
+                                {%- if library.composers > 0 && library.authors > 0 %},{% endif %}
+                                {% if library.authors > 0 %}
+                                    {{ library.authors }} author{{ library.authors|pluralize }}
+                                {% endif %}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
             </div>
         {% endfor %}
+        {% if logged_in %}
+            <div class="col">
+                <div class="card h-100 border-dashed">
+                    <div class="card-body">
+                        <h2 class="card-title fs-5 text-body-secondary">New library</h2>
+                        <form method="post" action="/library">
+                            <div class="input-group">
+                                <input class="form-control"
+                                       type="text"
+                                       name="name"
+                                       placeholder="Library name"
+                                       aria-label="Library name"
+                                       required>
+                                <button class="btn btn-secondary" type="submit">
+                                    <i class="bi bi-plus-lg"></i> Add
+                                </button>
+                            </div>
+                        </form>
+                        {% if let Some(error) = error %}<div class="alert alert-danger mt-3 mb-0">{{ error }}</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
     </div>
     {% if libraries.is_empty() && !logged_in %}
         <p><a href="/login?next=/">Log in</a> to view libraries</p>
-    {% endif %}
-    {% if logged_in %}
-        {% if let Some(error) = error %}<div class="alert alert-danger mt-3">{{ error }}</div>{% endif %}
-        <form method="post" action="/library" class="mt-3">
-            <div class="input-group">
-                <input class="form-control" type="text" name="name" placeholder="Library name" required>
-                <button class="btn btn-secondary" type="submit">
-                    <i class="bi bi-plus-lg"></i> Add library
-                </button>
-            </div>
-        </form>
     {% endif %}
 {% endblock %}

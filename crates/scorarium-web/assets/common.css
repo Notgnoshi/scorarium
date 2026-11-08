@@ -23,3 +23,7 @@
 .table {
     --bs-table-striped-bg: rgba(var(--bs-emphasis-color-rgb), 0.025);
 }
+
+.border-dashed {
+    border-style: dashed;
+}

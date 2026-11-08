@@ -17,7 +17,7 @@ use crate::icon::Icon;
 use crate::page::library::entity::{self, ExternalLink, group_contributors, is_primary};
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
-use crate::sort::{self, Column as _};
+use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::stars::Stars;
 
