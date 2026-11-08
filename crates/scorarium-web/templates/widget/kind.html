@@ -1,18 +1,15 @@
 {% macro kind(kind, classification) %}
-    {% if kind == EntityKind::Person %}
-        <i class="bi bi-person" title="Person"></i>
-    {% else if classification == Some(Classification::Music) %}
-        <i class="bi bi-music-note-beamed" title="Sheet music"></i>
-    {% else if classification == Some(Classification::Prose) %}
-        <i class="bi bi-book" title="Prose"></i>
-    {% else %}
-        <i class="bi bi-question-circle" title="Unclassified"></i>
-    {% endif %}
-    {% if kind == EntityKind::Person %}
+    {{ crate::icon::Icon::kind(*kind, *classification) }}
+    {% if kind == scorarium_engine::entity::EntityKind::Person %}
         Person
-    {% else if kind == EntityKind::Publication %}
+    {% else if kind == scorarium_engine::entity::EntityKind::Publication %}
         Publication
     {% else %}
         Work
+    {% endif %}
+    {% if classification == Some(scorarium_engine::value::Classification::Music) %}
+        <span class="text-body-secondary">Sheet music</span>
+    {% else if classification == Some(scorarium_engine::value::Classification::Prose) %}
+        <span class="text-body-secondary">Prose</span>
     {% endif %}
 {% endmacro %}

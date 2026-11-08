@@ -25,6 +25,8 @@ struct Summary {
     name: String,
     private: bool,
     publications: usize,
+    composers: usize,
+    authors: usize,
 }
 
 #[derive(Deserialize)]
@@ -44,11 +46,20 @@ async fn render(
         if library.is_private() && !viewer.is_logged_in() {
             continue;
         }
+        let roles = library.roles(false).await?;
+        let count = |name: &str| {
+            roles
+                .iter()
+                .find(|(role, _)| role.as_str() == name)
+                .map_or(0, |(_, count)| *count)
+        };
         libraries.push(Summary {
             id: library.id(),
             name: library.name().to_owned(),
             private: library.is_private(),
             publications: library.publication_count(false).await?,
+            composers: count("composer"),
+            authors: count("author"),
         });
     }
     let page = Index {

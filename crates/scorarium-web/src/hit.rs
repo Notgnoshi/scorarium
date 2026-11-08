@@ -18,6 +18,20 @@ pub(crate) struct Hit {
 }
 
 impl Hit {
+    pub fn kind_rank(&self) -> (u8, u8) {
+        let kind = match self.kind {
+            EntityKind::Person => 0,
+            EntityKind::Publication => 1,
+            EntityKind::Work => 2,
+        };
+        let classification = match self.classification {
+            Some(Classification::Music) => 0,
+            Some(Classification::Prose) => 1,
+            None => 2,
+        };
+        (kind, classification)
+    }
+
     /// Present `entity`, which belongs to `library`
     pub(crate) fn new(library: LibraryId, library_name: String, entity: &AnyEntity) -> Hit {
         match entity {

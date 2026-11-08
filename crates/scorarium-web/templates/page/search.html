@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "widget/tag.html" as badge %}
 {% import "widget/kind.html" as kind %}
+{% import "widget/sort.html" as sort %}
 {% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     <h1>{{ base.title }}</h1>
@@ -9,21 +10,29 @@
     {% else if hits.is_empty() %}
         <p>No matches.</p>
     {% else %}
-        {% if total_hits > hits.len() %}
-            <p>{{ hits.len() }} of {{ total_hits }} matches</p>
-        {% else %}
-            <p>{{ total_hits }} matches</p>
-        {% endif %}
-        <table class="table align-middle">
-            <thead class="text-nowrap">
+        <p>
+            {% if total_hits > hits.len() %}
+                {{ hits.len() }} of {{ total_hits }} matches
+            {% else %}
+                {{ total_hits }} matches
+            {% endif %}
+            {% if sort.column != Column::Relevance %}
+                <span class="text-body-secondary"><a href="{{ sort.href(Column::Relevance) }}">sort by relevance</a></span>
+            {% endif %}
+        </p>
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th>Title</th>
-                    <th>Library</th>
-                    <th>Kind</th>
-                    {% if logged_in %}<th>Tags</th>{% endif %}
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Library, "Library") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Kind, "Kind") %}
+                    {% endcall %}
+                    {% if logged_in %}<th class="text-body-secondary fw-normal">Tags</th>{% endif %}
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="table-group-divider">
                 {% for hit in hits %}
                     <tr>
                         <td>
@@ -38,7 +47,9 @@
                                 </div>
                             </div>
                         </td>
-                        <td>{{ hit.library_name }}</td>
+                        <td>
+                            <a class="text-body" href="/library/{{ hit.library }}">{{ hit.library_name }}</a>
+                        </td>
                         <td class="text-nowrap">
                             {% call kind::kind(hit.kind, hit.classification) %}
                             {% endcall %}

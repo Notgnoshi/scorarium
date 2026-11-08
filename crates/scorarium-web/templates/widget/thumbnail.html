@@ -1,17 +1,5 @@
 {% macro thumbnail(kind, classification) %}
-    <span class="d-inline-flex align-items-center justify-content-center flex-shrink-0 border rounded text-body-secondary"
+    <span class="d-inline-flex align-items-center justify-content-center flex-shrink-0 border rounded text-body-secondary fs-4"
           style="width: 3.5rem;
-                 height: 3.5rem">
-        {% if kind == EntityKind::Person %}
-            <i class="bi bi-person fs-4" title="Person"></i>
-        {% else if kind == EntityKind::Publication %}
-            <i class="bi bi-book fs-4" title="Publication"></i>
-        {% else if classification == Some(Classification::Music) %}
-            <i class="bi bi-file-earmark-music fs-4" title="Work (music)"></i>
-        {% else if classification == Some(Classification::Prose) %}
-            <i class="bi bi-file-earmark-text fs-4" title="Work (prose)"></i>
-        {% else %}
-            <i class="bi bi-file-earmark fs-4" title="Work"></i>
-        {% endif %}
-    </span>
+                 height: 3.5rem">{{ crate::icon::Icon::kind(*kind, *classification) }}</span>
 {% endmacro %}

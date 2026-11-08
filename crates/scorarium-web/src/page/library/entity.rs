@@ -7,6 +7,7 @@ use scorarium_engine::person::PersonId;
 
 use crate::auth::Viewer;
 use crate::error::Result;
+use crate::icon::Icon;
 
 /// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
 pub(crate) async fn load<E: Entity>(
@@ -38,18 +39,16 @@ pub(crate) struct ExternalLink {
     pub id: LinkId,
     pub href: String,
     pub label: String,
+    pub icon: Icon,
 }
 
 impl From<&Link> for ExternalLink {
     fn from(link: &Link) -> ExternalLink {
-        let label = match &link.record {
-            Some(record) => record.kind().to_string(),
-            None => link.url.as_url().host_str().unwrap_or_default().to_owned(),
-        };
         ExternalLink {
             id: link.id,
             href: link.url.to_string(),
-            label,
+            label: link.site_name().to_owned(),
+            icon: Icon::link(link),
         }
     }
 }
@@ -63,12 +62,15 @@ pub(crate) struct Contributor {
     pub roles: Vec<Role>,
 }
 
+/// Check whether the role is composer or author
+pub(crate) fn is_primary(role: &Role) -> bool {
+    matches!(role.as_str(), "author" | "composer")
+}
+
 /// Group an entity's contributors by person for display
 pub(crate) fn group_contributors(
     contributors: &[scorarium_engine::contributor::Contributor],
 ) -> Vec<Contributor> {
-    let is_primary = |role: &Role| matches!(role.as_str(), "author" | "composer");
-
     let mut people: Vec<Contributor> = Vec::new();
     for c in contributors {
         match people.iter_mut().find(|p| p.person == c.person) {

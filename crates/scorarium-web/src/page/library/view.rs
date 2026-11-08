@@ -1,11 +1,9 @@
-use std::cmp::Ordering;
-
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Tag, Year};
@@ -13,9 +11,9 @@ use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
-use crate::page::library::entity::{self, group_contributors};
+use crate::page::library::entity::{self, group_contributors, is_primary};
 use crate::page::{Base, Crumb};
-use crate::sort;
+use crate::sort::{self, compare};
 use crate::widget::header::Header;
 use crate::widget::library_nav::{Active, LibraryNav};
 use crate::widget::stars::Stars;
@@ -43,8 +41,8 @@ struct Summary {
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Column {
-    #[default]
     Title,
+    #[default]
     Contributors,
     Year,
     Stars,
@@ -66,6 +64,10 @@ impl sort::Column for Column {
             Column::Stars => "stars",
         }
     }
+
+    fn descending_first(self) -> bool {
+        matches!(self, Column::Year | Column::Stars)
+    }
 }
 
 type Sort = sort::Sort<Column>;
@@ -85,18 +87,7 @@ pub(crate) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::
 }
 
 /// Sort summaries by the column, empties last in either direction, title breaking ties
-fn sort_summaries(summaries: &mut [Summary], sort: Sort) {
-    // An absent value sorts after any present one, whichever way the present ones are ordered.
-    fn compare<T: Ord>(a: Option<T>, b: Option<T>, descending: bool) -> Ordering {
-        match (a, b) {
-            (Some(a), Some(b)) if descending => b.cmp(&a),
-            (Some(a), Some(b)) => a.cmp(&b),
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (None, None) => Ordering::Equal,
-        }
-    }
-
+fn sort_summaries(summaries: &mut [Summary], sort: &Sort) {
     summaries.sort_by(|a, b| {
         let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
         let by_column = match sort.column {
@@ -133,7 +124,10 @@ pub async fn get(
         .iter()
         .filter(|publication| !publication.is_draft())
         .map(|publication| {
-            let contributors = group_contributors(publication.contributors());
+            let contributors: Vec<_> = group_contributors(publication.contributors())
+                .into_iter()
+                .filter(|c| c.roles.iter().any(is_primary))
+                .collect();
             Summary {
                 id: publication.id(),
                 title: publication.title().unwrap_or_default().to_owned(),
@@ -150,7 +144,7 @@ pub async fn get(
         .sort
         .filter(|sort| sort.column != Column::Stars || viewer.is_logged_in())
         .unwrap_or_default();
-    sort_summaries(&mut publications, sort);
+    sort_summaries(&mut publications, &sort);
 
     let page = Library {
         base: Base::new(header, library.name(), vec![Crumb::new("Libraries", "/")]),
@@ -189,21 +183,9 @@ mod tests {
             summary("b", None),
             summary("c", Some(1888)),
         ];
-        sort_summaries(
-            &mut summaries,
-            Sort {
-                column: Column::Year,
-                descending: true,
-            },
-        );
+        sort_summaries(&mut summaries, &Sort::try_from("-year".to_owned()).unwrap());
         assert_eq!(titles(&summaries), ["c", "a", "b"]);
-        sort_summaries(
-            &mut summaries,
-            Sort {
-                column: Column::Year,
-                descending: false,
-            },
-        );
+        sort_summaries(&mut summaries, &Sort::try_from("year".to_owned()).unwrap());
         assert_eq!(titles(&summaries), ["a", "c", "b"]);
     }
 
@@ -219,7 +201,7 @@ mod tests {
             tags: Vec::new(),
         };
         let mut summaries = vec![summary("Zebra"), summary("aardvark"), summary("Mouse")];
-        sort_summaries(&mut summaries, Sort::default());
+        sort_summaries(&mut summaries, &Sort::try_from("title".to_owned()).unwrap());
         let titles: Vec<_> = summaries.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(titles, ["aardvark", "Mouse", "Zebra"]);
     }

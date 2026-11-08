@@ -3,6 +3,7 @@ mod assets;
 mod auth;
 mod error;
 mod hit;
+mod icon;
 mod page;
 mod router;
 mod serve;

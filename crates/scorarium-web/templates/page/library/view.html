@@ -1,48 +1,58 @@
 {% extends "base.html" %}
 {% import "widget/tag.html" as badge %}
 {% import "widget/sort.html" as sort %}
+{% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     {{ nav }}
-    <table class="table">
-        <thead class="text-nowrap">
-            <tr>
-                {% call sort::header(sort, Column::Title, "Title") %}
-                {% endcall %}
-                {% call sort::header(sort, Column::Contributors, "Contributors") %}
-                {% endcall %}
-                {% call sort::header(sort, Column::Year, "Year") %}
-                {% endcall %}
-                {% if logged_in %}
-                    {% call sort::header(sort, Column::Stars, "Stars") %}
-                    {% endcall %}
-                    <th>Tags</th>
-                {% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for publication in publications %}
+    {% if publications.is_empty() %}
+        <p>No publications.</p>
+    {% else %}
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <td>
-                        <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
-                    </td>
-                    <td>
-                        {% for contributor in publication.contributors %}
-                            {%- if !loop.first %}, {% endif -%}
-                            <a href="/library/{{ id }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
-                        {%- endfor %}
-                    </td>
-                    <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Contributors, "Contributors") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Year, "Year") %}
+                    {% endcall %}
                     {% if logged_in %}
-                        <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
-                        <td>
-                            {% for tag in publication.tags %}
-                                {% call badge::badge(id, tag) %}
-                                {% endcall %}
-                            {% endfor %}
-                        </td>
+                        {% call sort::header(sort, Column::Stars, "Stars") %}
+                        {% endcall %}
+                        <th class="text-body-secondary fw-normal">Tags</th>
                     {% endif %}
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for publication in publications %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {% call thumbnail::thumbnail(EntityKind::Publication, None) %}
+                                {% endcall %}
+                                <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                            </div>
+                        </td>
+                        <td>
+                            {% for contributor in publication.contributors %}
+                                {%- if !loop.first %}, {% endif -%}
+                                <a class="text-body"
+                                   href="/library/{{ id }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            {%- endfor %}
+                        </td>
+                        <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                        {% if logged_in %}
+                            <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
+                            <td>
+                                {% for tag in publication.tags %}
+                                    {% call badge::badge(id, tag) %}
+                                    {% endcall %}
+                                {% endfor %}
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
 {% endblock %}

@@ -10,12 +10,14 @@ use scorarium_engine::person::PersonId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::Year;
 use scorarium_engine::work::{CatalogNumber, WorkId};
+use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
 use crate::page::library::entity::{self, ExternalLink, group_contributors};
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
+use crate::sort;
 use crate::widget::header::Header;
 
 #[derive(Template)]
@@ -30,6 +32,38 @@ struct Person {
     sort_name: String,
     links: Vec<ExternalLink>,
     publications: Vec<Publication>,
+    sort: Sort,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Column {
+    #[default]
+    Title,
+    Role,
+    Year,
+}
+
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[Column::Title, Column::Role, Column::Year];
+
+    fn name(self) -> &'static str {
+        match self {
+            Column::Title => "title",
+            Column::Role => "role",
+            Column::Year => "year",
+        }
+    }
+
+    fn descending_first(self) -> bool {
+        self == Column::Year
+    }
+}
+
+type Sort = sort::Sort<Column>;
+
+#[derive(Deserialize)]
+pub(crate) struct Query {
+    sort: Option<Sort>,
 }
 
 /// A publication the person contributed to, directly or through a contained work
@@ -89,7 +123,7 @@ fn roles_of(
         .unwrap_or_default()
 }
 
-/// Nest each work under every publication that contains it, then sort
+/// Nest each work under every publication that contains it, ordered by catalog number then title
 fn nest_works(
     mut publications: Vec<Publication>,
     works: Vec<(Work, Vec<Publication>)>,
@@ -106,7 +140,6 @@ fn nest_works(
             publications[index].works.push(work.clone());
         }
     }
-    publications.sort_by_cached_key(|publication| publication.title.to_lowercase());
     for publication in &mut publications {
         publication.works.sort_by_cached_key(|work| {
             (
@@ -119,6 +152,23 @@ fn nest_works(
     publications
 }
 
+/// Sort publications by the column, breaking ties with the title
+fn sort_publications(publications: &mut [Publication], sort: &Sort) {
+    publications.sort_by(|a, b| {
+        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let by_column = match sort.column {
+            Column::Title => sort::compare(Some(&a_title), Some(&b_title), sort.descending),
+            Column::Role => sort::compare(
+                a.roles.first().map(|role| role.as_str().to_lowercase()),
+                b.roles.first().map(|role| role.as_str().to_lowercase()),
+                sort.descending,
+            ),
+            Column::Year => sort::compare(a.year, b.year, sort.descending),
+        };
+        by_column.then_with(|| a_title.cmp(&b_title))
+    });
+}
+
 pub async fn get(
     viewer: Viewer,
     method: Method,
@@ -126,6 +176,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     if library.is_private() && !viewer.is_logged_in() {
@@ -162,6 +213,10 @@ pub async fn get(
         works.push((Work::new(&work, person.id()), containing));
     }
 
+    let mut publications = nest_works(direct, works);
+    let sort = query.sort.unwrap_or_default();
+    sort_publications(&mut publications, &sort);
+
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
@@ -175,7 +230,8 @@ pub async fn get(
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
         links: person.links().iter().map(Into::into).collect(),
-        publications: nest_works(direct, works),
+        publications,
+        sort,
     };
     Ok(Html(page.render()?).into_response())
 }
@@ -216,6 +272,6 @@ mod tests {
         nocturnes.works.push(nocturne.clone());
         let mut album = publication("2", "Album", vec![]);
         album.works.push(nocturne);
-        assert_eq!(nested, [album, nocturnes]);
+        assert_eq!(nested, [nocturnes, album]);
     }
 }

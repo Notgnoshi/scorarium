@@ -1,13 +1,11 @@
 {% extends "base.html" %}
+{% import "widget/card.html" as card %}
+{% import "widget/sort.html" as sort %}
 {% block content %}
     <div class="row">
         <div class="col-auto">
-            <div class="border rounded d-flex flex-column align-items-center justify-content-center text-center text-body-secondary p-2"
-                 style="width: 10rem;
-                        height: 14rem">
-                <i class="bi bi-person fs-1" title="Person"></i>
-                <span>{{ name }}</span>
-            </div>
+            {% call card::card(crate::icon::Icon::Person, name) %}
+            {% endcall %}
         </div>
         <div class="col">
             <h1 class="d-flex justify-content-between align-items-center">
@@ -22,47 +20,56 @@
                 {% endif %}
             </h1>
             <p class="text-body-secondary">{{ sort_name }}</p>
-            <dl>
-                {% if !links.is_empty() %}
-                    <dt>Links</dt>
+            {% if !links.is_empty() %}
+                <div class="d-flex flex-wrap gap-3">
                     {% for link in links %}
-                        <dd>
-                            <a href="{{ link.href }}" target="_blank" rel="noopener">{{ link.label }}</a>
-                        </dd>
+                        <a href="{{ link.href }}"
+                           title="{{ link.href }}"
+                           target="_blank"
+                           rel="noopener">{{ link.icon }} {{ link.label }}</a>
                     {% endfor %}
-                {% endif %}
-            </dl>
+                </div>
+            {% endif %}
         </div>
     </div>
     {% if !publications.is_empty() %}
-        <h2>Publications</h2>
-        <ul class="list-group">
-            {% for publication in publications %}
-                <li class="list-group-item">
-                    <div class="d-flex justify-content-between">
-                        <div>
+        <h2 class="mt-4">Publications</h2>
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Role, "Role") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Year, "Year") %}
+                    {% endcall %}
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for publication in publications %}
+                    <tr>
+                        <td>
                             <a href="/library/{{ library }}/publication/{{ publication.id }}">{{ publication.title }}</a>
                             {% if publication.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-                            {% if !publication.roles.is_empty() %}({{ publication.roles|join(", ") }}){% endif %}
-                        </div>
-                        {% if let Some(year) = publication.year %}<span class="text-body-secondary">{{ year }}</span>{% endif %}
-                    </div>
-                    {% if !publication.works.is_empty() %}
-                        <ul>
-                            {% for work in publication.works %}
-                                <li>
-                                    <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
-                                    {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-                                    {% if !work.roles.is_empty() %}({{ work.roles|join(", ") }}){% endif %}
-                                    {% if let Some(number) = work.catalog_number %}
-                                        <span class="text-body-secondary">{{ number }}</span>
-                                    {% endif %}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% endif %}
-                </li>
-            {% endfor %}
-        </ul>
+                        </td>
+                        <td>{{ publication.roles|join(", ") }}</td>
+                        <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                    </tr>
+                    {% for work in publication.works %}
+                        <tr>
+                            <td class="ps-5">
+                                <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
+                                {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                                {% if let Some(number) = work.catalog_number %}
+                                    <span class="text-body-secondary">{{ number }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ work.roles|join(", ") }}</td>
+                            <td></td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
     {% endif %}
 {% endblock %}

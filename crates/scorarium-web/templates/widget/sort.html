@@ -1,6 +1,7 @@
 {% macro header(sort, column, label) %}
-    <th>
-        <a class="link-body-emphasis text-decoration-none" href="{{ sort.href(*column) }}">
+    <th class="text-body-secondary fw-normal">
+        <a class="{% if sort.column == column %}link-body-emphasis{% else %}link-secondary{% endif %} text-decoration-none"
+           href="{{ sort.href(*column) }}">
             {{ label }}
             {% if sort.is(*column, false) %}
                 <i class="bi bi-caret-up-fill" title="Sorted ascending"></i>
