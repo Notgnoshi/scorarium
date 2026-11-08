@@ -5,7 +5,7 @@
 {% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     {{ nav }}
-    <h2>{{ tag }}</h2>
+    <h2><span class="badge text-bg-secondary">{{ tag }} <span class="opacity-75">{{ hits.len() }}</span></span></h2>
     {% if hits.is_empty() %}
         <p>No items.</p>
     {% else %}
