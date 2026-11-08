@@ -19,6 +19,9 @@
 | `/library/{id}/person/{person}/edit`                             | GET    | Edit or delete a person          |
 | `/library/{id}/person/{person}/edit`                             | POST   | Save a person                    |
 | `/library/{id}/person/{person}`                                  | GET    | Person details                   |
+| `/library/{id}/publication/{publication}/delete`                 | POST   | Delete a publication             |
+| `/library/{id}/publication/{publication}/edit`                   | GET    | Edit or delete a publication     |
+| `/library/{id}/publication/{publication}/edit`                   | POST   | Save a publication               |
 | `/library/{id}/publication/{publication}`                        | GET    | Publication details              |
 | `/library/{id}/tag/{tag}`                                        | GET    | Entries with one tag             |
 | `/library/{id}/tags`                                             | GET    | Tags in a library                |

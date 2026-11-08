@@ -6,6 +6,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::LibraryId;
+use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Classification, Tag, Year};
 use scorarium_engine::work::{CatalogNumber, WorkId};
 use serde::Deserialize;
@@ -27,6 +28,7 @@ struct Publication {
     base: Base,
     logged_in: bool,
     library: LibraryId,
+    id: PublicationId,
     draft: bool,
     title: String,
     publisher: Option<String>,
@@ -227,6 +229,7 @@ pub async fn get(
         base: Base::new(header, title, parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),
+        id: publication.id(),
         draft: publication.is_draft(),
         title: title.to_owned(),
         publisher: publication.publisher().map(ToOwned::to_owned),
