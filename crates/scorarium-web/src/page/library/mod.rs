@@ -8,3 +8,4 @@ pub mod tag;
 pub mod tags;
 pub mod view;
 pub mod work;
+pub mod work_edit;

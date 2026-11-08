@@ -25,6 +25,10 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
+            "/library/{id}/work/{work}/edit",
+            get(page::library::work_edit::get).post(page::library::work_edit::post),
+        )
+        .route(
             "/library/{id}/person/{person}",
             get(page::library::person::get),
         )
