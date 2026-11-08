@@ -14,6 +14,7 @@ use crate::error::Result;
 use crate::hit::Hit;
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
+use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::library_nav::{Active, LibraryNav};
 
@@ -25,6 +26,46 @@ struct Tagged {
     library: LibraryId,
     tag: Tag,
     hits: Vec<Hit>,
+    sort: Sort,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Column {
+    #[default]
+    Title,
+    Kind,
+}
+
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[Column::Title, Column::Kind];
+
+    fn name(self) -> &'static str {
+        match self {
+            Column::Title => "title",
+            Column::Kind => "kind",
+        }
+    }
+}
+
+type Sort = sort::Sort<Column>;
+
+#[derive(Deserialize)]
+pub(crate) struct Query {
+    sort: Option<Sort>,
+}
+
+/// Sort hits by the column, title breaking ties
+fn sort_hits(hits: &mut [Hit], sort: &Sort) {
+    hits.sort_by(|a, b| {
+        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let by_column = match sort.column {
+            Column::Title => sort::compare(Some(&a_title), Some(&b_title), sort.descending),
+            Column::Kind => {
+                sort::compare(Some(a.kind_rank()), Some(b.kind_rank()), sort.descending)
+            }
+        };
+        by_column.then_with(|| a_title.cmp(&b_title))
+    });
 }
 
 #[derive(Deserialize)]
@@ -38,6 +79,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path(params): Path<Params>,
+    axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Response> {
     let library = view::load(&engine, &params.id).await?;
     let tag = Tag::from_str(&params.tag).map_err(|_| scorarium_engine::Error::NotFound)?;
@@ -55,7 +97,8 @@ pub async fn get(
     let mut hits: Vec<Hit> = entities
         .map(|entity| Hit::new(library.id(), library.name().to_owned(), &entity))
         .collect();
-    hits.sort_by_key(|hit| hit.title.to_lowercase());
+    let sort = query.sort.unwrap_or_default();
+    sort_hits(&mut hits, &sort);
 
     let parents = vec![
         Crumb::new("Libraries", "/"),
@@ -68,6 +111,7 @@ pub async fn get(
         library: library.id(),
         tag,
         hits,
+        sort,
     };
     Ok(Html(page.render()?).into_response())
 }

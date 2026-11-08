@@ -111,8 +111,8 @@
         <h2 class="mt-4">
             Contents
             {% if sort.column != Column::Contents %}
-                <small class="fs-6 fw-normal text-body-secondary">sorted by {{ sort.column.name() }},
-                    <a href="{{ sort.href(Column::Contents) }}">back to book order</a></small>
+                <small class="fs-6 fw-normal text-body-secondary">
+                    <a href="{{ sort.href(Column::Contents) }}">default sort</a></small>
             {% endif %}
         </h2>
         <table class="table table-striped table-hover align-middle">
