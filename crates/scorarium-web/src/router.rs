@@ -101,6 +101,10 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                     post(api::contents::add),
                 )
                 .route(
+                    "/library/{id}/publication/{publication}/contents/add-range",
+                    post(api::contents::add_range),
+                )
+                .route(
                     "/library/{id}/publication/{publication}/contents/remove",
                     post(api::contents::remove),
                 )

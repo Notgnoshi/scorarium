@@ -3,6 +3,7 @@
 | URL                                                              | Method | Description                      |
 | ---------------------------------------------------------------- | ------ | -------------------------------- |
 | `/`                                                              | GET    | Home page listing libraries      |
+| `/api/library/{id}/publication/{publication}/contents/add-range` | POST   | Add a numbered range of works    |
 | `/api/library/{id}/publication/{publication}/contents/add`       | POST   | Add a work to a publication      |
 | `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
 | `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |

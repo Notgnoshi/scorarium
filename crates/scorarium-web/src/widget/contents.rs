@@ -29,6 +29,18 @@ pub struct AddFields {
     pub role: String,
 }
 
+/// The range form's values
+#[derive(Debug)]
+pub struct RangeFields {
+    pub name: String,
+    pub person: String,
+    pub title: String,
+    pub prefix: String,
+    pub from: String,
+    pub to: String,
+    pub role: String,
+}
+
 /// A publication's works, added and removed in place with each change saved immediately
 #[derive(Debug, Template)]
 #[template(path = "widget/contents.html")]
@@ -43,12 +55,16 @@ pub struct Contents {
     pub numbered: bool,
     pub marks: Marks,
     pub add: AddFields,
+    pub range: RangeFields,
+    /// Whether the range form shows expanded
+    pub range_open: bool,
     pub error: Option<String>,
 }
 
 impl Contents {
-    /// Build the box with no marks, no error, and the pre-filled add form
+    /// Build the box with no marks, no error, and the pre-filled add and range forms
     pub fn new(publication: &Publication, works: &[Work]) -> Contents {
+        let (person, name, role) = prefill(publication, works);
         let mut contained: Vec<ContainedWork> = works.iter().map(Into::into).collect();
         book_order(&mut contained);
         let numbered = contained.iter().any(|work| work.catalog_number.is_some());
@@ -63,7 +79,24 @@ impl Contents {
             works: contained,
             numbered,
             marks: Marks::default(),
-            add: prefill(publication, works),
+            add: AddFields {
+                name: name.clone(),
+                person: person.clone(),
+                title: String::new(),
+                work: String::new(),
+                catalog_number: String::new(),
+                role: role.clone(),
+            },
+            range: RangeFields {
+                name,
+                person,
+                title: String::new(),
+                prefix: String::new(),
+                from: String::new(),
+                to: String::new(),
+                role,
+            },
+            range_open: false,
             error: None,
         }
     }
@@ -75,17 +108,21 @@ impl Contents {
         )
     }
 
-    /// Build the person picker, whose pick is posted as `person` and whose free text is a new person
-    fn person(&self) -> Typeahead {
+    /// Build a person picker, whose pick is posted as `person` and whose free text is a new person
+    fn person(&self, id: &str, name: &str, person: &str, required: bool) -> Typeahead {
         Typeahead {
-            id: "contents-name".to_owned(),
+            id: id.to_owned(),
             name: "name".to_owned(),
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
-            value: self.add.name.clone(),
-            picked: Some(("person", self.add.person.clone())),
+            value: name.to_owned(),
+            picked: Some(("person", person.to_owned())),
             pick_required: None,
-            attrs: vec![],
+            attrs: if required {
+                vec![("required", String::new())]
+            } else {
+                vec![]
+            },
         }
     }
 
@@ -109,13 +146,13 @@ impl Contents {
     }
 
     /// Build the role field, which suggests the library's roles and the conventional five
-    fn role(&self) -> Typeahead {
+    fn role(&self, id: &str, value: &str) -> Typeahead {
         Typeahead {
-            id: "contents-role".to_owned(),
+            id: id.to_owned(),
             name: "role".to_owned(),
             url: format!("/api/library/{}/suggest/role", self.library),
             placeholder: "Role".to_owned(),
-            value: self.add.role.clone(),
+            value: value.to_owned(),
             picked: None,
             pick_required: None,
             attrs: vec![("required", String::new())],
@@ -124,7 +161,10 @@ impl Contents {
 }
 
 /// Pre-fill the sole composer or author across the publication and its works, if there is one
-fn prefill(publication: &Publication, works: &[Work]) -> AddFields {
+///
+/// Return the person's id, their name, and the role, with the id and name blank and the
+/// classification's conventional role when there is no sole one.
+fn prefill(publication: &Publication, works: &[Work]) -> (String, String, String) {
     let primary: Vec<(PersonId, &str, &str)> = publication
         .contributors()
         .iter()
@@ -132,7 +172,7 @@ fn prefill(publication: &Publication, works: &[Work]) -> AddFields {
         .filter(|c| is_primary(&c.role))
         .map(|c| (c.person, c.name.as_str(), c.role.as_str()))
         .collect();
-    let (person, name, role) = match primary.first() {
+    match primary.first() {
         Some(&(person, name, role)) if primary.iter().all(|(p, _, _)| *p == person) => {
             (person.to_string(), name.to_owned(), role.to_owned())
         }
@@ -143,14 +183,6 @@ fn prefill(publication: &Publication, works: &[Work]) -> AddFields {
             };
             (String::new(), String::new(), role.to_owned())
         }
-    };
-    AddFields {
-        name,
-        person,
-        title: String::new(),
-        work: String::new(),
-        catalog_number: String::new(),
-        role,
     }
 }
 

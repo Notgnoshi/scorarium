@@ -68,3 +68,43 @@ async fn adding_a_title_with_a_known_catalog_number_links_the_existing_work() {
     assert!(contents.iter().any(|w| w.id() == etude.id()));
     assert_eq!(library.works().await.unwrap().len(), works.len());
 }
+
+#[tokio::test]
+async fn range_add_creates_links_and_is_idempotent() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let works = library.works().await.unwrap();
+    let polichinelle = works.iter().find(|w| w.title() == "Polichinelle").unwrap();
+    let rachmaninoff = polichinelle.contributors()[0].person.to_string();
+    let album = library
+        .publications()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.title() == Some("Russian piano album"))
+        .unwrap();
+    let before = album.works().await.unwrap().len();
+    let url = format!(
+        "/api/library/{}/publication/{}/contents/add-range",
+        library.id(),
+        album.id()
+    );
+    let form = [
+        ("name", "Sergei Rachmaninoff"),
+        ("person", rachmaninoff.as_str()),
+        ("title", "Prelude"),
+        ("prefix", "Op. 3 No."),
+        ("from", "1"),
+        ("to", "5"),
+        ("role", "composer"),
+    ];
+    app.server.post(&url).form(&form).await.assert_status_ok();
+    let contents = album.works().await.unwrap();
+    assert_eq!(contents.len(), before + 4);
+    assert!(contents.iter().any(|w| w.id() == polichinelle.id()));
+    assert_eq!(library.works().await.unwrap().len(), works.len() + 3);
+
+    app.server.post(&url).form(&form).await.assert_status_ok();
+    assert_eq!(album.works().await.unwrap().len(), before + 4);
+    assert_eq!(library.works().await.unwrap().len(), works.len() + 3);
+}

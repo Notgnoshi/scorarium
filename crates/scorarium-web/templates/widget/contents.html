@@ -60,7 +60,7 @@
              data-existing="bi-person-check"
              data-new="bi-person-plus"
              data-new-work-only>
-            {{ self.person() }}
+            {{ self.person("contents-name", add.name, add.person, false) }}
             <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
         </div>
         <div class="col position-relative"
@@ -77,9 +77,61 @@
                    placeholder="Catalog No."
                    data-new-work-only>
         </div>
-        <div class="col" data-new-work-only>{{ self.role() }}</div>
+        <div class="col" data-new-work-only>{{ self.role("contents-role", add.role) }}</div>
         <div class="col-auto">
             <button class="btn btn-outline-secondary" title="Add work">
+                <i class="bi bi-plus-lg"></i> Add
+            </button>
+        </div>
+    </form>
+    <button type="button"
+            class="btn btn-link btn-sm"
+            data-bs-toggle="collapse"
+            data-bs-target="#contents-range"
+            aria-controls="contents-range"
+            aria-expanded="{% if range_open %}true{% else %}false{% endif %}"
+            title="Add a numbered range">
+        <i class="bi bi-list-ol"></i> Add range
+    </button>
+    <form class="collapse{% if range_open %} show{% endif %} row g-2 mt-1"
+          id="contents-range"
+          hx-post="{{ self.api() }}/contents/add-range"
+          hx-target="#contents"
+          hx-disable="find button">
+        <div class="col position-relative"
+             data-pick-icon="person"
+             data-existing="bi-person-check"
+             data-new="bi-person-plus">
+            {{ self.person("range-name", range.name, range.person, true) }}
+            <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+        </div>
+        <div class="col">
+            <input class="form-control" name="title" value="{{ range.title }}" placeholder="Title" required>
+        </div>
+        <div class="col">
+            <input class="form-control" name="prefix" value="{{ range.prefix }}" placeholder="Op. 28 No." required>
+        </div>
+        <div class="col">
+            <input class="form-control"
+                   type="number"
+                   min="1"
+                   name="from"
+                   value="{{ range.from }}"
+                   placeholder="From"
+                   required>
+        </div>
+        <div class="col">
+            <input class="form-control"
+                   type="number"
+                   min="1"
+                   name="to"
+                   value="{{ range.to }}"
+                   placeholder="To"
+                   required>
+        </div>
+        <div class="col">{{ self.role("range-role", range.role) }}</div>
+        <div class="col-auto">
+            <button class="btn btn-outline-secondary" title="Add works">
                 <i class="bi bi-plus-lg"></i> Add
             </button>
         </div>
