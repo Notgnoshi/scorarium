@@ -98,6 +98,30 @@ pub enum LinkKind {
     Librivox,
 }
 
+impl LinkKind {
+    /// Get the site name
+    pub fn name(self) -> &'static str {
+        match self {
+            LinkKind::OpenLibrary => "Open Library",
+            LinkKind::Wikidata => "Wikidata",
+            LinkKind::MusicBrainz => "MusicBrainz",
+            LinkKind::Imslp => "IMSLP",
+            LinkKind::Viaf => "VIAF",
+            LinkKind::Gnd => "GND",
+            LinkKind::Isni => "ISNI",
+            LinkKind::Loc => "Library of Congress",
+            LinkKind::K10plus => "K10plus",
+            LinkKind::Dnb => "DNB",
+            LinkKind::Harvard => "Harvard Library",
+            LinkKind::Goodreads => "Goodreads",
+            LinkKind::LibraryThing => "LibraryThing",
+            LinkKind::InternetArchive => "Internet Archive",
+            LinkKind::Gutenberg => "Project Gutenberg",
+            LinkKind::Librivox => "LibriVox",
+        }
+    }
+}
+
 impl fmt::Display for LinkKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -294,6 +318,17 @@ impl Link {
             url: url.parse()?,
             record,
         })
+    }
+
+    /// Get the site name for this link
+    pub fn site_name(&self) -> &str {
+        match &self.record {
+            Some(record) => record.kind().name(),
+            None => {
+                let host = self.url.as_url().host_str().unwrap_or("");
+                host.strip_prefix("www.").unwrap_or(host)
+            }
+        }
     }
 }
 
@@ -564,6 +599,20 @@ mod tests {
                 "{input:?}"
             );
         }
+    }
+
+    #[test]
+    fn site_name_prefers_the_recognized_site_and_strips_www() {
+        let imslp = Link::new(
+            1,
+            "https://imslp.org/wiki/Category:Bach,_Johann_Sebastian",
+            "imslp",
+            Some("Bach,_Johann_Sebastian".to_owned()),
+        )
+        .unwrap();
+        let other = Link::new(2, "https://www.example.com/page", "", None).unwrap();
+        assert_eq!(imslp.site_name(), "IMSLP");
+        assert_eq!(other.site_name(), "example.com");
     }
 
     #[test]
