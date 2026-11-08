@@ -7,7 +7,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::value::{Classification, Stars};
-use scorarium_engine::work::{Work, WorkId};
+use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
@@ -15,6 +15,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
+use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
@@ -31,6 +32,10 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
+    add_catalog_number: Vec<String>,
+    #[serde(default)]
+    remove_catalog_number: Vec<String>,
+    #[serde(default)]
     add_link: Vec<String>,
     #[serde(default)]
     remove_link: Vec<String>,
@@ -44,6 +49,7 @@ struct Edit {
     id: WorkId,
     draft: bool,
     form: Form,
+    catalog_numbers: CatalogNumbersInput,
     links: LinksInput,
     error: Option<String>,
 }
@@ -51,6 +57,8 @@ struct Edit {
 struct Parsed {
     classification: Option<Classification>,
     stars: Option<Stars>,
+    add_catalog_numbers: Vec<CatalogNumber>,
+    remove_catalog_numbers: Vec<CatalogNumber>,
     add_links: Vec<HttpUrl>,
     remove_links: Vec<LinkId>,
 }
@@ -59,6 +67,16 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     Ok(Parsed {
         classification: form.classification.as_deref().map(str::parse).transpose()?,
         stars: form.stars.map(Stars::try_from).transpose()?,
+        add_catalog_numbers: form
+            .add_catalog_number
+            .iter()
+            .map(|number| number.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
+        remove_catalog_numbers: form
+            .remove_catalog_number
+            .iter()
+            .map(|number| number.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
         add_links: form
             .add_link
             .iter()
@@ -121,6 +139,9 @@ fn render(
         id: work.id(),
         draft: work.is_draft(),
         form,
+        catalog_numbers: CatalogNumbersInput {
+            numbers: work.catalog_numbers().to_vec(),
+        },
         links: LinksInput {
             links: work.links().iter().map(Into::into).collect(),
         },
@@ -146,6 +167,8 @@ pub async fn get(
         instrumentation: text(work.instrumentation()),
         stars: work.stars().map(|stars| stars.get()),
         note: text(work.note()),
+        add_catalog_number: vec![],
+        remove_catalog_number: vec![],
         add_link: vec![],
         remove_link: vec![],
     };
@@ -180,7 +203,13 @@ pub async fn post(
         .await?;
     work.set_stars(parsed.stars).await?;
     work.set_note(Some(&form.note)).await?;
-    // Removals run first so that removing a link and adding it back leaves it present.
+    // Removals run first so that removing an entry and adding it back leaves it present.
+    for number in &parsed.remove_catalog_numbers {
+        work.remove_catalog_number(number).await?;
+    }
+    for number in parsed.add_catalog_numbers {
+        work.add_catalog_number(number).await?;
+    }
     for link in parsed.remove_links {
         work.remove_link(link).await?;
     }

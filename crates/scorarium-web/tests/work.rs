@@ -62,3 +62,51 @@ async fn removing_and_re_adding_a_link_keeps_it() {
     let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
     assert!(after.links().iter().any(|l| l.url == link.url));
 }
+
+#[tokio::test]
+async fn edit_applies_additions_and_removals_in_one_save() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| work.links().is_empty())
+        .unwrap();
+    work.add_link("https://example.com/removed".parse().unwrap())
+        .await
+        .unwrap();
+    work.add_link("https://example.com/kept".parse().unwrap())
+        .await
+        .unwrap();
+    let [removed, kept] = work.links() else {
+        panic!("expected exactly two links");
+    };
+    let removed = removed.id.to_string();
+    let mut form = save(
+        &work,
+        &[
+            ("add_catalog_number", "Op. 9 No. 2"),
+            ("remove_link", &removed),
+        ],
+    );
+    form[0].1 = "Renamed";
+    app.server
+        .post(&format!(
+            "/library/{}/work/{}/edit",
+            library.id(),
+            work.id()
+        ))
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert_eq!(after.title(), "Renamed");
+    assert!(
+        after
+            .catalog_numbers()
+            .contains(&"Op. 9 No. 2".parse().unwrap())
+    );
+    assert_eq!(after.links(), std::slice::from_ref(kept));
+}

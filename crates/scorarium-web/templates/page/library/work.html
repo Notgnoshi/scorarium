@@ -17,6 +17,9 @@
             {% for number in catalog_numbers %}
                 {%- if !loop.first %} • {% endif -%}
                 {{ number }}
+                {%- if !number.is_recognized() %}
+                    <i class="bi bi-question-circle" title="Unrecognized catalog numbering"></i>
+                {%- endif %}
             {%- endfor %}
         </p>
     {% endif %}
