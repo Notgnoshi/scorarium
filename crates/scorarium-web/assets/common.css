@@ -1,13 +1,13 @@
 .link-svg {
     height: 1em;
     width: auto;
-    vertical-align: -.125em;
+    vertical-align: -0.125em;
 }
 
 .link-favicon {
     height: 1em;
     width: 1em;
-    vertical-align: -.125em;
+    vertical-align: -0.125em;
 }
 
 /* The generic link glyph after a favicon shows only when the favicon fails to load. */
@@ -26,4 +26,19 @@
 
 .border-dashed {
     border-style: dashed;
+}
+
+fieldset.box {
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+fieldset.box > legend {
+    float: none;
+    width: auto;
+    padding: 0 0.5rem;
+    margin-bottom: 0;
+    font-size: 1.25rem;
 }

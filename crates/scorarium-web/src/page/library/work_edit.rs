@@ -12,6 +12,7 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
+use crate::icon::Icon;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -52,6 +53,7 @@ pub(crate) struct Form {
 #[template(path = "page/library/work_edit.html")]
 struct Edit {
     base: Base,
+    icon: Icon,
     library: LibraryId,
     id: WorkId,
     draft: bool,
@@ -158,6 +160,7 @@ fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
+        icon: Icon::work(work.classification()),
         base: Base::new(header, work.title(), parents),
         library: library.id(),
         id: work.id(),

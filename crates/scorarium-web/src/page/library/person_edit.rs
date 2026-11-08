@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
+use crate::icon::Icon;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -52,6 +53,7 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
     base: Base,
+    icon: Icon,
     library: LibraryId,
     id: PersonId,
     draft: bool,
@@ -77,6 +79,7 @@ fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
+        icon: Icon::Person,
         base: Base::new(header, person.name(), parents),
         library: library.id(),
         id: person.id(),
