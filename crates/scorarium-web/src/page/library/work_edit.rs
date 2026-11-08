@@ -5,6 +5,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
+use scorarium_engine::value::Classification;
 use scorarium_engine::work::{Work, WorkId};
 use serde::Deserialize;
 
@@ -12,12 +13,14 @@ use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::widget::classification_input::ClassificationInput;
 use crate::widget::header::Header;
 use crate::widget::typeahead::Typeahead;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
     title: String,
+    classification: Option<String>,
     key: String,
     time_signature: String,
     instrumentation: String,
@@ -35,7 +38,27 @@ struct Edit {
     error: Option<String>,
 }
 
+struct Parsed {
+    classification: Option<Classification>,
+}
+
+fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
+    Ok(Parsed {
+        classification: form.classification.as_deref().map(str::parse).transpose()?,
+    })
+}
+
 impl Edit {
+    fn classification(&self) -> ClassificationInput {
+        ClassificationInput {
+            value: self
+                .form
+                .classification
+                .as_deref()
+                .and_then(|c| c.parse().ok()),
+        }
+    }
+
     /// Build a vocabulary field with suggestions from the library
     fn typeahead(&self, field: &str, value: &str) -> Typeahead {
         Typeahead {
@@ -84,6 +107,7 @@ pub async fn get(
     let text = |value: Option<&str>| value.unwrap_or_default().to_owned();
     let form = Form {
         title: work.title().to_owned(),
+        classification: work.classification().map(|c| c.to_string()),
         key: text(work.key()),
         time_signature: text(work.time_signature()),
         instrumentation: text(work.instrumentation()),
@@ -101,6 +125,13 @@ pub async fn post(
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let parsed = match parse(&form) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            return render(header, &library, &work, form, status, Some(error));
+        }
+    };
     // The title is the only field here the engine can reject, so setting it first leaves the work
     // untouched when it is.
     if let Err(e) = work.set_title(&form.title).await {
@@ -112,5 +143,8 @@ pub async fn post(
     work.set_instrumentation(Some(&form.instrumentation))
         .await?;
     work.set_note(Some(&form.note)).await?;
+    if let Some(classification) = parsed.classification {
+        work.set_classification(classification).await?;
+    }
     Ok(Redirect::to(&format!("/library/{}/work/{}", library.id(), work.id())).into_response())
 }

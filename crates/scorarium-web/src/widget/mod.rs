@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod breadcrumbs;
+pub mod classification_input;
 pub mod header;
 pub mod library_nav;
 pub mod pagination;

@@ -1,0 +1,20 @@
+<div class="btn-group" role="group" aria-label="Classification">
+    <input class="btn-check"
+           type="radio"
+           name="classification"
+           id="classification-music"
+           value="music"
+           {% if value == Some(Classification::Music) %}checked{% endif %}>
+    <label class="btn btn-outline-secondary" for="classification-music">
+        <i class="bi bi-music-note-beamed" title="Sheet music"></i> Music
+    </label>
+    <input class="btn-check"
+           type="radio"
+           name="classification"
+           id="classification-prose"
+           value="prose"
+           {% if value == Some(Classification::Prose) %}checked{% endif %}>
+    <label class="btn btn-outline-secondary" for="classification-prose">
+        <i class="bi bi-book" title="Prose"></i> Prose
+    </label>
+</div>
