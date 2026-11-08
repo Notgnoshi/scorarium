@@ -2,8 +2,8 @@ use std::convert::Infallible;
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use axum::http::{Method, Uri};
-use axum::response::Redirect;
+use axum::http::{Method, StatusCode, Uri};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -109,11 +109,38 @@ impl FromRequestParts<Engine> for Session {
     type Rejection = Redirect;
 
     async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, Redirect> {
-        let Ok(cookie) = SessionCookie::from_request_parts(parts, engine).await;
-        match cookie.token() {
-            Some(token) if engine.is_authenticated(&token) => Ok(Session),
-            _ => Err(login_redirect(&parts.method, &parts.uri)),
+        let Ok(viewer) = Viewer::from_request_parts(parts, engine).await;
+        if viewer.is_logged_in() {
+            Ok(Session)
+        } else {
+            Err(login_redirect(&parts.method, &parts.uri))
         }
+    }
+}
+
+/// A live session for an `/api` route
+///
+/// Extracting it from a logged-out request rejects with a 401 carrying `HX-Redirect`, which htmx
+/// uses to redirect to the login page.
+pub struct ApiSession;
+
+impl FromRequestParts<Engine> for ApiSession {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, Response> {
+        let Ok(viewer) = Viewer::from_request_parts(parts, engine).await;
+        if viewer.is_logged_in() {
+            return Ok(ApiSession);
+        }
+        let current = parts
+            .headers
+            .get("HX-Current-URL")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<Uri>().ok());
+        // The current URL is a page the browser is showing, so returning to it is always a GET,
+        // whatever the method of the API request.
+        let url = current.map_or_else(|| "/login".to_owned(), |uri| login_url(&Method::GET, &uri));
+        Err((StatusCode::UNAUTHORIZED, [("HX-Redirect", url)]).into_response())
     }
 }
 
