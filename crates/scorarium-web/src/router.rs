@@ -61,6 +61,7 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/api",
             Router::new()
                 .route("/search", get(api::search::get))
+                .route("/library/{id}/suggest/{field}", get(api::suggest::get))
                 .fallback(|| async { StatusCode::NOT_FOUND }),
         )
         .layer(trace)

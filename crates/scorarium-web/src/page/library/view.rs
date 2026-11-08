@@ -76,7 +76,7 @@ pub(crate) struct Query {
 }
 
 /// Load the library at `id`, or fail with 404 for an unparseable or unknown id
-pub(super) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::library::Library> {
+pub(crate) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::library::Library> {
     let id: LibraryId = id.parse().map_err(|_| scorarium_engine::Error::NotFound)?;
     Ok(engine
         .library(id)

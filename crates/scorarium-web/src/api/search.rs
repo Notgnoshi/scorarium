@@ -5,7 +5,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::EntityKind;
 use scorarium_engine::value::Classification;
 
-use crate::api::Query;
+use crate::api::{Query, SUGGESTION_LIMIT};
 use crate::auth::Viewer;
 use crate::error::Result;
 use crate::hit::Hit;
@@ -17,8 +17,6 @@ struct Fragment {
     hits: Vec<Hit>,
 }
 
-const LIMIT: usize = 8;
-
 pub async fn get(
     viewer: Viewer,
     State(engine): State<Engine>,
@@ -28,7 +26,9 @@ pub async fn get(
     if query.is_empty() {
         return Ok(Html(String::new()));
     }
-    let results = engine.search(query, viewer.is_logged_in(), LIMIT).await?;
+    let results = engine
+        .search(query, viewer.is_logged_in(), SUGGESTION_LIMIT)
+        .await?;
     let fragment = Fragment {
         query: query.to_owned(),
         hits: results.hits.iter().map(Into::into).collect(),
