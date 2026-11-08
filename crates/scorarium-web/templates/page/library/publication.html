@@ -108,15 +108,15 @@
     {% endif %}
     {% if !works.is_empty() %}
         <h2>Contents</h2>
-        <table class="table">
-            <thead class="text-nowrap">
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th>Title</th>
-                    {% if numbered %}<th>Catalog No.</th>{% endif %}
-                    <th>Contributors</th>
+                    <th class="text-body-secondary fw-normal">Title</th>
+                    {% if numbered %}<th class="text-body-secondary fw-normal">Catalog No.</th>{% endif %}
+                    <th class="text-body-secondary fw-normal">Contributors</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="table-group-divider">
                 {% for work in works %}
                     <tr>
                         <td>

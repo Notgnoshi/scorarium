@@ -8,15 +8,15 @@
     {% if hits.is_empty() %}
         <p>No items.</p>
     {% else %}
-        <table class="table align-middle">
-            <thead class="text-nowrap">
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th>Title</th>
-                    <th>Kind</th>
-                    <th>Tags</th>
+                    <th class="text-body-secondary fw-normal">Title</th>
+                    <th class="text-body-secondary fw-normal">Kind</th>
+                    <th class="text-body-secondary fw-normal">Tags</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="table-group-divider">
                 {% for hit in hits %}
                     <tr>
                         <td>
