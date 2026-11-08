@@ -969,6 +969,7 @@ impl Entity for Work {
     type Id = WorkId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Work;
 
     async fn load(engine: &Engine, id: WorkId) -> Result<Option<Work>> {
         let mut conn = engine.begin_read().await?;

@@ -135,6 +135,9 @@ pub trait Entity: Sized {
     type Field: Copy + Eq + fmt::Display + FromStr;
     type Proposal: Clone + fmt::Debug;
 
+    /// The kind of this entity
+    const KIND: EntityKind;
+
     /// Load the entity with the given id, if it exists
     fn load(engine: &Engine, id: Self::Id) -> impl Future<Output = Result<Option<Self>>> + Send;
 

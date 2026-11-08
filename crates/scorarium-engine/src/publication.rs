@@ -1451,6 +1451,7 @@ impl Entity for Publication {
     type Id = PublicationId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Publication;
 
     async fn load(engine: &Engine, id: PublicationId) -> Result<Option<Publication>> {
         let mut conn = engine.begin_read().await?;

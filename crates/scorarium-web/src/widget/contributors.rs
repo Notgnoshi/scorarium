@@ -1,28 +1,33 @@
 use askama::Template;
 use scorarium_engine::contributor::Contributor;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::Contributed;
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::work::{Work, WorkId};
 
 use crate::widget::typeahead::Typeahead;
 
-/// A work's contributors, edited in place with each change saved immediately
+/// An entity's contributors, edited in place with each change saved immediately
 #[derive(Debug, Template)]
 #[template(path = "widget/contributors.html")]
 pub struct Contributors {
     pub library: LibraryId,
-    pub work: WorkId,
+    /// The route prefix the forms post under
+    pub api: String,
     /// One entry per person and role pairing
     pub contributors: Vec<Contributor>,
     pub error: Option<String>,
 }
 
 impl Contributors {
-    pub fn new(work: &Work, error: Option<String>) -> Contributors {
+    pub fn new<E: Contributed>(entity: &E, error: Option<String>) -> Contributors {
         Contributors {
-            library: work.library(),
-            work: work.id(),
-            contributors: work.contributors().to_vec(),
+            library: entity.library(),
+            api: format!(
+                "/api/library/{}/{}/{}",
+                entity.library(),
+                E::KIND,
+                entity.id()
+            ),
+            contributors: entity.contributors().to_vec(),
             error,
         }
     }

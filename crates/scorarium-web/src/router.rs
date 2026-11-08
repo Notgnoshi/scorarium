@@ -2,6 +2,8 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
+use scorarium_engine::publication::Publication;
+use scorarium_engine::work::Work;
 use tower_http::trace::TraceLayer;
 
 use crate::auth::CookieSettings;
@@ -72,11 +74,19 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
                 .route(
                     "/library/{id}/work/{work}/contributor/add",
-                    post(api::contributor::add),
+                    post(api::contributor::add::<Work>),
                 )
                 .route(
                     "/library/{id}/work/{work}/contributor/remove",
-                    post(api::contributor::remove),
+                    post(api::contributor::remove::<Work>),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contributor/add",
+                    post(api::contributor::add::<Publication>),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contributor/remove",
+                    post(api::contributor::remove::<Publication>),
                 )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
