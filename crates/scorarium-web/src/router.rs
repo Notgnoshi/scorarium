@@ -64,13 +64,14 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             engine.clone(),
             error::render,
         ))
-        // API routes don't use the error page middleware.
+        // API routes render errors as fragments for htmx to swap in.
         .nest(
             "/api",
             Router::new()
                 .route("/search", get(api::search::get))
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
-                .fallback(|| async { StatusCode::NOT_FOUND }),
+                .fallback(|| async { StatusCode::NOT_FOUND })
+                .layer(middleware::from_fn(error::render_fragment)),
         )
         .layer(trace)
         .layer(Extension(CookieSettings {
