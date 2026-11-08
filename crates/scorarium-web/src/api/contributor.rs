@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::{Person, PersonId};
 use scorarium_engine::work::Work;

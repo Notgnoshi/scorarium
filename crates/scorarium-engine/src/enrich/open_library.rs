@@ -345,7 +345,7 @@ mod tests {
 
     use super::*;
     use crate::enrich::EnrichmentStatus;
-    use crate::entity;
+    use crate::entity::{self, Contributed};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 

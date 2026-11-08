@@ -9,7 +9,9 @@ use sqlx::SqliteConnection;
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
 use crate::enrich::Enrichment;
-use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{
+    self, AnyEntity, AnyEntityId, Contributed, Entity, EntityKind, ProposalId, Timestamp,
+};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -191,10 +193,6 @@ impl Work {
     /// List the work's links in the order they were added
     pub fn links(&self) -> &[Link] {
         &self.links
-    }
-
-    pub fn contributors(&self) -> &[Contributor] {
-        &self.contributors
     }
 
     async fn from_row(engine: &Engine, conn: &mut SqliteConnection, row: WorkRow) -> Result<Work> {
@@ -811,13 +809,16 @@ impl Work {
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::containing(&self.engine, self.id).await
     }
+}
 
-    /// Create a person with the owning work's draft state
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn create_contributor(
+impl Contributed for Work {
+    fn contributors(&self) -> &[Contributor] {
+        &self.contributors
+    }
+
+    async fn create_contributor(
         &mut self,
-        name: impl AsRef<str>,
+        name: impl AsRef<str> + Send,
         role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
@@ -866,12 +867,7 @@ impl Work {
         Ok(person)
     }
 
-    /// Add a person from the work's library as a contributor in `role`
-    ///
-    /// Commit the person if it is a draft and the work is committed.
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted or its library has no such person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
+    async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let (name, sort_name) = person::names(&mut tx, self.library, person)
@@ -926,10 +922,7 @@ impl Work {
         Ok(())
     }
 
-    /// Remove a contributor from the work
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
+    async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(

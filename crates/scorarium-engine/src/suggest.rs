@@ -424,7 +424,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::Entity;
+    use crate::entity::{Contributed, Entity};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 

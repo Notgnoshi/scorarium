@@ -415,7 +415,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
-    use crate::entity::Entity;
+    use crate::entity::{Contributed, Entity};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
     use crate::{Engine, Error};

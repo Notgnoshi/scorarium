@@ -1057,6 +1057,7 @@ pub fn derive_sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity::Contributed;
     use crate::holding::NewHolding;
     use crate::link::LinkKind;
     use crate::publication::ImportSeed;

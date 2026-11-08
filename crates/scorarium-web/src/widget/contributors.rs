@@ -1,6 +1,6 @@
 use askama::Template;
 use scorarium_engine::contributor::Contributor;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::work::{Work, WorkId};
 
