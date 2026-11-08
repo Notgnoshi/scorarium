@@ -3,6 +3,7 @@ function attachListInput(container) {
     const entries = container.querySelector("[data-entries]");
     const template = container.querySelector("template");
     const input = container.querySelector("[data-add]");
+    const kind = container.querySelector("[data-add-kind]");
 
     const chips = "chips" in container.dataset;
 
@@ -12,21 +13,26 @@ function attachListInput(container) {
         if (!text) {
             return;
         }
+        // A kind select stages the entry as "kind:text" so the two cannot misalign.
+        const value = kind ? `${kind.value}:${text}` : text;
         if (!input.checkValidity()) {
             input.reportValidity();
             return;
         }
-        if ([...entries.children].some((entry) => entry.dataset.value === text)) {
+        if ([...entries.children].some((entry) => entry.dataset.value === value)) {
             return;
         }
         const entry = template.content.firstElementChild.cloneNode(true);
-        entry.dataset.value = text;
+        entry.dataset.value = value;
         entry.querySelector("[data-label]").textContent = text;
+        if (kind) {
+            entry.querySelector("[data-kind-label]").textContent = kind.selectedOptions[0].textContent;
+        }
         const favicon = entry.querySelector("[data-favicon]");
         if (favicon) {
             favicon.src = new URL(text).origin + "/favicon.ico";
         }
-        entry.querySelector("input[type=hidden]").value = text;
+        entry.querySelector("input[type=hidden]").value = value;
         entries.append(entry);
         input.value = "";
         if (chips) {

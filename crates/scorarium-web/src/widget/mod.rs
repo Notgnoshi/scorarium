@@ -4,6 +4,7 @@ pub mod catalog_numbers_input;
 pub mod classification_input;
 pub mod contributors;
 pub mod header;
+pub mod identifiers_input;
 pub mod library_nav;
 pub mod links_input;
 pub mod pagination;

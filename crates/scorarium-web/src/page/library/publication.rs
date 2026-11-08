@@ -6,7 +6,6 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::publication::IdentifierKind;
 use scorarium_engine::value::{Classification, Tag, Year};
 use scorarium_engine::work::{CatalogNumber, WorkId};
 use serde::Deserialize;
@@ -19,6 +18,7 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb};
 use crate::sort;
 use crate::widget::header::Header;
+use crate::widget::identifiers_input::kind_label;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
@@ -166,14 +166,8 @@ fn sort_contents(works: &mut [Work], sort: &Sort) {
 
 impl From<&scorarium_engine::publication::Identifier> for Identifier {
     fn from(identifier: &scorarium_engine::publication::Identifier) -> Identifier {
-        let label = match identifier.kind() {
-            IdentifierKind::Isbn => Some("ISBN"),
-            IdentifierKind::Ismn => Some("ISMN"),
-            IdentifierKind::PublisherNumber => None,
-            IdentifierKind::PlateNumber => Some("Plate No."),
-        };
         Identifier {
-            label,
+            label: kind_label(identifier.kind()),
             value: identifier.as_str().to_owned(),
         }
     }
