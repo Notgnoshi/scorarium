@@ -2,7 +2,7 @@
     <ul class="list-unstyled" data-entries>
         {% for link in links %}
             <li class="d-flex align-items-center gap-2" data-value="{{ link.href }}">
-                <i class="bi bi-link-45deg" title="{{ link.label }}"></i>
+                {{ link.icon }}
                 <span class="text-truncate" title="{{ link.href }}">{{ link.href }}</span>
                 <button type="button"
                         class="btn btn-sm btn-link"

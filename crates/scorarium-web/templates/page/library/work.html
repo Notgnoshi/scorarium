@@ -58,7 +58,10 @@
             <dt>Links</dt>
             {% for link in links %}
                 <dd>
-                    <a href="{{ link.href }}" target="_blank" rel="noopener">{{ link.label }}</a>
+                    <a href="{{ link.href }}"
+                       title="{{ link.href }}"
+                       target="_blank"
+                       rel="noopener">{{ link.icon }} {{ link.label }}</a>
                 </dd>
             {% endfor %}
         {% endif %}

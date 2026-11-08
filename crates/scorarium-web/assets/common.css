@@ -1,0 +1,20 @@
+.link-svg {
+    height: 1em;
+    width: auto;
+    vertical-align: -.125em;
+}
+
+.link-favicon {
+    height: 1em;
+    width: 1em;
+    vertical-align: -.125em;
+}
+
+/* The generic link glyph after a favicon shows only when the favicon fails to load. */
+.link-favicon + .bi {
+    display: none;
+}
+
+.link-favicon[hidden] + .bi {
+    display: inline-block;
+}
