@@ -19,6 +19,10 @@ function attachListInput(container) {
         const entry = template.content.firstElementChild.cloneNode(true);
         entry.dataset.value = text;
         entry.querySelector("[data-label]").textContent = text;
+        const favicon = entry.querySelector("[data-favicon]");
+        if (favicon) {
+            favicon.src = new URL(text).origin + "/favicon.ico";
+        }
         entry.querySelector("input[type=hidden]").value = text;
         entries.append(entry);
         input.value = "";
