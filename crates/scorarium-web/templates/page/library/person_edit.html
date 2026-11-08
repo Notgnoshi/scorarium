@@ -49,4 +49,11 @@
             </form>
         </div>
     </div>
+    <form method="post"
+          action="/library/{{ library }}/person/{{ id }}/delete"
+          data-confirm="Delete {{ base.title }}? They will be removed from {{ publications }} publication{{ publications|pluralize }} and {{ works }} work{{ works|pluralize }}.">
+        <button class="btn btn-outline-danger" type="submit" title="Delete person">
+            <i class="bi bi-trash"></i> Delete
+        </button>
+    </form>
 {% endblock %}

@@ -78,4 +78,11 @@
         </div>
     </div>
     <div id="contributors">{{ contributors }}</div>
+    <form method="post"
+          action="/library/{{ library }}/work/{{ id }}/delete"
+          data-confirm="Delete {{ base.title }}? It will be removed from {{ publications }} publication{{ publications|pluralize }}">
+        <button class="btn btn-outline-danger" type="submit" title="Delete work">
+            <i class="bi bi-trash"></i> Delete
+        </button>
+    </form>
 {% endblock %}

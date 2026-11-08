@@ -57,6 +57,8 @@ struct Edit {
     library: LibraryId,
     id: PersonId,
     draft: bool,
+    publications: usize,
+    works: usize,
     name: String,
     sort_name: String,
     links: LinksInput,
@@ -65,7 +67,7 @@ struct Edit {
     error: Option<String>,
 }
 
-fn render(
+async fn render(
     header: Header,
     library: &Library,
     person: &Person,
@@ -84,6 +86,8 @@ fn render(
         library: library.id(),
         id: person.id(),
         draft: person.is_draft(),
+        publications: person.publications().await?.len(),
+        works: person.works().await?.len(),
         name: form.name,
         sort_name: form.sort_name,
         links: LinksInput {
@@ -122,6 +126,7 @@ pub async fn get(
         same_site_path(query.back),
         None,
     )
+    .await
 }
 
 pub async fn post(
@@ -140,7 +145,7 @@ pub async fn post(
         Ok(parsed) => parsed,
         Err(e) => {
             let (status, error) = form_error(e)?;
-            return render(header, &library, &person, form, status, back, Some(error));
+            return render(header, &library, &person, form, status, back, Some(error)).await;
         }
     };
     let sort_name = match form.sort_name.trim() {
@@ -149,7 +154,7 @@ pub async fn post(
     };
     if let Err(e) = person.rename(&form.name, &sort_name).await {
         let (status, error) = form_error(e)?;
-        return render(header, &library, &person, form, status, back, Some(error));
+        return render(header, &library, &person, form, status, back, Some(error)).await;
     }
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {
@@ -161,4 +166,15 @@ pub async fn post(
     let destination =
         back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
     Ok(Redirect::to(&destination).into_response())
+}
+
+pub async fn delete(
+    _session: Session,
+    State(engine): State<Engine>,
+    Path((library, person)): Path<(String, String)>,
+) -> Result<Redirect> {
+    let library = view::load(&engine, &library).await?;
+    let person: Person = entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    person.delete().await?;
+    Ok(Redirect::to(&format!("/library/{}", library.id())))
 }

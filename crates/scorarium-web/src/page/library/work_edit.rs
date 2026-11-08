@@ -57,6 +57,7 @@ struct Edit {
     library: LibraryId,
     id: WorkId,
     draft: bool,
+    publications: usize,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
@@ -146,7 +147,7 @@ impl Edit {
     }
 }
 
-fn render(
+async fn render(
     header: Header,
     library: &Library,
     work: &Work,
@@ -165,6 +166,7 @@ fn render(
         library: library.id(),
         id: work.id(),
         draft: work.is_draft(),
+        publications: work.publications().await?.len(),
         form,
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
@@ -220,6 +222,7 @@ pub async fn get(
         same_site_path(query.back),
         None,
     )
+    .await
 }
 
 pub async fn post(
@@ -237,14 +240,14 @@ pub async fn post(
         Ok(parsed) => parsed,
         Err(e) => {
             let (status, error) = form_error(e)?;
-            return render(header, &library, &work, form, status, back, Some(error));
+            return render(header, &library, &work, form, status, back, Some(error)).await;
         }
     };
     // The title is the only field here the engine can reject, so setting it first leaves the work
     // untouched when it is.
     if let Err(e) = work.set_title(&form.title).await {
         let (status, error) = form_error(e)?;
-        return render(header, &library, &work, form, status, back, Some(error));
+        return render(header, &library, &work, form, status, back, Some(error)).await;
     }
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
@@ -277,4 +280,15 @@ pub async fn post(
     let destination =
         back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
     Ok(Redirect::to(&destination).into_response())
+}
+
+pub async fn delete(
+    _session: Session,
+    State(engine): State<Engine>,
+    Path((library, work)): Path<(String, String)>,
+) -> Result<Redirect> {
+    let library = view::load(&engine, &library).await?;
+    let work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    work.delete().await?;
+    Ok(Redirect::to(&format!("/library/{}", library.id())))
 }

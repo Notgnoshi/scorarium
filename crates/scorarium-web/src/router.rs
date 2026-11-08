@@ -31,12 +31,20 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             get(page::library::work_edit::get).post(page::library::work_edit::post),
         )
         .route(
+            "/library/{id}/work/{work}/delete",
+            post(page::library::work_edit::delete),
+        )
+        .route(
             "/library/{id}/person/{person}",
             get(page::library::person::get),
         )
         .route(
             "/library/{id}/person/{person}/edit",
             get(page::library::person_edit::get).post(page::library::person_edit::post),
+        )
+        .route(
+            "/library/{id}/person/{person}/delete",
+            post(page::library::person_edit::delete),
         )
         .route("/library/{id}/people", get(page::library::people::get))
         .route(
