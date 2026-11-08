@@ -1,3 +1,4 @@
+pub mod contributor;
 mod query;
 pub mod search;
 pub mod suggest;

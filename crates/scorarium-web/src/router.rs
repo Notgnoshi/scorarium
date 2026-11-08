@@ -70,6 +70,14 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             Router::new()
                 .route("/search", get(api::search::get))
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
+                .route(
+                    "/library/{id}/work/{work}/contributor/add",
+                    post(api::contributor::add),
+                )
+                .route(
+                    "/library/{id}/work/{work}/contributor/remove",
+                    post(api::contributor::remove),
+                )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )

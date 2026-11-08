@@ -17,6 +17,7 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
+use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::stars_input::StarsInput;
@@ -57,6 +58,7 @@ struct Edit {
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
+    contributors: Contributors,
     error: Option<String>,
 }
 
@@ -167,6 +169,7 @@ fn render(
         links: LinksInput {
             links: work.links().iter().map(Into::into).collect(),
         },
+        contributors: Contributors::new(work, None),
         error,
     };
     Ok((status, Html(page.render()?)).into_response())

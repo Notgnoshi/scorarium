@@ -1,6 +1,10 @@
 const DEBOUNCE_MS = 150;
 
 function attachTypeahead(input) {
+    if (input.dataset.typeaheadAttached) {
+        return;
+    }
+    input.dataset.typeaheadAttached = "true";
     const menu = document.getElementById(input.getAttribute("aria-controls"));
     const picked = input.parentElement.querySelector("input[type=hidden]");
     let timer = null;
@@ -139,3 +143,7 @@ function attachTypeahead(input) {
 }
 
 document.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead);
+// htmx swaps in fresh markup whose typeaheads need attaching.
+document.addEventListener("htmx:after:swap", (event) =>
+    event.target.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead),
+);

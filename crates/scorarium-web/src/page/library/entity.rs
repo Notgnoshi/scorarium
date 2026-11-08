@@ -9,7 +9,7 @@ use crate::auth::Viewer;
 use crate::error::Result;
 
 /// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
-pub(super) async fn load<E: Entity>(
+pub(crate) async fn load<E: Entity>(
     engine: &Engine,
     library: LibraryId,
     id: &str,

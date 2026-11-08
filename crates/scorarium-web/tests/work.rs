@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use scorarium_engine::entity::Entity;
+use scorarium_engine::person::Person;
 use scorarium_engine::work::Work;
 use scorarium_test::TestApp;
 
@@ -109,4 +110,76 @@ async fn edit_applies_additions_and_removals_in_one_save() {
             .contains(&"Op. 9 No. 2".parse().unwrap())
     );
     assert_eq!(after.links(), std::slice::from_ref(kept));
+}
+
+#[tokio::test]
+async fn adding_a_new_contributor_creates_a_committed_person() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| !work.is_draft())
+        .unwrap();
+    app.server
+        .post(&format!(
+            "/api/library/{}/work/{}/contributor/add",
+            library.id(),
+            work.id()
+        ))
+        .form(&[
+            ("name", "New Person"),
+            ("person", "new"),
+            ("role", "editor"),
+        ])
+        .await
+        .assert_status_ok();
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    let added = after
+        .contributors()
+        .iter()
+        .find(|c| c.name == "New Person" && c.role.as_str() == "editor")
+        .expect("the new contributor is listed");
+    let person = Person::load(&app.engine, added.person)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!person.is_draft());
+}
+
+#[tokio::test]
+async fn adding_an_existing_contributor() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| !work.is_draft())
+        .unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let id = person.id().to_string();
+    app.server
+        .post(&format!(
+            "/api/library/{}/work/{}/contributor/add",
+            library.id(),
+            work.id()
+        ))
+        .form(&[
+            ("name", person.name()),
+            ("person", id.as_str()),
+            ("role", "arranger"),
+        ])
+        .await
+        .assert_status_ok();
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert!(
+        after
+            .contributors()
+            .iter()
+            .any(|c| c.person == person.id() && c.role.as_str() == "arranger")
+    );
 }
