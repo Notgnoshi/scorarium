@@ -6,10 +6,12 @@
     <button type="button" class="dropdown-item" role="option" data-value="{{ text }}">{{ caller() }}</button>
 {% endmacro %}
 
-{% macro action(url, name, value) %}
-    <form method="post" action="{{ url }}">
-        <button class="dropdown-item" role="option" name="{{ name }}" value="{{ value }}">{{ caller() }}</button>
-    </form>
+{% macro pick(id, text) %}
+    <button type="button"
+            class="dropdown-item"
+            role="option"
+            data-value="{{ text }}"
+            data-pick="{{ id }}">{{ caller() }}</button>
 {% endmacro %}
 
 {% macro empty() %}

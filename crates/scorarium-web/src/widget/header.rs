@@ -39,6 +39,9 @@ impl Header {
             url: "/api/search".to_owned(),
             placeholder: "Search...".to_owned(),
             value: self.query.clone(),
+            picked_id: None,
+            pick_required: None,
+            attrs: Vec::new(),
         }
     }
 }
