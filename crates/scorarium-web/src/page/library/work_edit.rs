@@ -5,16 +5,19 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
+use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::value::{Classification, Stars};
 use scorarium_engine::work::{Work, WorkId};
 use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::page::library::{entity, view};
+use crate::page::library::entity::{self, parse_link_id};
+use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::header::Header;
+use crate::widget::links_input::LinksInput;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::typeahead::Typeahead;
 
@@ -27,6 +30,10 @@ pub(crate) struct Form {
     instrumentation: String,
     stars: Option<u8>,
     note: String,
+    #[serde(default)]
+    add_link: Vec<String>,
+    #[serde(default)]
+    remove_link: Vec<String>,
 }
 
 #[derive(Template)]
@@ -37,18 +44,31 @@ struct Edit {
     id: WorkId,
     draft: bool,
     form: Form,
+    links: LinksInput,
     error: Option<String>,
 }
 
 struct Parsed {
     classification: Option<Classification>,
     stars: Option<Stars>,
+    add_links: Vec<HttpUrl>,
+    remove_links: Vec<LinkId>,
 }
 
 fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     Ok(Parsed {
         classification: form.classification.as_deref().map(str::parse).transpose()?,
         stars: form.stars.map(Stars::try_from).transpose()?,
+        add_links: form
+            .add_link
+            .iter()
+            .map(|url| url.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
+        remove_links: form
+            .remove_link
+            .iter()
+            .map(|id| parse_link_id(id))
+            .collect::<scorarium_engine::Result<_>>()?,
     })
 }
 
@@ -101,6 +121,9 @@ fn render(
         id: work.id(),
         draft: work.is_draft(),
         form,
+        links: LinksInput {
+            links: work.links().iter().map(Into::into).collect(),
+        },
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -123,6 +146,8 @@ pub async fn get(
         instrumentation: text(work.instrumentation()),
         stars: work.stars().map(|stars| stars.get()),
         note: text(work.note()),
+        add_link: vec![],
+        remove_link: vec![],
     };
     render(header, &library, &work, form, StatusCode::OK, None)
 }
@@ -132,7 +157,7 @@ pub async fn post(
     State(engine): State<Engine>,
     header: Header,
     Path((library, work)): Path<(String, String)>,
-    axum::Form(form): axum::Form<Form>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
@@ -155,6 +180,13 @@ pub async fn post(
         .await?;
     work.set_stars(parsed.stars).await?;
     work.set_note(Some(&form.note)).await?;
+    // Removals run first so that removing a link and adding it back leaves it present.
+    for link in parsed.remove_links {
+        work.remove_link(link).await?;
+    }
+    for url in parsed.add_links {
+        work.add_link(url).await?;
+    }
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }

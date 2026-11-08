@@ -3,6 +3,7 @@ pub mod breadcrumbs;
 pub mod classification_input;
 pub mod header;
 pub mod library_nav;
+pub mod links_input;
 pub mod pagination;
 pub mod stars;
 pub mod stars_input;

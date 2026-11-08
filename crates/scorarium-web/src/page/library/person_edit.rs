@@ -5,19 +5,46 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
+use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::page::library::{entity, view};
+use crate::page::library::entity::{self, parse_link_id};
+use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::header::Header;
+use crate::widget::links_input::LinksInput;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
     name: String,
     sort_name: String,
+    #[serde(default)]
+    add_link: Vec<String>,
+    #[serde(default)]
+    remove_link: Vec<String>,
+}
+
+struct Parsed {
+    add_links: Vec<HttpUrl>,
+    remove_links: Vec<LinkId>,
+}
+
+fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
+    Ok(Parsed {
+        add_links: form
+            .add_link
+            .iter()
+            .map(|url| url.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
+        remove_links: form
+            .remove_link
+            .iter()
+            .map(|id| parse_link_id(id))
+            .collect::<scorarium_engine::Result<_>>()?,
+    })
 }
 
 #[derive(Template)]
@@ -29,6 +56,7 @@ struct Edit {
     draft: bool,
     name: String,
     sort_name: String,
+    links: LinksInput,
     error: Option<String>,
 }
 
@@ -51,6 +79,9 @@ fn render(
         draft: person.is_draft(),
         name: form.name,
         sort_name: form.sort_name,
+        links: LinksInput {
+            links: person.links().iter().map(Into::into).collect(),
+        },
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -67,6 +98,8 @@ pub async fn get(
     let form = Form {
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
+        add_link: vec![],
+        remove_link: vec![],
     };
     render(header, &library, &person, form, StatusCode::OK, None)
 }
@@ -76,23 +109,32 @@ pub async fn post(
     State(engine): State<Engine>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
-    axum::Form(form): axum::Form<Form>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    let parsed = match parse(&form) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            return render(header, &library, &person, form, status, Some(error));
+        }
+    };
     let sort_name = match form.sort_name.trim() {
         "" => derive_sort_name(&form.name),
         sort_name => sort_name.to_owned(),
     };
-    match person.rename(&form.name, &sort_name).await {
-        Ok(()) => Ok(
-            Redirect::to(&format!("/library/{}/person/{}", library.id(), person.id()))
-                .into_response(),
-        ),
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            render(header, &library, &person, form, status, Some(error))
-        }
+    if let Err(e) = person.rename(&form.name, &sort_name).await {
+        let (status, error) = form_error(e)?;
+        return render(header, &library, &person, form, status, Some(error));
     }
+    // Removals run first so that removing a link and adding it back leaves it present.
+    for link in parsed.remove_links {
+        person.remove_link(link).await?;
+    }
+    for url in parsed.add_links {
+        person.add_link(url).await?;
+    }
+    Ok(Redirect::to(&format!("/library/{}/person/{}", library.id(), person.id())).into_response())
 }
