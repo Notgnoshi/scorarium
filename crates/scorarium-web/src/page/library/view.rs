@@ -3,7 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Tag, Year};
@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
-use crate::page::library::entity::{self, group_contributors};
+use crate::page::library::entity::{self, group_contributors, is_primary};
 use crate::page::{Base, Crumb};
 use crate::sort::{self, compare};
 use crate::widget::header::Header;
@@ -41,8 +41,8 @@ struct Summary {
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Column {
-    #[default]
     Title,
+    #[default]
     Contributors,
     Year,
     Stars,
@@ -63,6 +63,10 @@ impl sort::Column for Column {
             Column::Year => "year",
             Column::Stars => "stars",
         }
+    }
+
+    fn descending_first(self) -> bool {
+        matches!(self, Column::Year | Column::Stars)
     }
 }
 
@@ -120,7 +124,10 @@ pub async fn get(
         .iter()
         .filter(|publication| !publication.is_draft())
         .map(|publication| {
-            let contributors = group_contributors(publication.contributors());
+            let contributors: Vec<_> = group_contributors(publication.contributors())
+                .into_iter()
+                .filter(|c| c.roles.iter().any(is_primary))
+                .collect();
             Summary {
                 id: publication.id(),
                 title: publication.title().unwrap_or_default().to_owned(),
@@ -194,7 +201,7 @@ mod tests {
             tags: Vec::new(),
         };
         let mut summaries = vec![summary("Zebra"), summary("aardvark"), summary("Mouse")];
-        sort_summaries(&mut summaries, &Sort::default());
+        sort_summaries(&mut summaries, &Sort::try_from("title".to_owned()).unwrap());
         let titles: Vec<_> = summaries.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(titles, ["aardvark", "Mouse", "Zebra"]);
     }
