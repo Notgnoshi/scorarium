@@ -2,6 +2,7 @@ pub mod edit;
 pub mod entity;
 pub mod people;
 pub mod person;
+pub mod person_edit;
 pub mod publication;
 pub mod tag;
 pub mod tags;

@@ -23,6 +23,8 @@ use crate::widget::header::Header;
 struct Person {
     base: Base,
     library: LibraryId,
+    logged_in: bool,
+    id: PersonId,
     draft: bool,
     name: String,
     sort_name: String,
@@ -167,6 +169,8 @@ pub async fn get(
     let page = Person {
         base: Base::new(header, person.name(), parents),
         library: library.id(),
+        logged_in: viewer.is_logged_in(),
+        id: person.id(),
         draft: person.is_draft(),
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
