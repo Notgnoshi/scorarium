@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "widget/card.html" as card %}
+{% import "widget/sort.html" as sort %}
 {% import "widget/tag.html" as badge %}
 {% block content %}
     <div class="row">
@@ -110,9 +111,12 @@
         <table class="table table-striped table-hover align-middle">
             <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th class="text-body-secondary fw-normal">Title</th>
-                    <th class="text-body-secondary fw-normal">Contributors</th>
-                    <th class="text-body-secondary fw-normal">Year</th>
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Contributors, "Contributors") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Year, "Year") %}
+                    {% endcall %}
                 </tr>
             </thead>
             <tbody class="table-group-divider">

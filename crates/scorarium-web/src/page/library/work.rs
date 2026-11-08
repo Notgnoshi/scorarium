@@ -8,12 +8,14 @@ use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Classification, Tag, Year};
 use scorarium_engine::work::{CatalogNumber, WorkId};
+use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
-use crate::page::library::entity::{self, ExternalLink, group_contributors};
+use crate::page::library::entity::{self, ExternalLink, group_contributors, is_primary};
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
+use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::stars::Stars;
 
@@ -37,6 +39,38 @@ struct Work {
     tags: Vec<Tag>,
     note: Option<String>,
     publications: Vec<Publication>,
+    sort: Sort,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Column {
+    #[default]
+    Title,
+    Contributors,
+    Year,
+}
+
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[Column::Title, Column::Contributors, Column::Year];
+
+    fn name(self) -> &'static str {
+        match self {
+            Column::Title => "title",
+            Column::Contributors => "contributors",
+            Column::Year => "year",
+        }
+    }
+
+    fn descending_first(self) -> bool {
+        self == Column::Year
+    }
+}
+
+type Sort = sort::Sort<Column>;
+
+#[derive(Deserialize)]
+pub(crate) struct Query {
+    sort: Option<Sort>,
 }
 
 /// A publication that contains the work
@@ -46,6 +80,33 @@ struct Publication {
     title: String,
     contributors: Vec<entity::Contributor>,
     year: Option<Year>,
+}
+
+impl Publication {
+    /// Get the lowercase sort name of the first composer or author
+    fn primary_sort_name(&self) -> Option<String> {
+        self.contributors
+            .iter()
+            .find(|c| c.roles.iter().any(is_primary))
+            .map(|c| c.sort_name.to_lowercase())
+    }
+}
+
+/// Sort publications by the column, title breaking ties
+fn sort_publications(publications: &mut [Publication], sort: &Sort) {
+    publications.sort_by(|a, b| {
+        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let by_column = match sort.column {
+            Column::Title => sort::compare(Some(&a_title), Some(&b_title), sort.descending),
+            Column::Contributors => sort::compare(
+                a.primary_sort_name(),
+                b.primary_sort_name(),
+                sort.descending,
+            ),
+            Column::Year => sort::compare(a.year, b.year, sort.descending),
+        };
+        by_column.then_with(|| a_title.cmp(&b_title))
+    });
 }
 
 impl From<&scorarium_engine::publication::Publication> for Publication {
@@ -67,6 +128,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path((library, work)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     if library.is_private() && !viewer.is_logged_in() {
@@ -82,7 +144,8 @@ pub async fn get(
         .filter(|publication| viewer.is_logged_in() || !publication.is_draft())
         .map(Into::into)
         .collect();
-    publications.sort_by_cached_key(|publication| publication.title.to_lowercase());
+    let sort = query.sort.unwrap_or_default();
+    sort_publications(&mut publications, &sort);
 
     let parents = vec![
         Crumb::new("Libraries", "/"),
@@ -106,6 +169,7 @@ pub async fn get(
         tags: work.tags().to_vec(),
         note: work.note().map(ToOwned::to_owned),
         publications,
+        sort,
     };
     Ok(Html(page.render()?).into_response())
 }
