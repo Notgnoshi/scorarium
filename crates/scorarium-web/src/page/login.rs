@@ -9,6 +9,7 @@ use serde::Deserialize;
 use crate::auth::{SessionCookie, Viewer};
 use crate::error::Result;
 use crate::page::{Base, form_error};
+use crate::redirect::same_site_path;
 use crate::widget::header::Header;
 
 #[derive(Deserialize)]
@@ -34,18 +35,7 @@ struct Login {
 
 /// Keep `next` only when it stays on this site, otherwise go home
 fn safe_next(next: Option<String>) -> String {
-    match next {
-        // Browsers parse `\` as `/` and strip tabs and newlines in URLs, so `/\evil.com` and
-        // `/<TAB>/evil.com` resolve to another site just as `//evil.com` does.
-        Some(next)
-            if next.starts_with('/')
-                && !next[1..].starts_with(['/', '\\'])
-                && !next.contains(|c: char| c.is_ascii_control()) =>
-        {
-            next
-        }
-        _ => "/".to_owned(),
-    }
+    same_site_path(next).unwrap_or_else(|| "/".to_owned())
 }
 
 fn render(

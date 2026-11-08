@@ -8,7 +8,12 @@
                     <td>{{ contributor.name }}</td>
                     <td>{{ contributor.role }}</td>
                     <td class="text-end">
-                        <form hx-post="{{ api }}/contributor/remove" hx-target="#contributors">
+                        <a class="btn btn-sm btn-link"
+                           href="/library/{{ library }}/person/{{ contributor.person }}/edit?back={{ back|urlencode }}"
+                           title="Edit person">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form class="d-inline" hx-post="{{ api }}/contributor/remove" hx-target="#contributors">
                             <input type="hidden" name="person" value="{{ contributor.person }}">
                             <input type="hidden" name="role" value="{{ contributor.role }}">
                             <button class="btn btn-sm btn-link" title="Remove contributor">

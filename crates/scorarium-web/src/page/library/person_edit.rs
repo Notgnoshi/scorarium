@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
@@ -14,6 +14,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
+use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 
@@ -57,6 +58,8 @@ struct Edit {
     name: String,
     sort_name: String,
     links: LinksInput,
+    back: Option<String>,
+    destination: String,
     error: Option<String>,
 }
 
@@ -66,6 +69,7 @@ fn render(
     person: &Person,
     form: Form,
     status: StatusCode,
+    back: Option<String>,
     error: Option<String>,
 ) -> Result<Response> {
     let parents = vec![
@@ -82,6 +86,10 @@ fn render(
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
         },
+        destination: back
+            .clone()
+            .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
+        back,
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -92,6 +100,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let person: Person = entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
@@ -101,7 +110,15 @@ pub async fn get(
         add_link: vec![],
         remove_link: vec![],
     };
-    render(header, &library, &person, form, StatusCode::OK, None)
+    render(
+        header,
+        &library,
+        &person,
+        form,
+        StatusCode::OK,
+        same_site_path(query.back),
+        None,
+    )
 }
 
 pub async fn post(
@@ -109,8 +126,10 @@ pub async fn post(
     State(engine): State<Engine>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
+    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
@@ -118,7 +137,7 @@ pub async fn post(
         Ok(parsed) => parsed,
         Err(e) => {
             let (status, error) = form_error(e)?;
-            return render(header, &library, &person, form, status, Some(error));
+            return render(header, &library, &person, form, status, back, Some(error));
         }
     };
     let sort_name = match form.sort_name.trim() {
@@ -127,7 +146,7 @@ pub async fn post(
     };
     if let Err(e) = person.rename(&form.name, &sort_name).await {
         let (status, error) = form_error(e)?;
-        return render(header, &library, &person, form, status, Some(error));
+        return render(header, &library, &person, form, status, back, Some(error));
     }
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {
@@ -136,5 +155,7 @@ pub async fn post(
     for url in parsed.add_links {
         person.add_link(url).await?;
     }
-    Ok(Redirect::to(&format!("/library/{}/person/{}", library.id(), person.id())).into_response())
+    let destination =
+        back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
+    Ok(Redirect::to(&destination).into_response())
 }

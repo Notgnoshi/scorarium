@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
@@ -15,6 +15,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
+use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::contributors::Contributors;
@@ -59,6 +60,8 @@ struct Edit {
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
+    back: Option<String>,
+    destination: String,
     error: Option<String>,
 }
 
@@ -147,6 +150,7 @@ fn render(
     work: &Work,
     form: Form,
     status: StatusCode,
+    back: Option<String>,
     error: Option<String>,
 ) -> Result<Response> {
     let parents = vec![
@@ -170,6 +174,10 @@ fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
+        destination: back
+            .clone()
+            .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
+        back,
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -180,6 +188,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
@@ -199,7 +208,15 @@ pub async fn get(
         add_link: vec![],
         remove_link: vec![],
     };
-    render(header, &library, &work, form, StatusCode::OK, None)
+    render(
+        header,
+        &library,
+        &work,
+        form,
+        StatusCode::OK,
+        same_site_path(query.back),
+        None,
+    )
 }
 
 pub async fn post(
@@ -207,22 +224,24 @@ pub async fn post(
     State(engine): State<Engine>,
     header: Header,
     Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
+    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
     let parsed = match parse(&form) {
         Ok(parsed) => parsed,
         Err(e) => {
             let (status, error) = form_error(e)?;
-            return render(header, &library, &work, form, status, Some(error));
+            return render(header, &library, &work, form, status, back, Some(error));
         }
     };
     // The title is the only field here the engine can reject, so setting it first leaves the work
     // untouched when it is.
     if let Err(e) = work.set_title(&form.title).await {
         let (status, error) = form_error(e)?;
-        return render(header, &library, &work, form, status, Some(error));
+        return render(header, &library, &work, form, status, back, Some(error));
     }
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
@@ -252,5 +271,7 @@ pub async fn post(
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
-    Ok(Redirect::to(&format!("/library/{}/work/{}", library.id(), work.id())).into_response())
+    let destination =
+        back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+    Ok(Redirect::to(&destination).into_response())
 }

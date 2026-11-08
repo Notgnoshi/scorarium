@@ -12,6 +12,8 @@ pub struct Contributors {
     pub library: LibraryId,
     /// The route prefix the forms post under
     pub api: String,
+    /// The edit page this widget is on, to which edits of a contributor return
+    pub back: String,
     /// One entry per person and role pairing
     pub contributors: Vec<Contributor>,
     pub error: Option<String>,
@@ -23,6 +25,12 @@ impl Contributors {
             library: entity.library(),
             api: format!(
                 "/api/library/{}/{}/{}",
+                entity.library(),
+                E::KIND,
+                entity.id()
+            ),
+            back: format!(
+                "/library/{}/{}/{}/edit",
                 entity.library(),
                 E::KIND,
                 entity.id()
