@@ -45,7 +45,7 @@ impl Engine {
         for candidate in publication::candidates(&mut conn, scope).await? {
             candidates.push((EntityKind::Publication, candidate));
         }
-        for candidate in work::candidates(&mut conn, scope).await? {
+        for candidate in work::candidates(&mut conn, scope, None).await? {
             candidates.push((EntityKind::Work, candidate));
         }
         for candidate in person::candidates(&mut conn, scope).await? {

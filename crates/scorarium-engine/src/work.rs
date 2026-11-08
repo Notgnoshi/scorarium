@@ -1411,6 +1411,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
 pub(crate) async fn candidates(
     conn: &mut SqliteConnection,
     scope: CandidateScope,
+    contributor: Option<PersonId>,
 ) -> Result<Vec<Candidate>> {
     let (library, include_drafts, include_private) = scope.binds();
     let include_tags = scope.includes_tags();
@@ -1427,11 +1428,14 @@ pub(crate) async fn candidates(
                    WHERE work_id = w.id) AS "numbers: String"
            FROM work w JOIN library l ON l.id = w.library_id
            WHERE (?1 IS NULL OR w.library_id = ?1) AND (?2 OR w.draft = 0) AND (?3 OR l.private = 0)
+             AND (?5 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c
+                                        WHERE c.work_id = w.id AND c.person_id = ?5))
            ORDER BY w.id"#,
         library,
         include_drafts,
         include_private,
-        include_tags
+        include_tags,
+        contributor.map(PersonId::get)
     )
     .fetch_all(conn)
     .await?;
