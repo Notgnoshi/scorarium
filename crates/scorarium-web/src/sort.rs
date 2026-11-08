@@ -1,3 +1,4 @@
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
 /// A table column that can be sorted
@@ -15,11 +16,13 @@ pub(crate) trait Column: Copy + Eq + Default + 'static {
 }
 
 /// A column and direction, parsed from `[-]column`
-#[derive(Clone, Copy, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(try_from = "String", bound = "C: Column")]
 pub(crate) struct Sort<C> {
     pub column: C,
     pub descending: bool,
+    /// The page's other query parameters, already encoded
+    query: String,
 }
 
 impl<C: Column> TryFrom<String> for Sort<C> {
@@ -35,11 +38,26 @@ impl<C: Column> TryFrom<String> for Sort<C> {
             .copied()
             .find(|column| column.name() == name)
             .ok_or_else(|| format!("unknown sort column {value:?}"))?;
-        Ok(Sort { column, descending })
+        Ok(Sort {
+            column,
+            descending,
+            query: String::new(),
+        })
     }
 }
 
 impl<C: Column> Sort<C> {
+    /// Keep `key=value` in every header link, for a page whose query carries more than the sort
+    pub fn keep(mut self, key: &str, value: &str) -> Self {
+        if !self.query.is_empty() {
+            self.query.push('&');
+        }
+        let key = utf8_percent_encode(key, NON_ALPHANUMERIC);
+        let value = utf8_percent_encode(value, NON_ALPHANUMERIC);
+        self.query.push_str(&format!("{key}={value}"));
+        self
+    }
+
     pub fn href(&self, column: C) -> String {
         let first = column.descending_first();
         let descending = if self.is(column, first) {
@@ -47,11 +65,16 @@ impl<C: Column> Sort<C> {
         } else {
             first
         };
-        format!(
-            "?sort={}{}",
+        let sort = format!(
+            "sort={}{}",
             if descending { "-" } else { "" },
             column.name()
-        )
+        );
+        if self.query.is_empty() {
+            format!("?{sort}")
+        } else {
+            format!("?{}&{sort}", self.query)
+        }
     }
 
     /// Check whether `column` is active in the given direction
@@ -100,5 +123,9 @@ mod tests {
         assert_eq!(year.href(Test::Title), "?sort=title");
         assert_eq!(Sort::default().href(Test::Title), "?sort=-title");
         assert_eq!(Sort::default().href(Test::Year), "?sort=-year");
+        assert_eq!(
+            Sort::default().keep("q", "bach rules").href(Test::Year),
+            "?q=bach%20rules&sort=-year"
+        );
     }
 }

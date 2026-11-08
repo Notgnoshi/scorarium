@@ -85,7 +85,7 @@ pub(crate) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::
 }
 
 /// Sort summaries by the column, empties last in either direction, title breaking ties
-fn sort_summaries(summaries: &mut [Summary], sort: Sort) {
+fn sort_summaries(summaries: &mut [Summary], sort: &Sort) {
     // An absent value sorts after any present one, whichever way the present ones are ordered.
     fn compare<T: Ord>(a: Option<T>, b: Option<T>, descending: bool) -> Ordering {
         match (a, b) {
@@ -150,7 +150,7 @@ pub async fn get(
         .sort
         .filter(|sort| sort.column != Column::Stars || viewer.is_logged_in())
         .unwrap_or_default();
-    sort_summaries(&mut publications, sort);
+    sort_summaries(&mut publications, &sort);
 
     let page = Library {
         base: Base::new(header, library.name(), vec![Crumb::new("Libraries", "/")]),
@@ -189,21 +189,9 @@ mod tests {
             summary("b", None),
             summary("c", Some(1888)),
         ];
-        sort_summaries(
-            &mut summaries,
-            Sort {
-                column: Column::Year,
-                descending: true,
-            },
-        );
+        sort_summaries(&mut summaries, &Sort::try_from("-year".to_owned()).unwrap());
         assert_eq!(titles(&summaries), ["c", "a", "b"]);
-        sort_summaries(
-            &mut summaries,
-            Sort {
-                column: Column::Year,
-                descending: false,
-            },
-        );
+        sort_summaries(&mut summaries, &Sort::try_from("year".to_owned()).unwrap());
         assert_eq!(titles(&summaries), ["a", "c", "b"]);
     }
 
@@ -219,7 +207,7 @@ mod tests {
             tags: Vec::new(),
         };
         let mut summaries = vec![summary("Zebra"), summary("aardvark"), summary("Mouse")];
-        sort_summaries(&mut summaries, Sort::default());
+        sort_summaries(&mut summaries, &Sort::default());
         let titles: Vec<_> = summaries.iter().map(|s| s.title.as_str()).collect();
         assert_eq!(titles, ["aardvark", "Mouse", "Zebra"]);
     }

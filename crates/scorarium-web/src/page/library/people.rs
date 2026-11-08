@@ -67,7 +67,7 @@ pub(crate) struct Params {
     role: Option<String>,
 }
 
-fn sort_people(people: &mut [PersonSummary], sort: Sort) {
+fn sort_people(people: &mut [PersonSummary], sort: &Sort) {
     people.sort_by(|a, b| {
         let by_name =
             || (a.sort_name.to_lowercase(), &a.name).cmp(&(b.sort_name.to_lowercase(), &b.name));
@@ -106,7 +106,7 @@ pub async fn get(
         .map_err(|_| scorarium_engine::Error::NotFound)?;
     let mut people = library.people_summary(role.as_ref(), false).await?;
     let sort = query.sort.unwrap_or_default();
-    sort_people(&mut people, sort);
+    sort_people(&mut people, &sort);
 
     let library_href = format!("/library/{}", library.id());
     let mut parents = vec![
