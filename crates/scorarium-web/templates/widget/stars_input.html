@@ -1,0 +1,14 @@
+{% let rating = value.unwrap_or(0) %}
+<span class="text-nowrap" data-stars>
+    {% for i in 1..=5 %}
+        <input class="visually-hidden"
+               type="radio"
+               name="stars"
+               id="stars-{{ i }}"
+               value="{{ i }}"
+               {% if value == Some(*i) %}checked{% endif %}>
+        <label for="stars-{{ i }}" title="{{ i }} star{{ i|pluralize }}">
+            <i class="bi {% if i <= rating %}bi-star-fill{% else %}bi-star{% endif %}"></i>
+        </label>
+    {% endfor %}
+</span>

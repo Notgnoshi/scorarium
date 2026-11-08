@@ -5,7 +5,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
-use scorarium_engine::value::Classification;
+use scorarium_engine::value::{Classification, Stars};
 use scorarium_engine::work::{Work, WorkId};
 use serde::Deserialize;
 
@@ -15,6 +15,7 @@ use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::header::Header;
+use crate::widget::stars_input::StarsInput;
 use crate::widget::typeahead::Typeahead;
 
 #[derive(Deserialize)]
@@ -24,6 +25,7 @@ pub(crate) struct Form {
     key: String,
     time_signature: String,
     instrumentation: String,
+    stars: Option<u8>,
     note: String,
 }
 
@@ -40,11 +42,13 @@ struct Edit {
 
 struct Parsed {
     classification: Option<Classification>,
+    stars: Option<Stars>,
 }
 
 fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     Ok(Parsed {
         classification: form.classification.as_deref().map(str::parse).transpose()?,
+        stars: form.stars.map(Stars::try_from).transpose()?,
     })
 }
 
@@ -56,6 +60,12 @@ impl Edit {
                 .classification
                 .as_deref()
                 .and_then(|c| c.parse().ok()),
+        }
+    }
+
+    fn stars(&self) -> StarsInput {
+        StarsInput {
+            value: self.form.stars,
         }
     }
 
@@ -111,6 +121,7 @@ pub async fn get(
         key: text(work.key()),
         time_signature: text(work.time_signature()),
         instrumentation: text(work.instrumentation()),
+        stars: work.stars().map(|stars| stars.get()),
         note: text(work.note()),
     };
     render(header, &library, &work, form, StatusCode::OK, None)
@@ -142,6 +153,7 @@ pub async fn post(
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))
         .await?;
+    work.set_stars(parsed.stars).await?;
     work.set_note(Some(&form.note)).await?;
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
