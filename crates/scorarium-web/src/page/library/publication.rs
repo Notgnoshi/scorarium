@@ -9,12 +9,15 @@ use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::IdentifierKind;
 use scorarium_engine::value::{Classification, Tag, Year};
 use scorarium_engine::work::{CatalogNumber, WorkId};
+use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
-use crate::page::library::entity::{self, ExternalLink, group_contributors};
+use crate::icon::Icon;
+use crate::page::library::entity::{self, ExternalLink, group_contributors, is_primary};
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
+use crate::sort::{self, Column as _};
 use crate::widget::header::Header;
 use crate::widget::stars::Stars;
 
@@ -38,6 +41,42 @@ struct Publication {
     holdings: Vec<Holding>,
     works: Vec<Work>,
     numbered: bool,
+    sort: Sort,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Column {
+    /// The order the works appear in the book
+    #[default]
+    Contents,
+    Title,
+    Number,
+    Contributors,
+}
+
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[
+        Column::Contents,
+        Column::Title,
+        Column::Number,
+        Column::Contributors,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Column::Contents => "contents",
+            Column::Title => "title",
+            Column::Number => "number",
+            Column::Contributors => "contributors",
+        }
+    }
+}
+
+type Sort = sort::Sort<Column>;
+
+#[derive(Deserialize)]
+pub(crate) struct Query {
+    sort: Option<Sort>,
 }
 
 /// An identifier with the label its kind is shown under
@@ -47,7 +86,7 @@ struct Identifier {
 }
 
 struct Holding {
-    physical: bool,
+    icon: Icon,
     /// The shelf location of a physical copy, or the filename of a digital one
     location: Option<String>,
     loaned_to: Option<String>,
@@ -62,6 +101,16 @@ struct Work {
     contributors: Vec<entity::Contributor>,
 }
 
+impl Work {
+    /// Get the lowercase sort name of the first composer or author
+    fn primary_sort_name(&self) -> Option<String> {
+        self.contributors
+            .iter()
+            .find(|c| c.roles.iter().any(is_primary))
+            .map(|c| c.sort_name.to_lowercase())
+    }
+}
+
 impl From<&scorarium_engine::work::Work> for Work {
     fn from(work: &scorarium_engine::work::Work) -> Work {
         Work {
@@ -74,20 +123,44 @@ impl From<&scorarium_engine::work::Work> for Work {
     }
 }
 
-/// Order contents by first contributor, then catalog number, then title
-fn sort_contents(works: &mut [Work]) {
-    works.sort_by_cached_key(|work| {
-        let sort_name = work
-            .contributors
-            .first()
-            .map(|c| c.sort_name.to_lowercase());
-        (
-            sort_name.is_none(),
-            sort_name,
-            work.catalog_number.is_none(),
-            work.catalog_number.clone(),
-            work.title.to_lowercase(),
-        )
+/// Order contents by the column, title breaking ties
+///
+/// Book order is by first contributor, then catalog number, then title.
+fn sort_contents(works: &mut [Work], sort: &Sort) {
+    if sort.column == Column::Contents {
+        works.sort_by_cached_key(|work| {
+            let sort_name = work
+                .contributors
+                .first()
+                .map(|c| c.sort_name.to_lowercase());
+            (
+                sort_name.is_none(),
+                sort_name,
+                work.catalog_number.is_none(),
+                work.catalog_number.clone(),
+                work.title.to_lowercase(),
+            )
+        });
+        return;
+    }
+    works.sort_by(|a, b| {
+        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let by_column = match sort.column {
+            Column::Number => sort::compare(
+                a.catalog_number.as_ref(),
+                b.catalog_number.as_ref(),
+                sort.descending,
+            ),
+            Column::Contributors => sort::compare(
+                a.primary_sort_name(),
+                b.primary_sort_name(),
+                sort.descending,
+            ),
+            Column::Contents | Column::Title => {
+                sort::compare(Some(&a_title), Some(&b_title), sort.descending)
+            }
+        };
+        by_column.then_with(|| a_title.cmp(&b_title))
     });
 }
 
@@ -108,16 +181,16 @@ impl From<&scorarium_engine::publication::Identifier> for Identifier {
 
 impl From<&scorarium_engine::holding::Holding> for Holding {
     fn from(holding: &scorarium_engine::holding::Holding) -> Holding {
-        let (physical, location) = match &holding.kind {
-            HoldingKind::Physical { location } => (true, location.clone()),
+        let (icon, location) = match &holding.kind {
+            HoldingKind::Physical { location } => (Icon::PhysicalCopy, location.clone()),
             HoldingKind::Digital { file } => (
-                false,
+                Icon::DigitalFile,
                 file.file_name()
                     .map(|name| name.to_string_lossy().into_owned()),
             ),
         };
         Holding {
-            physical,
+            icon,
             location,
             loaned_to: holding.loaned_to.clone(),
         }
@@ -131,6 +204,7 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path((library, publication)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     if library.is_private() && !viewer.is_logged_in() {
@@ -146,7 +220,8 @@ pub async fn get(
         .filter(|work| viewer.is_logged_in() || !work.is_draft())
         .map(Into::into)
         .collect();
-    sort_contents(&mut works);
+    let sort = query.sort.unwrap_or_default();
+    sort_contents(&mut works, &sort);
     let numbered = works.iter().any(|work| work.catalog_number.is_some());
 
     let title = publication.title().unwrap_or("Untitled");
@@ -172,6 +247,7 @@ pub async fn get(
         holdings: publication.holdings().iter().map(Into::into).collect(),
         works,
         numbered,
+        sort,
     };
     Ok(Html(page.render()?).into_response())
 }

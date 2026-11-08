@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
@@ -15,7 +13,7 @@ use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
 use crate::page::library::entity::{self, group_contributors};
 use crate::page::{Base, Crumb};
-use crate::sort;
+use crate::sort::{self, compare};
 use crate::widget::header::Header;
 use crate::widget::library_nav::{Active, LibraryNav};
 use crate::widget::stars::Stars;
@@ -86,17 +84,6 @@ pub(crate) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::
 
 /// Sort summaries by the column, empties last in either direction, title breaking ties
 fn sort_summaries(summaries: &mut [Summary], sort: &Sort) {
-    // An absent value sorts after any present one, whichever way the present ones are ordered.
-    fn compare<T: Ord>(a: Option<T>, b: Option<T>, descending: bool) -> Ordering {
-        match (a, b) {
-            (Some(a), Some(b)) if descending => b.cmp(&a),
-            (Some(a), Some(b)) => a.cmp(&b),
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (None, None) => Ordering::Equal,
-        }
-    }
-
     summaries.sort_by(|a, b| {
         let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
         let by_column = match sort.column {

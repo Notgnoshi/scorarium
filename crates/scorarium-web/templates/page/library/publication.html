@@ -1,74 +1,79 @@
 {% extends "base.html" %}
+{% import "widget/card.html" as card %}
+{% import "widget/sort.html" as sort %}
 {% import "widget/tag.html" as badge %}
 {% block content %}
     <div class="row">
         <div class="col-auto">
-            <div class="border rounded d-flex flex-column align-items-center justify-content-center text-center text-body-secondary p-2"
-                 style="width: 10rem;
-                        height: 14rem">
-                {% if classification == Some(Classification::Music) %}
-                    <i class="bi bi-music-note-beamed fs-1" title="Sheet music"></i>
-                {% else if classification == Some(Classification::Prose) %}
-                    <i class="bi bi-book fs-1" title="Prose"></i>
-                {% else %}
-                    <i class="bi bi-journal fs-1" title="Unclassified"></i>
-                {% endif %}
-                <span>{{ title }}</span>
-            </div>
+            {% call card::card(crate::icon::Icon::Publication, title) %}
+            {% endcall %}
         </div>
         <div class="col">
             <h1>
                 {{ title }}
                 {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
             </h1>
-            {% if publisher.is_some() || year.is_some() || classification.is_some() %}
-                <p>
-                    {% if classification == Some(Classification::Music) %}
-                        <i class="bi bi-music-note-beamed" title="Sheet music"></i>
-                    {% else if classification == Some(Classification::Prose) %}
-                        <i class="bi bi-book" title="Prose"></i>
-                    {% endif %}
-                    {% if let Some(publisher) = publisher %}{{ publisher }}{% endif %}
-                    {%- if publisher.is_some() && year.is_some() %},{% endif %}
-                    {% if let Some(year) = year %}{{ year }}{% endif %}
+            {% if !contributors.is_empty() %}
+                <p class="text-body-secondary">
+                    {% for contributor in contributors %}
+                        {% if !loop.first %}<br>{% endif %}
+                        <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>,
+                        {{ contributor.roles|join(", ") }}
+                    {% endfor %}
                 </p>
             {% endif %}
-            {% if logged_in %}
-                {% if let Some(stars) = stars %}<p>{{ stars }}</p>{% endif %}
-            {% endif %}
-            <dl>
-                {% if !contributors.is_empty() %}
-                    <dt>Contributors</dt>
-                    {% for contributor in contributors %}
-                        <dd>
-                            <a href="/library/{{ library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
-                            ({{ contributor.roles|join(", ") }})
+            <dl class="row">
+                {% if classification.is_some() %}
+                    {% let icon = crate::icon::Icon::classification(*classification) %}
+                    <dt class="col-sm-3">Classification</dt>
+                    <dd class="col-sm-9">
+                        {{ icon }} {{ icon.label() }}
+                    </dd>
+                {% endif %}
+                {% if let Some(publisher) = publisher %}
+                    <dt class="col-sm-3">Publisher</dt>
+                    <dd class="col-sm-9">
+                        {{ publisher }}
+                    </dd>
+                {% endif %}
+                {% if let Some(year) = year %}
+                    <dt class="col-sm-3">Year</dt>
+                    <dd class="col-sm-9">
+                        {{ year }}
+                    </dd>
+                {% endif %}
+                {% if logged_in %}
+                    {% if let Some(stars) = stars %}
+                        <dt class="col-sm-3">Rating</dt>
+                        <dd class="col-sm-9">
+                            {{ stars }}
                         </dd>
-                    {% endfor %}
+                    {% endif %}
                 {% endif %}
                 {% if !identifiers.is_empty() %}
-                    <dt>Identifiers</dt>
-                    {% for identifier in identifiers %}
-                        <dd>
+                    <dt class="col-sm-3">Identifiers</dt>
+                    <dd class="col-sm-9">
+                        {% for identifier in identifiers %}
+                            {% if !loop.first %}<br>{% endif %}
                             {% if let Some(label) = identifier.label %}{{ label }}{% endif %}
                             {{ identifier.value }}
-                        </dd>
-                    {% endfor %}
+                        {% endfor %}
+                    </dd>
                 {% endif %}
                 {% if !links.is_empty() %}
-                    <dt>Links</dt>
-                    {% for link in links %}
-                        <dd>
+                    <dt class="col-sm-3">Links</dt>
+                    <dd class="col-sm-9 d-flex flex-wrap gap-3">
+                        {% for link in links %}
                             <a href="{{ link.href }}"
                                title="{{ link.href }}"
                                target="_blank"
                                rel="noopener">{{ link.icon }} {{ link.label }}</a>
-                        </dd>
-                    {% endfor %}
+                        {% endfor %}
+                    </dd>
                 {% endif %}
                 {% if logged_in && !tags.is_empty() %}
-                    <dt>Tags</dt>
-                    <dd>
+                    <dt class="col-sm-3">Tags</dt>
+                    <dd class="col-sm-9">
                         {% for tag in tags %}
                             {% call badge::badge(library, tag) %}
                             {% endcall %}
@@ -77,8 +82,8 @@
                 {% endif %}
                 {% if logged_in %}
                     {% if let Some(note) = note %}
-                        <dt>Note</dt>
-                        <dd>
+                        <dt class="col-sm-3">Note</dt>
+                        <dd class="col-sm-9">
                             <pre style="white-space: pre-wrap">{{ note }}</pre>
                         </dd>
                     {% endif %}
@@ -87,19 +92,15 @@
         </div>
     </div>
     {% if !holdings.is_empty() %}
-        <h2>Holdings</h2>
-        <ul class="list-group">
+        <h2 class="mt-4">Holdings</h2>
+        <ul class="list-unstyled">
             {% for holding in holdings %}
-                <li class="list-group-item">
-                    {% if holding.physical %}
-                        <i class="bi bi-journal-bookmark" title="Physical copy"></i>
-                    {% else %}
-                        <i class="bi bi-file-earmark" title="Digital file"></i>
-                    {% endif %}
+                <li>
+                    {{ holding.icon }} {{ holding.icon.label() }}
                     {% if logged_in %}
-                        {% if let Some(location) = holding.location %}{{ location }}{% endif %}
+                        {% if let Some(location) = holding.location %}<span class="ms-3">{{ location }}</span>{% endif %}
                         {% if let Some(loaned_to) = holding.loaned_to %}
-                            <span class="text-body-secondary">on loan to {{ loaned_to }}</span>
+                            <span class="ms-3 text-body-secondary">on loan to {{ loaned_to }}</span>
                         {% endif %}
                     {% endif %}
                 </li>
@@ -107,13 +108,24 @@
         </ul>
     {% endif %}
     {% if !works.is_empty() %}
-        <h2>Contents</h2>
+        <h2 class="mt-4">
+            Contents
+            {% if sort.column != Column::Contents %}
+                <small class="fs-6 fw-normal text-body-secondary">sorted by {{ sort.column.name() }},
+                    <a href="{{ sort.href(Column::Contents) }}">back to book order</a></small>
+            {% endif %}
+        </h2>
         <table class="table table-striped table-hover align-middle">
             <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th class="text-body-secondary fw-normal">Title</th>
-                    {% if numbered %}<th class="text-body-secondary fw-normal">Catalog No.</th>{% endif %}
-                    <th class="text-body-secondary fw-normal">Contributors</th>
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% if numbered %}
+                        {% call sort::header(sort, Column::Number, "Catalog No.") %}
+                        {% endcall %}
+                    {% endif %}
+                    {% call sort::header(sort, Column::Contributors, "Contributors") %}
+                    {% endcall %}
                 </tr>
             </thead>
             <tbody class="table-group-divider">

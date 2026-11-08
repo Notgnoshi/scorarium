@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
@@ -12,6 +14,17 @@ pub(crate) trait Column: Copy + Eq + Default + 'static {
     /// Check whether the first click on the column sorts it in descending order
     fn descending_first(self) -> bool {
         false
+    }
+}
+
+/// Compare two optional values in the given direction
+pub(crate) fn compare<T: Ord>(a: Option<T>, b: Option<T>, descending: bool) -> Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) if descending => b.cmp(&a),
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
     }
 }
 
