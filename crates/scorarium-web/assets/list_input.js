@@ -4,8 +4,11 @@ function attachListInput(container) {
     const template = container.querySelector("template");
     const input = container.querySelector("[data-add]");
 
+    const chips = "chips" in container.dataset;
+
     function add() {
-        const text = input.value.trim();
+        // The engine lowercases tags, so the chip shows what Save stores.
+        const text = chips ? input.value.trim().toLowerCase() : input.value.trim();
         if (!text) {
             return;
         }
@@ -26,6 +29,10 @@ function attachListInput(container) {
         entry.querySelector("input[type=hidden]").value = text;
         entries.append(entry);
         input.value = "";
+        if (chips) {
+            // Let the typeahead cancel its pending request and close its menu.
+            input.dispatchEvent(new Event("input"));
+        }
     }
 
     container.addEventListener("click", (event) => {
@@ -52,6 +59,38 @@ function attachListInput(container) {
             add();
         }
     });
+
+    if (chips) {
+        container.addEventListener("click", (event) => {
+            if (!event.target.closest("[data-remove]")) {
+                input.focus();
+            }
+        });
+
+        input.addEventListener("keydown", (event) => {
+            if (event.key === " ") {
+                event.preventDefault();
+                add();
+            } else if (event.key === "Backspace" && input.value === "") {
+                entries.lastElementChild?.querySelector("[data-remove]")?.click();
+            }
+        });
+
+        // Committing on blur lets a typed tag survive clicking Save without pressing Enter.
+        input.addEventListener("blur", add);
+        input.addEventListener("typeahead:pick", add);
+
+        // A tag that is already a chip would be a no-op to add, so do not offer it.
+        input.addEventListener("typeahead:suggest", () => {
+            const menu = document.getElementById(input.getAttribute("aria-controls"));
+            const present = new Set([...entries.children].map((entry) => entry.dataset.value.toLowerCase()));
+            menu.querySelectorAll(".dropdown-item[data-value]").forEach((item) => {
+                if (present.has(item.dataset.value.toLowerCase())) {
+                    item.remove();
+                }
+            });
+        });
+    }
 }
 
 document.querySelectorAll("[data-list-input]").forEach(attachListInput);

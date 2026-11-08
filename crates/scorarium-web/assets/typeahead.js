@@ -61,7 +61,12 @@ function attachTypeahead(input) {
         entries().forEach((entry, i) => {
             entry.id = `${input.id}-option-${i}`;
         });
-        if (document.activeElement === input) {
+        const offered = entries().length;
+        input.dispatchEvent(new CustomEvent("typeahead:suggest", { bubbles: true }));
+        // A listener that filtered out every suggestion leaves nothing to show.
+        if (offered > 0 && entries().length === 0) {
+            close();
+        } else if (document.activeElement === input) {
             open();
             // The fragment lists its best match first, so Enter takes it without arrowing down.
             highlight(entries()[0]);
@@ -133,6 +138,7 @@ function attachTypeahead(input) {
             if (picked) {
                 setPick(entry.dataset.pick ?? "");
             }
+            input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
             close();
         }
     });

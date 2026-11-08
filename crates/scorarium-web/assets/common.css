@@ -42,3 +42,23 @@ fieldset.box > legend {
     margin-bottom: 0;
     font-size: 1.25rem;
 }
+
+.tag-chips [data-entries] {
+    display: contents;
+}
+
+.tag-chips .dropdown {
+    flex: 1 1 8rem;
+}
+
+.tag-chips .form-control {
+    border: 0;
+    padding: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+.tag-chips:focus-within {
+    border-color: rgba(var(--bs-primary-rgb), 0.5);
+    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
