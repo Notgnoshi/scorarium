@@ -18,3 +18,8 @@
 .link-favicon[hidden] + .bi {
     display: inline-block;
 }
+
+/* Bootstrap's default stripes are too severe */
+.table {
+    --bs-table-striped-bg: rgba(var(--bs-emphasis-color-rgb), 0.025);
+}

@@ -12,6 +12,9 @@ pub(crate) enum Icon {
     Work,
     MusicWork,
     ProseWork,
+    SheetMusic,
+    Prose,
+    Unclassified,
     Wikipedia,
     Link,
     /// Vendored SVG markup
@@ -36,6 +39,15 @@ impl Icon {
             Some(Classification::Music) => Icon::MusicWork,
             Some(Classification::Prose) => Icon::ProseWork,
             None => Icon::Work,
+        }
+    }
+
+    /// Get the classification icon
+    pub fn classification(classification: Option<Classification>) -> Icon {
+        match classification {
+            Some(Classification::Music) => Icon::SheetMusic,
+            Some(Classification::Prose) => Icon::Prose,
+            None => Icon::Unclassified,
         }
     }
 
@@ -65,18 +77,36 @@ impl Icon {
             LinkKind::K10plus => Icon::Link,
         }
     }
+
+    /// Get what the icon means, as its tooltip shows
+    pub fn label(&self) -> &'static str {
+        match self {
+            Icon::Person => "Person",
+            Icon::Publication => "Publication",
+            Icon::Work => "Work",
+            Icon::MusicWork | Icon::SheetMusic => "Sheet music",
+            Icon::ProseWork | Icon::Prose => "Prose",
+            Icon::Unclassified => "Unclassified",
+            Icon::Wikipedia => "Wikipedia",
+            Icon::Link => "Link",
+            Icon::Svg(_) | Icon::Favicon(_) => "",
+        }
+    }
 }
 
 impl fmt::Display for Icon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (class, tooltip) = match self {
-            Icon::Person => ("bi-person", "Person"),
-            Icon::Publication => ("bi-book", "Publication"),
-            Icon::Work => ("bi-file-earmark", "Work"),
-            Icon::MusicWork => ("bi-file-earmark-music", "Sheet music"),
-            Icon::ProseWork => ("bi-file-earmark-text", "Prose"),
-            Icon::Wikipedia => ("bi-wikipedia", "Wikipedia"),
-            Icon::Link => ("bi-link-45deg", "Link"),
+        let class = match self {
+            Icon::Person => "bi-person",
+            Icon::Publication => "bi-book",
+            Icon::Work => "bi-file-earmark",
+            Icon::MusicWork => "bi-file-earmark-music",
+            Icon::ProseWork => "bi-file-earmark-text",
+            Icon::SheetMusic => "bi-music-note-beamed",
+            Icon::Prose => "bi-text-paragraph",
+            Icon::Unclassified => "bi-question-circle",
+            Icon::Wikipedia => "bi-wikipedia",
+            Icon::Link => "bi-link-45deg",
             Icon::Svg(markup) => return f.write_str(markup),
             Icon::Favicon(host) => {
                 // A URL's host may contain quotes, which would otherwise close the attribute.
@@ -89,7 +119,7 @@ impl fmt::Display for Icon {
                 return Icon::Link.fmt(f);
             }
         };
-        write!(f, r#"<i class="bi {class}" title="{tooltip}"></i>"#)
+        write!(f, r#"<i class="bi {class}" title="{}"></i>"#, self.label())
     }
 }
 
