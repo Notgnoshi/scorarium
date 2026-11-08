@@ -2,14 +2,14 @@ use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::link::Link;
+use scorarium_engine::link::{Link, LinkId};
 use scorarium_engine::person::PersonId;
 
 use crate::auth::Viewer;
 use crate::error::Result;
 
 /// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
-pub(super) async fn load<E: Entity>(
+pub(crate) async fn load<E: Entity>(
     engine: &Engine,
     library: LibraryId,
     id: &str,
@@ -26,8 +26,16 @@ pub(super) async fn load<E: Entity>(
     }
 }
 
+/// Parse a submitted link id
+pub(crate) fn parse_link_id(id: &str) -> scorarium_engine::Result<LinkId> {
+    id.parse()
+        .map_err(|_| scorarium_engine::Error::InvalidValue(format!("Unknown link '{id}'.")))
+}
+
 /// A link rendered as the recognized site's name, or the URL's host for a generic link
-pub(super) struct ExternalLink {
+#[derive(Debug)]
+pub(crate) struct ExternalLink {
+    pub id: LinkId,
     pub href: String,
     pub label: String,
 }
@@ -39,6 +47,7 @@ impl From<&Link> for ExternalLink {
             None => link.url.as_url().host_str().unwrap_or_default().to_owned(),
         };
         ExternalLink {
+            id: link.id,
             href: link.url.to_string(),
             label,
         }

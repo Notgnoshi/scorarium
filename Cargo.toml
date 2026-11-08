@@ -19,7 +19,7 @@ scorarium-web = { path = "crates/scorarium-web" }
 argon2 = "0.6.0"
 askama = "0.16.1"
 axum = "0.8.9"
-axum-extra = { version = "0.12.6", features = ["cookie"] }
+axum-extra = { version = "0.12.6", features = ["cookie", "form"] }
 axum-test = "21.1.0"
 bytes = "1.12.1"
 chrono = "0.4.45"
@@ -43,7 +43,6 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] 
 rpassword = "7.5.4"
 rust-embed = { version = "8.13.0", features = ["mime-guess"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_html_form = "0.4.1"
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 shlex = "2.0.1"

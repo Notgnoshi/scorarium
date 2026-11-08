@@ -1,7 +1,12 @@
 const DEBOUNCE_MS = 150;
 
 function attachTypeahead(input) {
-    const menu = input.nextElementSibling;
+    if (input.dataset.typeaheadAttached) {
+        return;
+    }
+    input.dataset.typeaheadAttached = "true";
+    const menu = document.getElementById(input.getAttribute("aria-controls"));
+    const picked = input.parentElement.querySelector("input[type=hidden]");
     let timer = null;
     let controller = null;
 
@@ -30,6 +35,12 @@ function attachTypeahead(input) {
         input.setAttribute("aria-expanded", "false");
     }
 
+    function setPick(id) {
+        picked.value = id;
+        picked.dispatchEvent(new Event("change", { bubbles: true }));
+        input.setCustomValidity(id || !input.dataset.pickRequired ? "" : input.dataset.pickRequired);
+    }
+
     async function refresh(text) {
         // Aborting the older request keeps a slow response from overwriting a newer one.
         controller?.abort();
@@ -52,10 +63,15 @@ function attachTypeahead(input) {
         });
         if (document.activeElement === input) {
             open();
+            // The fragment lists its best match first, so Enter takes it without arrowing down.
+            highlight(entries()[0]);
         }
     }
 
     input.addEventListener("input", () => {
+        if (picked) {
+            setPick("");
+        }
         clearTimeout(timer);
         const text = input.value.trim();
         if (!text) {
@@ -114,9 +130,20 @@ function attachTypeahead(input) {
         const entry = event.target.closest("[data-value]");
         if (entry) {
             input.value = entry.dataset.value;
+            if (picked) {
+                setPick(entry.dataset.pick ?? "");
+            }
             close();
         }
     });
+
+    if (picked) {
+        setPick(picked.value);
+    }
 }
 
 document.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead);
+// htmx swaps in fresh markup whose typeaheads need attaching.
+document.addEventListener("htmx:after:swap", (event) =>
+    event.target.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead),
+);

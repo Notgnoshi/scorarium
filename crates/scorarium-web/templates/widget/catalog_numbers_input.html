@@ -1,0 +1,32 @@
+<div data-list-input="catalog_number">
+    <ul class="list-unstyled" data-entries>
+        {% for number in numbers %}
+            <li class="d-flex align-items-center gap-2" data-value="{{ number }}">
+                <span>{{ number }}</span>
+                {% if !number.is_recognized() %}
+                    <i class="bi bi-question-circle" title="Unrecognized catalog numbering"></i>
+                {% endif %}
+                <button type="button"
+                        class="btn btn-sm btn-link"
+                        data-remove
+                        data-key="{{ number }}"
+                        title="Remove catalog number">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </li>
+        {% endfor %}
+    </ul>
+    <template>
+        <li class="d-flex align-items-center gap-2">
+            <span data-label></span>
+            <input type="hidden" name="add_catalog_number">
+            <button type="button" class="btn btn-sm btn-link" data-remove title="Remove catalog number">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </li>
+    </template>
+    <div class="input-group">
+        <input type="text" class="form-control" placeholder="Add a catalog number" data-add>
+        <button type="button" class="btn btn-outline-secondary" data-add-button>Add</button>
+    </div>
+</div>

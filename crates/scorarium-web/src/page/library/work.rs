@@ -7,7 +7,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Classification, Tag, Year};
-use scorarium_engine::work::CatalogNumber;
+use scorarium_engine::work::{CatalogNumber, WorkId};
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
@@ -23,6 +23,7 @@ struct Work {
     base: Base,
     logged_in: bool,
     library: LibraryId,
+    id: WorkId,
     draft: bool,
     title: String,
     catalog_numbers: Vec<CatalogNumber>,
@@ -91,6 +92,7 @@ pub async fn get(
         base: Base::new(header, work.title(), parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),
+        id: work.id(),
         draft: work.is_draft(),
         title: work.title().to_owned(),
         catalog_numbers: work.catalog_numbers().to_vec(),

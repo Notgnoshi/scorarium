@@ -102,6 +102,29 @@ pub async fn render(State(engine): State<Engine>, request: Request, next: Next) 
     }
 }
 
+#[derive(Template)]
+#[template(path = "api/error.html")]
+struct ErrorFragment {
+    message: String,
+}
+
+/// Replace a response tagged with [`ErrorDetail`] by an alert fragment, keeping its status
+pub async fn render_fragment(request: Request, next: Next) -> Response {
+    let response = next.run(request).await;
+    let Some(ErrorDetail { message }) = response.extensions().get().cloned() else {
+        return response;
+    };
+    let status = response.status();
+    let fragment = ErrorFragment { message };
+    match fragment.render() {
+        Ok(html) => (status, Html(html)).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to render the error fragment");
+            (status, fragment.message).into_response()
+        }
+    }
+}
+
 pub async fn not_found(uri: Uri) -> Error {
     Error::new(StatusCode::NOT_FOUND, eyre::eyre!("no page at {uri}"))
 }

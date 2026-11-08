@@ -114,13 +114,16 @@ jobs:
         continue-on-error: true
         steps:
             - uses: actions/checkout@v6
-            - name: Check vendored Bootstrap and Bootstrap Icons freshness
+            - name: Check vendored asset freshness
               run: |
                   outdated=0
-                  for spec in "bootstrap bootstrap.min.css" "icons bootstrap-icons.min.css"; do
+                  for spec in "twbs/bootstrap bootstrap.min.css" "twbs/icons bootstrap-icons.min.css" "bigskysoftware/htmx htmx.min.js"; do
                       set -- $spec
-                      vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium-web/assets/$2")
-                      latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/twbs/$1/releases/latest")
+                      case "$2" in
+                          htmx.min.js) vendored=$(grep -o 'version="[0-9.]*"' "crates/scorarium-web/assets/$2" | head -1 | tr -d 'version="') ;;
+                          *) vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium-web/assets/$2") ;;
+                      esac
+                      latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/$1/releases/latest")
                       latest=${latest##*/v}
                       echo "$1: vendored=$vendored latest=$latest"
                       if [ "$vendored" != "$latest" ]; then

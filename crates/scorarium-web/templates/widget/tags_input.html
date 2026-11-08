@@ -1,0 +1,30 @@
+<div data-list-input="tag">
+    <div class="d-flex flex-wrap gap-1 mb-2" data-entries>
+        {% for tag in tags %}
+            <span class="badge text-bg-secondary d-inline-flex align-items-center gap-1" data-value="{{ tag }}">
+                {{ tag }}
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        style="font-size: 0.5em"
+                        data-remove
+                        data-key="{{ tag }}"
+                        title="Remove tag"></button>
+            </span>
+        {% endfor %}
+    </div>
+    <template>
+        <span class="badge text-bg-secondary d-inline-flex align-items-center gap-1">
+            <span data-label></span>
+            <input type="hidden" name="add_tag">
+            <button type="button"
+                    class="btn-close btn-close-white"
+                    style="font-size: 0.5em"
+                    data-remove
+                    title="Remove tag"></button>
+        </span>
+    </template>
+    <div class="d-flex gap-2">
+        <div class="flex-grow-1">{{ self.typeahead() }}</div>
+        <button type="button" class="btn btn-outline-secondary" data-add-button>Add</button>
+    </div>
+</div>

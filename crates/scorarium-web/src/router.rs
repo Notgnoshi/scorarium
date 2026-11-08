@@ -25,8 +25,16 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
+            "/library/{id}/work/{work}/edit",
+            get(page::library::work_edit::get).post(page::library::work_edit::post),
+        )
+        .route(
             "/library/{id}/person/{person}",
             get(page::library::person::get),
+        )
+        .route(
+            "/library/{id}/person/{person}/edit",
+            get(page::library::person_edit::get).post(page::library::person_edit::post),
         )
         .route("/library/{id}/people", get(page::library::people::get))
         .route(
@@ -56,12 +64,22 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             engine.clone(),
             error::render,
         ))
-        // API routes don't use the error page middleware.
+        // API routes render errors as fragments for htmx to swap in.
         .nest(
             "/api",
             Router::new()
                 .route("/search", get(api::search::get))
-                .fallback(|| async { StatusCode::NOT_FOUND }),
+                .route("/library/{id}/suggest/{field}", get(api::suggest::get))
+                .route(
+                    "/library/{id}/work/{work}/contributor/add",
+                    post(api::contributor::add),
+                )
+                .route(
+                    "/library/{id}/work/{work}/contributor/remove",
+                    post(api::contributor::remove),
+                )
+                .fallback(|| async { StatusCode::NOT_FOUND })
+                .layer(middleware::from_fn(error::render_fragment)),
         )
         .layer(trace)
         .layer(Extension(CookieSettings {
