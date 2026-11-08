@@ -6,7 +6,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::value::{Classification, Stars};
+use scorarium_engine::value::{Classification, Stars, Tag};
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 use serde::Deserialize;
 
@@ -20,6 +20,7 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::stars_input::StarsInput;
+use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
 
 #[derive(Deserialize)]
@@ -36,6 +37,10 @@ pub(crate) struct Form {
     #[serde(default)]
     remove_catalog_number: Vec<String>,
     #[serde(default)]
+    add_tag: Vec<String>,
+    #[serde(default)]
+    remove_tag: Vec<String>,
+    #[serde(default)]
     add_link: Vec<String>,
     #[serde(default)]
     remove_link: Vec<String>,
@@ -50,6 +55,7 @@ struct Edit {
     draft: bool,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
+    tags: TagsInput,
     links: LinksInput,
     error: Option<String>,
 }
@@ -59,6 +65,8 @@ struct Parsed {
     stars: Option<Stars>,
     add_catalog_numbers: Vec<CatalogNumber>,
     remove_catalog_numbers: Vec<CatalogNumber>,
+    add_tags: Vec<Tag>,
+    remove_tags: Vec<Tag>,
     add_links: Vec<HttpUrl>,
     remove_links: Vec<LinkId>,
 }
@@ -76,6 +84,16 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
             .remove_catalog_number
             .iter()
             .map(|number| number.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
+        add_tags: form
+            .add_tag
+            .iter()
+            .map(|tag| tag.parse())
+            .collect::<scorarium_engine::Result<_>>()?,
+        remove_tags: form
+            .remove_tag
+            .iter()
+            .map(|tag| tag.parse())
             .collect::<scorarium_engine::Result<_>>()?,
         add_links: form
             .add_link
@@ -142,6 +160,10 @@ fn render(
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
         },
+        tags: TagsInput {
+            library: library.id(),
+            tags: work.tags().to_vec(),
+        },
         links: LinksInput {
             links: work.links().iter().map(Into::into).collect(),
         },
@@ -169,6 +191,8 @@ pub async fn get(
         note: text(work.note()),
         add_catalog_number: vec![],
         remove_catalog_number: vec![],
+        add_tag: vec![],
+        remove_tag: vec![],
         add_link: vec![],
         remove_link: vec![],
     };
@@ -209,6 +233,12 @@ pub async fn post(
     }
     for number in parsed.add_catalog_numbers {
         work.add_catalog_number(number).await?;
+    }
+    for tag in &parsed.remove_tags {
+        work.remove_tag(tag).await?;
+    }
+    for tag in parsed.add_tags {
+        work.add_tag(tag).await?;
     }
     for link in parsed.remove_links {
         work.remove_link(link).await?;
