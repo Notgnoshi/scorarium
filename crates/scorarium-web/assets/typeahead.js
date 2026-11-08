@@ -59,6 +59,8 @@ function attachTypeahead(input) {
         });
         if (document.activeElement === input) {
             open();
+            // The fragment lists its best match first, so Enter takes it without arrowing down.
+            highlight(entries()[0]);
         }
     }
 
