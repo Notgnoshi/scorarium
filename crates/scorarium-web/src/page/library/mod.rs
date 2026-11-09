@@ -1,5 +1,6 @@
 pub mod edit;
 pub mod entity;
+pub mod file;
 pub mod people;
 pub mod person;
 pub mod person_edit;

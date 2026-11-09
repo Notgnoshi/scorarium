@@ -21,7 +21,9 @@
 | `/library/{id}/person/{person}/delete`                           | POST   | Delete a person                  |
 | `/library/{id}/person/{person}/edit`                             | GET    | Edit or delete a person          |
 | `/library/{id}/person/{person}/edit`                             | POST   | Save a person                    |
+| `/library/{id}/person/{person}/profile`                          | GET    | Profile picture                  |
 | `/library/{id}/person/{person}`                                  | GET    | Person details                   |
+| `/library/{id}/publication/{publication}/cover`                  | GET    | Cover image                      |
 | `/library/{id}/publication/{publication}/delete`                 | POST   | Delete a publication             |
 | `/library/{id}/publication/{publication}/edit`                   | GET    | Edit or delete a publication     |
 | `/library/{id}/publication/{publication}/edit`                   | POST   | Save a publication               |
