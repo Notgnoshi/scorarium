@@ -45,6 +45,15 @@
         post(root, id, form);
     };
 
+    // A refusal reports through the same events as an upload, so a listener needs no special case.
+    const refuse = (root, message) => {
+        const id = nextUploadId++;
+        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: "" } }));
+        finish(root, id, { ok: false, message });
+    };
+
+    const isDisabled = (root) => root.querySelector("[data-url-field]").disabled;
+
     const fetchUrl = (root, field) => {
         const url = field.value.trim();
         field.value = "";
@@ -88,15 +97,132 @@
 
     document.addEventListener("paste", (event) => {
         const root = event.target.closest("[data-file-input]");
-        if (!root || !event.target.matches("[data-url-field]")) {
+        if (!root || !event.target.matches("[data-url-field]") || isDisabled(root)) {
             return;
         }
         const field = event.target;
+        const files = event.clipboardData.files;
+        if (files.length > 0) {
+            event.preventDefault();
+            if (files.length > 1) {
+                refuse(root, "Paste or drop one file.");
+            } else {
+                upload(root, files[0]);
+            }
+            return;
+        }
         // The pasted text has not landed in the field yet.
         setTimeout(() => {
             if (field.value.trim() !== "" && field.checkValidity()) {
                 fetchUrl(root, field);
             }
         });
+    });
+
+    // Find the drop zone that contains the target, unless its file input is disabled.
+    const dropZoneAt = (target) => {
+        const zone = target.closest("[data-drop-zone]");
+        const root = zone?.querySelector("[data-file-input]");
+        return root && !isDisabled(root) ? zone : null;
+    };
+
+    const carriesDroppable = (event) => {
+        const types = Array.from(event.dataTransfer?.types ?? []);
+        return types.includes("Files") || types.includes("text/uri-list");
+    };
+
+    // The enter and leave events fire for every child, so the depth is counted to know when the
+    // drag leaves the page.
+    let dragDepth = 0;
+
+    const textFieldSelector = [
+        "textarea",
+        "input:not([type])",
+        "input[type=text], input[type=search], input[type=url], input[type=email]",
+        "input[type=tel], input[type=password], input[type=number]",
+        "[contenteditable]:not([contenteditable=false])",
+    ].join(", ");
+
+    // Text dropped into a text field is harmless, but a file has no ordinary drop there.
+    const isTextDrop = (event) =>
+        !event.dataTransfer.types.includes("Files") && event.target.closest(textFieldSelector);
+
+    const setActiveZone = (zone) => {
+        document.querySelectorAll("[data-drop-active]").forEach((other) => {
+            if (other !== zone) {
+                delete other.dataset.dropActive;
+            }
+        });
+        if (zone) {
+            zone.dataset.dropActive = "";
+        }
+    };
+
+    const endDrag = () => {
+        dragDepth = 0;
+        setActiveZone(null);
+        delete document.documentElement.dataset.dropTargets;
+    };
+
+    document.addEventListener("dragenter", (event) => {
+        if (carriesDroppable(event)) {
+            dragDepth++;
+            document.documentElement.dataset.dropTargets = "";
+        }
+    });
+
+    document.addEventListener("dragleave", (event) => {
+        if (carriesDroppable(event) && --dragDepth <= 0) {
+            endDrag();
+        }
+    });
+
+    document.addEventListener("dragend", endDrag);
+
+    document.addEventListener("dragover", (event) => {
+        if (!carriesDroppable(event)) {
+            return;
+        }
+        const zone = dropZoneAt(event.target);
+        setActiveZone(zone);
+        if (!zone && isTextDrop(event)) {
+            return;
+        }
+        // An uncancelled dragover makes the browser navigate to a dropped file and discard unsaved
+        // edits, so every other target refuses the drop explicitly instead.
+        event.preventDefault();
+        event.dataTransfer.dropEffect = zone ? "copy" : "none";
+    });
+
+    document.addEventListener("drop", (event) => {
+        endDrag();
+        if (!carriesDroppable(event)) {
+            return;
+        }
+        const zone = dropZoneAt(event.target);
+        if (!zone && isTextDrop(event)) {
+            return;
+        }
+        event.preventDefault();
+        if (!zone) {
+            return;
+        }
+        const root = zone.querySelector("[data-file-input]");
+        const files = event.dataTransfer.files;
+        if (files.length > 1) {
+            refuse(root, "Paste or drop one file.");
+        } else if (files.length === 1) {
+            upload(root, files[0]);
+        } else {
+            const url = event.dataTransfer
+                .getData("text/uri-list")
+                .split(/\r?\n/)
+                .find((entry) => /^https?:\/\//.test(entry));
+            if (url) {
+                const field = root.querySelector("[data-url-field]");
+                field.value = url;
+                fetchUrl(root, field);
+            }
+        }
     });
 }

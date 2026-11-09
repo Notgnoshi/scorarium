@@ -119,3 +119,28 @@ fieldset.box > legend {
     gap: 0.5rem;
     padding: 0 1rem 1rem;
 }
+
+/* Show every enabled drop zone while a file or link is dragged over the page. */
+[data-drop-zone] {
+    position: relative;
+}
+
+html[data-drop-targets] [data-drop-zone]:not(:has([data-url-field]:disabled))::after {
+    content: attr(data-drop-zone);
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: var(--bs-body-color);
+    background: rgba(var(--bs-primary-rgb), 0.05);
+    border: 2px dashed var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+}
+
+html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
+    background: rgba(var(--bs-primary-rgb), 0.15);
+    border-color: var(--bs-primary);
+}
