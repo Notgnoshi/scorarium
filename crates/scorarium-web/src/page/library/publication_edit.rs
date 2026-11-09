@@ -22,7 +22,7 @@ use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
 use crate::widget::identifiers_input::{self, IdentifiersInput};
 use crate::widget::links_input::LinksInput;
-use crate::widget::picture::Picture;
+use crate::widget::picture_box::PictureBox;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -54,7 +54,7 @@ pub(crate) struct Form {
 #[template(path = "page/library/publication_edit.html")]
 struct Edit {
     base: Base,
-    picture: Picture,
+    picture: PictureBox,
     library: LibraryId,
     id: PublicationId,
     draft: bool,
@@ -165,7 +165,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
-        picture: Picture::from(publication),
+        picture: PictureBox::cover(publication),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         library: library.id(),
         id: publication.id(),
