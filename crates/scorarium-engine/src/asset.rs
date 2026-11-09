@@ -7,6 +7,7 @@ use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_DISPOSITION, HeaderMap};
 use tempfile::{NamedTempFile, TempPath};
 use tokio::io::{AsyncRead, AsyncWriteExt};
+use url::Url;
 
 use crate::audit::AuditSubject;
 use crate::entity::AnyEntityId;
@@ -64,7 +65,7 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
             if !status.is_success() {
                 return Err(Error::InvalidValue(format!("{url} answered {status}.")));
             }
-            let filename = download_name(&url, response.headers());
+            let filename = download_name(response.url(), response.headers());
             while let Some(chunk) = response.chunk().await.map_err(eyre::Report::new)? {
                 file.write_all(&chunk).await?;
             }
@@ -82,14 +83,9 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
     Ok(Staged { path, filename })
 }
 
-/// Get the filename for a download after the last segment of its URL, or else its `Content-Disposition` header
-fn download_name(url: &HttpUrl, headers: &HeaderMap) -> Option<String> {
-    let from_url = url
-        .as_url()
-        .path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .and_then(|segment| component(&percent_decode_str(segment).decode_utf8_lossy()));
-    from_url.or_else(|| {
+/// Get the filename for a download from its `Content-Disposition` header, or else after the last segment of `url`
+fn download_name(url: &Url, headers: &HeaderMap) -> Option<String> {
+    let from_header = || {
         let disposition = headers.get(CONTENT_DISPOSITION)?.to_str().ok()?;
         let filename = disposition.split(';').find_map(|param| {
             let (name, value) = param.split_once('=')?;
@@ -98,6 +94,10 @@ fn download_name(url: &HttpUrl, headers: &HeaderMap) -> Option<String> {
                 .then_some(value)
         })?;
         component(filename.trim().trim_matches('"'))
+    };
+    from_header().or_else(|| {
+        let segment = url.path_segments()?.next_back()?;
+        component(&percent_decode_str(segment).decode_utf8_lossy())
     })
 }
 
