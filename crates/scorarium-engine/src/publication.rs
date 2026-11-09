@@ -760,8 +760,8 @@ impl Publication {
 
     /// Replace the publication's cover image with the image from `source`
     ///
-    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
-    /// [Error::NotFound] if the publication has been deleted.
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image or is larger than
+    /// the limit, or [Error::NotFound] if the publication has been deleted.
     pub async fn set_cover(&mut self, source: AssetSource<'_>) -> Result<()> {
         let staged = asset::stage(&self.engine, source).await?;
         let extension = staged.image_extension()?;
@@ -1013,8 +1013,9 @@ impl Publication {
     /// Store a digital holding's file in the publication's asset directory under its own name,
     /// with a counter before the extension if that name is taken.
     ///
-    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename or its URL
-    /// answers with an error status, and [Error::NotFound] if the publication has been deleted.
+    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename, its URL
+    /// answers with an error status, or its file is larger than the limit, or [Error::NotFound]
+    /// if the publication has been deleted.
     pub async fn add_holding(&mut self, holding: NewHolding<'_>) -> Result<HoldingId> {
         let holding = stage_holding(&self.engine, holding).await?;
         let mut tx = self.engine.begin_write().await?;

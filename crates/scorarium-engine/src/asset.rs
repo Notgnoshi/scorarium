@@ -6,13 +6,20 @@ use std::path::{Path, PathBuf};
 use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_DISPOSITION, HeaderMap};
 use tempfile::{NamedTempFile, TempPath};
-use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use url::Url;
 
 use crate::audit::AuditSubject;
 use crate::entity::AnyEntityId;
 use crate::link::HttpUrl;
 use crate::{Engine, Error, Result};
+
+/// Maximum size users are allowed to upload to scorarium, in bytes
+pub const MAX_ASSET_SIZE: u64 = 512 * 1024 * 1024;
+
+fn too_large() -> Error {
+    Error::InvalidValue("The file is larger than 512 MB.".into())
+}
 
 /// The origin of a file to add to the library
 pub enum AssetSource<'a> {
@@ -48,10 +55,13 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
     let (file, path) = NamedTempFile::new_in(engine.staging_dir())?.into_parts();
     let mut file = tokio::fs::File::from_std(file);
     let filename = match source {
-        AssetSource::Upload { mut data, filename } => {
+        AssetSource::Upload { data, filename } => {
             let filename = component(&filename)
                 .ok_or_else(|| Error::InvalidValue("A filename cannot be blank.".into()))?;
-            tokio::io::copy(&mut data, &mut file).await?;
+            let written = tokio::io::copy(&mut data.take(MAX_ASSET_SIZE + 1), &mut file).await?;
+            if written > MAX_ASSET_SIZE {
+                return Err(too_large());
+            }
             Some(filename)
         }
         AssetSource::Url(url) => {
@@ -65,8 +75,20 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
             if !status.is_success() {
                 return Err(Error::InvalidValue(format!("{url} answered {status}.")));
             }
+            if response
+                .content_length()
+                .is_some_and(|n| n > MAX_ASSET_SIZE)
+            {
+                return Err(too_large());
+            }
             let filename = download_name(response.url(), response.headers());
+            // The header can be absent or wrong, so only this count bounds the disk usage.
+            let mut total: u64 = 0;
             while let Some(chunk) = response.chunk().await.map_err(eyre::Report::new)? {
+                total += chunk.len() as u64;
+                if total > MAX_ASSET_SIZE {
+                    return Err(too_large());
+                }
                 file.write_all(&chunk).await?;
             }
             filename

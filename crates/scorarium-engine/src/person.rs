@@ -239,8 +239,8 @@ impl Person {
 
     /// Replace the person's profile image with the image from `source`
     ///
-    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
-    /// [Error::NotFound] if the person has been deleted.
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image or is larger than
+    /// the limit, or [Error::NotFound] if the person has been deleted.
     pub async fn set_profile(&mut self, source: AssetSource<'_>) -> Result<()> {
         let staged = asset::stage(&self.engine, source).await?;
         let extension = staged.image_extension()?;
