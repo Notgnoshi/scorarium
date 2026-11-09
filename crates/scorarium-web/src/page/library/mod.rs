@@ -4,6 +4,7 @@ pub mod people;
 pub mod person;
 pub mod person_edit;
 pub mod publication;
+pub mod publication_edit;
 pub mod tag;
 pub mod tags;
 pub mod view;

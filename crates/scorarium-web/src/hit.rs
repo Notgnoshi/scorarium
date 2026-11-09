@@ -1,4 +1,4 @@
-use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::entity::{AnyEntity, Contributed, Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::search::SearchHit;
 use scorarium_engine::value::{Classification, Tag};

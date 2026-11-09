@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::person::Person;
 use scorarium_engine::work::Work;
 use scorarium_test::TestApp;

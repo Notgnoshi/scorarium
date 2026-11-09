@@ -3,29 +3,42 @@ function attachListInput(container) {
     const entries = container.querySelector("[data-entries]");
     const template = container.querySelector("template");
     const input = container.querySelector("[data-add]");
+    const kind = container.querySelector("[data-add-kind]");
+
+    const chips = "chips" in container.dataset;
 
     function add() {
-        const text = input.value.trim();
+        // The engine lowercases tags, so the chip shows what Save stores.
+        const text = chips ? input.value.trim().toLowerCase() : input.value.trim();
         if (!text) {
             return;
         }
+        // A kind select stages the entry as "kind:text" so the two cannot misalign.
+        const value = kind ? `${kind.value}:${text}` : text;
         if (!input.checkValidity()) {
             input.reportValidity();
             return;
         }
-        if ([...entries.children].some((entry) => entry.dataset.value === text)) {
+        if ([...entries.children].some((entry) => entry.dataset.value === value)) {
             return;
         }
         const entry = template.content.firstElementChild.cloneNode(true);
-        entry.dataset.value = text;
+        entry.dataset.value = value;
         entry.querySelector("[data-label]").textContent = text;
+        if (kind) {
+            entry.querySelector("[data-kind-label]").textContent = kind.selectedOptions[0].textContent;
+        }
         const favicon = entry.querySelector("[data-favicon]");
         if (favicon) {
             favicon.src = new URL(text).origin + "/favicon.ico";
         }
-        entry.querySelector("input[type=hidden]").value = text;
+        entry.querySelector("input[type=hidden]").value = value;
         entries.append(entry);
         input.value = "";
+        if (chips) {
+            // Let the typeahead cancel its pending request and close its menu.
+            input.dispatchEvent(new Event("input"));
+        }
     }
 
     container.addEventListener("click", (event) => {
@@ -52,6 +65,38 @@ function attachListInput(container) {
             add();
         }
     });
+
+    if (chips) {
+        container.addEventListener("click", (event) => {
+            if (!event.target.closest("[data-remove]")) {
+                input.focus();
+            }
+        });
+
+        input.addEventListener("keydown", (event) => {
+            if (event.key === " ") {
+                event.preventDefault();
+                add();
+            } else if (event.key === "Backspace" && input.value === "") {
+                entries.lastElementChild?.querySelector("[data-remove]")?.click();
+            }
+        });
+
+        // Committing on blur lets a typed tag survive clicking Save without pressing Enter.
+        input.addEventListener("blur", add);
+        input.addEventListener("typeahead:pick", add);
+
+        // A tag that is already a chip would be a no-op to add, so do not offer it.
+        input.addEventListener("typeahead:suggest", () => {
+            const menu = document.getElementById(input.getAttribute("aria-controls"));
+            const present = new Set([...entries.children].map((entry) => entry.dataset.value.toLowerCase()));
+            menu.querySelectorAll(".dropdown-item[data-value]").forEach((item) => {
+                if (present.has(item.dataset.value.toLowerCase())) {
+                    item.remove();
+                }
+            });
+        });
+    }
 }
 
 document.querySelectorAll("[data-list-input]").forEach(attachListInput);

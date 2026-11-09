@@ -2,6 +2,8 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
+use scorarium_engine::publication::Publication;
+use scorarium_engine::work::Work;
 use tower_http::trace::TraceLayer;
 
 use crate::auth::CookieSettings;
@@ -23,10 +25,22 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/library/{id}/publication/{publication}",
             get(page::library::publication::get),
         )
+        .route(
+            "/library/{id}/publication/{publication}/edit",
+            get(page::library::publication_edit::get).post(page::library::publication_edit::post),
+        )
+        .route(
+            "/library/{id}/publication/{publication}/delete",
+            post(page::library::publication_edit::delete),
+        )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
             "/library/{id}/work/{work}/edit",
             get(page::library::work_edit::get).post(page::library::work_edit::post),
+        )
+        .route(
+            "/library/{id}/work/{work}/delete",
+            post(page::library::work_edit::delete),
         )
         .route(
             "/library/{id}/person/{person}",
@@ -35,6 +49,10 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .route(
             "/library/{id}/person/{person}/edit",
             get(page::library::person_edit::get).post(page::library::person_edit::post),
+        )
+        .route(
+            "/library/{id}/person/{person}/delete",
+            post(page::library::person_edit::delete),
         )
         .route("/library/{id}/people", get(page::library::people::get))
         .route(
@@ -72,11 +90,31 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
                 .route(
                     "/library/{id}/work/{work}/contributor/add",
-                    post(api::contributor::add),
+                    post(api::contributor::add::<Work>),
                 )
                 .route(
                     "/library/{id}/work/{work}/contributor/remove",
-                    post(api::contributor::remove),
+                    post(api::contributor::remove::<Work>),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contents/add",
+                    post(api::contents::add),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contents/add-range",
+                    post(api::contents::add_range),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contents/remove",
+                    post(api::contents::remove),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contributor/add",
+                    post(api::contributor::add::<Publication>),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/contributor/remove",
+                    post(api::contributor::remove::<Publication>),
                 )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),

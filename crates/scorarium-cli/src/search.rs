@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{AnyEntity, Entity};
+use scorarium_engine::entity::{AnyEntity, Contributed, Entity};
 use scorarium_engine::person::Person;
 use scorarium_engine::work::Work;
 

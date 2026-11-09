@@ -7,6 +7,7 @@ use std::str::FromStr;
 use scorarium_client::Source;
 
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
+use crate::contributor::{Contributor, Role};
 use crate::enrich::Enrichment;
 use crate::library::LibraryId;
 use crate::person::{Person, PersonId};
@@ -134,6 +135,9 @@ pub trait Entity: Sized {
     type Field: Copy + Eq + fmt::Display + FromStr;
     type Proposal: Clone + fmt::Debug;
 
+    /// The kind of this entity
+    const KIND: EntityKind;
+
     /// Load the entity with the given id, if it exists
     fn load(engine: &Engine, id: Self::Id) -> impl Future<Output = Result<Option<Self>>> + Send;
 
@@ -191,6 +195,41 @@ pub trait Entity: Sized {
 
     /// Return the entity's background [Enrichment] task handle, if one exists
     fn enrichment(&self) -> Option<Enrichment>;
+}
+
+/// The contributor methods shared by works and publications
+pub trait Contributed: Entity {
+    /// List the entity's contributors
+    fn contributors(&self) -> &[Contributor];
+
+    /// Create a person with the owning entity's draft state
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted.
+    fn create_contributor(
+        &mut self,
+        name: impl AsRef<str> + Send,
+        role: Role,
+    ) -> impl Future<Output = Result<Person>> + Send;
+
+    /// Add a person from the entity's library as a contributor in `role`
+    ///
+    /// Commit the person if it is a draft and the entity is committed.
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted or its library has no such person.
+    fn add_contributor(
+        &mut self,
+        person: PersonId,
+        role: Role,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Remove a contributor from the entity
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted.
+    fn remove_contributor(
+        &mut self,
+        person: PersonId,
+        role: &Role,
+    ) -> impl Future<Output = Result<()>> + Send;
 }
 
 /// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`

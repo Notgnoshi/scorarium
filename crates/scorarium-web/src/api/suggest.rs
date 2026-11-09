@@ -2,7 +2,8 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::person::PersonId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
 
 use crate::api::{Query, SUGGESTION_LIMIT};
@@ -11,11 +12,17 @@ use crate::error::Result;
 use crate::page::library::view;
 
 /// Map a route's field name to the field it suggests values for
-fn field(name: &str) -> Option<SuggestField> {
+///
+/// The `person` narrows work suggestions to the works crediting them.
+fn field(name: &str, person: Option<PersonId>) -> Option<SuggestField> {
     Some(match name {
         "person" => SuggestField::Person,
         "role" => SuggestField::Role,
         "tag" => SuggestField::Tag,
+        "publisher" => SuggestField::Publisher,
+        "work" => SuggestField::Work {
+            contributor: person,
+        },
         "key" => SuggestField::Key,
         "time_signature" => SuggestField::TimeSignature,
         "instrumentation" => SuggestField::Instrumentation,
@@ -46,9 +53,8 @@ impl Entry {
 #[template(path = "api/suggest.html")]
 struct Fragment {
     entries: Vec<Entry>,
-    /// When suggesting people, whether there should be a suggestion to create a new person with the
-    /// given name.
-    create_person: Option<String>,
+    /// When suggesting people or works, the noun and the typed text of a suggestion to create a new one.
+    create: Option<(&'static str, String)>,
 }
 
 pub async fn get(
@@ -58,7 +64,8 @@ pub async fn get(
     axum::extract::Query(query): axum::extract::Query<Query>,
 ) -> Result<Html<String>> {
     let library = view::load(&engine, &library).await?;
-    let field = field(&name).ok_or(scorarium_engine::Error::NotFound)?;
+    let person = query.person.as_deref().and_then(|id| id.parse().ok());
+    let field = field(&name, person).ok_or(scorarium_engine::Error::NotFound)?;
     let query = query.q.as_deref().unwrap_or_default().trim();
     if query.is_empty() {
         return Ok(Html(String::new()));
@@ -73,6 +80,22 @@ pub async fn get(
                 draft: person.is_draft(),
                 detail: None,
             }),
+            Suggested::Work { work, .. } => {
+                let detail = [
+                    work.catalog_numbers().first().map(|n| n.as_str()),
+                    work.contributors().first().map(|c| c.name.as_str()),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                Some(Entry {
+                    suggestion_id: Some(work.id().to_string()),
+                    text: work.title().to_owned(),
+                    draft: work.is_draft(),
+                    detail: (!detail.is_empty()).then(|| detail.join(", ")),
+                })
+            }
+            Suggested::Publisher(name) => Some(Entry::value(name)),
             Suggested::Role(role) => Some(Entry::value(role.as_str().to_owned())),
             Suggested::Key(text)
             | Suggested::TimeSignature(text)
@@ -82,15 +105,17 @@ pub async fn get(
                 ..Entry::value(tag.to_string())
             }),
             // These belong to fields this route never requests.
-            Suggested::Publication(_)
-            | Suggested::Work { .. }
-            | Suggested::Publisher(_)
-            | Suggested::Location(_) => None,
+            Suggested::Publication(_) | Suggested::Location(_) => None,
         })
         .collect();
+    let noun = match field {
+        SuggestField::Person => Some("person"),
+        SuggestField::Work { .. } => Some("work"),
+        _ => None,
+    };
     let fragment = Fragment {
         entries,
-        create_person: matches!(field, SuggestField::Person).then(|| query.to_owned()),
+        create: noun.map(|noun| (noun, query.to_owned())),
     };
     Ok(Html(fragment.render()?))
 }

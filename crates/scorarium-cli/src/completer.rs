@@ -55,7 +55,7 @@ fn locate<'a>(tree: &'a Command, words: &'a [String]) -> Location<'a> {
 fn field_for(value_name: &str) -> Option<SuggestField> {
     match value_name {
         "publication" => Some(SuggestField::Publication),
-        "work" => Some(SuggestField::Work),
+        "work" => Some(SuggestField::Work { contributor: None }),
         "person" => Some(SuggestField::Person),
         "tag" => Some(SuggestField::Tag),
         "role" => Some(SuggestField::Role),

@@ -1,4 +1,4 @@
-use crate::entity::Entity;
+use crate::entity::{Contributed, Entity};
 use crate::holding::NewHolding;
 use crate::library::Library;
 use crate::person::PersonId;

@@ -4,6 +4,7 @@
         {% call suggestion::pick(id, entry.text) %}
             {{ entry.text }}
             {% if entry.draft %}<span class="badge small text-bg-secondary">Draft</span>{% endif %}
+            {% if let Some(detail) = entry.detail %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
         {% endcall %}
     {% else %}
         {% call suggestion::value(entry.text) %}
@@ -12,10 +13,10 @@
         {% endcall %}
     {% endif %}
 {% endfor %}
-{% if let Some(name) = create_person %}
+{% if let Some((noun, name)) = create %}
     {% if !entries.is_empty() %}<hr class="dropdown-divider">{% endif %}
     {% call suggestion::pick("new", name) %}
-        <i class="bi bi-plus-lg" title="Create a new person"></i> New "{{ name }}"
+        <i class="bi bi-plus-lg" title="Create a new {{ noun }}"></i> New "{{ name }}"
     {% endcall %}
 {% elif entries.is_empty() %}
     {% call suggestion::empty() %}

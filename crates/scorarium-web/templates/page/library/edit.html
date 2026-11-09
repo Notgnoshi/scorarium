@@ -1,42 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>{{ base.title }}</h1>
-    {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
     <form method="post" action="/library/{{ id }}/edit">
-        <div class="mb-3">
-            <label class="form-label" for="name">Name</label>
-            <input class="form-control" type="text" id="name" name="name" value="{{ name }}" required>
-        </div>
-        <div class="mb-3">
-            <div class="btn-group" role="group" aria-label="Visibility">
-                <input class="btn-check"
-                       type="radio"
-                       name="visibility"
-                       id="visibility-public"
-                       value="public"
-                       {% if !private %}checked{% endif %}>
-                <label class="btn btn-outline-secondary" for="visibility-public">
-                    <i class="bi bi-unlock-fill"></i> Public
-                </label>
-                <input class="btn-check"
-                       type="radio"
-                       name="visibility"
-                       id="visibility-private"
-                       value="private"
-                       {% if private %}checked{% endif %}>
-                <label class="btn btn-outline-secondary" for="visibility-private">
-                    <i class="bi bi-lock-fill"></i> Private
-                </label>
+        <fieldset class="box">
+            <legend>Details</legend>
+            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <div class="mb-3">
+                <label class="form-label" for="name">Name</label>
+                <input class="form-control" type="text" id="name" name="name" value="{{ name }}" required>
             </div>
-        </div>
-        <button class="btn btn-primary" type="submit" title="Save changes">
-            <i class="bi bi-floppy"></i> Save
-        </button>
-        <a class="btn btn-outline-secondary" href="/library/{{ id }}" title="Discard changes">
-            <i class="bi bi-x-lg"></i> Cancel
-        </a>
+            <div class="mb-3">
+                <div class="btn-group" role="group" aria-label="Visibility">
+                    <input class="btn-check"
+                           type="radio"
+                           name="visibility"
+                           id="visibility-public"
+                           value="public"
+                           {% if !private %}checked{% endif %}>
+                    <label class="btn btn-outline-secondary" for="visibility-public">
+                        <i class="bi bi-unlock-fill"></i> Public
+                    </label>
+                    <input class="btn-check"
+                           type="radio"
+                           name="visibility"
+                           id="visibility-private"
+                           value="private"
+                           {% if private %}checked{% endif %}>
+                    <label class="btn btn-outline-secondary" for="visibility-private">
+                        <i class="bi bi-lock-fill"></i> Private
+                    </label>
+                </div>
+            </div>
+            <button class="btn btn-primary" type="submit" title="Save changes">
+                <i class="bi bi-floppy"></i> Save
+            </button>
+            <a class="btn btn-outline-secondary" href="/library/{{ id }}" title="Discard changes">
+                <i class="bi bi-x-lg"></i> Cancel
+            </a>
+        </fieldset>
     </form>
-    <hr>
     <form method="post"
           action="/library/{{ id }}/delete"
           data-confirm="Delete {{ name }} and its {{ publications }} publication{{ publications|pluralize }}?">

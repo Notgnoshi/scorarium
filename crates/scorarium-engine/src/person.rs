@@ -428,6 +428,7 @@ impl Entity for Person {
     type Id = PersonId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Person;
 
     async fn load(engine: &Engine, id: PersonId) -> Result<Option<Person>> {
         let mut conn = engine.begin_read().await?;
@@ -1057,6 +1058,7 @@ pub fn derive_sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity::Contributed;
     use crate::holding::NewHolding;
     use crate::link::LinkKind;
     use crate::publication::ImportSeed;

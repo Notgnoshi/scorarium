@@ -5,6 +5,7 @@ mod error;
 mod hit;
 mod icon;
 mod page;
+mod redirect;
 mod router;
 mod serve;
 mod sort;

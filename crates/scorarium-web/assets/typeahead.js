@@ -38,16 +38,24 @@ function attachTypeahead(input) {
     function setPick(id) {
         picked.value = id;
         picked.dispatchEvent(new Event("change", { bubbles: true }));
-        input.setCustomValidity(id || !input.dataset.pickRequired ? "" : input.dataset.pickRequired);
+        // An empty box is left to `required`, so an optional picker can still be submitted blank.
+        const unpicked = !id && input.dataset.pickRequired && input.value.trim() !== "";
+        input.setCustomValidity(unpicked ? input.dataset.pickRequired : "");
     }
 
     async function refresh(text) {
         // Aborting the older request keeps a slow response from overwriting a newer one.
         controller?.abort();
         controller = new AbortController();
+        const params = new URLSearchParams({ q: text });
+        const sibling = input.dataset.typeaheadWith;
+        const value = sibling && input.form?.elements[sibling]?.value;
+        if (value) {
+            params.set(sibling, value);
+        }
         let html;
         try {
-            const response = await fetch(`${input.dataset.typeahead}?q=${encodeURIComponent(text)}`, {
+            const response = await fetch(`${input.dataset.typeahead}?${params}`, {
                 signal: controller.signal,
             });
             if (!response.ok) {
@@ -61,10 +69,18 @@ function attachTypeahead(input) {
         entries().forEach((entry, i) => {
             entry.id = `${input.id}-option-${i}`;
         });
-        if (document.activeElement === input) {
+        const offered = entries().length;
+        input.dispatchEvent(new CustomEvent("typeahead:suggest", { bubbles: true }));
+        // A listener that filtered out every suggestion leaves nothing to show.
+        if (offered > 0 && entries().length === 0) {
+            close();
+        } else if (document.activeElement === input) {
             open();
-            // The fragment lists its best match first, so Enter takes it without arrowing down.
-            highlight(entries()[0]);
+            // The fragment lists its best match first, so Enter takes it without arrowing down,
+            // unless the field opts out because its free text is usually the intended value.
+            if (!("noDefaultPick" in input.dataset)) {
+                highlight(entries()[0]);
+            }
         }
     }
 
@@ -133,6 +149,7 @@ function attachTypeahead(input) {
             if (picked) {
                 setPick(entry.dataset.pick ?? "");
             }
+            input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
             close();
         }
     });

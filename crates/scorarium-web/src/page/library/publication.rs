@@ -3,22 +3,24 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::publication::IdentifierKind;
+use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Classification, Tag, Year};
-use scorarium_engine::work::{CatalogNumber, WorkId};
 use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
 use crate::error::Result;
 use crate::icon::Icon;
-use crate::page::library::entity::{self, ExternalLink, group_contributors, is_primary};
+use crate::page::library::entity::{
+    self, ContainedWork, ExternalLink, book_order, group_contributors,
+};
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
 use crate::sort;
 use crate::widget::header::Header;
+use crate::widget::identifiers_input::kind_label;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
@@ -27,6 +29,7 @@ struct Publication {
     base: Base,
     logged_in: bool,
     library: LibraryId,
+    id: PublicationId,
     draft: bool,
     title: String,
     publisher: Option<String>,
@@ -39,7 +42,7 @@ struct Publication {
     tags: Vec<Tag>,
     note: Option<String>,
     holdings: Vec<Holding>,
-    works: Vec<Work>,
+    works: Vec<ContainedWork>,
     numbered: bool,
     sort: Sort,
 }
@@ -92,55 +95,10 @@ struct Holding {
     loaned_to: Option<String>,
 }
 
-struct Work {
-    id: WorkId,
-    draft: bool,
-    title: String,
-    /// The work's first catalog number, which is its most confidently recognized one
-    catalog_number: Option<CatalogNumber>,
-    contributors: Vec<entity::Contributor>,
-}
-
-impl Work {
-    /// Get the lowercase sort name of the first composer or author
-    fn primary_sort_name(&self) -> Option<String> {
-        self.contributors
-            .iter()
-            .find(|c| c.roles.iter().any(is_primary))
-            .map(|c| c.sort_name.to_lowercase())
-    }
-}
-
-impl From<&scorarium_engine::work::Work> for Work {
-    fn from(work: &scorarium_engine::work::Work) -> Work {
-        Work {
-            id: work.id(),
-            draft: work.is_draft(),
-            title: work.title().to_owned(),
-            catalog_number: work.catalog_numbers().first().cloned(),
-            contributors: group_contributors(work.contributors()),
-        }
-    }
-}
-
 /// Order contents by the column, title breaking ties
-///
-/// Book order is by first contributor, then catalog number, then title.
-fn sort_contents(works: &mut [Work], sort: &Sort) {
+fn sort_contents(works: &mut [ContainedWork], sort: &Sort) {
     if sort.column == Column::Contents {
-        works.sort_by_cached_key(|work| {
-            let sort_name = work
-                .contributors
-                .first()
-                .map(|c| c.sort_name.to_lowercase());
-            (
-                sort_name.is_none(),
-                sort_name,
-                work.catalog_number.is_none(),
-                work.catalog_number.clone(),
-                work.title.to_lowercase(),
-            )
-        });
+        book_order(works);
         return;
     }
     works.sort_by(|a, b| {
@@ -166,14 +124,8 @@ fn sort_contents(works: &mut [Work], sort: &Sort) {
 
 impl From<&scorarium_engine::publication::Identifier> for Identifier {
     fn from(identifier: &scorarium_engine::publication::Identifier) -> Identifier {
-        let label = match identifier.kind() {
-            IdentifierKind::Isbn => Some("ISBN"),
-            IdentifierKind::Ismn => Some("ISMN"),
-            IdentifierKind::PublisherNumber => None,
-            IdentifierKind::PlateNumber => Some("Plate No."),
-        };
         Identifier {
-            label,
+            label: kind_label(identifier.kind()),
             value: identifier.as_str().to_owned(),
         }
     }
@@ -213,7 +165,7 @@ pub async fn get(
     let publication: scorarium_engine::publication::Publication =
         entity::load(&engine, library.id(), &publication, &viewer).await?;
 
-    let mut works: Vec<Work> = publication
+    let mut works: Vec<ContainedWork> = publication
         .works()
         .await?
         .iter()
@@ -233,6 +185,7 @@ pub async fn get(
         base: Base::new(header, title, parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),
+        id: publication.id(),
         draft: publication.is_draft(),
         title: title.to_owned(),
         publisher: publication.publisher().map(ToOwned::to_owned),
