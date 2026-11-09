@@ -16,6 +16,15 @@ pub const SESSION_COOKIE: &str = "session";
 pub struct Settings {
     /// Send the session cookie only over HTTPS
     pub secure_cookies: bool,
+    /// Let anonymous demo visitors upload files
+    pub demo_files: bool,
+}
+
+impl Settings {
+    /// Decide whether a visitor may store files on `engine`
+    pub fn files_allowed(self, engine: &Engine) -> bool {
+        !engine.is_demo() || self.demo_files
+    }
 }
 
 pub fn router(engine: Engine, settings: Settings) -> Router {

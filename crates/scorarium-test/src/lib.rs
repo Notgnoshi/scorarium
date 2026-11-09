@@ -74,6 +74,7 @@ fn server(engine: &Engine) -> TestServer {
             engine.clone(),
             scorarium_web::Settings {
                 secure_cookies: true,
+                demo_files: true,
             },
         ))
 }
