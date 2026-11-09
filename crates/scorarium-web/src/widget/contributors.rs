@@ -50,7 +50,7 @@ impl Contributors {
             value: String::new(),
             picked: Some(("person", String::new())),
             pick_required: Some("Pick a person from the list".to_owned()),
-            attrs: vec![],
+            attrs: vec![("required", String::new())],
         }
     }
 

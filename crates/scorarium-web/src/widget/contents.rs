@@ -108,7 +108,7 @@ impl Contents {
         )
     }
 
-    /// Build a person picker, whose pick is posted as `person` and whose free text is a new person
+    /// Build a person picker, whose pick is posted as `person` and whose text must be picked
     fn person(&self, id: &str, name: &str, person: &str, required: bool) -> Typeahead {
         Typeahead {
             id: id.to_owned(),
@@ -117,7 +117,7 @@ impl Contents {
             placeholder: "Person".to_owned(),
             value: name.to_owned(),
             picked: Some(("person", person.to_owned())),
-            pick_required: None,
+            pick_required: Some("Pick a person from the list".to_owned()),
             attrs: if required {
                 vec![("required", String::new())]
             } else {

@@ -38,7 +38,9 @@ function attachTypeahead(input) {
     function setPick(id) {
         picked.value = id;
         picked.dispatchEvent(new Event("change", { bubbles: true }));
-        input.setCustomValidity(id || !input.dataset.pickRequired ? "" : input.dataset.pickRequired);
+        // An empty box is left to `required`, so an optional picker can still be submitted blank.
+        const unpicked = !id && input.dataset.pickRequired && input.value.trim() !== "";
+        input.setCustomValidity(unpicked ? input.dataset.pickRequired : "");
     }
 
     async function refresh(text) {
