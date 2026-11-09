@@ -146,6 +146,15 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     post(api::contributor::remove::<Publication>),
                 )
                 .route(
+                    "/library/{id}/person/{person}/profile/upload",
+                    post(api::picture::upload_profile)
+                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route(
+                    "/library/{id}/person/{person}/profile/remove",
+                    post(api::picture::remove_profile),
+                )
+                .route(
                     "/library/{id}/publication/{publication}/cover/upload",
                     post(api::picture::upload_cover)
                         .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),

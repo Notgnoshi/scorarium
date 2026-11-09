@@ -1,4 +1,5 @@
 use askama::Template;
+use axum::Extension;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -9,6 +10,7 @@ use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 use serde::Deserialize;
 
+use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
@@ -18,7 +20,7 @@ use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
-use crate::widget::picture::Picture;
+use crate::widget::picture_box::PictureBox;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -54,7 +56,7 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
     base: Base,
-    picture: Picture,
+    picture: PictureBox,
     library: LibraryId,
     id: PersonId,
     draft: bool,
@@ -72,16 +74,16 @@ async fn render(
     library: &Library,
     person: &Person,
     form: Form,
-    status: StatusCode,
+    files_allowed: bool,
     back: Option<String>,
-    error: Option<String>,
+    error: Option<(StatusCode, String)>,
 ) -> Result<Response> {
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
-        picture: Picture::from(person),
+        picture: PictureBox::profile(person, files_allowed),
         base: Base::new(header, person.name(), parents),
         library: library.id(),
         id: person.id(),
@@ -107,14 +109,16 @@ async fn render(
             .clone()
             .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
         back,
-        error,
+        error: error.as_ref().map(|(_, message)| message.clone()),
     };
+    let status = error.map_or(StatusCode::OK, |(status, _)| status);
     Ok((status, Html(page.render()?)).into_response())
 }
 
 pub async fn get(
     _session: Session,
     State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
@@ -132,7 +136,7 @@ pub async fn get(
         &library,
         &person,
         form,
-        StatusCode::OK,
+        settings.files_allowed(&engine),
         same_site_path(query.back),
         None,
     )
@@ -142,20 +146,31 @@ pub async fn get(
 pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, person)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let back = same_site_path(query.back);
+    let files_allowed = settings.files_allowed(&engine);
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
     let parsed = match parse(&form) {
         Ok(parsed) => parsed,
         Err(e) => {
-            let (status, error) = form_error(e)?;
-            return render(header, &library, &person, form, status, back, Some(error)).await;
+            let error = form_error(e)?;
+            return render(
+                header,
+                &library,
+                &person,
+                form,
+                files_allowed,
+                back,
+                Some(error),
+            )
+            .await;
         }
     };
     let sort_name = match form.sort_name.trim() {
@@ -163,8 +178,17 @@ pub async fn post(
         sort_name => sort_name.to_owned(),
     };
     if let Err(e) = person.rename(&form.name, &sort_name).await {
-        let (status, error) = form_error(e)?;
-        return render(header, &library, &person, form, status, back, Some(error)).await;
+        let error = form_error(e)?;
+        return render(
+            header,
+            &library,
+            &person,
+            form,
+            files_allowed,
+            back,
+            Some(error),
+        )
+        .await;
     }
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {

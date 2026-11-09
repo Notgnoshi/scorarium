@@ -1,5 +1,6 @@
 use askama::Template;
 use scorarium_engine::entity::Entity;
+use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
 
 use crate::widget::file_input::FileInput;
@@ -35,6 +36,25 @@ impl PictureBox {
                 disabled: !files_allowed,
             },
             remove_url: publication.cover().map(|_| format!("{api}/remove")),
+        }
+    }
+
+    pub fn profile(person: &Person, files_allowed: bool) -> PictureBox {
+        let api = format!(
+            "/api/library/{}/person/{}/profile",
+            person.library(),
+            person.id()
+        );
+        PictureBox {
+            legend: "Profile picture",
+            picture: Picture::from(person),
+            input: FileInput {
+                url: format!("{api}/upload"),
+                accept: Some("image/*"),
+                hint: "Paste a picture or URL",
+                disabled: !files_allowed,
+            },
+            remove_url: person.profile().map(|_| format!("{api}/remove")),
         }
     }
 }

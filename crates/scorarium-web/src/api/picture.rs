@@ -2,6 +2,7 @@ use axum::Extension;
 use axum::extract::{Multipart, Path, State};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
+use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
 
 use crate::Settings;
@@ -40,5 +41,37 @@ pub async fn remove_cover(
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     publication.clear_cover().await?;
     let picture_box = PictureBox::cover(&publication, settings.files_allowed(&engine));
+    Ok(Html(askama::Template::render(&picture_box)?).into_response())
+}
+
+/// Replace a person's profile picture with the uploaded file, and answer with the picture box
+pub async fn upload_profile(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    Path((library, person)): Path<(String, String)>,
+    mut form: Multipart,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut person: Person =
+        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    let source = upload::source(&engine, settings, &mut form).await?;
+    person.set_profile(source).await?;
+    let picture_box = PictureBox::profile(&person, settings.files_allowed(&engine));
+    Ok(Html(askama::Template::render(&picture_box)?).into_response())
+}
+
+/// Remove a person's profile picture, and answer with the picture box
+pub async fn remove_profile(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    Path((library, person)): Path<(String, String)>,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut person: Person =
+        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    person.clear_profile().await?;
+    let picture_box = PictureBox::profile(&person, settings.files_allowed(&engine));
     Ok(Html(askama::Template::render(&picture_box)?).into_response())
 }
