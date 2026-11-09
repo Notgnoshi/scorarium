@@ -10,7 +10,7 @@ use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use scorarium_engine::Engine;
 use scorarium_engine::auth::Token;
 
-use crate::SESSION_COOKIE;
+use crate::{SESSION_COOKIE, Settings};
 
 /// The characters askama's `urlencode` filter escapes, so that `/` stays readable in an encoded URL
 const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
@@ -19,11 +19,6 @@ const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'~')
     .remove(b'/');
-
-#[derive(Clone, Copy)]
-pub(crate) struct CookieSettings {
-    pub(crate) secure: bool,
-}
 
 pub struct SessionCookie {
     jar: CookieJar,
@@ -37,8 +32,8 @@ impl FromRequestParts<Engine> for SessionCookie {
         let jar = CookieJar::from_request_parts(parts, engine).await?;
         let secure = parts
             .extensions
-            .get::<CookieSettings>()
-            .is_none_or(|settings| settings.secure);
+            .get::<Settings>()
+            .is_none_or(|settings| settings.secure_cookies);
         Ok(SessionCookie { jar, secure })
     }
 }

@@ -6,13 +6,19 @@ use scorarium_engine::publication::Publication;
 use scorarium_engine::work::Work;
 use tower_http::trace::TraceLayer;
 
-use crate::auth::CookieSettings;
 use crate::{api, assets, error, page};
 
 /// The name of the cookie that carries the session token
 pub const SESSION_COOKIE: &str = "session";
 
-pub fn router(engine: Engine, secure_cookies: bool) -> Router {
+/// Server settings
+#[derive(Clone, Copy, Debug)]
+pub struct Settings {
+    /// Send the session cookie only over HTTPS
+    pub secure_cookies: bool,
+}
+
+pub fn router(engine: Engine, settings: Settings) -> Router {
     let trace = TraceLayer::new_for_http()
         .on_request(())
         .on_eos(())
@@ -132,8 +138,6 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                 .layer(middleware::from_fn(error::render_fragment)),
         )
         .layer(trace)
-        .layer(Extension(CookieSettings {
-            secure: secure_cookies,
-        }))
+        .layer(Extension(settings))
         .with_state(engine)
 }

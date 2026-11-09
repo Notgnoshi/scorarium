@@ -3,6 +3,8 @@ use std::net::SocketAddr;
 use scorarium_engine::Engine;
 use tokio::signal::unix::{SignalKind, signal};
 
+use crate::router::{Settings, router};
+
 #[derive(Debug, clap::Args)]
 pub struct ServeArgs {
     /// Address and port to serve on.
@@ -17,12 +19,12 @@ pub struct ServeArgs {
 pub async fn serve(args: ServeArgs, engine: Engine) -> eyre::Result<()> {
     let listener = tokio::net::TcpListener::bind(args.bind).await?;
     tracing::info!(bind = %args.bind, "serving");
-    axum::serve(
-        listener,
-        crate::router::router(engine, !args.insecure_cookies),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    let settings = Settings {
+        secure_cookies: !args.insecure_cookies,
+    };
+    axum::serve(listener, router(engine, settings))
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
 }
 
