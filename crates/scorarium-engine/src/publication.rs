@@ -1113,6 +1113,54 @@ impl Publication {
         Ok(())
     }
 
+    /// Move a physical copy of the publication to `location`
+    ///
+    /// Returns [Error::InvalidValue] if the holding is digital, and [Error::NotFound] if the
+    /// publication has been deleted or has no such holding.
+    pub async fn set_physical_holding_location(
+        &mut self,
+        holding: HoldingId,
+        location: Option<&str>,
+    ) -> Result<()> {
+        let location = clean_text(location);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Some(position) = self.holdings.iter().position(|h| h.id == holding) else {
+            return Err(Error::NotFound);
+        };
+        match &self.holdings[position].kind {
+            HoldingKind::Digital { .. } => {
+                return Err(Error::InvalidValue(
+                    "A digital holding has no location.".into(),
+                ));
+            }
+            HoldingKind::Physical { location: current } if current.as_deref() == location => {
+                return Ok(());
+            }
+            HoldingKind::Physical { .. } => {}
+        }
+        sqlx::query!(
+            "UPDATE holding SET location = ? WHERE id = ?",
+            location,
+            holding.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Holdings).await?;
+        self.holdings[position].kind = HoldingKind::Physical {
+            location: location.map(str::to_string),
+        };
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
     /// Create a work in the publication with the owning publication's draft state and classification
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
@@ -3019,5 +3067,58 @@ mod tests {
             Err(Error::InvalidValue(_))
         ));
         assert!(assets.join("cover.1.png").exists());
+    }
+
+    #[tokio::test]
+    async fn only_a_physical_holding_has_a_location() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical {
+                    location: Some("Piano bench"),
+                },
+            )
+            .await
+            .unwrap();
+        let physical = publication.holdings()[0].id;
+        let digital = publication
+            .add_holding(NewHolding::Digital(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: "score.pdf".into(),
+            }))
+            .await
+            .unwrap();
+        let file = publication.holdings()[1].clone();
+
+        publication
+            .set_physical_holding_location(physical, Some("Shelf 3"))
+            .await
+            .unwrap();
+        assert!(matches!(
+            publication
+                .set_physical_holding_location(digital, Some("Shelf 3"))
+                .await,
+            Err(Error::InvalidValue(_))
+        ));
+
+        let reloaded = Publication::load(&engine, publication.id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reloaded.holdings()[0].kind,
+            HoldingKind::Physical {
+                location: Some("Shelf 3".into())
+            }
+        );
+        assert_eq!(reloaded.holdings()[1], file);
     }
 }
