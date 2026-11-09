@@ -1,4 +1,12 @@
-{% if let Some(src) = src %}
+{% if thumbnail %}
+    <span class="thumbnail d-inline-flex align-items-center justify-content-center flex-shrink-0 border rounded text-body-secondary fs-4">
+        {% if let Some(src) = src %}
+            <img src="{{ src }}" alt="{{ title }}" loading="lazy">
+        {% else %}
+            {{ icon }}
+        {% endif %}
+    </span>
+{% else if let Some(src) = src %}
     <a href="{{ src }}" target="_blank" title="Open in a new tab">
         <img class="picture border rounded" src="{{ src }}" alt="{{ title }}" loading="lazy">
     </a>

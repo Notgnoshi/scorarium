@@ -2,7 +2,6 @@
 {% import "widget/kind.html" as kind %}
 {% import "widget/sort.html" as sort %}
 {% import "widget/tag.html" as badge %}
-{% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     {{ nav }}
     <h2><span class="badge text-bg-secondary">{{ tag }} <span class="opacity-75">{{ hits.len() }}</span></span></h2>
@@ -24,8 +23,7 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                {% call thumbnail::thumbnail(hit.kind, hit.classification) %}
-                                {% endcall %}
+                                {{ hit.picture }}
                                 <div>
                                     <a href="{{ hit.href }}">{{ hit.title }}</a>
                                     {% if let Some(detail) = hit.detail %}

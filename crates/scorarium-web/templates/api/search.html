@@ -1,5 +1,4 @@
 {% import "widget/suggestion.html" as suggestion %}
-{% import "widget/thumbnail.html" as thumbnail %}
 {% if hits.is_empty() %}
     {% call suggestion::empty() %}
     {% endcall %}
@@ -7,8 +6,7 @@
     {% for hit in hits %}
         {% call suggestion::link(hit.href) %}
             <span class="d-flex align-items-center gap-2">
-                {% call thumbnail::thumbnail(hit.kind, hit.classification) %}
-                {% endcall %}
+                {{ hit.picture }}
                 <span class="d-flex flex-column overflow-hidden">
                     <span class="text-truncate" title="{{ hit.title }}">{{ hit.title }}</span>
                     {% if let Some(detail) = hit.detail %}
