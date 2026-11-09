@@ -7,6 +7,7 @@ pub mod contents;
 pub mod contributors;
 pub mod file_input;
 pub mod header;
+pub mod holdings;
 pub mod identifiers_input;
 pub mod library_nav;
 pub mod links_input;

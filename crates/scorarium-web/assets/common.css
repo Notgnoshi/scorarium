@@ -144,3 +144,18 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
     background: rgba(var(--bs-primary-rgb), 0.15);
     border-color: var(--bs-primary);
 }
+
+.holding-saved {
+    animation: holding-saved-fade 3s ease-out forwards;
+}
+
+@keyframes holding-saved-fade {
+    0%,
+    60% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}

@@ -1,0 +1,31 @@
+<div class="d-flex align-items-center gap-2 mb-2" id="holding-{{ id }}">
+    {% match kind %}
+    {% when Kind::Physical with { location } %}
+    {{ crate::icon::Icon::PhysicalCopy }}
+    <span>Physical</span>
+    <form class="flex-grow-1"
+          hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/location"
+          hx-target="#holding-{{ id }}"
+          hx-swap="outerHTML"
+          hx-disable="find button">
+        <input type="hidden" name="holding" value="{{ id }}">
+        <div class="input-group">
+            <input class="form-control"
+                   id="holding-{{ id }}-location"
+                   name="location"
+                   value="{{ location }}"
+                   placeholder="Location"
+                   aria-label="Location">
+            <button class="btn btn-outline-secondary" type="submit" title="Save the location">Save</button>
+        </div>
+    </form>
+    {% when Kind::Digital with { filename } %}
+    {{ crate::icon::Icon::DigitalFile }}
+    <span>Digital</span>
+    <a href="/library/{{ library }}/publication/{{ publication }}/holding/{{ id }}"
+       target="_blank"
+       rel="noopener"
+       title="Open in a new tab">{{ filename }}</a>
+    {% endmatch %}
+    {% if saved %}<span class="holding-saved text-success small">Saved</span>{% endif %}
+</div>

@@ -12,6 +12,7 @@
 | `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
 | `/api/library/{id}/publication/{publication}/cover/remove`       | POST   | Remove a cover                   |
 | `/api/library/{id}/publication/{publication}/cover/upload`       | POST   | Upload a cover                   |
+| `/api/library/{id}/publication/{publication}/holding/location`   | POST   | Move a physical holding          |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |

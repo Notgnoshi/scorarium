@@ -22,6 +22,7 @@ use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
+use crate::widget::holdings::Holdings;
 use crate::widget::identifiers_input::{self, IdentifiersInput};
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture_box::PictureBox;
@@ -65,6 +66,7 @@ struct Edit {
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
+    holdings: Holdings,
     contents: Contents,
     delete: Confirm,
     destination: String,
@@ -185,6 +187,7 @@ async fn render(
             links: publication.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(publication, None),
+        holdings: Holdings::new(publication),
         contents: Contents::new(publication, &publication.works().await?),
         delete: Confirm {
             id: "delete".to_owned(),
