@@ -21,12 +21,14 @@ use crate::page::{Base, Crumb};
 use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::identifiers_input::kind_label;
+use crate::widget::picture::Picture;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
 #[template(path = "page/library/publication.html")]
 struct Publication {
     base: Base,
+    picture: Picture,
     logged_in: bool,
     library: LibraryId,
     id: PublicationId,
@@ -182,6 +184,7 @@ pub async fn get(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Publication {
+        picture: Picture::from(&publication),
         base: Base::new(header, title, parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),

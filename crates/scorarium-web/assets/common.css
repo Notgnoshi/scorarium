@@ -62,3 +62,12 @@ fieldset.box > legend {
     border-color: rgba(var(--bs-primary-rgb), 0.5);
     box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
 }
+
+/* Fit the picture to the placeholder's width without cropping or stretching it. */
+.picture {
+    display: block;
+    width: 10rem;
+    height: auto;
+    max-height: 20rem;
+    object-fit: contain;
+}

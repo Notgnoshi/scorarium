@@ -11,13 +11,13 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::icon::Icon;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
+use crate::widget::picture::Picture;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -53,7 +53,7 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
     base: Base,
-    icon: Icon,
+    picture: Picture,
     library: LibraryId,
     id: PersonId,
     draft: bool,
@@ -81,7 +81,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
-        icon: Icon::Person,
+        picture: Picture::from(person),
         base: Base::new(header, person.name(), parents),
         library: library.id(),
         id: person.id(),

@@ -9,6 +9,7 @@ pub mod identifiers_input;
 pub mod library_nav;
 pub mod links_input;
 pub mod pagination;
+pub mod picture;
 pub mod stars;
 pub mod stars_input;
 pub mod tags_input;
