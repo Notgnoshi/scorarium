@@ -1,5 +1,13 @@
 {
     let nextUploadId = 1;
+    let runningTransfers = 0;
+
+    window.addEventListener("beforeunload", (event) => {
+        if (runningTransfers > 0) {
+            event.preventDefault();
+            event.returnValue = true;
+        }
+    });
 
     const finish = (root, id, result) => {
         root.dispatchEvent(new CustomEvent("upload:end", { bubbles: true, detail: { id, ...result } }));
@@ -39,6 +47,11 @@
         request.addEventListener("error", () => {
             finish(root, id, { ok: false, message: "The upload failed." });
         });
+        // The loadend event fires exactly once after a load, error, abort, or timeout.
+        request.addEventListener("loadend", () => {
+            runningTransfers--;
+        });
+        runningTransfers++;
         request.send(form);
     };
 
