@@ -1,4 +1,5 @@
 use askama::Template;
+use axum::Extension;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -10,6 +11,7 @@ use scorarium_engine::publication::{Identifier, Publication, PublicationId};
 use scorarium_engine::value::{Classification, Stars, Tag, Year};
 use serde::Deserialize;
 
+use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
@@ -154,6 +156,7 @@ impl Edit {
 
 async fn render(
     header: Header,
+    files_allowed: bool,
     library: &Library,
     publication: &Publication,
     form: Form,
@@ -165,7 +168,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
-        picture: PictureBox::cover(publication),
+        picture: PictureBox::cover(publication, files_allowed),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         library: library.id(),
         id: publication.id(),
@@ -211,12 +214,14 @@ async fn render(
 pub async fn get(
     _session: Session,
     State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, publication)): Path<(String, String)>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let files_allowed = settings.files_allowed(&engine);
     let text = |value: Option<&str>| value.unwrap_or_default().to_owned();
     let form = Form {
         title: text(publication.title()),
@@ -235,12 +240,22 @@ pub async fn get(
         add_link: vec![],
         remove_link: vec![],
     };
-    render(header, &library, &publication, form, StatusCode::OK, None).await
+    render(
+        header,
+        files_allowed,
+        &library,
+        &publication,
+        form,
+        StatusCode::OK,
+        None,
+    )
+    .await
 }
 
 pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, publication)): Path<(String, String)>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
@@ -248,18 +263,37 @@ pub async fn post(
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let files_allowed = settings.files_allowed(&engine);
     let parsed = match parse(&form) {
         Ok(parsed) => parsed,
         Err(e) => {
             let (status, error) = form_error(e)?;
-            return render(header, &library, &publication, form, status, Some(error)).await;
+            return render(
+                header,
+                files_allowed,
+                &library,
+                &publication,
+                form,
+                status,
+                Some(error),
+            )
+            .await;
         }
     };
     // The title is the only field here the engine can reject, so setting it first leaves the
     // publication untouched when it is.
     if let Err(e) = publication.set_title(&form.title).await {
         let (status, error) = form_error(e)?;
-        return render(header, &library, &publication, form, status, Some(error)).await;
+        return render(
+            header,
+            files_allowed,
+            &library,
+            &publication,
+            form,
+            status,
+            Some(error),
+        )
+        .await;
     }
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;

@@ -1,7 +1,9 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
+use scorarium_engine::asset::MAX_ASSET_SIZE;
 use scorarium_engine::publication::Publication;
 use scorarium_engine::work::Work;
 use tower_http::trace::TraceLayer;
@@ -142,6 +144,11 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route(
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/cover/upload",
+                    post(api::picture::upload_cover)
+                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
                 )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),

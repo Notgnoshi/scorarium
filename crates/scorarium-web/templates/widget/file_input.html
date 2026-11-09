@@ -1,0 +1,9 @@
+<div data-file-input data-url="{{ url }}" data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}">
+    <input type="file" class="d-none" {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
+    <span {% if disabled %}title="File uploads are disabled"{% endif %}>
+        <button type="button"
+                class="btn btn-outline-secondary btn-sm"
+                data-browse
+                {% if disabled %}disabled{% endif %}>Browse</button>
+    </span>
+</div>

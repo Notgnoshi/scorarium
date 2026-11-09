@@ -1,4 +1,6 @@
-<fieldset class="box">
+<fieldset class="box" data-picture-box>
     <legend>{{ legend }}</legend>
-    {{ picture }}
+    <div class="position-relative d-inline-block" data-picture>{{ picture }}</div>
+    <div class="mt-2">{{ input }}</div>
+    <div class="alert alert-danger mt-2 mb-0" data-message role="alert" hidden></div>
 </fieldset>

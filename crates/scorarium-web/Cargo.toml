@@ -11,13 +11,16 @@ axum.workspace = true
 axum-extra.workspace = true
 clap.workspace = true
 eyre.workspace = true
+futures-util.workspace = true
 percent-encoding.workspace = true
 rust-embed.workspace = true
 scorarium-engine.workspace = true
 serde.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+axum-test.workspace = true
 scorarium-test.workspace = true
