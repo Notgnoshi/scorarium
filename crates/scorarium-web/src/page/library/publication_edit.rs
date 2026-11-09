@@ -187,7 +187,7 @@ async fn render(
             links: publication.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(publication, None),
-        holdings: Holdings::new(publication),
+        holdings: Holdings::new(publication, files_allowed),
         contents: Contents::new(publication, &publication.works().await?),
         delete: Confirm {
             id: "delete".to_owned(),

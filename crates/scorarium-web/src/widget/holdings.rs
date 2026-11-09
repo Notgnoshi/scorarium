@@ -4,6 +4,7 @@ use scorarium_engine::holding::{Holding, HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::{Publication, PublicationId};
 
+use crate::widget::file_input::FileInput;
 use crate::widget::typeahead::Typeahead;
 
 #[derive(Template)]
@@ -16,14 +17,14 @@ pub(crate) struct Holdings {
 impl askama::filters::HtmlSafe for Holdings {}
 
 impl Holdings {
-    pub fn new(publication: &Publication) -> Holdings {
+    pub fn new(publication: &Publication, files_allowed: bool) -> Holdings {
         Holdings {
             entries: publication
                 .holdings()
                 .iter()
                 .map(|holding| HoldingEntry::new(publication, holding))
                 .collect(),
-            add: HoldingAdd::new(publication, false),
+            add: HoldingAdd::new(publication, files_allowed),
         }
     }
 }
@@ -34,23 +35,66 @@ impl Holdings {
 pub(crate) struct HoldingAdd {
     library: LibraryId,
     publication: PublicationId,
-    /// Whether to mark the form as an htmx out-of-band replacement of the one on the page
-    oob: bool,
+    /// Whether a visitor may store files, which enables the Digital side
+    files_allowed: bool,
 }
 
 impl askama::filters::HtmlSafe for HoldingAdd {}
 
 impl HoldingAdd {
-    pub fn new(publication: &Publication, oob: bool) -> HoldingAdd {
+    pub fn new(publication: &Publication, files_allowed: bool) -> HoldingAdd {
         HoldingAdd {
             library: publication.library(),
             publication: publication.id(),
-            oob,
+            files_allowed,
         }
     }
 
-    fn location_input(&self) -> Typeahead {
-        location_input(self.library, "holding-add-location", "")
+    fn physical(&self) -> HoldingAddPhysical {
+        HoldingAddPhysical::new(self.library, self.publication, false)
+    }
+
+    fn file_input(&self) -> FileInput {
+        FileInput {
+            url: format!(
+                "/api/library/{}/publication/{}/holding/upload",
+                self.library, self.publication
+            ),
+            accept: None,
+            hint: "Paste a file or URL",
+            disabled: !self.files_allowed,
+        }
+    }
+}
+
+/// The form that adds a physical copy
+///
+/// The Digital side is left out so that replacing this form never detaches a running transfer.
+#[derive(Template)]
+#[template(path = "widget/holding_add_physical.html")]
+pub(crate) struct HoldingAddPhysical {
+    library: LibraryId,
+    publication: PublicationId,
+    /// Whether to mark the form as an htmx out-of-band replacement of the one on the page
+    oob: bool,
+    typeahead: Typeahead,
+}
+
+impl askama::filters::HtmlSafe for HoldingAddPhysical {}
+
+impl HoldingAddPhysical {
+    pub fn new(library: LibraryId, publication: PublicationId, oob: bool) -> HoldingAddPhysical {
+        HoldingAddPhysical {
+            library,
+            publication,
+            oob,
+            typeahead: location_input(library, "holding-add-location", ""),
+        }
+    }
+
+    /// Build a fresh form that replaces the one on the page, which clears its location
+    pub fn replacement(publication: &Publication) -> HoldingAddPhysical {
+        HoldingAddPhysical::new(publication.library(), publication.id(), true)
     }
 }
 

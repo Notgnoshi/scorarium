@@ -14,6 +14,7 @@
 | `/api/library/{id}/publication/{publication}/cover/upload`       | POST   | Upload a cover                   |
 | `/api/library/{id}/publication/{publication}/holding/add`        | POST   | Add a physical holding           |
 | `/api/library/{id}/publication/{publication}/holding/location`   | POST   | Move a physical holding          |
+| `/api/library/{id}/publication/{publication}/holding/upload`     | POST   | Add a digital holding            |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |

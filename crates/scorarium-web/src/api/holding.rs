@@ -1,14 +1,17 @@
-use axum::extract::{Path, State};
+use axum::Extension;
+use axum::extract::{Multipart, Path, State};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::holding::{HoldingId, NewHolding};
 use scorarium_engine::publication::Publication;
 use serde::Deserialize;
 
+use crate::Settings;
+use crate::api::upload;
 use crate::auth::{ApiSession, Viewer};
 use crate::error::Result;
 use crate::page::library::{entity, view};
-use crate::widget::holdings::{HoldingAdd, HoldingEntry};
+use crate::widget::holdings::{HoldingAddPhysical, HoldingEntry};
 
 #[derive(Deserialize)]
 pub(crate) struct LocationForm {
@@ -68,12 +71,36 @@ pub async fn add(
         .find(|holding| holding.id == id)
         .ok_or(scorarium_engine::Error::NotFound)?;
     let entry = HoldingEntry::new(&publication, holding);
-    // The fresh form replaces the used one out of band, which collapses and clears it.
-    let add = HoldingAdd::new(&publication, true);
+    // The fresh form replaces the used one out of band, which clears it. Only this form is
+    // replaced, because replacing the Digital side would detach the file input of a running
+    // transfer.
+    let add = HoldingAddPhysical::replacement(&publication);
     Ok(Html(format!(
         "{}{}",
         askama::Template::render(&entry)?,
         askama::Template::render(&add)?
     ))
     .into_response())
+}
+
+/// Add a digital holding from the uploaded file or the URL, and answer with its entry
+pub async fn upload(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    Path((library, publication)): Path<(String, String)>,
+    mut form: Multipart,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut publication: Publication =
+        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let source = upload::source(&engine, settings, &mut form).await?;
+    let id = publication.add_holding(NewHolding::Digital(source)).await?;
+    let holding = publication
+        .holdings()
+        .iter()
+        .find(|holding| holding.id == id)
+        .ok_or(scorarium_engine::Error::NotFound)?;
+    let entry = HoldingEntry::new(&publication, holding);
+    Ok(Html(askama::Template::render(&entry)?).into_response())
 }

@@ -7,6 +7,17 @@
 
     const post = (root, id, form) => {
         const request = new XMLHttpRequest();
+        // A fetch has no progress to show, because the browser cannot see the server's download.
+        if (form.has("file")) {
+            request.upload.addEventListener("progress", (event) => {
+                if (event.lengthComputable) {
+                    const { loaded, total } = event;
+                    root.dispatchEvent(
+                        new CustomEvent("upload:progress", { bubbles: true, detail: { id, loaded, total } }),
+                    );
+                }
+            });
+        }
         request.open("POST", root.dataset.url);
         // The server builds the login URL that returns to this page from the header, as for htmx.
         request.setRequestHeader("HX-Current-URL", location.href);
@@ -33,7 +44,12 @@
 
     const upload = (root, file) => {
         const id = nextUploadId++;
-        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: file.name } }));
+        root.dispatchEvent(
+            new CustomEvent("upload:start", {
+                bubbles: true,
+                detail: { id, name: file.name, source: "file" },
+            }),
+        );
 
         const maxSize = Number(root.dataset.maxSize);
         if (file.size > maxSize) {
@@ -46,9 +62,15 @@
     };
 
     // A refusal reports through the same events as an upload, so a listener needs no special case.
+    // Its source is "file" so that a listener draws no spinner for a fetch that never starts.
     const refuse = (root, message) => {
         const id = nextUploadId++;
-        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: "" } }));
+        root.dispatchEvent(
+            new CustomEvent("upload:start", {
+                bubbles: true,
+                detail: { id, name: "", source: "file" },
+            }),
+        );
         finish(root, id, { ok: false, message });
     };
 
@@ -58,7 +80,12 @@
         const url = field.value.trim();
         field.value = "";
         const id = nextUploadId++;
-        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: url } }));
+        root.dispatchEvent(
+            new CustomEvent("upload:start", {
+                bubbles: true,
+                detail: { id, name: url, source: "url" },
+            }),
+        );
         const form = new FormData();
         form.append("url", url);
         post(root, id, form);
