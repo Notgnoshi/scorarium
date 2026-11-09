@@ -104,6 +104,8 @@ async fn render(
             also_deleted: vec![],
             action: "Delete person",
             url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
+            target: None,
+            fields: vec![],
         },
         destination: back
             .clone()

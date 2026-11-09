@@ -154,6 +154,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     post(api::holding::location),
                 )
                 .route(
+                    "/library/{id}/publication/{publication}/holding/remove",
+                    post(api::holding::remove),
+                )
+                .route(
                     "/library/{id}/publication/{publication}/holding/upload",
                     post(api::holding::upload)
                         .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),

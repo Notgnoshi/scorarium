@@ -22,4 +22,14 @@
        rel="noopener"
        title="Open in a new tab">{{ filename }}</a>
     {% endmatch %}
+    <form class="ms-auto"
+          hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/remove"
+          hx-target="#holding-{{ id }}-dialog">
+        <input type="hidden" name="holding" value="{{ id }}">
+        <button class="btn btn-outline-danger" type="submit" title="Delete">
+            <i class="bi bi-trash"></i>
+            <span class="visually-hidden">Delete</span>
+        </button>
+    </form>
+    <div id="holding-{{ id }}-dialog" data-dialog-slot></div>
 </div>

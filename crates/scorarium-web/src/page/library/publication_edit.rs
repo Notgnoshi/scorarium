@@ -207,6 +207,8 @@ async fn render(
                 library.id(),
                 publication.id()
             ),
+            target: None,
+            fields: vec![],
         },
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,

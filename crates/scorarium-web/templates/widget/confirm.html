@@ -19,7 +19,8 @@
         <form method="dialog">
             <button class="btn btn-secondary" type="submit" autofocus>Cancel</button>
         </form>
-        <form method="post" action="{{ url }}">
+        <form {% if let Some(target) = target %}hx-post="{{ url }}" hx-target="{{ target }}"{% else %}method="post" action="{{ url }}"{% endif %}>
+            {% for (name, value) in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
             <button class="btn {% if also_deleted.is_empty() %}btn-outline-danger{% else %}btn-danger{% endif %}"
                     type="submit">{{ action }}</button>
         </form>
