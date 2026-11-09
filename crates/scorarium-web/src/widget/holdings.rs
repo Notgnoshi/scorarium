@@ -4,6 +4,8 @@ use scorarium_engine::holding::{Holding, HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::{Publication, PublicationId};
 
+use crate::widget::typeahead::Typeahead;
+
 #[derive(Template)]
 #[template(path = "widget/holdings.html")]
 pub(crate) struct Holdings {
@@ -32,8 +34,6 @@ pub(crate) struct HoldingEntry {
     publication: PublicationId,
     id: HoldingId,
     kind: Kind,
-    /// Whether to show the brief "Saved" cue
-    saved: bool,
 }
 
 impl askama::filters::HtmlSafe for HoldingEntry {}
@@ -62,13 +62,20 @@ impl HoldingEntry {
             publication: publication.id(),
             id: holding.id,
             kind,
-            saved: false,
         }
     }
 
-    /// Show the "Saved" cue on the entry
-    pub fn saved(mut self) -> HoldingEntry {
-        self.saved = true;
-        self
+    /// Build the location field, which suggests the library's existing locations
+    fn location_input(&self, location: &str) -> Typeahead {
+        Typeahead {
+            id: format!("holding-{}-location", self.id),
+            name: "location".to_owned(),
+            url: format!("/api/library/{}/suggest/location", self.library),
+            placeholder: "Location".to_owned(),
+            value: location.to_owned(),
+            picked: None,
+            pick_required: None,
+            attrs: vec![("aria-label", "Location".to_owned())],
+        }
     }
 }

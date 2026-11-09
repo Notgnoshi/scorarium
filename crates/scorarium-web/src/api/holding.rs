@@ -38,6 +38,6 @@ pub async fn location(
         .iter()
         .find(|holding| holding.id == id)
         .ok_or(scorarium_engine::Error::NotFound)?;
-    let entry = HoldingEntry::new(&publication, holding).saved();
+    let entry = HoldingEntry::new(&publication, holding);
     Ok(Html(askama::Template::render(&entry)?).into_response())
 }

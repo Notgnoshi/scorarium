@@ -10,12 +10,7 @@
           hx-disable="find button">
         <input type="hidden" name="holding" value="{{ id }}">
         <div class="input-group">
-            <input class="form-control"
-                   id="holding-{{ id }}-location"
-                   name="location"
-                   value="{{ location }}"
-                   placeholder="Location"
-                   aria-label="Location">
+            {{ self.location_input(location) }}
             <button class="btn btn-outline-secondary" type="submit" title="Save the location">Save</button>
         </div>
     </form>
@@ -27,5 +22,4 @@
        rel="noopener"
        title="Open in a new tab">{{ filename }}</a>
     {% endmatch %}
-    {% if saved %}<span class="holding-saved text-success small">Saved</span>{% endif %}
 </div>
