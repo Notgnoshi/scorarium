@@ -146,6 +146,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     post(api::contributor::remove::<Publication>),
                 )
                 .route(
+                    "/library/{id}/publication/{publication}/holding/add",
+                    post(api::holding::add),
+                )
+                .route(
                     "/library/{id}/publication/{publication}/holding/location",
                     post(api::holding::location),
                 )

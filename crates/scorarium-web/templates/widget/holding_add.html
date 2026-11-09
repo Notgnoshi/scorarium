@@ -1,0 +1,24 @@
+<div class="d-flex align-items-start gap-2" id="holding-add" {% if oob %}hx-swap-oob="true"{% endif %}>
+    <button type="button"
+            class="btn btn-link btn-sm holding-add-toggle"
+            data-bs-toggle="collapse"
+            data-bs-target="#holding-add-form"
+            aria-controls="holding-add-form"
+            aria-expanded="false">
+        <i class="bi bi-plus-lg" title="Add a copy"></i>
+        <i class="bi bi-dash-lg" title="Close"></i>
+    </button>
+    <form class="collapse flex-grow-1"
+          id="holding-add-form"
+          hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/add"
+          hx-target="#holding-entries"
+          hx-swap="beforeend"
+          hx-disable="find button">
+        <div class="input-group">
+            {{ self.location_input() }}
+            <button class="btn btn-outline-secondary" type="submit" title="Add the copy">
+                <i class="bi bi-plus-lg"></i> Add
+            </button>
+        </div>
+    </form>
+</div>

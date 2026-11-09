@@ -154,3 +154,8 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
+
+.holding-add-toggle[aria-expanded="false"] .bi-dash-lg,
+.holding-add-toggle[aria-expanded="true"] .bi-plus-lg {
+    display: none;
+}
