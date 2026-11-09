@@ -186,7 +186,15 @@ async fn render(
         delete: Confirm {
             id: "delete".to_owned(),
             title: format!("Delete {}?", publication.title().unwrap_or("Untitled")),
-            message: "Orphaned entities also deleted.".to_owned(),
+            message: format!(
+                "Deleting {} also deletes:",
+                publication.title().unwrap_or("Untitled")
+            ),
+            also_deleted: vec![
+                "its digital assets".to_owned(),
+                "orphaned works".to_owned(),
+                "orphaned contributors".to_owned(),
+            ],
             action: "Delete publication",
             url: format!(
                 "/library/{}/publication/{}/delete",

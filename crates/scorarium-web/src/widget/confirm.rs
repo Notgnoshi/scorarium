@@ -10,6 +10,8 @@ pub(crate) struct Confirm {
     pub title: String,
     /// One or two sentences that say what is deleted
     pub message: String,
+    /// What the deletion takes with it; a non-empty list is rendered as a "dangerous" dialog
+    pub also_deleted: Vec<String>,
     /// The label of the button that goes ahead
     pub action: &'static str,
     /// The URL that confirming posts to

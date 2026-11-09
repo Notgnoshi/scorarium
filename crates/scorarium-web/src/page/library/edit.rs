@@ -59,10 +59,14 @@ fn render(
         delete: Confirm {
             id: "delete".to_owned(),
             title: format!("Delete {}?", library.name()),
-            message: format!(
-                "Its {} will also be deleted",
-                count(publications, "publication")
-            ),
+            message: format!("Deleting {} also deletes:", library.name()),
+            also_deleted: vec![
+                format!(
+                    "its {} and associated assets",
+                    count(publications, "publication")
+                ),
+                "all works and persons".to_owned(),
+            ],
             action: "Delete library",
             url: format!("/library/{}/delete", library.id()),
         },

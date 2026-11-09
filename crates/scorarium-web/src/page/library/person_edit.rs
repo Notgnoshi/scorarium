@@ -99,6 +99,7 @@ async fn render(
                 count(person.publications().await?.len(), "publication"),
                 count(person.works().await?.len(), "work")
             ),
+            also_deleted: vec![],
             action: "Delete person",
             url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
         },

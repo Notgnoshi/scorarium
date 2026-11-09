@@ -187,6 +187,7 @@ async fn render(
                 "It is removed from {}.",
                 count(work.publications().await?.len(), "publication")
             ),
+            also_deleted: vec![],
             action: "Delete work",
             url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
         },
