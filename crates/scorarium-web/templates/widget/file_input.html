@@ -1,5 +1,11 @@
-<div data-file-input data-url="{{ url }}" data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}">
-    <input type="file" class="d-none" {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
+<div data-file-input
+     data-url="{{ url }}"
+     data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}"
+     {% if multiple %}data-multiple{% endif %}>
+    <input type="file"
+           class="d-none"
+           {% if multiple %}multiple{% endif %}
+           {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
     <span class="input-group input-group-sm" {% if disabled %}title="File uploads are disabled"{% endif %}>
         <input type="url"
                class="form-control"

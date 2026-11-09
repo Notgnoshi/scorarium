@@ -74,6 +74,16 @@
         finish(root, id, { ok: false, message });
     };
 
+    // Send each file as its own transfer when the input allows several, and refuse extra files
+    // otherwise.
+    const uploadAll = (root, files) => {
+        if (files.length > 1 && !("multiple" in root.dataset)) {
+            refuse(root, "Paste or drop one file.");
+            return;
+        }
+        Array.from(files).forEach((file) => upload(root, file));
+    };
+
     const isDisabled = (root) => root.querySelector("[data-url-field]").disabled;
 
     const fetchUrl = (root, field) => {
@@ -103,12 +113,11 @@
         if (!root || event.target.type !== "file") {
             return;
         }
-        const [file] = event.target.files;
-        // Clearing the chooser lets the same file be chosen again after a failure.
+        // Copy the files first, because clearing the chooser empties its list. Clearing lets the
+        // same file be chosen again after a failure.
+        const files = Array.from(event.target.files);
         event.target.value = "";
-        if (file) {
-            upload(root, file);
-        }
+        uploadAll(root, files);
     });
 
     document.addEventListener("keydown", (event) => {
@@ -131,11 +140,7 @@
         const files = event.clipboardData.files;
         if (files.length > 0) {
             event.preventDefault();
-            if (files.length > 1) {
-                refuse(root, "Paste or drop one file.");
-            } else {
-                upload(root, files[0]);
-            }
+            uploadAll(root, files);
             return;
         }
         // The pasted text has not landed in the field yet.
@@ -236,10 +241,8 @@
         }
         const root = zone.querySelector("[data-file-input]");
         const files = event.dataTransfer.files;
-        if (files.length > 1) {
-            refuse(root, "Paste or drop one file.");
-        } else if (files.length === 1) {
-            upload(root, files[0]);
+        if (files.length > 0) {
+            uploadAll(root, files);
         } else {
             const url = event.dataTransfer
                 .getData("text/uri-list")

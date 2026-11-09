@@ -34,6 +34,7 @@ impl PictureBox {
                 accept: Some("image/*"),
                 hint: "Paste a picture or URL",
                 disabled: !files_allowed,
+                multiple: false,
             },
             remove_url: publication.cover().map(|_| format!("{api}/remove")),
         }
@@ -53,6 +54,7 @@ impl PictureBox {
                 accept: Some("image/*"),
                 hint: "Paste a picture or URL",
                 disabled: !files_allowed,
+                multiple: false,
             },
             remove_url: person.profile().map(|_| format!("{api}/remove")),
         }

@@ -63,6 +63,7 @@ impl HoldingAdd {
             accept: None,
             hint: "Paste a file or URL",
             disabled: !self.files_allowed,
+            multiple: true,
         }
     }
 }

@@ -12,6 +12,8 @@ pub(crate) struct FileInput {
     pub hint: &'static str,
     /// Whether files uploads are disabled
     pub disabled: bool,
+    /// Whether one paste, drop, or choice may carry several files, each sent as its own transfer
+    pub multiple: bool,
 }
 
 impl askama::filters::HtmlSafe for FileInput {}
