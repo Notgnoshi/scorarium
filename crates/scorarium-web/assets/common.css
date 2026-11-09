@@ -159,3 +159,8 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
 .holding-add-toggle[aria-expanded="true"] .bi-plus-lg {
     display: none;
 }
+
+#holding-add:has(#holding-add-kind-digital:checked) #holding-add-physical,
+#holding-add:not(:has(#holding-add-kind-digital:checked)) #holding-add-digital {
+    display: none;
+}

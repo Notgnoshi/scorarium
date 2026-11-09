@@ -1,6 +1,4 @@
-<form class="tab-pane fade show active"
-      id="holding-add-physical"
-      role="tabpanel"
+<form id="holding-add-physical"
       {% if oob %}hx-swap-oob="true"{% endif %}
       hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/add"
       hx-target="#holding-entries"
