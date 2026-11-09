@@ -5,16 +5,7 @@
         root.dispatchEvent(new CustomEvent("upload:end", { bubbles: true, detail: { id, ...result } }));
     };
 
-    const upload = (root, file) => {
-        const id = nextUploadId++;
-        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: file.name } }));
-
-        const maxSize = Number(root.dataset.maxSize);
-        if (file.size > maxSize) {
-            finish(root, id, { ok: false, message: `The file is larger than ${maxSize / 1024 / 1024} MB.` });
-            return;
-        }
-
+    const post = (root, id, form) => {
         const request = new XMLHttpRequest();
         request.open("POST", root.dataset.url);
         // The server builds the login URL that returns to this page from the header, as for htmx.
@@ -37,9 +28,31 @@
         request.addEventListener("error", () => {
             finish(root, id, { ok: false, message: "The upload failed." });
         });
+        request.send(form);
+    };
+
+    const upload = (root, file) => {
+        const id = nextUploadId++;
+        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: file.name } }));
+
+        const maxSize = Number(root.dataset.maxSize);
+        if (file.size > maxSize) {
+            finish(root, id, { ok: false, message: `The file is larger than ${maxSize / 1024 / 1024} MB.` });
+            return;
+        }
         const form = new FormData();
         form.append("file", file);
-        request.send(form);
+        post(root, id, form);
+    };
+
+    const fetchUrl = (root, field) => {
+        const url = field.value.trim();
+        field.value = "";
+        const id = nextUploadId++;
+        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name: url } }));
+        const form = new FormData();
+        form.append("url", url);
+        post(root, id, form);
     };
 
     document.addEventListener("click", (event) => {
@@ -60,5 +73,30 @@
         if (file) {
             upload(root, file);
         }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        const root = event.target.closest("[data-file-input]");
+        if (!root || !event.target.matches("[data-url-field]") || event.key !== "Enter") {
+            return;
+        }
+        event.preventDefault();
+        if (event.target.reportValidity() && event.target.value.trim() !== "") {
+            fetchUrl(root, event.target);
+        }
+    });
+
+    document.addEventListener("paste", (event) => {
+        const root = event.target.closest("[data-file-input]");
+        if (!root || !event.target.matches("[data-url-field]")) {
+            return;
+        }
+        const field = event.target;
+        // The pasted text has not landed in the field yet.
+        setTimeout(() => {
+            if (field.value.trim() !== "" && field.checkValidity()) {
+                fetchUrl(root, field);
+            }
+        });
     });
 }

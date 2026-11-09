@@ -28,6 +28,7 @@ impl PictureBox {
                     publication.id()
                 ),
                 accept: Some("image/*"),
+                hint: "Paste a URL",
                 disabled: !files_allowed,
             },
         }

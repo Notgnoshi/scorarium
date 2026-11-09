@@ -6,10 +6,10 @@ use tokio_util::io::StreamReader;
 
 use crate::Settings;
 
-/// Read the file that a multipart form submitted
+/// Read the file or the URL that a multipart form submitted
 ///
-/// Returns [Error::InvalidValue] if files are disabled for this demo, or if the form does not start
-/// with a file.
+/// Returns [Error::InvalidValue] if files are disabled for this demo, if the URL is not an HTTP
+/// URL, or if the form does not start with a file or a URL.
 pub(crate) async fn source<'a>(
     engine: &Engine,
     settings: Settings,
@@ -24,15 +24,24 @@ pub(crate) async fn source<'a>(
         .next_field()
         .await
         .map_err(|e| Error::InvalidValue(e.body_text()))?;
-    if let Some(field) = field
-        && field.name() == Some("file")
-    {
-        let filename = field.file_name().unwrap_or_default().to_owned();
-        let data = StreamReader::new(field.map_err(std::io::Error::other));
-        return Ok(AssetSource::Upload {
-            data: Box::new(data),
-            filename,
-        });
+    match field {
+        Some(field) if field.name() == Some("file") => {
+            let filename = field.file_name().unwrap_or_default().to_owned();
+            let data = StreamReader::new(field.map_err(std::io::Error::other));
+            Ok(AssetSource::Upload {
+                data: Box::new(data),
+                filename,
+            })
+        }
+        Some(field) if field.name() == Some("url") => {
+            let text = field
+                .text()
+                .await
+                .map_err(|e| Error::InvalidValue(e.body_text()))?;
+            Ok(AssetSource::Url(text.parse()?))
+        }
+        _ => Err(Error::InvalidValue(
+            "Choose a file or enter a URL.".to_owned(),
+        )),
     }
-    Err(Error::InvalidValue("Choose a file.".to_owned()))
 }
