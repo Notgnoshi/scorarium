@@ -1,18 +1,35 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
+use scorarium_engine::asset::MAX_ASSET_SIZE;
 use scorarium_engine::publication::Publication;
 use scorarium_engine::work::Work;
 use tower_http::trace::TraceLayer;
 
-use crate::auth::CookieSettings;
 use crate::{api, assets, error, page};
 
 /// The name of the cookie that carries the session token
 pub const SESSION_COOKIE: &str = "session";
 
-pub fn router(engine: Engine, secure_cookies: bool) -> Router {
+/// Server settings
+#[derive(Clone, Copy, Debug)]
+pub struct Settings {
+    /// Send the session cookie only over HTTPS
+    pub secure_cookies: bool,
+    /// Let anonymous demo visitors upload files
+    pub demo_files: bool,
+}
+
+impl Settings {
+    /// Decide whether a visitor may store files on `engine`
+    pub fn files_allowed(self, engine: &Engine) -> bool {
+        !engine.is_demo() || self.demo_files
+    }
+}
+
+pub fn router(engine: Engine, settings: Settings) -> Router {
     let trace = TraceLayer::new_for_http()
         .on_request(())
         .on_eos(())
@@ -33,6 +50,14 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
             "/library/{id}/publication/{publication}/delete",
             post(page::library::publication_edit::delete),
         )
+        .route(
+            "/library/{id}/publication/{publication}/cover",
+            get(page::library::file::cover),
+        )
+        .route(
+            "/library/{id}/publication/{publication}/holding/{holding}",
+            get(page::library::file::holding),
+        )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
             "/library/{id}/work/{work}/edit",
@@ -45,6 +70,10 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
         .route(
             "/library/{id}/person/{person}",
             get(page::library::person::get),
+        )
+        .route(
+            "/library/{id}/person/{person}/profile",
+            get(page::library::file::profile),
         )
         .route(
             "/library/{id}/person/{person}/edit",
@@ -116,12 +145,45 @@ pub fn router(engine: Engine, secure_cookies: bool) -> Router {
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
                 )
+                .route(
+                    "/library/{id}/publication/{publication}/holding/add",
+                    post(api::holding::add),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/holding/location",
+                    post(api::holding::location),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/holding/remove",
+                    post(api::holding::remove),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/holding/upload",
+                    post(api::holding::upload)
+                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route(
+                    "/library/{id}/person/{person}/profile/upload",
+                    post(api::picture::upload_profile)
+                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route(
+                    "/library/{id}/person/{person}/profile/remove",
+                    post(api::picture::remove_profile),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/cover/upload",
+                    post(api::picture::upload_cover)
+                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route(
+                    "/library/{id}/publication/{publication}/cover/remove",
+                    post(api::picture::remove_cover),
+                )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )
         .layer(trace)
-        .layer(Extension(CookieSettings {
-            secure: secure_cookies,
-        }))
+        .layer(Extension(settings))
         .with_state(engine)
 }

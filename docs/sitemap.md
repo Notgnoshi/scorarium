@@ -3,11 +3,19 @@
 | URL                                                              | Method | Description                      |
 | ---------------------------------------------------------------- | ------ | -------------------------------- |
 | `/`                                                              | GET    | Home page listing libraries      |
+| `/api/library/{id}/person/{person}/profile/remove`               | POST   | Remove a profile picture         |
+| `/api/library/{id}/person/{person}/profile/upload`               | POST   | Upload a profile picture         |
 | `/api/library/{id}/publication/{publication}/contents/add-range` | POST   | Add a numbered range of works    |
 | `/api/library/{id}/publication/{publication}/contents/add`       | POST   | Add a work to a publication      |
 | `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
 | `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |
 | `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
+| `/api/library/{id}/publication/{publication}/cover/remove`       | POST   | Remove a cover                   |
+| `/api/library/{id}/publication/{publication}/cover/upload`       | POST   | Upload a cover                   |
+| `/api/library/{id}/publication/{publication}/holding/add`        | POST   | Add a physical holding           |
+| `/api/library/{id}/publication/{publication}/holding/location`   | POST   | Move a physical holding          |
+| `/api/library/{id}/publication/{publication}/holding/remove`     | POST   | Delete a holding                 |
+| `/api/library/{id}/publication/{publication}/holding/upload`     | POST   | Add a digital holding            |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |
@@ -21,10 +29,13 @@
 | `/library/{id}/person/{person}/delete`                           | POST   | Delete a person                  |
 | `/library/{id}/person/{person}/edit`                             | GET    | Edit or delete a person          |
 | `/library/{id}/person/{person}/edit`                             | POST   | Save a person                    |
+| `/library/{id}/person/{person}/profile`                          | GET    | Profile picture                  |
 | `/library/{id}/person/{person}`                                  | GET    | Person details                   |
+| `/library/{id}/publication/{publication}/cover`                  | GET    | Cover image                      |
 | `/library/{id}/publication/{publication}/delete`                 | POST   | Delete a publication             |
 | `/library/{id}/publication/{publication}/edit`                   | GET    | Edit or delete a publication     |
 | `/library/{id}/publication/{publication}/edit`                   | POST   | Save a publication               |
+| `/library/{id}/publication/{publication}/holding/{holding}`      | GET    | Digital holding file             |
 | `/library/{id}/publication/{publication}`                        | GET    | Publication details              |
 | `/library/{id}/tag/{tag}`                                        | GET    | Entries with one tag             |
 | `/library/{id}/tags`                                             | GET    | Tags in a library                |

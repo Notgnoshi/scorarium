@@ -12,16 +12,17 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::icon::Icon;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
+use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
+use crate::widget::picture::Picture;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -53,16 +54,16 @@ pub(crate) struct Form {
 #[template(path = "page/library/work_edit.html")]
 struct Edit {
     base: Base,
-    icon: Icon,
+    picture: Picture,
     library: LibraryId,
     id: WorkId,
     draft: bool,
-    publications: usize,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
+    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -162,12 +163,11 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Edit {
-        icon: Icon::work(work.classification()),
+        picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
         library: library.id(),
         id: work.id(),
         draft: work.is_draft(),
-        publications: work.publications().await?.len(),
         form,
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
@@ -180,6 +180,19 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
+        delete: Confirm {
+            id: "delete".to_owned(),
+            title: format!("Delete {}?", work.title()),
+            message: format!(
+                "It is removed from {}.",
+                count(work.publications().await?.len(), "publication")
+            ),
+            also_deleted: vec![],
+            action: "Delete work",
+            url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+            target: None,
+            fields: vec![],
+        },
         destination: back
             .clone()
             .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),

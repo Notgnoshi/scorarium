@@ -5,6 +5,7 @@ use scorarium_engine::value::{Classification, Tag};
 use scorarium_engine::work::CatalogNumber;
 
 use crate::page::library::entity::group_contributors;
+use crate::widget::picture::Picture;
 
 pub(crate) struct Hit {
     pub library: LibraryId,
@@ -15,6 +16,7 @@ pub(crate) struct Hit {
     pub classification: Option<Classification>,
     pub library_name: String,
     pub tags: Vec<Tag>,
+    pub picture: Picture,
 }
 
 impl Hit {
@@ -34,6 +36,7 @@ impl Hit {
 
     /// Present `entity`, which belongs to `library`
     pub(crate) fn new(library: LibraryId, library_name: String, entity: &AnyEntity) -> Hit {
+        let picture = Picture::from(entity).thumbnail();
         match entity {
             AnyEntity::Publication(publication) => Hit {
                 library,
@@ -43,6 +46,7 @@ impl Hit {
                 kind: EntityKind::Publication,
                 classification: publication.classification(),
                 library_name,
+                picture,
                 tags: publication.tags().to_vec(),
             },
             AnyEntity::Work(work) => Hit {
@@ -53,6 +57,7 @@ impl Hit {
                 kind: EntityKind::Work,
                 classification: work.classification(),
                 library_name,
+                picture,
                 tags: work.tags().to_vec(),
             },
             AnyEntity::Person(person) => Hit {
@@ -63,6 +68,7 @@ impl Hit {
                 kind: EntityKind::Person,
                 classification: None,
                 library_name,
+                picture,
                 tags: Vec::new(),
             },
         }

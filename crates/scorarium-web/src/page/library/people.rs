@@ -6,7 +6,6 @@ use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::EntityKind;
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::PersonSummary;
 use serde::Deserialize;

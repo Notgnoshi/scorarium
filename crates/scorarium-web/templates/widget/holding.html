@@ -1,0 +1,35 @@
+<div class="d-flex align-items-center gap-2 mb-2" id="holding-{{ id }}">
+    {% match kind %}
+    {% when Kind::Physical with { location } %}
+    {{ crate::icon::Icon::PhysicalCopy }}
+    <span>Physical</span>
+    <form class="flex-grow-1"
+          hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/location"
+          hx-target="#holding-{{ id }}"
+          hx-swap="outerHTML"
+          hx-disable="find button">
+        <input type="hidden" name="holding" value="{{ id }}">
+        <div class="input-group">
+            {{ self.location_input(location) }}
+            <button class="btn btn-outline-secondary" type="submit" title="Save the location">Save</button>
+        </div>
+    </form>
+    {% when Kind::Digital with { filename } %}
+    {{ crate::icon::Icon::DigitalFile }}
+    <span>Digital</span>
+    <a href="/library/{{ library }}/publication/{{ publication }}/holding/{{ id }}"
+       target="_blank"
+       rel="noopener"
+       title="Open in a new tab">{{ filename }}</a>
+    {% endmatch %}
+    <form class="ms-auto"
+          hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/remove"
+          hx-target="#holding-{{ id }}-dialog">
+        <input type="hidden" name="holding" value="{{ id }}">
+        <button class="btn btn-outline-danger" type="submit" title="Delete">
+            <i class="bi bi-trash"></i>
+            <span class="visually-hidden">Delete</span>
+        </button>
+    </form>
+    <div id="holding-{{ id }}-dialog" data-dialog-slot></div>
+</div>

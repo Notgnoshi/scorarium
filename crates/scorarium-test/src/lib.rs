@@ -38,8 +38,17 @@ pub struct TestApp {
 impl TestApp {
     /// Get a logged-in demo instance of the test server
     pub async fn demo() -> TestApp {
+        TestApp::logged_in_demo(true).await
+    }
+
+    /// Get a logged-in demo instance of the test server that refuses files
+    pub async fn locked_demo() -> TestApp {
+        TestApp::logged_in_demo(false).await
+    }
+
+    async fn logged_in_demo(demo_files: bool) -> TestApp {
         let engine = demo_engine().await;
-        let mut server = server(&engine);
+        let mut server = server(&engine, demo_files);
         let token = engine.login("").await.unwrap();
         server.add_cookie(Cookie::new(SESSION_COOKIE, token.as_str().to_owned()));
         TestApp {
@@ -59,7 +68,7 @@ impl TestApp {
             (engine, Some(dir))
         };
         TestApp {
-            server: server(&engine),
+            server: server(&engine, true),
             engine,
             token: None,
             _dir: dir,
@@ -67,8 +76,14 @@ impl TestApp {
     }
 }
 
-fn server(engine: &Engine) -> TestServer {
+fn server(engine: &Engine, demo_files: bool) -> TestServer {
     TestServer::builder()
         .save_cookies()
-        .build(scorarium_web::router(engine.clone(), true))
+        .build(scorarium_web::router(
+            engine.clone(),
+            scorarium_web::Settings {
+                secure_cookies: true,
+                demo_files,
+            },
+        ))
 }

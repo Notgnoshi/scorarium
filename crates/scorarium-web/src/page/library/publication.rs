@@ -4,7 +4,7 @@ use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::{Contributed, Entity};
-use scorarium_engine::holding::HoldingKind;
+use scorarium_engine::holding::{HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Classification, Tag, Year};
@@ -21,12 +21,14 @@ use crate::page::{Base, Crumb};
 use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::identifiers_input::kind_label;
+use crate::widget::picture::Picture;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
 #[template(path = "page/library/publication.html")]
 struct Publication {
     base: Base,
+    picture: Picture,
     logged_in: bool,
     library: LibraryId,
     id: PublicationId,
@@ -89,9 +91,12 @@ struct Identifier {
 }
 
 struct Holding {
+    id: HoldingId,
     icon: Icon,
-    /// The shelf location of a physical copy, or the filename of a digital one
+    /// The shelf location of a physical copy
     location: Option<String>,
+    /// The filename of a digital copy
+    filename: Option<String>,
     loaned_to: Option<String>,
 }
 
@@ -133,17 +138,20 @@ impl From<&scorarium_engine::publication::Identifier> for Identifier {
 
 impl From<&scorarium_engine::holding::Holding> for Holding {
     fn from(holding: &scorarium_engine::holding::Holding) -> Holding {
-        let (icon, location) = match &holding.kind {
-            HoldingKind::Physical { location } => (Icon::PhysicalCopy, location.clone()),
+        let (icon, location, filename) = match &holding.kind {
+            HoldingKind::Physical { location } => (Icon::PhysicalCopy, location.clone(), None),
             HoldingKind::Digital { file } => (
                 Icon::DigitalFile,
+                None,
                 file.file_name()
                     .map(|name| name.to_string_lossy().into_owned()),
             ),
         };
         Holding {
+            id: holding.id,
             icon,
             location,
+            filename,
             loaned_to: holding.loaned_to.clone(),
         }
     }
@@ -182,6 +190,7 @@ pub async fn get(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Publication {
+        picture: Picture::from(&publication),
         base: Base::new(header, title, parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),

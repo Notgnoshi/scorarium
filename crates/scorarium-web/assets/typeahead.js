@@ -160,7 +160,8 @@ function attachTypeahead(input) {
 }
 
 document.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead);
-// htmx swaps in fresh markup whose typeaheads need attaching.
-document.addEventListener("htmx:after:swap", (event) =>
+// htmx swaps in fresh markup whose typeaheads need attaching. Settling fires once for each swapped
+// piece, including out-of-band ones, which the swap event never reaches.
+document.addEventListener("htmx:after:settle", (event) =>
     event.target.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead),
 );

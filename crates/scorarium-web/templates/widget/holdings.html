@@ -1,0 +1,32 @@
+<fieldset class="box" data-holdings data-drop-zone="Drop files to add them">
+    <legend>Holdings</legend>
+    <div id="holding-entries">{% for entry in entries %}{{ entry }}{% endfor %}</div>
+    {{ add }}
+    <template data-pending>
+        <div class="d-flex align-items-center gap-2 mb-2">
+            {{ crate::icon::Icon::DigitalFile }}
+            <span>Digital</span>
+            <span class="text-truncate" data-label></span>
+            <div class="progress flex-grow-1"
+                 role="progressbar"
+                 aria-label="Upload progress"
+                 aria-valuemin="0"
+                 aria-valuemax="100"
+                 aria-valuenow="0"
+                 data-progress>
+                <div class="progress-bar"></div>
+            </div>
+            <span data-percent></span>
+            <div class="spinner-border spinner-border-sm" role="status" title="Fetching" data-spinner>
+                <span class="visually-hidden">Fetching</span>
+            </div>
+        </div>
+    </template>
+    <template data-failed>
+        <div class="alert alert-danger d-flex align-items-center gap-2 py-1 px-2 mb-2" role="alert">
+            <i class="bi bi-exclamation-triangle" title="The transfer failed"></i>
+            <span class="flex-grow-1" data-message></span>
+            <button type="button" class="btn-close" title="Dismiss" aria-label="Dismiss" data-dismiss></button>
+        </div>
+    </template>
+</fieldset>

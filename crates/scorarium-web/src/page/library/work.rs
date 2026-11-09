@@ -17,12 +17,14 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb};
 use crate::sort;
 use crate::widget::header::Header;
+use crate::widget::picture::Picture;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
 #[template(path = "page/library/work.html")]
 struct Work {
     base: Base,
+    picture: Picture,
     logged_in: bool,
     library: LibraryId,
     id: WorkId,
@@ -152,6 +154,7 @@ pub async fn get(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let page = Work {
+        picture: Picture::from(&work),
         base: Base::new(header, work.title(), parents),
         logged_in: viewer.is_logged_in(),
         library: library.id(),

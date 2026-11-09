@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import "widget/tag.html" as badge %}
 {% import "widget/sort.html" as sort %}
-{% import "widget/thumbnail.html" as thumbnail %}
 {% block content %}
     {{ nav }}
     {% if publications.is_empty() %}
@@ -28,8 +27,7 @@
                     <tr>
                         <td>
                             <div class="d-flex align-items-center gap-2">
-                                {% call thumbnail::thumbnail(EntityKind::Publication, None) %}
-                                {% endcall %}
+                                {{ publication.picture }}
                                 <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
                             </div>
                         </td>

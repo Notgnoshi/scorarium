@@ -26,6 +26,7 @@ fn field(name: &str, person: Option<PersonId>) -> Option<SuggestField> {
         "key" => SuggestField::Key,
         "time_signature" => SuggestField::TimeSignature,
         "instrumentation" => SuggestField::Instrumentation,
+        "location" => SuggestField::Location,
         _ => return None,
     })
 }
@@ -99,13 +100,14 @@ pub async fn get(
             Suggested::Role(role) => Some(Entry::value(role.as_str().to_owned())),
             Suggested::Key(text)
             | Suggested::TimeSignature(text)
-            | Suggested::Instrumentation(text) => Some(Entry::value(text)),
+            | Suggested::Instrumentation(text)
+            | Suggested::Location(text) => Some(Entry::value(text)),
             Suggested::Tag { tag, count } => Some(Entry {
                 detail: Some(count.to_string()),
                 ..Entry::value(tag.to_string())
             }),
             // These belong to fields this route never requests.
-            Suggested::Publication(_) | Suggested::Location(_) => None,
+            Suggested::Publication(_) => None,
         })
         .collect();
     let noun = match field {

@@ -7,11 +7,18 @@ function applyTheme() {
 applyTheme();
 darkQuery.addEventListener("change", applyTheme);
 
-// Delegated on the document so the listener works from <head> and covers every form that opts in.
-document.addEventListener("submit", (event) => {
-    const message = event.target.dataset.confirm;
-    if (message && !confirm(message)) {
-        event.preventDefault();
+// Delegated on the document so the listener works from <head> and covers every button that opts in.
+document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-dialog]");
+    if (button) {
+        document.getElementById(button.dataset.dialog).showModal();
+    }
+});
+
+// A dialog that htmx swaps into a slot opens itself. The slot is the target of the settle event.
+document.addEventListener("htmx:after:settle", (event) => {
+    if (event.target.matches("[data-dialog-slot]")) {
+        event.target.querySelector("dialog")?.showModal();
     }
 });
 

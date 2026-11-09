@@ -1,13 +1,9 @@
 {% extends "base.html" %}
-{% import "widget/card.html" as card %}
 {% import "widget/sort.html" as sort %}
 {% import "widget/tag.html" as badge %}
 {% block content %}
     <div class="row">
-        <div class="col-auto">
-            {% call card::card(crate::icon::Icon::Publication, title) %}
-            {% endcall %}
-        </div>
+        <div class="col-auto">{{ picture }}</div>
         <div class="col">
             <h1 class="d-flex justify-content-between align-items-center">
                 <span>
@@ -106,6 +102,13 @@
                     {{ holding.icon }} {{ holding.icon.label() }}
                     {% if logged_in %}
                         {% if let Some(location) = holding.location %}<span class="ms-3">{{ location }}</span>{% endif %}
+                        {% if let Some(filename) = holding.filename %}
+                            <a class="ms-3"
+                               href="/library/{{ library }}/publication/{{ id }}/holding/{{ holding.id }}"
+                               target="_blank"
+                               rel="noopener"
+                               title="Open in a new tab">{{ filename }}</a>
+                        {% endif %}
                         {% if let Some(loaned_to) = holding.loaned_to %}
                             <span class="ms-3 text-body-secondary">on loan to {{ loaned_to }}</span>
                         {% endif %}

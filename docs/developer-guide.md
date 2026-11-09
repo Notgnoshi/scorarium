@@ -18,7 +18,7 @@ It's a "usual" Rust project, so you can use `cargo` as normal:
 cargo build
 cargo run -- ...
 # Serve an in-memory demo database for demo and testing purposes
-cargo run -- serve --demo
+cargo run -- serve --demo --demo-files
 # nextest is preferred over 'cargo test' for better speed; both will work
 cargo nextest run
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module

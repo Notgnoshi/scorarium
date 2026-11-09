@@ -3,7 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity, EntityKind};
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Tag, Year};
@@ -16,6 +16,7 @@ use crate::page::{Base, Crumb};
 use crate::sort::{self, compare};
 use crate::widget::header::Header;
 use crate::widget::library_nav::{Active, LibraryNav};
+use crate::widget::picture::Picture;
 use crate::widget::stars::Stars;
 
 #[derive(Template)]
@@ -31,6 +32,7 @@ struct Library {
 
 struct Summary {
     id: PublicationId,
+    picture: Picture,
     title: String,
     contributors: Vec<entity::Contributor>,
     contributor_sort_name: Option<String>,
@@ -130,6 +132,7 @@ pub async fn get(
                 .collect();
             Summary {
                 id: publication.id(),
+                picture: Picture::from(publication).thumbnail(),
                 title: publication.title().unwrap_or_default().to_owned(),
                 contributor_sort_name: contributors.first().map(|c| c.sort_name.clone()),
                 contributors,
@@ -159,12 +162,28 @@ pub async fn get(
 
 #[cfg(test)]
 mod tests {
+    use scorarium_engine::person::PersonSummary;
+
     use super::*;
+
+    fn picture() -> Picture {
+        let person = PersonSummary {
+            id: "1".parse().unwrap(),
+            name: String::new(),
+            sort_name: String::new(),
+            profile: None,
+            roles: Vec::new(),
+            publications: 0,
+            works: 0,
+        };
+        Picture::summary("1".parse().unwrap(), &person)
+    }
 
     #[test]
     fn sort_puts_empty_values_last_in_either_direction() {
         let summary = |title: &str, year: Option<u16>| Summary {
             id: "1".parse().unwrap(),
+            picture: picture(),
             title: title.into(),
             contributors: Vec::new(),
             contributor_sort_name: None,
@@ -193,6 +212,7 @@ mod tests {
     fn sort_compares_titles_case_insensitively() {
         let summary = |title: &str| Summary {
             id: "1".parse().unwrap(),
+            picture: picture(),
             title: title.into(),
             contributors: Vec::new(),
             contributor_sort_name: None,

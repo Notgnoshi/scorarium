@@ -1,0 +1,13 @@
+<form id="holding-add-physical"
+      {% if oob %}hx-swap-oob="true"{% endif %}
+      hx-post="/api/library/{{ library }}/publication/{{ publication }}/holding/add"
+      hx-target="#holding-entries"
+      hx-swap="beforeend"
+      hx-disable="find button">
+    <div class="input-group">
+        {{ typeahead }}
+        <button class="btn btn-outline-secondary" type="submit" title="Add the copy">
+            <i class="bi bi-plus-lg"></i> Add
+        </button>
+    </div>
+</form>

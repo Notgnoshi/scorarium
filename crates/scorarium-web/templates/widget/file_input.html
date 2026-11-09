@@ -1,0 +1,22 @@
+<div data-file-input
+     data-url="{{ url }}"
+     data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}"
+     {% if multiple %}data-multiple{% endif %}>
+    <input type="file"
+           class="d-none"
+           {% if multiple %}multiple{% endif %}
+           {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
+    <span class="input-group input-group-sm" {% if disabled %}title="File uploads are disabled"{% endif %}>
+        <input type="url"
+               class="form-control"
+               pattern="https?://.+"
+               placeholder="{{ hint }}"
+               data-url-field
+               {% if disabled %}disabled{% endif %}>
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-browse
+                {% if disabled %}disabled{% endif %}>Browse</button>
+    </span>
+    <div class="form-text">Drag, paste, or browse</div>
+</div>

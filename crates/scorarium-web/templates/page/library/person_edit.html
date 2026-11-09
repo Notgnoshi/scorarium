@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "widget/card.html" as card %}
 {% block content %}
     <h1 class="d-flex justify-content-between align-items-center">
         <span>
@@ -8,11 +7,8 @@
         </span>
     </h1>
     <div class="row">
-        <div class="col-auto">
-            {% call card::card(icon, base.title) %}
-            {% endcall %}
-        </div>
-        <div class="col">
+        <div class="col-12 col-md-auto">{{ picture }}</div>
+        <div class="col-12 col-md">
             <form method="post"
                   action="/library/{{ library }}/person/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
                 <fieldset class="box">
@@ -49,11 +45,8 @@
             </form>
         </div>
     </div>
-    <form method="post"
-          action="/library/{{ library }}/person/{{ id }}/delete"
-          data-confirm="Delete {{ base.title }}? They will be removed from {{ publications }} publication{{ publications|pluralize }} and {{ works }} work{{ works|pluralize }}.">
-        <button class="btn btn-outline-danger" type="submit" title="Delete person">
-            <i class="bi bi-trash"></i> Delete
-        </button>
-    </form>
+    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete person">
+        <i class="bi bi-trash"></i> Delete
+    </button>
+    {{ delete }}
 {% endblock %}

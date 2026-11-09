@@ -1,0 +1,28 @@
+<dialog id="{{ id }}" class="confirm">
+    <div class="confirm-header{% if !also_deleted.is_empty() %} confirm-danger{% endif %}">
+        <h5 class="mb-0">
+            {% if !also_deleted.is_empty() %}
+                <i class="bi bi-exclamation-triangle-fill" title="This cannot be undone"></i>
+            {% endif %}
+            {{ title }}
+        </h5>
+    </div>
+    <div class="confirm-body">
+        {{ message }}
+        {% if !also_deleted.is_empty() %}
+            <ul class="mb-0">
+                {% for item in also_deleted %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+    <div class="confirm-footer">
+        <form method="dialog">
+            <button class="btn btn-secondary" type="submit" autofocus>Cancel</button>
+        </form>
+        <form {% if let Some(target) = target %}hx-post="{{ url }}" hx-target="{{ target }}"{% else %}method="post" action="{{ url }}"{% endif %}>
+            {% for (name, value) in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+            <button class="btn {% if also_deleted.is_empty() %}btn-outline-danger{% else %}btn-danger{% endif %}"
+                    type="submit">{{ action }}</button>
+        </form>
+    </div>
+</dialog>

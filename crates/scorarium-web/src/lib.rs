@@ -11,5 +11,5 @@ mod serve;
 mod sort;
 mod widget;
 
-pub use router::{SESSION_COOKIE, router};
+pub use router::{SESSION_COOKIE, Settings, router};
 pub use serve::{ServeArgs, serve};
