@@ -12,25 +12,29 @@ pub(crate) struct PictureBox {
     legend: &'static str,
     picture: Picture,
     input: FileInput,
+    /// The URL that removes the picture, or `None` when there is no picture to remove
+    remove_url: Option<String>,
 }
 
 impl askama::filters::HtmlSafe for PictureBox {}
 
 impl PictureBox {
     pub fn cover(publication: &Publication, files_allowed: bool) -> PictureBox {
+        let api = format!(
+            "/api/library/{}/publication/{}/cover",
+            publication.library(),
+            publication.id()
+        );
         PictureBox {
             legend: "Cover",
             picture: Picture::from(publication),
             input: FileInput {
-                url: format!(
-                    "/api/library/{}/publication/{}/cover/upload",
-                    publication.library(),
-                    publication.id()
-                ),
+                url: format!("{api}/upload"),
                 accept: Some("image/*"),
                 hint: "Paste a picture or URL",
                 disabled: !files_allowed,
             },
+            remove_url: publication.cover().map(|_| format!("{api}/remove")),
         }
     }
 }

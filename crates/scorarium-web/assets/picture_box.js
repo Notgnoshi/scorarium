@@ -5,9 +5,19 @@
         </div>`;
 
     const setBusy = (box, busy) => {
-        box.querySelectorAll("button, input").forEach((control) => {
-            control.disabled = busy;
-        });
+        // Only controls this function disables are re-enabled, so that a control the server drew
+        // disabled stays disabled.
+        if (busy) {
+            box.querySelectorAll("button:enabled, input:enabled").forEach((control) => {
+                control.disabled = true;
+                control.dataset.busy = "";
+            });
+        } else {
+            box.querySelectorAll("[data-busy]").forEach((control) => {
+                control.disabled = false;
+                delete control.dataset.busy;
+            });
+        }
         box.querySelector("[data-spinner]")?.remove();
         if (busy) {
             box.querySelector("[data-picture]").insertAdjacentHTML("beforeend", spinner);
@@ -31,7 +41,9 @@
             return;
         }
         if (event.detail.ok) {
+            const parent = box.parentElement;
             box.outerHTML = event.detail.html;
+            htmx.process(parent);
             return;
         }
         const message = box.querySelector("[data-message]");

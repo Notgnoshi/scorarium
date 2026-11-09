@@ -27,3 +27,18 @@ pub async fn upload_cover(
     let picture_box = PictureBox::cover(&publication, settings.files_allowed(&engine));
     Ok(Html(askama::Template::render(&picture_box)?).into_response())
 }
+
+/// Remove a publication's cover, and answer with the picture box
+pub async fn remove_cover(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    Path((library, publication)): Path<(String, String)>,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut publication: Publication =
+        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    publication.clear_cover().await?;
+    let picture_box = PictureBox::cover(&publication, settings.files_allowed(&engine));
+    Ok(Html(askama::Template::render(&picture_box)?).into_response())
+}
