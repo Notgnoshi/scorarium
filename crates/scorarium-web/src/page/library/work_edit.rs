@@ -18,6 +18,7 @@ use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
+use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
@@ -57,12 +58,12 @@ struct Edit {
     library: LibraryId,
     id: WorkId,
     draft: bool,
-    publications: usize,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
+    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -167,7 +168,6 @@ async fn render(
         library: library.id(),
         id: work.id(),
         draft: work.is_draft(),
-        publications: work.publications().await?.len(),
         form,
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
@@ -180,6 +180,16 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
+        delete: Confirm {
+            id: "delete".to_owned(),
+            title: format!("Delete {}?", work.title()),
+            message: format!(
+                "It is removed from {}.",
+                count(work.publications().await?.len(), "publication")
+            ),
+            action: "Delete work",
+            url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+        },
         destination: back
             .clone()
             .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),

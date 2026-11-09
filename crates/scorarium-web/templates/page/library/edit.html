@@ -39,11 +39,8 @@
             </a>
         </fieldset>
     </form>
-    <form method="post"
-          action="/library/{{ id }}/delete"
-          data-confirm="Delete {{ name }} and its {{ publications }} publication{{ publications|pluralize }}?">
-        <button class="btn btn-outline-danger" type="submit" title="Delete library">
-            <i class="bi bi-trash"></i> Delete
-        </button>
-    </form>
+    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete library">
+        <i class="bi bi-trash"></i> Delete
+    </button>
+    {{ delete }}
 {% endblock %}

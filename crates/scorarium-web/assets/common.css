@@ -83,3 +83,33 @@ fieldset.box > legend {
     max-height: 100%;
     object-fit: contain;
 }
+
+.confirm {
+    max-width: 30rem;
+    padding: 0;
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+}
+
+.confirm::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-header {
+    padding: 1rem;
+    background: var(--bs-tertiary-bg);
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+}
+
+.confirm-body {
+    padding: 1rem;
+}
+
+.confirm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0 1rem 1rem;
+}

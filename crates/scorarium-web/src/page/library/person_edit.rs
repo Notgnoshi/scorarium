@@ -15,6 +15,7 @@ use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
+use crate::widget::confirm::{Confirm, count};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
@@ -57,11 +58,10 @@ struct Edit {
     library: LibraryId,
     id: PersonId,
     draft: bool,
-    publications: usize,
-    works: usize,
     name: String,
     sort_name: String,
     links: LinksInput,
+    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -86,12 +86,21 @@ async fn render(
         library: library.id(),
         id: person.id(),
         draft: person.is_draft(),
-        publications: person.publications().await?.len(),
-        works: person.works().await?.len(),
         name: form.name,
         sort_name: form.sort_name,
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
+        },
+        delete: Confirm {
+            id: "delete".to_owned(),
+            title: format!("Delete {}?", person.name()),
+            message: format!(
+                "They are removed from {} and {}.",
+                count(person.publications().await?.len(), "publication"),
+                count(person.works().await?.len(), "work")
+            ),
+            action: "Delete person",
+            url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
         },
         destination: back
             .clone()

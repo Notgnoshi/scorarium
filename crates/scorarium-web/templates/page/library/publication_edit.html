@@ -78,11 +78,8 @@
     </div>
     <div id="contributors">{{ contributors }}</div>
     <div id="contents">{{ contents }}</div>
-    <form method="post"
-          action="/library/{{ library }}/publication/{{ id }}/delete"
-          data-confirm="Delete {{ base.title }}? Orphaned entities will also be deleted">
-        <button class="btn btn-outline-danger" type="submit" title="Delete publication">
-            <i class="bi bi-trash"></i> Delete
-        </button>
-    </form>
+    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete publication">
+        <i class="bi bi-trash"></i> Delete
+    </button>
+    {{ delete }}
 {% endblock %}

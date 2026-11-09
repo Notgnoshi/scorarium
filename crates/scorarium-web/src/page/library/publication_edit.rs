@@ -16,6 +16,7 @@ use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::classification_input::ClassificationInput;
+use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::header::Header;
@@ -63,6 +64,7 @@ struct Edit {
     links: LinksInput,
     contributors: Contributors,
     contents: Contents,
+    delete: Confirm,
     destination: String,
     error: Option<String>,
 }
@@ -181,6 +183,17 @@ async fn render(
         },
         contributors: Contributors::new(publication, None),
         contents: Contents::new(publication, &publication.works().await?),
+        delete: Confirm {
+            id: "delete".to_owned(),
+            title: format!("Delete {}?", publication.title().unwrap_or("Untitled")),
+            message: "Orphaned entities also deleted.".to_owned(),
+            action: "Delete publication",
+            url: format!(
+                "/library/{}/publication/{}/delete",
+                library.id(),
+                publication.id()
+            ),
+        },
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
     };

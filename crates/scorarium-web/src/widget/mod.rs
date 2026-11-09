@@ -2,6 +2,7 @@ pub mod audit;
 pub mod breadcrumbs;
 pub mod catalog_numbers_input;
 pub mod classification_input;
+pub mod confirm;
 pub mod contents;
 pub mod contributors;
 pub mod header;

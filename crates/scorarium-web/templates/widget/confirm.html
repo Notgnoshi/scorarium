@@ -1,0 +1,14 @@
+<dialog id="{{ id }}" class="confirm">
+    <div class="confirm-header">
+        <h5 class="mb-0">{{ title }}</h5>
+    </div>
+    <div class="confirm-body">{{ message }}</div>
+    <div class="confirm-footer">
+        <form method="dialog">
+            <button class="btn btn-secondary" type="submit" autofocus>Cancel</button>
+        </form>
+        <form method="post" action="{{ url }}">
+            <button class="btn btn-outline-danger" type="submit">{{ action }}</button>
+        </form>
+    </div>
+</dialog>
