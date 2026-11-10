@@ -69,8 +69,6 @@ fn render(
             ],
             action: "Delete library",
             url: format!("/library/{}/delete", library.id()),
-            target: None,
-            fields: vec![],
         },
         error,
     };

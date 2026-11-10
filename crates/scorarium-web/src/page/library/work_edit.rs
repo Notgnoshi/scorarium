@@ -187,8 +187,6 @@ async fn render(
                     "Delete work"
                 },
                 url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
-                target: None,
-                fields: vec![],
             },
         },
         library: library.id(),

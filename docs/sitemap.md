@@ -8,10 +8,6 @@
 | `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
 | `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |
 | `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
-| `/api/library/{id}/publication/{publication}/holding/add`        | POST   | Add a physical holding           |
-| `/api/library/{id}/publication/{publication}/holding/location`   | POST   | Move a physical holding          |
-| `/api/library/{id}/publication/{publication}/holding/remove`     | POST   | Delete a holding                 |
-| `/api/library/{id}/publication/{publication}/holding/upload`     | POST   | Add a digital holding            |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |

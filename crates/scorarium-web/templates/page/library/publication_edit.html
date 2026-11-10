@@ -63,15 +63,17 @@
                     <textarea class="form-control" id="note" name="note" rows="4">{{ form.note }}</textarea>
                 </div>
             </div>
-            <button class="btn btn-primary" type="submit" title="Save changes">
-                <i class="bi bi-floppy"></i> Save
-            </button>
+        </fieldset>
+        {{ holdings }}
+        <div class="d-flex justify-content-end gap-2 mb-4">
             <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
                 <i class="bi bi-x-lg"></i> Cancel
             </a>
-        </fieldset>
+            <button class="btn btn-primary" type="submit" title="Save changes">
+                <i class="bi bi-floppy"></i> Save
+            </button>
+        </div>
     </form>
     <div id="contributors">{{ contributors }}</div>
-    {{ holdings }}
     <div id="contents">{{ contents }}</div>
 {% endblock %}

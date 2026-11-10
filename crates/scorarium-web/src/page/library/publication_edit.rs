@@ -198,6 +198,7 @@ async fn render(
     library: &Library,
     publication: &Publication,
     form: Form,
+    holdings: &HoldingsForm,
     status: StatusCode,
     error: Option<String>,
 ) -> Result<Response> {
@@ -242,8 +243,6 @@ async fn render(
                     library.id(),
                     publication.id()
                 ),
-                target: None,
-                fields: vec![],
             },
         },
         library: library.id(),
@@ -260,7 +259,7 @@ async fn render(
             links: publication.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(publication, None),
-        holdings: Holdings::new(publication, files_allowed),
+        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
         contents: Contents::new(publication, &publication.works().await?),
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
@@ -306,6 +305,7 @@ pub async fn get(
         &library,
         &publication,
         form,
+        &HoldingsForm::default(),
         StatusCode::OK,
         None,
     )
@@ -342,6 +342,7 @@ pub async fn post(
                 &library,
                 &publication,
                 form,
+                &holdings,
                 status,
                 Some(error),
             )
@@ -358,6 +359,7 @@ pub async fn post(
             &library,
             &publication,
             form,
+            &holdings,
             status,
             Some(error),
         )
@@ -409,6 +411,7 @@ pub async fn post(
             &library,
             &publication,
             form,
+            &holdings,
             status,
             Some(error),
         )

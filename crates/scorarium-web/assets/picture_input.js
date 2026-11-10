@@ -49,7 +49,7 @@
             message.hidden = false;
             return;
         }
-        const { id } = JSON.parse(event.detail.html);
+        const { id } = JSON.parse(event.detail.body);
         const field = discardStaged(root);
         field.value = id;
         field.dataset.staged = "";

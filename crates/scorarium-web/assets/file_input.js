@@ -85,7 +85,7 @@
         request.setRequestHeader("HX-Current-URL", location.href);
         request.addEventListener("load", () => {
             if (request.status >= 200 && request.status < 300) {
-                finish(root, id, { ok: true, html: request.responseText });
+                finish(root, id, { ok: true, body: request.responseText });
                 return;
             }
             const redirect = request.getResponseHeader("HX-Redirect");

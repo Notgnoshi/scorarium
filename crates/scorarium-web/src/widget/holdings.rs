@@ -1,9 +1,10 @@
 use askama::Template;
-use scorarium_engine::asset::StagedId;
+use scorarium_engine::Engine;
+use scorarium_engine::asset::{StagedAsset, StagedId};
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::{Holding, HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::publication::{Publication, PublicationId};
+use scorarium_engine::publication::Publication;
 use serde::Deserialize;
 
 use crate::widget::file_input::FileInput;
@@ -12,154 +13,130 @@ use crate::widget::typeahead::Typeahead;
 #[derive(Template)]
 #[template(path = "widget/holdings.html")]
 pub(crate) struct Holdings {
+    library: LibraryId,
     entries: Vec<HoldingEntry>,
-    add: HoldingAdd,
+    /// The holdings that the form removes, which a resubmission must remove again
+    removed: Vec<HoldingId>,
+    kind: AddKind,
+    location: String,
+    files_allowed: bool,
 }
 
 impl askama::filters::HtmlSafe for Holdings {}
 
+enum HoldingEntry {
+    Physical {
+        id: HoldingId,
+        location: String,
+    },
+    Digital {
+        id: HoldingId,
+        filename: String,
+        href: String,
+    },
+    /// A physical holding that the form will add when submitted
+    StagedPhysical {
+        location: String,
+    },
+    StagedDigital(StagedAsset),
+}
+
 impl Holdings {
-    pub fn new(publication: &Publication, files_allowed: bool) -> Holdings {
-        Holdings {
-            entries: publication
-                .holdings()
-                .iter()
-                .map(|holding| HoldingEntry::new(publication, holding))
-                .collect(),
-            add: HoldingAdd::new(publication, files_allowed),
-        }
-    }
-}
-
-/// The collapsed form beneath the holdings that adds another copy
-#[derive(Template)]
-#[template(path = "widget/holding_add.html")]
-pub(crate) struct HoldingAdd {
-    library: LibraryId,
-    publication: PublicationId,
-    /// Whether a visitor may store files, which enables the Digital side
-    files_allowed: bool,
-}
-
-impl askama::filters::HtmlSafe for HoldingAdd {}
-
-impl HoldingAdd {
-    pub fn new(publication: &Publication, files_allowed: bool) -> HoldingAdd {
-        HoldingAdd {
-            library: publication.library(),
-            publication: publication.id(),
-            files_allowed,
-        }
-    }
-
-    fn physical(&self) -> HoldingAddPhysical {
-        HoldingAddPhysical::new(self.library, self.publication, false)
-    }
-
-    fn file_input(&self) -> FileInput {
-        FileInput {
-            url: format!(
-                "/api/library/{}/publication/{}/holding/upload",
-                self.library, self.publication
-            ),
-            accept: None,
-            hint: "Paste a file or URL",
-            disabled: !self.files_allowed,
-            multiple: true,
-        }
-    }
-}
-
-/// The form that adds a physical copy
-///
-/// The Digital side is left out so that replacing this form never detaches a running transfer.
-#[derive(Template)]
-#[template(path = "widget/holding_add_physical.html")]
-pub(crate) struct HoldingAddPhysical {
-    library: LibraryId,
-    publication: PublicationId,
-    /// Whether to mark the form as an htmx out-of-band replacement of the one on the page
-    oob: bool,
-    typeahead: Typeahead,
-}
-
-impl askama::filters::HtmlSafe for HoldingAddPhysical {}
-
-impl HoldingAddPhysical {
-    pub fn new(library: LibraryId, publication: PublicationId, oob: bool) -> HoldingAddPhysical {
-        HoldingAddPhysical {
-            library,
-            publication,
-            oob,
-            typeahead: location_input(library, "holding-add-location", ""),
-        }
-    }
-
-    /// Build a fresh form that replaces the one on the page, which clears its location
-    pub fn replacement(publication: &Publication) -> HoldingAddPhysical {
-        HoldingAddPhysical::new(publication.library(), publication.id(), true)
-    }
-}
-
-/// Build a location field, which suggests the library's existing locations
-fn location_input(library: LibraryId, id: &str, location: &str) -> Typeahead {
-    Typeahead {
-        id: id.to_owned(),
-        name: "location".to_owned(),
-        url: format!("/api/library/{library}/suggest/location"),
-        placeholder: "Location".to_owned(),
-        value: location.to_owned(),
-        picked: None,
-        pick_required: None,
-        attrs: vec![("aria-label", "Location".to_owned())],
-    }
-}
-
-/// One copy in the holdings box
-#[derive(Template)]
-#[template(path = "widget/holding.html")]
-pub(crate) struct HoldingEntry {
-    library: LibraryId,
-    publication: PublicationId,
-    id: HoldingId,
-    kind: Kind,
-}
-
-impl askama::filters::HtmlSafe for HoldingEntry {}
-
-enum Kind {
-    Physical { location: String },
-    Digital { filename: String },
-}
-
-impl HoldingEntry {
-    pub fn new(publication: &Publication, holding: &Holding) -> HoldingEntry {
-        let kind = match &holding.kind {
-            HoldingKind::Physical { location } => Kind::Physical {
+    /// Draw the holdings of `publication`
+    pub fn of(publication: &Publication, files_allowed: bool) -> Holdings {
+        let entry = |holding: &Holding| match &holding.kind {
+            HoldingKind::Physical { location } => HoldingEntry::Physical {
+                id: holding.id,
                 location: location.clone().unwrap_or_default(),
             },
-            HoldingKind::Digital { file } => Kind::Digital {
+            HoldingKind::Digital { file } => HoldingEntry::Digital {
+                id: holding.id,
                 filename: file
                     .file_name()
                     .unwrap_or(file.as_os_str())
                     .to_string_lossy()
                     .into_owned(),
+                href: format!(
+                    "/library/{}/publication/{}/holding/{}",
+                    publication.library(),
+                    publication.id(),
+                    holding.id
+                ),
             },
         };
-        HoldingEntry {
+        Holdings {
             library: publication.library(),
-            publication: publication.id(),
-            id: holding.id,
-            kind,
+            entries: publication.holdings().iter().map(entry).collect(),
+            removed: vec![],
+            kind: AddKind::default(),
+            location: String::new(),
+            files_allowed,
         }
     }
 
-    fn location_input(&self, location: &str) -> Typeahead {
-        location_input(
-            self.library,
-            &format!("holding-{}-location", self.id),
-            location,
-        )
+    /// Draw the box as a submitted form left it, for a form that was not saved
+    pub fn resubmitted(mut self, engine: &Engine, form: &HoldingsForm) -> Holdings {
+        self.removed = form
+            .remove_holding
+            .iter()
+            .filter_map(|id| id.parse().ok())
+            .collect();
+        self.entries.retain(|entry| match entry {
+            HoldingEntry::Physical { id, .. } | HoldingEntry::Digital { id, .. } => {
+                !self.removed.contains(id)
+            }
+            _ => true,
+        });
+        for (id, edited) in form.holding.iter().zip(&form.holding_location) {
+            let Ok(id) = id.parse::<HoldingId>() else {
+                continue;
+            };
+            for entry in &mut self.entries {
+                if let HoldingEntry::Physical { id: held, location } = entry
+                    && *held == id
+                {
+                    location.clone_from(edited);
+                }
+            }
+        }
+        let added = form
+            .add_location
+            .iter()
+            .map(|location| HoldingEntry::StagedPhysical {
+                location: location.clone(),
+            });
+        let staged = form.staged.iter().filter_map(|id| {
+            let Ok(id) = id.parse::<StagedId>();
+            engine.staged(&id).map(HoldingEntry::StagedDigital)
+        });
+        self.entries.extend(added.chain(staged));
+        self.kind = form.kind;
+        self.location.clone_from(&form.location);
+        self
+    }
+
+    /// Build a location field, which suggests the library's existing locations
+    fn location_input(&self, id: &str, name: &str, location: &str) -> Typeahead {
+        Typeahead {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            url: format!("/api/library/{}/suggest/location", self.library),
+            placeholder: "Location".to_owned(),
+            value: location.to_owned(),
+            picked: None,
+            pick_required: None,
+            attrs: vec![("aria-label", "Location".to_owned())],
+        }
+    }
+
+    fn file_input(&self) -> FileInput {
+        FileInput {
+            url: "/api/stage".to_owned(),
+            accept: None,
+            hint: "Paste a file or URL",
+            disabled: !self.files_allowed,
+            multiple: true,
+        }
     }
 }
 

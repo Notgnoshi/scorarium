@@ -1,6 +1,5 @@
 pub mod contents;
 pub mod contributor;
-pub mod holding;
 mod query;
 pub mod search;
 pub mod stage;

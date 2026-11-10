@@ -151,23 +151,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
                 )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/add",
-                    post(api::holding::add),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/location",
-                    post(api::holding::location),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/remove",
-                    post(api::holding::remove),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/upload",
-                    post(api::holding::upload)
-                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
-                )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )

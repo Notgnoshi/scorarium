@@ -8,6 +8,7 @@
            {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
     <span class="input-group input-group-sm" {% if disabled %}title="File uploads are disabled"{% endif %}>
         <input type="url"
+               form="no-form"
                class="form-control"
                pattern="https?://.+"
                placeholder="{{ hint }}"
