@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% import "widget/tag.html" as badge %}
+{% import "widget/kind.html" as kind %}
+{% import "widget/sort.html" as sort %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    {% if query.is_empty() %}
+        <p>No matches.</p>
+    {% else if hits.is_empty() %}
+        <p>No matches.</p>
+    {% else %}
+        <p>
+            {% if total_hits > hits.len() %}
+                {{ hits.len() }} of {{ total_hits }} matches
+            {% else %}
+                {{ total_hits }} matches
+            {% endif %}
+            {% if sort.column != Column::Relevance %}
+                <span class="text-body-secondary"><a href="{{ sort.href(Column::Relevance) }}">sort by relevance</a></span>
+            {% endif %}
+        </p>
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    {% call sort::header(sort, Column::Title, "Title") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Library, "Library") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Kind, "Kind") %}
+                    {% endcall %}
+                    {% if logged_in %}<th class="text-body-secondary fw-normal">Tags</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for hit in hits %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                {{ hit.picture }}
+                                <div>
+                                    <a href="{{ hit.href }}">{{ hit.title }}</a>
+                                    {% if let Some(detail) = hit.detail %}
+                                        <div class="small text-body-secondary">{{ detail }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a class="text-body" href="/library/{{ hit.library }}">{{ hit.library_name }}</a>
+                        </td>
+                        <td class="text-nowrap">
+                            {% call kind::kind(hit.kind, hit.classification) %}
+                            {% endcall %}
+                        </td>
+                        {% if logged_in %}
+                            <td>
+                                {% for tag in hit.tags %}
+                                    {% call badge::badge(hit.library, tag) %}
+                                    {% endcall %}
+                                {% endfor %}
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}

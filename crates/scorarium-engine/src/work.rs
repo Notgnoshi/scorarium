@@ -6,10 +6,12 @@ use std::str::FromStr;
 use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
 use crate::enrich::Enrichment;
-use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{
+    self, AnyEntity, AnyEntityId, Contributed, Entity, EntityKind, ProposalId, Timestamp,
+};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, Person, PersonId};
@@ -150,6 +152,11 @@ struct WorkRow {
 }
 
 impl Work {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     pub fn title(&self) -> &str {
         &self.title
     }
@@ -193,10 +200,6 @@ impl Work {
         &self.links
     }
 
-    pub fn contributors(&self) -> &[Contributor] {
-        &self.contributors
-    }
-
     async fn from_row(engine: &Engine, conn: &mut SqliteConnection, row: WorkRow) -> Result<Work> {
         let tags =
             sqlx::query_scalar!("SELECT tag FROM tag WHERE work_id = ? ORDER BY tag", row.id)
@@ -225,7 +228,7 @@ impl Work {
         .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
         .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
-            "SELECT work_contributor.person_id, person.name, work_contributor.role
+            "SELECT work_contributor.person_id, person.name, person.sort_name, work_contributor.role
              FROM work_contributor JOIN person ON person.id = work_contributor.person_id
              WHERE work_contributor.work_id = ?
              ORDER BY work_contributor.id",
@@ -237,6 +240,7 @@ impl Work {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
+            sort_name: contributor.sort_name,
             role: Role::from_valid(contributor.role),
         })
         .collect();
@@ -396,7 +400,7 @@ impl Work {
             return Ok(None);
         }
         if let Some(person) = person
-            && person::name(&mut tx, self.library, person.id())
+            && person::names(&mut tx, self.library, person.id())
                 .await?
                 .is_none()
         {
@@ -810,13 +814,16 @@ impl Work {
     pub async fn publications(&self) -> Result<Vec<Publication>> {
         publication::containing(&self.engine, self.id).await
     }
+}
 
-    /// Create a person with the owning work's draft state
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn create_contributor(
+impl Contributed for Work {
+    fn contributors(&self) -> &[Contributor] {
+        &self.contributors
+    }
+
+    async fn create_contributor(
         &mut self,
-        name: impl AsRef<str>,
+        name: impl AsRef<str> + Send,
         role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
@@ -858,21 +865,17 @@ impl Work {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
+            sort_name: person.sort_name().to_string(),
             role,
         });
         self.last_modified_at = last_modified_at;
         Ok(person)
     }
 
-    /// Add a person from the work's library as a contributor in `role`
-    ///
-    /// Commit the person if it is a draft and the work is committed.
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted or its library has no such person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
+    async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let name = person::name(&mut tx, self.library, person)
+        let (name, sort_name) = person::names(&mut tx, self.library, person)
             .await?
             .ok_or(Error::NotFound)?;
         let inserted = sqlx::query!(
@@ -914,15 +917,17 @@ impl Work {
             .record_each(AuditSource::User, Action::Committed, &committed, None)
             .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor { person, name, role });
+        self.contributors.push(Contributor {
+            person,
+            name,
+            sort_name,
+            role,
+        });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
 
-    /// Remove a contributor from the work
-    ///
-    /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
+    async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(
@@ -969,6 +974,7 @@ impl Entity for Work {
     type Id = WorkId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Work;
 
     async fn load(engine: &Engine, id: WorkId) -> Result<Option<Work>> {
         let mut conn = engine.begin_read().await?;
@@ -1000,9 +1006,9 @@ impl Entity for Work {
         self.last_modified_at
     }
 
-    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+    async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
         self.engine
-            .entity_audit_log(AnyEntityId::Work(self.id), self.library, before, limit)
+            .entity_audit_log(AnyEntityId::Work(self.id), self.library, offset, limit)
             .await
     }
 
@@ -1148,9 +1154,7 @@ impl Entity for Work {
             .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine.forget_enrichment(AnyEntityId::Work(self.id));
         Ok(())
     }
 
@@ -1410,23 +1414,31 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
 pub(crate) async fn candidates(
     conn: &mut SqliteConnection,
     scope: CandidateScope,
+    contributor: Option<PersonId>,
 ) -> Result<Vec<Candidate>> {
     let (library, include_drafts, include_private) = scope.binds();
+    let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT w.id AS "id!", w.title AS name,
                   w.title || ' '
                   || coalesce((SELECT group_concat(person.name, ' ')
                                FROM work_contributor c JOIN person ON person.id = c.person_id
-                               WHERE c.work_id = w.id), '')
+                               WHERE c.work_id = w.id), '') || ' '
+                  || coalesce((SELECT group_concat(tag, ' ') FROM tag
+                               WHERE work_id = w.id AND ?4), '')
                   AS "text!: String",
                   (SELECT group_concat(value, char(10)) FROM work_catalog_number
                    WHERE work_id = w.id) AS "numbers: String"
            FROM work w JOIN library l ON l.id = w.library_id
            WHERE (?1 IS NULL OR w.library_id = ?1) AND (?2 OR w.draft = 0) AND (?3 OR l.private = 0)
+             AND (?5 IS NULL OR EXISTS (SELECT 1 FROM work_contributor c
+                                        WHERE c.work_id = w.id AND c.person_id = ?5))
            ORDER BY w.id"#,
         library,
         include_drafts,
-        include_private
+        include_private,
+        include_tags,
+        contributor.map(PersonId::get)
     )
     .fetch_all(conn)
     .await?;

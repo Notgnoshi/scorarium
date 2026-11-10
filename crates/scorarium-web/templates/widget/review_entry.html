@@ -1,0 +1,76 @@
+{% macro draw(entry, indented) %}
+    <tr>
+        <td {% if indented %}class="ps-5"{% endif %}>
+            <div class="d-flex align-items-center gap-2">
+                {% if !indented && !entry.nested.is_empty() %}
+                    <button class="btn btn-sm btn-link text-body p-0" type="button" data-toggle-entry>
+                        <i class="bi bi-chevron-down" data-when="expanded" title="Collapse"></i>
+                        <i class="bi bi-chevron-right" data-when="collapsed" title="Expand"></i>
+                    </button>
+                {% else if !indented %}
+                    {# An invisible toggle keeps every top-level thumbnail at the same edge. #}
+                    <span class="btn btn-sm btn-link p-0 invisible"
+                          aria-hidden="true"><i class="bi bi-chevron-down"></i></span>
+                {% endif %}
+                <span title="{{ entry.kind_label() }}">{{ entry.hit.picture }}</span>
+                <div>
+                    <a href="{{ entry.hit.href }}">{{ entry.hit.title }}</a>
+                    {% if entry.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                    {% if let Some(detail) = entry.hit.detail %}
+                        <div class="small text-body-secondary">{{ detail }}</div>
+                    {% endif %}
+                    {% if !indented && !entry.nested.is_empty() %}
+                        <div class="small text-body-secondary" data-when="collapsed">{{ entry.hidden() }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </td>
+        {% if entry.show_library %}
+            <td>
+                {% if !indented %}
+                    <a class="text-body" href="/library/{{ entry.hit.library }}">{{ entry.hit.library_name }}</a>
+                    {% if entry.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
+                {% endif %}
+            </td>
+        {% endif %}
+        <td class="text-nowrap">{{ entry.enrichment }}</td>
+        <td class="text-end">
+            {% if !indented && !entry.nested.is_empty() %}
+                <span data-when="expanded">{% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}</span>
+                <span data-when="collapsed">{% if entry.all_proposals() > 0 %}{{ entry.all_proposals() }}{% endif %}</span>
+            {% else %}
+                {% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}
+            {% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+            <time datetime="{{ entry.queued_at.to_rfc3339() }}"
+                  title="{{ entry.queued_at.format("%Y-%m-%d %H:%M:%S") }}">{{ entry.age() }}</time>
+        </td>
+        <td class="text-end text-nowrap">
+            <form hx-post="/api/review/{{ entry.id.kind() }}/{{ entry.id.get() }}/discard?{{ entry.query }}"
+                  hx-target="#review-queue-dialog">
+                {% if entry.draft %}
+                    <button class="btn btn-sm btn-outline-danger py-0" type="submit" title="Discard draft">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                {% else %}
+                    <button class="btn btn-sm btn-outline-secondary py-0"
+                            type="submit"
+                            title="{% if entry.proposals > 0 %}Reject all proposals{% else %}Dismiss{% endif %}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                {% endif %}
+            </form>
+        </td>
+    </tr>
+{% endmacro %}
+<tbody class="table-group-divider"
+       data-entry="{{ id.kind() }}/{{ id.get() }}"
+       {% if collapsed %}data-collapsed{% endif %}>
+    {% call draw(self, false) %}
+    {% endcall %}
+    {% for child in nested %}
+        {% call draw(child, true) %}
+        {% endcall %}
+    {% endfor %}
+</tbody>

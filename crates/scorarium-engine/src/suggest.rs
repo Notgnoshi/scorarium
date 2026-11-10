@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use scorarium_archive::fuzzy::{normalize, rank};
 use scorarium_client::Priority;
 use scorarium_client::open_library::WorkHit;
 
 use crate::contributor::Role;
 use crate::enrich::open_library;
+use crate::fuzzy::{normalize, rank};
 use crate::library::{self, LibraryId};
 use crate::link::{ExternalRecord, HttpUrl, LinkKind};
 use crate::person::{self, Person, PersonId};
@@ -18,7 +18,10 @@ use crate::{Engine, Error, Result};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SuggestField {
     Publication,
-    Work,
+    /// Works, narrowed to those crediting `contributor` when given
+    Work {
+        contributor: Option<PersonId>,
+    },
     /// Catalog numbers, narrowed to the works `composer` composed when given
     WorkNumber {
         composer: Option<PersonId>,
@@ -73,7 +76,7 @@ pub(crate) async fn suggest(
         && matches!(
             field,
             SuggestField::Publication
-                | SuggestField::Work
+                | SuggestField::Work { .. }
                 | SuggestField::WorkNumber { .. }
                 | SuggestField::Person
         )
@@ -97,8 +100,9 @@ pub(crate) async fn suggest(
             }
             suggestions
         }
-        SuggestField::Work => {
-            let candidates = work::candidates(&mut conn, CandidateScope::Library(library)).await?;
+        SuggestField::Work { contributor } => {
+            let candidates =
+                work::candidates(&mut conn, CandidateScope::Library(library), contributor).await?;
             let mut suggestions = Vec::new();
             for (id, exact) in ranked_candidates(query, candidates, limit) {
                 if let Some(work) = Work::fetch(engine, &mut conn, WorkId::new(id)).await? {
@@ -314,6 +318,13 @@ impl CandidateScope {
             CandidateScope::Committed { include_private } => (None, false, include_private),
         }
     }
+
+    pub(crate) fn includes_tags(self) -> bool {
+        match self {
+            CandidateScope::Library(_) => false,
+            CandidateScope::Committed { include_private } => include_private,
+        }
+    }
 }
 
 fn ranked_candidates(query: &str, candidates: Vec<Candidate>, limit: usize) -> Vec<(i64, bool)> {
@@ -417,7 +428,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::Entity;
+    use crate::entity::{Contributed, Entity};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
 
@@ -541,6 +552,15 @@ mod tests {
             .add_catalog_number("Op. 9 No. 2".parse().unwrap())
             .await
             .unwrap();
+        let faure = nocturnes
+            .create_contributor("Gabriel Faure", "composer".parse().unwrap())
+            .await
+            .unwrap();
+        let mut other = nocturnes.create_work("Nocturne").await.unwrap();
+        other
+            .add_contributor(faure.id(), "composer".parse().unwrap())
+            .await
+            .unwrap();
         nocturnes.commit().await.unwrap();
         library
             .import(
@@ -555,7 +575,7 @@ mod tests {
 
         for query in ["nocturne", "op9no2"] {
             let works = library
-                .suggest(SuggestField::Work, query, 10)
+                .suggest(SuggestField::Work { contributor: None }, query, 10)
                 .await
                 .unwrap();
             let Some(Suggestion {
@@ -569,6 +589,32 @@ mod tests {
             assert_eq!(*exact, query == "nocturne");
             assert!(number.is_none());
         }
+
+        let narrowed = library
+            .suggest(
+                SuggestField::Work {
+                    contributor: Some(chopin.id()),
+                },
+                "nocturne",
+                10,
+            )
+            .await
+            .unwrap();
+        let [
+            Suggestion {
+                item: Suggested::Work { work, .. },
+                ..
+            },
+        ] = narrowed.as_slice()
+        else {
+            panic!("expected only Chopin's work, got {narrowed:?}");
+        };
+        assert_eq!(work.title(), "Nocturne");
+        assert!(
+            work.contributors()
+                .iter()
+                .any(|contributor| contributor.person == chopin.id())
+        );
 
         let publications = library
             .suggest(SuggestField::Publication, "nocturne", 10)

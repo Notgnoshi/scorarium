@@ -1,0 +1,41 @@
+<div data-list-input="identifier">
+    <ul class="list-unstyled" data-entries>
+        {% for identifier in identifiers %}
+            <li class="d-flex align-items-center gap-2" data-value="{{ identifier.kind() }}:{{ identifier }}">
+                <span class="text-body-secondary"
+                      style="min-width: 5rem">{{ crate::widget::identifiers_input::kind_label(identifier.kind()).unwrap_or("") }}</span>
+                <span>{{ identifier }}</span>
+                <button type="button"
+                        class="btn btn-sm btn-link"
+                        data-remove
+                        data-key="{{ identifier.kind() }}:{{ identifier }}"
+                        title="Remove identifier">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </li>
+        {% endfor %}
+    </ul>
+    <template>
+        <li class="d-flex align-items-center gap-2">
+            <span class="text-body-secondary" style="min-width: 5rem" data-kind-label></span>
+            <span data-label></span>
+            <input type="hidden" name="add_identifier">
+            <button type="button" class="btn btn-sm btn-link" data-remove title="Remove identifier">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </li>
+    </template>
+    <div class="input-group">
+        <select class="form-select flex-grow-0 w-auto" data-add-kind>
+            <option value="isbn" selected>ISBN</option>
+            <option value="ismn">ISMN</option>
+            <option value="publisher_number">Publisher No.</option>
+            <option value="plate_number">Plate No.</option>
+        </select>
+        <input type="text" class="form-control" placeholder="Add identifier" data-add>
+        <button type="button"
+                class="btn btn-outline-secondary"
+                title="Add identifier"
+                data-add-button><i class="bi bi-plus-lg"></i> Add</button>
+    </div>
+</div>

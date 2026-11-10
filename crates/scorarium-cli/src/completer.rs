@@ -55,7 +55,7 @@ fn locate<'a>(tree: &'a Command, words: &'a [String]) -> Location<'a> {
 fn field_for(value_name: &str) -> Option<SuggestField> {
     match value_name {
         "publication" => Some(SuggestField::Publication),
-        "work" => Some(SuggestField::Work),
+        "work" => Some(SuggestField::Work { contributor: None }),
         "person" => Some(SuggestField::Person),
         "tag" => Some(SuggestField::Tag),
         "role" => Some(SuggestField::Role),
@@ -262,21 +262,11 @@ impl Completer for ShellCompleter {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use scorarium_client::fake::FakeTransport;
-    use scorarium_client::{Client, UserAgent};
-    use scorarium_engine::EngineOptions;
-
     use super::*;
 
     #[tokio::test]
     async fn completion_follows_the_grammar() {
-        let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
-        let transport = FakeTransport::new(&user_agent).expect("failed to open API fixtures");
-        let client = Client::with_transport(user_agent.clone(), Arc::new(transport));
-        let options = EngineOptions::new(user_agent).unwrap().client(client);
-        let engine = Engine::demo(options).await.unwrap();
+        let engine = scorarium_test::demo_engine().await;
         let handle = Handle::current();
         tokio::task::spawn_blocking(move || {
             let values = |selected: Option<LibraryId>, line: &str| -> Vec<(String, usize)> {

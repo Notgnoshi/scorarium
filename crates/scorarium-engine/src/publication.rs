@@ -9,10 +9,12 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource, Staged};
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
 use crate::enrich::{Enrichment, open_library};
-use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
+use crate::entity::{
+    self, AnyEntity, AnyEntityId, Contributed, Entity, EntityKind, ProposalId, Timestamp,
+};
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
@@ -178,6 +180,11 @@ struct PublicationRow {
 }
 
 impl Publication {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     /// Only a draft publication is allowed to be missing a title
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
@@ -223,10 +230,6 @@ impl Publication {
         &self.links
     }
 
-    pub fn contributors(&self) -> &[Contributor] {
-        &self.contributors
-    }
-
     pub fn holdings(&self) -> &[Holding] {
         &self.holdings
     }
@@ -266,7 +269,8 @@ impl Publication {
         .map(|link| Link::new(link.id, &link.url, &link.kind, link.external_id))
         .collect::<Result<_>>()?;
         let contributors = sqlx::query!(
-            "SELECT publication_contributor.person_id, person.name, publication_contributor.role
+            "SELECT publication_contributor.person_id, person.name, person.sort_name,
+                    publication_contributor.role
              FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id
              WHERE publication_contributor.publication_id = ?
              ORDER BY publication_contributor.id",
@@ -278,6 +282,7 @@ impl Publication {
         .map(|contributor| Contributor {
             person: PersonId::new(contributor.person_id),
             name: contributor.name,
+            sort_name: contributor.sort_name,
             role: Role::from_valid(contributor.role),
         })
         .collect();
@@ -460,7 +465,7 @@ impl Publication {
             return Ok(None);
         }
         if let Some(person) = person
-            && person::name(&mut tx, self.library, person.id())
+            && person::names(&mut tx, self.library, person.id())
                 .await?
                 .is_none()
         {
@@ -760,8 +765,8 @@ impl Publication {
 
     /// Replace the publication's cover image with the image from `source`
     ///
-    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
-    /// [Error::NotFound] if the publication has been deleted.
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image or is larger than
+    /// the limit, or [Error::NotFound] if the publication has been deleted.
     pub async fn set_cover(&mut self, source: AssetSource<'_>) -> Result<()> {
         let staged = asset::stage(&self.engine, source).await?;
         let extension = staged.image_extension()?;
@@ -1013,8 +1018,9 @@ impl Publication {
     /// Store a digital holding's file in the publication's asset directory under its own name,
     /// with a counter before the extension if that name is taken.
     ///
-    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename or its URL
-    /// answers with an error status, and [Error::NotFound] if the publication has been deleted.
+    /// Returns [Error::InvalidValue] if a digital holding's upload has a blank filename, its URL
+    /// answers with an error status, or its file is larger than the limit, or [Error::NotFound]
+    /// if the publication has been deleted.
     pub async fn add_holding(&mut self, holding: NewHolding<'_>) -> Result<HoldingId> {
         let holding = stage_holding(&self.engine, holding).await?;
         let mut tx = self.engine.begin_write().await?;
@@ -1065,7 +1071,7 @@ impl Publication {
             match std::fs::remove_file(&file) {
                 Err(e) if e.kind() != ErrorKind::NotFound => {
                     // The row is already gone, so an error would tell the caller the removal failed.
-                    log::warn!("failed to remove {}: {e}", file.display());
+                    tracing::warn!("failed to remove {}: {e}", file.display());
                 }
                 _ => {}
             }
@@ -1108,6 +1114,54 @@ impl Publication {
         .await?;
         self.commit_update(tx, Field::Holdings).await?;
         self.holdings[position].loaned_to = loaned_to.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Move a physical copy of the publication to `location`
+    ///
+    /// Returns [Error::InvalidValue] if the holding is digital, and [Error::NotFound] if the
+    /// publication has been deleted or has no such holding.
+    pub async fn set_physical_holding_location(
+        &mut self,
+        holding: HoldingId,
+        location: Option<&str>,
+    ) -> Result<()> {
+        let location = clean_text(location);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        let Some(position) = self.holdings.iter().position(|h| h.id == holding) else {
+            return Err(Error::NotFound);
+        };
+        match &self.holdings[position].kind {
+            HoldingKind::Digital { .. } => {
+                return Err(Error::InvalidValue(
+                    "A digital holding has no location.".into(),
+                ));
+            }
+            HoldingKind::Physical { location: current } if current.as_deref() == location => {
+                return Ok(());
+            }
+            HoldingKind::Physical { .. } => {}
+        }
+        sqlx::query!(
+            "UPDATE holding SET location = ? WHERE id = ?",
+            location,
+            holding.get()
+        )
+        .execute(&mut *tx)
+        .await?;
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Holdings).await?;
+        self.holdings[position].kind = HoldingKind::Physical {
+            location: location.map(str::to_string),
+        };
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1289,13 +1343,16 @@ impl Publication {
     pub async fn works(&self) -> Result<Vec<Work>> {
         work::in_publication(&self.engine, self.id).await
     }
+}
 
-    /// Create a person with the owning publication's draft state
-    ///
-    /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn create_contributor(
+impl Contributed for Publication {
+    fn contributors(&self) -> &[Contributor] {
+        &self.contributors
+    }
+
+    async fn create_contributor(
         &mut self,
-        name: impl AsRef<str>,
+        name: impl AsRef<str> + Send,
         role: Role,
     ) -> Result<Person> {
         let name = person::clean_name(name.as_ref())?;
@@ -1338,22 +1395,17 @@ impl Publication {
         self.contributors.push(Contributor {
             person: person.id(),
             name: person.name().to_string(),
+            sort_name: person.sort_name().to_string(),
             role,
         });
         self.last_modified_at = last_modified_at;
         Ok(person)
     }
 
-    /// Name a person from the publication's library as a contributor in `role`
-    ///
-    /// Commit the person if it is a draft and the publication is committed.
-    ///
-    /// Returns [Error::NotFound] if the publication has been deleted or its library has no such
-    /// person.
-    pub async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
+    async fn add_contributor(&mut self, person: PersonId, role: Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let name = person::name(&mut tx, self.library, person)
+        let (name, sort_name) = person::names(&mut tx, self.library, person)
             .await?
             .ok_or(Error::NotFound)?;
         let inserted = sqlx::query!(
@@ -1395,15 +1447,17 @@ impl Publication {
             .record_each(AuditSource::User, Action::Committed, &committed, None)
             .await?;
         tx.commit().await?;
-        self.contributors.push(Contributor { person, name, role });
+        self.contributors.push(Contributor {
+            person,
+            name,
+            sort_name,
+            role,
+        });
         self.last_modified_at = last_modified_at;
         Ok(())
     }
 
-    /// Remove a contributor from the publication
-    ///
-    /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
+    async fn remove_contributor(&mut self, person: PersonId, role: &Role) -> Result<()> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let removed = sqlx::query!(
@@ -1451,6 +1505,7 @@ impl Entity for Publication {
     type Id = PublicationId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Publication;
 
     async fn load(engine: &Engine, id: PublicationId) -> Result<Option<Publication>> {
         let mut conn = engine.begin_read().await?;
@@ -1482,12 +1537,12 @@ impl Entity for Publication {
         self.last_modified_at
     }
 
-    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+    async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
         self.engine
             .entity_audit_log(
                 AnyEntityId::Publication(self.id),
                 self.library,
-                before,
+                offset,
                 limit,
             )
             .await
@@ -1653,9 +1708,8 @@ impl Entity for Publication {
         tx.commit().await?;
         orphans.push(self.audit_subject());
         asset::remove_dirs(&self.engine, &orphans);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine
+            .forget_enrichment(AnyEntityId::Publication(self.id));
         Ok(())
     }
 
@@ -1798,6 +1852,7 @@ pub(crate) async fn candidates(
     scope: CandidateScope,
 ) -> Result<Vec<Candidate>> {
     let (library, include_drafts, include_private) = scope.binds();
+    let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
                   coalesce(p.title, '') || ' '
@@ -1805,14 +1860,17 @@ pub(crate) async fn candidates(
                                FROM publication_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.publication_id = p.id), '') || ' '
                   || coalesce((SELECT group_concat(value || ' ' || replace(value, '-', ''), ' ')
-                               FROM publication_identifier WHERE publication_id = p.id), '')
+                               FROM publication_identifier WHERE publication_id = p.id), '') || ' '
+                  || coalesce((SELECT group_concat(tag, ' ') FROM tag
+                               WHERE publication_id = p.id AND ?4), '')
                   AS "text!: String"
            FROM publication p JOIN library l ON l.id = p.library_id
            WHERE (?1 IS NULL OR p.library_id = ?1) AND (?2 OR p.draft = 0) AND (?3 OR l.private = 0)
            ORDER BY p.id"#,
         library,
         include_drafts,
-        include_private
+        include_private,
+        include_tags
     )
     .fetch_all(conn)
     .await?;
@@ -2091,7 +2149,7 @@ fn remove_cover(path: &Path) {
     // The row no longer names the file, so an error would tell the caller the update failed when
     // it did not.
     if let Err(e) = std::fs::remove_file(path) {
-        log::warn!("failed to remove {}: {e}", path.display());
+        tracing::warn!("failed to remove {}: {e}", path.display());
     }
 }
 
@@ -2368,9 +2426,10 @@ mod tests {
             label: "Pro Git".into(),
         });
         let events: Vec<_> = publication
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| (e.action, e.subject, e.field))
             .collect();
@@ -2734,6 +2793,7 @@ mod tests {
         let contributor = |role: &str| Contributor {
             person: satie,
             name: "Erik Satie".into(),
+            sort_name: "Satie, Erik".into(),
             role: role.parse().unwrap(),
         };
         assert_eq!(
@@ -2820,9 +2880,10 @@ mod tests {
             label: "978-0-486-99999-9".into(),
         });
         let events: Vec<_> = publication
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| (e.action, e.subject))
             .collect();
@@ -3010,5 +3071,102 @@ mod tests {
             Err(Error::InvalidValue(_))
         ));
         assert!(assets.join("cover.1.png").exists());
+    }
+
+    #[tokio::test]
+    async fn only_a_physical_holding_has_a_location() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical {
+                    location: Some("Piano bench"),
+                },
+            )
+            .await
+            .unwrap();
+        let physical = publication.holdings()[0].id;
+        let digital = publication
+            .add_holding(NewHolding::Digital(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: "score.pdf".into(),
+            }))
+            .await
+            .unwrap();
+        let file = publication.holdings()[1].clone();
+
+        publication
+            .set_physical_holding_location(physical, Some("Shelf 3"))
+            .await
+            .unwrap();
+        assert!(matches!(
+            publication
+                .set_physical_holding_location(digital, Some("Shelf 3"))
+                .await,
+            Err(Error::InvalidValue(_))
+        ));
+
+        let reloaded = Publication::load(&engine, publication.id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reloaded.holdings()[0].kind,
+            HoldingKind::Physical {
+                location: Some("Shelf 3".into())
+            }
+        );
+        assert_eq!(reloaded.holdings()[1], file);
+    }
+
+    #[tokio::test]
+    async fn a_staged_file_is_used_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let staged = engine
+            .stage(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: "score.pdf".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(staged.filename, "score.pdf");
+        assert_eq!(staged.size, 19);
+        let holding = || NewHolding::Digital(AssetSource::Staged(staged.id.clone()));
+
+        publication.add_holding(holding()).await.unwrap();
+
+        let file = dir
+            .path()
+            .join(format!("assets/publication/{}/score.pdf", publication.id()));
+        assert_eq!(
+            publication.holdings()[1].kind,
+            HoldingKind::Digital { file }
+        );
+        assert!(engine.staged(&staged.id).is_none());
+        assert!(matches!(
+            publication.add_holding(holding()).await,
+            Err(Error::InvalidValue(_))
+        ));
     }
 }

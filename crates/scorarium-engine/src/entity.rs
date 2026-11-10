@@ -6,7 +6,8 @@ use std::str::FromStr;
 
 use scorarium_client::Source;
 
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
+use crate::contributor::{Contributor, Role};
 use crate::enrich::Enrichment;
 use crate::library::LibraryId;
 use crate::person::{Person, PersonId};
@@ -91,6 +92,15 @@ pub enum AnyEntity {
 }
 
 impl AnyEntity {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        match self {
+            AnyEntity::Publication(publication) => publication.engine(),
+            AnyEntity::Work(work) => work.engine(),
+            AnyEntity::Person(person) => person.engine(),
+        }
+    }
+
     pub fn id(&self) -> AnyEntityId {
         match self {
             AnyEntity::Publication(publication) => AnyEntityId::Publication(publication.id()),
@@ -134,6 +144,9 @@ pub trait Entity: Sized {
     type Field: Copy + Eq + fmt::Display + FromStr;
     type Proposal: Clone + fmt::Debug;
 
+    /// The kind of this entity
+    const KIND: EntityKind;
+
     /// Load the entity with the given id, if it exists
     fn load(engine: &Engine, id: Self::Id) -> impl Future<Output = Result<Option<Self>>> + Send;
 
@@ -148,12 +161,12 @@ pub trait Entity: Sized {
     fn created_at(&self) -> Timestamp;
     fn last_modified_at(&self) -> Timestamp;
 
-    /// Get an audit log of change events for this entity
+    /// Read a page of the entity's audit log, newest first, starting `offset` events in
     fn audit_log(
         &self,
-        before: Option<AuditId>,
+        offset: usize,
         limit: usize,
-    ) -> impl Future<Output = Result<Vec<AuditEvent>>> + Send;
+    ) -> impl Future<Output = Result<AuditPage>> + Send;
 
     /// Look up this entity in the review queue, if it exists
     fn review_item(&self) -> impl Future<Output = Result<Option<ReviewItem>>> + Send;
@@ -191,6 +204,41 @@ pub trait Entity: Sized {
 
     /// Return the entity's background [Enrichment] task handle, if one exists
     fn enrichment(&self) -> Option<Enrichment>;
+}
+
+/// The contributor methods shared by works and publications
+pub trait Contributed: Entity {
+    /// List the entity's contributors
+    fn contributors(&self) -> &[Contributor];
+
+    /// Create a person with the owning entity's draft state
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted.
+    fn create_contributor(
+        &mut self,
+        name: impl AsRef<str> + Send,
+        role: Role,
+    ) -> impl Future<Output = Result<Person>> + Send;
+
+    /// Add a person from the entity's library as a contributor in `role`
+    ///
+    /// Commit the person if it is a draft and the entity is committed.
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted or its library has no such person.
+    fn add_contributor(
+        &mut self,
+        person: PersonId,
+        role: Role,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Remove a contributor from the entity
+    ///
+    /// Returns [Error::NotFound] if the entity has been deleted.
+    fn remove_contributor(
+        &mut self,
+        person: PersonId,
+        role: &Role,
+    ) -> impl Future<Output = Result<()>> + Send;
 }
 
 /// Commit a rejection, recording an orphan cleanup deletion event for each of `collected`

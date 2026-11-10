@@ -1,217 +1,83 @@
 use axum::http::StatusCode;
-use axum_test::TestServer;
-use scorarium_tests::{TestDb, browser, demo_login};
-use scorarium_web::router;
+use scorarium_test::TestApp;
 
 #[tokio::test]
-async fn library_page() {
-    let state = TestDb::new().library("Sheet music").build().await;
-    // Ask the database for the id rather than assuming SQLite hands out 1 for the first row
-    let id = state.archive.libraries().await.unwrap()[0].id;
-    let server = TestServer::new(router(state));
+async fn create_requires_login_and_makes_a_private_library() {
+    let app = TestApp::logged_out(true).await;
+    let before = app.engine.libraries().await.unwrap().len();
+    app.server
+        .post("/library")
+        .form(&[("name", "Books")])
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(app.engine.libraries().await.unwrap().len(), before);
 
-    let response = server.get("/").await;
-    response.assert_text_contains(format!("href=\"/library/{id}\""));
-
-    let response = server.get(&format!("/library/{id}")).await;
-    response.assert_status_ok();
-    response.assert_text_contains("Sheet music");
-    response.assert_text_contains("Home");
-
-    let response = server.get(&format!("/library/{}", id + 1)).await;
-    response.assert_status(StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn library_page_lists_publications() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = library.publications().await.unwrap();
-    let gymnopedies = publications
-        .iter()
-        .find(|p| p.title.starts_with("Three gymnopedies"))
-        .unwrap();
-    let link = format!(
-        "href=\"/library/{}/publication/{}\"",
-        library.id, gymnopedies.id
-    );
-    let satie_link = format!(
-        "href=\"/library/{}/person/{}\"",
-        library.id, gymnopedies.contributors[0].person_id
-    );
-    let server = TestServer::new(router(state));
-
-    let response = server.get(&format!("/library/{}", library.id)).await;
-    response.assert_status_ok();
-    response.assert_text_contains("Russian piano album");
-    response.assert_text_contains("Three gymnopedies for the piano");
-    response.assert_text_contains("Erik Satie");
-    response.assert_text_contains(link);
-    response.assert_text_contains(satie_link);
-}
-
-/// A library links only to the listings that would have something in them.
-#[tokio::test]
-async fn library_page_links_to_listings() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let books = libraries.iter().find(|l| l.name == "Books").unwrap().id;
-    let sheet_music = libraries
-        .iter()
-        .find(|l| l.name == "Sheet music")
-        .unwrap()
-        .id;
-    let server = browser(state);
-    demo_login(&server).await;
-
-    let response = server.get(&format!("/library/{sheet_music}")).await;
-    response.assert_text_contains(format!("href=\"/library/{sheet_music}/composers\""));
-    assert!(
-        !response
-            .text()
-            .contains(&format!("href=\"/library/{sheet_music}/authors\""))
-    );
-
-    let response = server.get(&format!("/library/{books}")).await;
-    response.assert_text_contains(format!("href=\"/library/{books}/authors\""));
-    assert!(
-        !response
-            .text()
-            .contains(&format!("href=\"/library/{books}/composers\""))
-    );
-}
-
-/// The demo's Books library is private and Sheet music is public.
-#[tokio::test]
-async fn private_library_requires_login() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let books = libraries.iter().find(|l| l.name == "Books").unwrap();
-    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publication = books.publications().await.unwrap()[0].id;
-    let books_href = format!("href=\"/library/{}\"", books.id);
-    let sheet_music_href = format!("href=\"/library/{}\"", sheet_music.id);
-    let server = browser(state);
-
-    let response = server.get("/").await;
-    response.assert_text_contains(&sheet_music_href);
-    assert!(!response.text().contains(&books_href));
-
-    for path in [
-        format!("/library/{}", books.id),
-        format!("/library/{}/publication/{publication}", books.id),
-    ] {
-        let response = server.get(&path).await;
-        response.assert_status(StatusCode::SEE_OTHER);
-        response.assert_header("location", &format!("/login?back={path}"));
-    }
-
-    demo_login(&server).await;
-    let response = server.get("/").await;
-    response.assert_text_contains(&sheet_music_href);
-    response.assert_text_contains(&books_href);
-    let response = server.get(&format!("/library/{}", books.id)).await;
-    response.assert_status_ok();
-}
-
-#[tokio::test]
-async fn library_crud_flow() {
-    let state = TestDb::new().password("hunter2").build().await;
-    // Keep a handle on the archive to look up ids the UI only exposes as links
-    let server = browser(state.clone());
-
-    // Managing libraries requires login
-    let response = server.post("/library").form(&[("name", "Books")]).await;
+    let app = TestApp::demo().await;
+    let response = app.server.post("/library").form(&[("name", "Books")]).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/login");
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    assert_eq!(library.name(), "Books");
+    assert!(library.is_private());
+    response.assert_header("location", format!("/library/{}", library.id()));
+}
 
-    server.post("/login").form(&[("password", "hunter2")]).await;
-
-    // Whitespace passes the form's `required` attribute, so the server must reject it too
-    let response = server.post("/library").form(&[("name", "   ")]).await;
-    response.assert_status_ok();
-    response.assert_text_contains("must not be empty");
-
-    let response = server.post("/library").form(&[("name", "Books")]).await;
+#[tokio::test]
+async fn private_library_redirects_anonymous_to_login() {
+    let app = TestApp::logged_out(false).await;
+    let library = app.engine.create_library("Secret", true).await.unwrap();
+    let path = format!("/library/{}", library.id());
+    let response = app.server.get(&path).await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
-    server.get("/").await.assert_text_contains("Books");
+    response.assert_header("location", format!("/login?next={path}"));
+    app.server
+        .get("/library/999999")
+        .await
+        .assert_status_not_found();
+    app.server
+        .get("/library/abc")
+        .await
+        .assert_status_not_found();
+}
 
-    let id = state.archive.libraries().await.unwrap()[0].id;
-    let edit = format!("/library/{id}/edit");
-
-    // Editing requires login too, even for a GET
-    let anonymous = browser(state.clone());
-    let response = anonymous.get(&edit).await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", &format!("/login?back={edit}"));
-
-    let response = server.get(&edit).await;
-    response.assert_status_ok();
-    response.assert_text_contains("Edit library");
-
-    let response = server
-        .post(&edit)
-        .form(&[("name", "Novels"), ("visibility", "public")])
+#[tokio::test]
+async fn edit_renames_and_changes_visibility() {
+    let app = TestApp::demo().await;
+    let library = app.engine.create_library("Old", true).await.unwrap();
+    let response = app
+        .server
+        .post(&format!("/library/{}/edit", library.id()))
+        .form(&[("name", "New"), ("visibility", "public")])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
-    let location = format!("/library/{id}");
-    response.assert_header("location", location.as_str());
-    let home = server.get("/").await;
-    home.assert_text_contains("Novels");
-    assert!(!home.text().contains("Books"));
-    let stored = state.archive.library(id).await.unwrap().unwrap();
-    assert!(!stored.private);
-
-    let response = server.post(&format!("/library/{id}/delete")).await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
-    assert!(!server.get("/").await.text().contains("Novels"));
-
-    // The deleted library's id no longer exists
-    let response = server
-        .post(&edit)
-        .form(&[("name", "Novels"), ("visibility", "public")])
-        .await;
-    response.assert_status(StatusCode::NOT_FOUND);
-    let response = server.post(&format!("/library/{id}/delete")).await;
-    response.assert_status(StatusCode::NOT_FOUND);
+    response.assert_header("location", format!("/library/{}", library.id()));
+    let library = app.engine.library(library.id()).await.unwrap().unwrap();
+    assert_eq!(library.name(), "New");
+    assert!(!library.is_private());
 }
 
 #[tokio::test]
-async fn browsing_by_tag() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let library = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let cloud = format!("/library/{}/tags", library.id);
-    let russian = format!("{cloud}/russian");
-    let server = browser(state);
+async fn edit_with_a_blank_name_changes_nothing() {
+    let app = TestApp::demo().await;
+    let library = app.engine.create_library("Old", true).await.unwrap();
+    app.server
+        .post(&format!("/library/{}/edit", library.id()))
+        .form(&[("name", "  "), ("visibility", "public")])
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let library = app.engine.library(library.id()).await.unwrap().unwrap();
+    assert_eq!(library.name(), "Old");
+    assert!(library.is_private());
+}
 
-    // Everything about tags requires login, public library or not
-    for path in [cloud.as_str(), russian.as_str()] {
-        let response = server.get(path).await;
-        response.assert_status(StatusCode::SEE_OTHER);
-        response.assert_header("location", &format!("/login?back={path}"));
-    }
-
-    demo_login(&server).await;
-    let response = server.get(&cloud).await;
-    response.assert_status_ok();
-    response.assert_text_contains(format!("href=\"{russian}\""));
-
-    let response = server.get(&russian).await;
-    response.assert_status_ok();
-    response.assert_text_contains("Russian piano album");
-    response.assert_text_contains("Prelude in C-sharp minor");
-    assert_eq!(
-        response.text().matches("<tr>").count(),
-        // One heading and the two entities, which is the publication and the work together
-        3
-    );
-
-    // A tag nothing carries is not a page, which is also what an invalid slug gets
-    for path in [format!("{cloud}/unused"), format!("{cloud}/Christmas!")] {
-        server.get(&path).await.assert_status(StatusCode::NOT_FOUND);
-    }
+#[tokio::test]
+async fn delete_removes_the_library() {
+    let app = TestApp::demo().await;
+    let library = app.engine.create_library("Doomed", true).await.unwrap();
+    let response = app
+        .server
+        .post(&format!("/library/{}/delete", library.id()))
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", "/");
+    assert!(app.engine.library(library.id()).await.unwrap().is_none());
 }

@@ -1,19 +1,4 @@
-use std::sync::Arc;
-
-use scorarium_client::fake::FakeTransport;
-use scorarium_client::{Client, UserAgent};
-use scorarium_engine::{Engine, EngineOptions};
-
-fn options() -> EngineOptions {
-    let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
-    let transport = FakeTransport::new(&user_agent).expect("failed to open API fixtures");
-    let client = Client::with_transport(user_agent.clone(), Arc::new(transport));
-    EngineOptions::new(user_agent).unwrap().client(client)
-}
-
-async fn demo() -> Engine {
-    Engine::demo(options()).await.unwrap()
-}
+use scorarium_engine::Engine;
 
 /// Run a script, returning what it printed and how it ended.
 async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
@@ -26,7 +11,7 @@ async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
 async fn a_script_runs_until_quit() {
     let script =
         "# the demo libraries\n\nlibrary books show --help\nlibrary list\nexit\nlibrary list\n";
-    let (out, result) = run(&demo().await, script).await;
+    let (out, result) = run(&scorarium_test::demo_engine().await, script).await;
     result.unwrap();
     assert!(
         out.starts_with("Show the contents of a library\n\nUsage: library <library> show\n"),
@@ -41,7 +26,7 @@ async fn a_script_runs_until_quit() {
 #[tokio::test]
 async fn a_failing_script_stops_at_the_failing_line() {
     let (out, result) = run(
-        &demo().await,
+        &scorarium_test::demo_engine().await,
         "library list\nlibrary \"list\nlibrary list\n",
     )
     .await;
@@ -52,7 +37,7 @@ async fn a_failing_script_stops_at_the_failing_line() {
 
 #[tokio::test]
 async fn library_show_rejects_an_ambiguous_reference() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     // A library named after another library's id, and a second "Books" differing only in case
     let numeric = engine.create_library("1", false).await.unwrap();
     let duplicate = engine.create_library("books", false).await.unwrap();
@@ -97,7 +82,7 @@ async fn library_show_rejects_an_ambiguous_reference() {
 
 #[tokio::test]
 async fn library_create_rename_delete() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let script = "library create Magazines public\n\
                   library create 'Liner notes'\n\
                   library list\n\
@@ -131,7 +116,7 @@ async fn library_create_rename_delete() {
 
 #[tokio::test]
 async fn the_selected_library_fills_the_subject_slot() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let script = "library books select\nshow\nset name Novels\nshow\nlibrary deselect\nshow\n";
     let (out, result) = run(&engine, script).await;
     let error = format!("{:#}", result.unwrap_err());
@@ -154,7 +139,7 @@ async fn the_selected_library_fills_the_subject_slot() {
 #[tokio::test]
 async fn publication_show_resolves_by_title() {
     let (out, result) = run(
-        &demo().await,
+        &scorarium_test::demo_engine().await,
         "library books publication 'pro git' add identifier plate-number 'P 123'\n\
          library books publication 'pro git' add holding physical --location 'Shelf 3'\n\
          library books publication 'pro git' remove contributor 'ben straub' author\n\
@@ -185,7 +170,7 @@ async fn publication_show_resolves_by_title() {
 #[tokio::test]
 async fn work_show_resolves_by_title() {
     let (out, result) = run(
-        &demo().await,
+        &scorarium_test::demo_engine().await,
         "library 'sheet music' work 'the isle of the dead' clear time-signature\n\
          library 'sheet music' work 'the isle of the dead' add tag favorite\n\
          library 'sheet music' work 'the isle of the dead' remove contributor 'georgy kirkor'\n\
@@ -216,7 +201,7 @@ async fn work_show_resolves_by_title() {
 
 #[tokio::test]
 async fn person_list_shows_everyone_credited() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let (out, result) = run(&engine, "library books person list\n").await;
     result.unwrap();
     assert_eq!(
@@ -237,7 +222,7 @@ async fn person_list_shows_everyone_credited() {
 #[tokio::test]
 async fn person_show_lists_each_credit_once() {
     let (out, result) = run(
-        &demo().await,
+        &scorarium_test::demo_engine().await,
         "library 'sheet music' person 'sergei rachmaninoff' set sort-name 'Rachmaninov, Sergei'\n\
          library 'sheet music' person 'sergei rachmaninoff' remove link https://www.wikidata.org/wiki/Q131861\n\
          library 'sheet music' person 'sergei rachmaninoff' show\n",
@@ -265,7 +250,11 @@ async fn person_show_lists_each_credit_once() {
 
 #[tokio::test]
 async fn tag_list_orders_by_use_count() {
-    let (out, result) = run(&demo().await, "library 'sheet music' tag list\n").await;
+    let (out, result) = run(
+        &scorarium_test::demo_engine().await,
+        "library 'sheet music' tag list\n",
+    )
+    .await;
     result.unwrap();
     assert_eq!(
         out,
@@ -283,7 +272,7 @@ async fn tag_list_orders_by_use_count() {
 #[tokio::test]
 async fn search_prints_the_same_columns_for_every_kind() {
     let (out, result) = run(
-        &demo().await,
+        &scorarium_test::demo_engine().await,
         "search polichinelle\nsearch 'pro git'\nsearch kirkor\n",
     )
     .await;
@@ -298,9 +287,9 @@ async fn search_prints_the_same_columns_for_every_kind() {
          publication\t1      \tBooks       \t2 \tPro Git\tScott Chacon, Ben Straub\n\
          kind       \tlibrary\tlibrary-name\tid\ttitle               \tcontext\n\
          -----------\t-------\t------------\t--\t--------------------\t----------------------------------\n\
+         person     \t2      \tSheet music \t11\tGeorgy Kirkor       \tKirkor, Georgy\n\
          publication\t2      \tSheet music \t6 \tThe Isle of the Dead\tSergei Rachmaninoff, Georgy Kirkor\n\
-         work       \t2      \tSheet music \t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n\
-         person     \t2      \tSheet music \t11\tGeorgy Kirkor       \tKirkor, Georgy\n"
+         work       \t2      \tSheet music \t7 \tThe Isle of the Dead\tOp. 29 by Sergei Rachmaninoff\n"
     );
 }
 
@@ -318,15 +307,15 @@ fn without_age(out: &str) -> String {
 
 #[tokio::test]
 async fn import_commit_review_discard() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let (out, result) = run(
         &engine,
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
          import 978-0-486-99999-9\n\
+         publication 8 add work 'Chapter 1'\n\
          publication 8 add contributor 'Grace Hopper' author\n\
-         publication 8 add contributor 'Ada Lovelace' editor\n\
-         publication 8 add work 'Chapter 1'\n",
+         publication 8 add contributor 'Ada Lovelace' editor\n",
     )
     .await;
     result.unwrap();
@@ -441,7 +430,7 @@ async fn import_commit_review_discard() {
 
 #[tokio::test]
 async fn add_work_links_by_id_or_creates() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let album = "library 'sheet music' publication 'russian piano album'";
     let (_, result) = run(&engine, &format!("{album} add work polichinelle\n")).await;
     assert_eq!(
@@ -525,7 +514,7 @@ async fn add_work_links_by_id_or_creates() {
 
 #[tokio::test]
 async fn isbn_import_review() {
-    let engine = demo().await;
+    let engine = scorarium_test::demo_engine().await;
     let (out, result) = run(
         &engine,
         "library books select\n\

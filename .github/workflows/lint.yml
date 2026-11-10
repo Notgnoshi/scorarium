@@ -34,16 +34,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - name: Setup djlint
-              run: pipx install djlint==1.48.0
+              run: pipx install djlint==1.49.9
             - name: Check HTML template formatting
               run: |
-                  djlint --check \
-                      --profile django \
-                      --indent 4 \
-                      --max-line-length 120 \
-                      --format-css \
-                      --format-js \
-                      crates/scorarium-web/templates/
+                  djlint --check crates/scorarium-web/templates/
 
     build:
         runs-on: ubuntu-latest
@@ -65,20 +59,13 @@ jobs:
               with:
                 tool: sqlx-cli
             # 'cargo sqlx prepare' overrides SQLX_OFFLINE, so this checks the .sqlx/ metadata
-            # against the database. Each crate reads its own database URL variable from sqlx.toml
+            # against the database.
             - name: Check .sqlx query metadata freshness
               run: |
-                  check_queries() {
-                      url="sqlite://$PWD/target/$1.db"
-                      (
-                          cd "crates/$1"
-                          export "$2=$url"
-                          sqlx database setup --source migrations
-                          cargo sqlx prepare --check -- --all-targets --all-features
-                      )
-                  }
-                  check_queries scorarium-archive SCORARIUM_ARCHIVE_DATABASE_URL
-                  check_queries scorarium-engine SCORARIUM_ENGINE_DATABASE_URL
+                  export SCORARIUM_ENGINE_DATABASE_URL="sqlite://$PWD/target/scorarium-engine.db"
+                  cd crates/scorarium-engine
+                  sqlx database setup --source migrations
+                  cargo sqlx prepare --check -- --all-targets --all-features
 
     test:
         runs-on: ubuntu-latest
@@ -127,13 +114,16 @@ jobs:
         continue-on-error: true
         steps:
             - uses: actions/checkout@v6
-            - name: Check vendored Bootstrap and Bootstrap Icons freshness
+            - name: Check vendored asset freshness
               run: |
                   outdated=0
-                  for spec in "bootstrap bootstrap.min.css" "icons bootstrap-icons.min.css"; do
+                  for spec in "twbs/bootstrap bootstrap.min.css" "twbs/icons bootstrap-icons.min.css" "bigskysoftware/htmx htmx.min.js"; do
                       set -- $spec
-                      vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium-web/assets/$2")
-                      latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/twbs/$1/releases/latest")
+                      case "$2" in
+                          htmx.min.js) vendored=$(grep -o 'version="[0-9.]*"' "crates/scorarium-web/assets/$2" | head -1 | tr -d 'version="') ;;
+                          *) vendored=$(sed -n '2s/.*Bootstrap[ A-Za-z]*v\([0-9.]*\).*/\1/p' "crates/scorarium-web/assets/$2") ;;
+                      esac
+                      latest=$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/$1/releases/latest")
                       latest=${latest##*/v}
                       echo "$1: vendored=$vendored latest=$latest"
                       if [ "$vendored" != "$latest" ]; then

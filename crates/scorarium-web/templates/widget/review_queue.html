@@ -1,0 +1,58 @@
+{% import "widget/sort.html" as sort %}
+<div id="review-queue"
+     data-size="{% if let Size::Short = size %}short{% else %}full{% endif %}"
+     hx-get="/api/review?{{ query }}"
+     hx-trigger="every 5s"
+     hx-swap="outerMorph"
+     hx-status:5xx="swap:none">
+    <div id="review-queue-dialog" data-dialog-slot hx-morph-skip></div>
+    {% if let Size::Full { .. } = size %}
+        <div class="d-flex align-items-center justify-content-between">
+            <h1>
+                Review queue
+                {% if !entries.is_empty() %}<span class="badge text-bg-secondary fs-6 align-middle">{{ count }}</span>{% endif %}
+            </h1>
+            {% if self.has_nested() %}
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-collapse-all>Collapse all</button>
+            {% endif %}
+        </div>
+    {% endif %}
+    {% if entries.is_empty() %}
+        <p>Nothing to review</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    {% if let Size::Full { sort } = size %}
+                        {% call sort::header(sort, Column::Entry, "Entry") %}
+                        {% endcall %}
+                        {% if library.is_none() %}
+                            {% call sort::header(sort, Column::Library, "Library") %}
+                            {% endcall %}
+                        {% endif %}
+                        {% call sort::header(sort, Column::Enrichment, "Enrichment") %}
+                        {% endcall %}
+                        {% call sort::header(sort, Column::Proposals, "Proposals") %}
+                        {% endcall %}
+                        {% call sort::header(sort, Column::Age, "Age") %}
+                        {% endcall %}
+                    {% else %}
+                        <th class="text-body-secondary fw-normal">Entry</th>
+                        {% if library.is_none() %}<th class="text-body-secondary fw-normal">Library</th>{% endif %}
+                        <th class="text-body-secondary fw-normal">Enrichment</th>
+                        <th class="text-body-secondary fw-normal">Proposals</th>
+                        <th class="text-body-secondary fw-normal">Age</th>
+                    {% endif %}
+                    <th><span class="visually-hidden">Discard</span></th>
+                </tr>
+            </thead>
+            {% for entry in entries %}{{ entry }}{% endfor %}
+        </table>
+        {% if let Size::Short = size %}
+            <p class="text-end small text-body-secondary">
+                Showing {{ entries.len() }} of {{ total }}.
+                <a href="/review">View the review queue</a>
+            </p>
+        {% endif %}
+    {% endif %}
+</div>

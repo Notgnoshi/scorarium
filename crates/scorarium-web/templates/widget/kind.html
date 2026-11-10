@@ -1,0 +1,15 @@
+{% macro kind(kind, classification) %}
+    {{ crate::icon::Icon::kind(*kind, *classification) }}
+    {% if kind == scorarium_engine::entity::EntityKind::Person %}
+        Person
+    {% else if kind == scorarium_engine::entity::EntityKind::Publication %}
+        Publication
+    {% else %}
+        Work
+    {% endif %}
+    {% if classification == Some(scorarium_engine::value::Classification::Music) %}
+        <span class="text-body-secondary">Sheet music</span>
+    {% else if classification == Some(scorarium_engine::value::Classification::Prose) %}
+        <span class="text-body-secondary">Prose</span>
+    {% endif %}
+{% endmacro %}

@@ -1,0 +1,204 @@
+.link-svg {
+    height: 1em;
+    width: auto;
+    vertical-align: -0.125em;
+}
+
+.link-favicon {
+    height: 1em;
+    width: 1em;
+    vertical-align: -0.125em;
+}
+
+/* The generic link glyph after a favicon shows only when the favicon fails to load. */
+.link-favicon + .bi {
+    display: none;
+}
+
+.link-favicon[hidden] + .bi {
+    display: inline-block;
+}
+
+/* Bootstrap's default stripes are too severe */
+.table {
+    --bs-table-striped-bg: rgba(var(--bs-emphasis-color-rgb), 0.025);
+}
+
+.border-dashed {
+    border-style: dashed;
+}
+
+fieldset.box {
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+fieldset.box > legend {
+    float: none;
+    width: auto;
+    padding: 0 0.5rem;
+    margin-bottom: 0;
+    font-size: 1.25rem;
+}
+
+.tag-chips [data-entries] {
+    display: contents;
+}
+
+.tag-chips .dropdown {
+    flex: 1 1 8rem;
+}
+
+.tag-chips .form-control {
+    border: 0;
+    padding: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+.tag-chips:focus-within {
+    border-color: rgba(var(--bs-primary-rgb), 0.5);
+    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Fit the picture to the placeholder's width without cropping or stretching it. */
+.picture {
+    display: block;
+    width: 10rem;
+    height: auto;
+    max-height: 20rem;
+    object-fit: contain;
+}
+
+/* Give every thumbnail a 5:7 portrait frame so a listing stays uniform even with uneven images. */
+.thumbnail {
+    width: 3.5rem;
+    height: 4.9rem;
+}
+
+.thumbnail img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.confirm {
+    max-width: 30rem;
+    padding: 0;
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border: var(--bs-border-width) solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+}
+
+.confirm::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-header {
+    padding: 1rem;
+    background: var(--bs-tertiary-bg);
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+}
+
+.confirm-danger {
+    color: #fff;
+    background: var(--bs-danger);
+    border-bottom-color: var(--bs-danger);
+}
+
+.confirm-body {
+    padding: 1rem;
+}
+
+.confirm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0 1rem 1rem;
+}
+
+/* Show every enabled drop zone while a file or link is dragged over the page. */
+[data-drop-zone] {
+    position: relative;
+}
+
+html[data-drop-targets] [data-drop-zone]:not(:has([data-url-field]:disabled))::after {
+    content: attr(data-drop-zone);
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    color: var(--bs-body-color);
+    background: rgba(var(--bs-primary-rgb), 0.05);
+    border: 2px dashed var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+}
+
+html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
+    background: rgba(var(--bs-primary-rgb), 0.15);
+    border-color: var(--bs-primary);
+}
+
+.input-group > .dropdown {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.input-group > .dropdown > .form-control {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Every entry and the add bar share the box's columns, the kind, the content, and the action, so
+   that they line up. */
+.holdings {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.holdings > [data-entries] {
+    display: contents;
+}
+
+.holdings > [data-entries] > *,
+.holdings > hr,
+.holdings-add {
+    grid-column: 1 / -1;
+}
+
+.holding,
+.holdings-add,
+.holdings-add-physical {
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+}
+
+/* The file input's hint hangs beneath its field, level with nothing beside it. */
+.holdings-add {
+    align-items: start;
+}
+
+.holdings-add-physical,
+.holdings-add > [data-file-input] {
+    grid-column: 2 / -1;
+}
+
+.holdings-add:has([name="kind"][value="digital"]:checked) > .holdings-add-physical,
+.holdings-add:not(:has([name="kind"][value="digital"]:checked)) > [data-file-input] {
+    display: none;
+}
+
+#review-queue tbody[data-collapsed] > tr:not(:first-child),
+#review-queue tbody:not([data-collapsed]) [data-when="collapsed"],
+#review-queue tbody[data-collapsed] [data-when="expanded"] {
+    display: none;
+}

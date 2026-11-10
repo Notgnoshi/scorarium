@@ -1,226 +1,185 @@
 use axum::http::StatusCode;
-use scorarium_tests::{TestDb, browser, demo_login};
+use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::person::Person;
+use scorarium_engine::work::Work;
+use scorarium_test::TestApp;
 
-#[tokio::test]
-async fn work_page() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let books = libraries.iter().find(|l| l.name == "Books").unwrap();
-    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = sheet_music.publications().await.unwrap();
-    let album = publications
-        .iter()
-        .find(|p| p.title == "Russian piano album")
-        .unwrap();
-    let masterpieces = publications
-        .iter()
-        .find(|p| p.title.starts_with("Rachmaninoff masterpieces"))
-        .unwrap();
-    let works = album.works().await.unwrap();
-    let prelude = works
-        .iter()
-        .find(|w| w.title == "Prelude in C-sharp minor")
-        .unwrap();
-    // The Books library is private
-    let server = browser(state);
-    demo_login(&server).await;
-
-    let response = server
-        .get(&format!("/library/{}/work/{}", sheet_music.id, prelude.id))
-        .await;
-    response.assert_status_ok();
-    let album_href = format!(
-        "href=\"/library/{}/publication/{}\"",
-        sheet_music.id, album.id
-    );
-    let masterpieces_href = format!(
-        "href=\"/library/{}/publication/{}\"",
-        sheet_music.id, masterpieces.id
-    );
-    let composer_href = format!(
-        "href=\"/library/{}/person/{}\"",
-        sheet_music.id, prelude.contributors[0].person_id
-    );
-    for expected in [
-        "Prelude in C-sharp minor",
-        "Op. 3 No. 2",
-        "C-sharp minor",
-        "piano",
-        "Sergei Rachmaninoff",
-        composer_href.as_str(),
-        "composer",
-        // The work is in two publications, both of which are listed
-        "Russian piano album",
-        album_href.as_str(),
-        "Rachmaninoff masterpieces for solo piano",
-        masterpieces_href.as_str(),
-        "physical",
-        // The breadcrumb back to the library
-        "Sheet music",
-    ] {
-        response.assert_text_contains(expected);
-    }
-
-    // A work is only reachable through its own library
-    let response = server
-        .get(&format!("/library/{}/work/{}", books.id, prelude.id))
-        .await;
-    response.assert_status(StatusCode::NOT_FOUND);
-
-    let missing = works.iter().map(|w| w.id).max().unwrap() + 100;
-    let response = server
-        .get(&format!("/library/{}/work/{missing}", sheet_music.id))
-        .await;
-    response.assert_status(StatusCode::NOT_FOUND);
+/// Build a Save of `work` that leaves its scalar fields blank, followed by `extra`
+fn save<'a>(work: &'a Work, extra: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    let mut form = vec![
+        ("title", work.title()),
+        ("key", ""),
+        ("time_signature", ""),
+        ("instrumentation", ""),
+        ("note", ""),
+    ];
+    form.extend_from_slice(extra);
+    form
 }
 
 #[tokio::test]
-async fn work_edit_saves_catalog_numbers() {
-    let state = TestDb::new().demo().password("hunter2").build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = sheet_music.publications().await.unwrap();
-    let album = publications
-        .iter()
-        .find(|p| p.title == "Russian piano album")
-        .unwrap();
-    let prelude = album
-        .works()
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|w| w.title == "Prelude in C-sharp minor")
-        .unwrap();
-    let server = browser(state.clone());
-    server.post("/login").form(&[("password", "hunter2")]).await;
-    let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
-    let edit = format!("{view}/edit");
-    let composer = prelude.contributors[0].person_id.to_string();
-
-    // The stored number opens in the form, marked recognized
-    let response = server.get(&edit).await;
-    response.assert_status_ok();
-    response.assert_text_contains("value=\"Op. 3 No. 2\"");
-    response.assert_text_contains("Recognized catalog number scheme");
-
-    let response = server
-        .post(&edit)
-        .form(&[
-            ("title", "Prelude in C-sharp minor"),
-            ("key", "C-sharp minor"),
-            ("time_signature", ""),
-            ("instrumentation", "piano"),
-            ("catalog_number", "Op. 3 No. 2"),
-            ("catalog_number", "Morceaux de fantaisie II"),
-            ("contributor_name", "Sergei Rachmaninoff"),
-            ("contributor_role", "composer"),
-            ("contributor_person", &composer),
-        ])
-        .await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", &view);
-
-    let response = server.get(&view).await;
-    response.assert_text_contains("Op. 3 No. 2");
-    response.assert_text_contains("Morceaux de fantaisie II");
-    response.assert_text_contains("Unrecognized catalog number scheme");
-}
-
-/// Two works of the same composer cannot hold the same catalog number, so editing one onto the
-/// other's number folds it in and the edit lands on the survivor.
-#[tokio::test]
-async fn editing_a_work_onto_another_number_merges_them() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = sheet_music.publications().await.unwrap();
-    let album = publications
-        .iter()
-        .find(|p| p.title == "Russian piano album")
-        .unwrap();
-    let masterpieces = publications
-        .iter()
-        .find(|p| p.title.starts_with("Rachmaninoff masterpieces"))
-        .unwrap();
-    let prelude = album
-        .works()
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|w| w.title == "Prelude in C-sharp minor")
-        .unwrap();
-    let polichinelle = masterpieces
-        .works()
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|w| w.title == "Polichinelle")
-        .unwrap();
-    let composer = prelude.contributors[0].person_id.to_string();
-    let server = browser(state.clone());
-    demo_login(&server).await;
-
-    let response = server
+async fn rejected_edit_applies_nothing() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let work = library.works().await.unwrap().pop().unwrap();
+    let mut form = save(&work, &[("add_link", "not a url")]);
+    form[0].1 = "Renamed";
+    app.server
         .post(&format!(
             "/library/{}/work/{}/edit",
-            sheet_music.id, polichinelle.id
+            library.id(),
+            work.id()
         ))
-        .form(&[
-            ("title", "Polichinelle"),
-            ("key", "F-sharp minor"),
-            ("time_signature", ""),
-            ("instrumentation", "piano"),
-            // The prelude's number, under the same composer
-            ("catalog_number", "Op. 3 No. 2"),
-            ("contributor_name", "Sergei Rachmaninoff"),
-            ("contributor_role", "composer"),
-            ("contributor_person", &composer),
-        ])
-        .await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header(
-        "location",
-        &format!("/library/{}/work/{}", sheet_music.id, prelude.id),
-    );
-
-    let response = server
-        .get(&format!(
-            "/library/{}/work/{}",
-            sheet_music.id, polichinelle.id
-        ))
-        .await;
-    response.assert_status(StatusCode::NOT_FOUND);
+        .form(&form)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert_eq!(after.title(), work.title());
 }
 
-/// Save and Cancel return to the page that opened the edit page, but only when it is a page here.
 #[tokio::test]
-async fn the_edit_page_returns_where_it_came_from() {
-    let state = TestDb::new().demo().build().await;
-    let libraries = state.archive.libraries().await.unwrap();
-    let sheet_music = libraries.iter().find(|l| l.name == "Sheet music").unwrap();
-    let publications = sheet_music.publications().await.unwrap();
-    let album = publications
+async fn removing_and_re_adding_a_link_keeps_it() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut work = library.works().await.unwrap().pop().unwrap();
+    let url = "https://example.com/again";
+    work.add_link(url.parse().unwrap()).await.unwrap();
+    let link = work
+        .links()
         .iter()
-        .find(|p| p.title == "Russian piano album")
+        .find(|l| l.url.to_string() == url)
+        .unwrap()
+        .clone();
+    let id = link.id.to_string();
+    app.server
+        .post(&format!(
+            "/library/{}/work/{}/edit",
+            library.id(),
+            work.id()
+        ))
+        .form(&save(&work, &[("remove_link", &id), ("add_link", url)]))
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert!(after.links().iter().any(|l| l.url == link.url));
+}
+
+#[tokio::test]
+async fn edit_applies_additions_and_removals_in_one_save() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| work.links().is_empty())
         .unwrap();
-    let prelude = album.works().await.unwrap().remove(0);
-    let server = browser(state.clone());
-    demo_login(&server).await;
-    let view = format!("/library/{}/work/{}", sheet_music.id, prelude.id);
+    work.add_link("https://example.com/removed".parse().unwrap())
+        .await
+        .unwrap();
+    work.add_link("https://example.com/kept".parse().unwrap())
+        .await
+        .unwrap();
+    let [removed, kept] = work.links() else {
+        panic!("expected exactly two links");
+    };
+    let removed = removed.id.to_string();
+    let mut form = save(
+        &work,
+        &[
+            ("add_catalog_number", "Op. 9 No. 2"),
+            ("remove_link", &removed),
+        ],
+    );
+    form[0].1 = "Renamed";
+    app.server
+        .post(&format!(
+            "/library/{}/work/{}/edit",
+            library.id(),
+            work.id()
+        ))
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert_eq!(after.title(), "Renamed");
+    assert!(
+        after
+            .catalog_numbers()
+            .contains(&"Op. 9 No. 2".parse().unwrap())
+    );
+    assert_eq!(after.links(), std::slice::from_ref(kept));
+}
 
-    let response = server
-        .get(&format!("{view}/edit"))
-        .add_query_param("back", "/settings/catalog-numbers")
-        .await;
-    response.assert_text_contains("href=\"/settings/catalog-numbers\"");
+#[tokio::test]
+async fn adding_a_new_contributor_creates_a_committed_person() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| !work.is_draft())
+        .unwrap();
+    app.server
+        .post(&format!(
+            "/api/library/{}/work/{}/contributor/add",
+            library.id(),
+            work.id()
+        ))
+        .form(&[
+            ("name", "New Person"),
+            ("person", "new"),
+            ("role", "editor"),
+        ])
+        .await
+        .assert_status_ok();
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    let added = after
+        .contributors()
+        .iter()
+        .find(|c| c.name == "New Person" && c.role.as_str() == "editor")
+        .expect("the new contributor is listed");
+    let person = Person::load(&app.engine, added.person)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!person.is_draft());
+}
 
-    // A protocol-relative URL leads off this site, and browsers read a backslash as a slash
-    for back in ["//evil.example", "/\\evil.example"] {
-        let response = server
-            .get(&format!("{view}/edit"))
-            .add_query_param("back", back)
-            .await;
-        response.assert_text_contains(format!("href=\"{view}\""));
-        assert!(!response.text().contains("evil.example"));
-    }
+#[tokio::test]
+async fn adding_an_existing_contributor() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| !work.is_draft())
+        .unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let id = person.id().to_string();
+    app.server
+        .post(&format!(
+            "/api/library/{}/work/{}/contributor/add",
+            library.id(),
+            work.id()
+        ))
+        .form(&[
+            ("name", person.name()),
+            ("person", id.as_str()),
+            ("role", "arranger"),
+        ])
+        .await
+        .assert_status_ok();
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert!(
+        after
+            .contributors()
+            .iter()
+            .any(|c| c.person == person.id() && c.role.as_str() == "arranger")
+    );
 }

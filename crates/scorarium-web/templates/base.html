@@ -1,172 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>{{ base.title }} - Scorarium</title>
-        <link rel="stylesheet" href="{{ base.bootstrap_css }}" />
-        <link rel="stylesheet" href="{{ base.bootstrap_icons_css }}" />
-        <style>
-            .form-control::placeholder {
-                opacity: 0.5;
-            }
-
-            @media (min-width: 768px) {
-                .global-search {
-                    width: 24rem;
-                }
-            }
-
-            /* The link icons sit on one baseline, the way Bootstrap Icons do. Some are square
-               marks and some are wordmarks */
-            .link-svg {
-                height: 1em;
-                vertical-align: -0.125em;
-                width: auto;
-            }
-
-            .link-favicon {
-                height: 1em;
-                vertical-align: -0.125em;
-                width: 1em;
-            }
-
-            /* The generic icon shows only once the favicon has failed to load */
-            .link-favicon+.bi {
-                display: none;
-            }
-
-            .link-favicon[hidden]+.bi {
-                display: inline;
-            }
-        </style>
-        <script>
-            // Run before the body paints so the page never flashes light first.
-            (() => {
-                const dark = window.matchMedia("(prefers-color-scheme: dark)");
-                const apply = () => document.documentElement.setAttribute("data-bs-theme", dark.matches ? "dark" : "light");
-                apply();
-                dark.addEventListener("change", apply);
-            })();
-        </script>
+        <link rel="stylesheet" href="{{ crate::assets::url("bootstrap.min.css") }}">
+        <link rel="stylesheet" href="{{ crate::assets::url("bootstrap-icons.min.css") }}">
+        <link rel="stylesheet" href="{{ crate::assets::url("common.css") }}">
+        <script src="{{ crate::assets::url("common.js") }}"></script>
+        <script defer src="{{ crate::assets::url("htmx.min.js") }}"></script>
+        {# These listen for the change typeahead.js dispatches as it attaches, so they load first. #}
+        <script defer src="{{ crate::assets::url("pick_icon.js") }}"></script>
+        <script defer src="{{ crate::assets::url("contents.js") }}"></script>
+        <script defer src="{{ crate::assets::url("typeahead.js") }}"></script>
+        <script defer src="{{ crate::assets::url("stars.js") }}"></script>
+        <script defer src="{{ crate::assets::url("list_input.js") }}"></script>
+        <script defer src="{{ crate::assets::url("file_input.js") }}"></script>
+        <script defer src="{{ crate::assets::url("picture_input.js") }}"></script>
+        <script defer src="{{ crate::assets::url("holdings.js") }}"></script>
+        <script defer src="{{ crate::assets::url("review_queue.js") }}"></script>
+        <script defer src="{{ crate::assets::url("import.js") }}"></script>
     </head>
     <body class="d-flex flex-column min-vh-100">
-        <nav class="navbar navbar-expand-md bg-body-tertiary">
-            <div class="container">
-                <a class="navbar-brand" href="/">
-                    Scorarium
-                    {% if base.demo %}<span class="badge text-bg-warning">demo</span>{% endif %}
-                </a>
-                <button class="navbar-toggler"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#navbar"
-                        aria-controls="navbar"
-                        aria-expanded="false"
-                        aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbar">
-                    {% if base.path != "/login" %}
-                        <form class="global-search ms-auto me-md-3 my-2 my-md-0"
-                              role="search"
-                              method="get"
-                              action="/search">
-                            <div class="input-group">
-                                <input class="form-control"
-                                       type="search"
-                                       name="q"
-                                       value="{{ base.search_query }}"
-                                       data-suggest="search"
-                                       autocomplete="off"
-                                       placeholder="Search"
-                                       aria-label="Search" />
-                                <button class="btn btn-outline-secondary" type="submit" aria-label="Search">
-                                    <i class="bi bi-search" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                        </form>
-                    {% endif %}
-                    <ul class="navbar-nav">
-                        {% if base.logged_in %}
-                            {% if base.path != "/review" %}
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/review">
-                                        Review
-                                        {% if base.pending_import_count > 0 %}
-                                            <span class="badge text-bg-primary rounded-pill">{{ base.pending_import_count }}</span>
-                                        {% endif %}
-                                    </a>
-                                </li>
-                            {% endif %}
-                            {% if !base.path.starts_with("/settings") %}
-                                <li class="nav-item">
-                                    <a class="nav-link" href="/settings">Settings</a>
-                                </li>
-                            {% endif %}
-                            <li class="nav-item">
-                                <form method="post" action="/logout">
-                                    <button class="nav-link">Log out</button>
-                                </form>
-                            </li>
-                        {% else if base.path != "/login" %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="/login?back={{ base.back|urlencode }}">Log in</a>
-                            </li>
-                        {% endif %}
-                    </ul>
-                </div>
-            </div>
-        </nav>
-        <main class="container py-3">
-            {% if !base.breadcrumbs.is_empty() %}
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        {% for crumb in base.breadcrumbs %}
-                            <li class="breadcrumb-item">
-                                <a href="{{ crumb.href }}">{{ crumb.label }}</a>
-                            </li>
-                        {% endfor %}
-                        <li class="breadcrumb-item active" aria-current="page">{{ base.title }}</li>
-                    </ol>
-                </nav>
-            {% endif %}
+        {{ base.header }}
+        <main class="container flex-grow-1">
+            {{ base.breadcrumbs }}
             {% block content %}{% endblock %}
         </main>
-        <footer class="container py-3 mt-auto text-body-secondary small">
-            Powered by
-            <a href="https://github.com/Notgnoshi/scorarium">
-                <i class="bi bi-github" aria-hidden="true"></i>
-                Scorarium
-            </a>
+        <footer class="container mt-auto py-3 small text-end text-body-secondary">
+            <a class="link-secondary"
+               href="https://github.com/Notgnoshi/scorarium"><i class="bi bi-github"></i> Scorarium on GitHub</a>
         </footer>
-        <script src="{{ base.bootstrap_js }}"></script>
-        <script type="module" src="{{ base.suggest_js }}"></script>
-        <script>
-            // Bootstrap modals ignore autofocus; so we honor it ourselves.
-            //
-            // https://getbootstrap.com/docs/5.3/components/modal/#how-it-works
-            document.addEventListener("shown.bs.modal", (e) => e.target.querySelector("[autofocus]")?.focus());
-            // Picking a title in the navbar box goes straight to that page; submitting the form
-            // is still how a full search is run
-            document.addEventListener("suggest:pick", (e) => {
-                if (e.target.matches('[data-suggest="search"]') && e.detail.href) {
-                    window.location.assign(e.detail.href);
-                }
-            });
-            // "/" jumps to the search box, unless the visitor is already typing somewhere
-            document.addEventListener("keydown", (e) => {
-                if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
-                const active = document.activeElement;
-                if (active?.matches("input, textarea, select") || active?.isContentEditable) return;
-                // Focus belongs to the modal while one is open
-                if (document.querySelector(".modal.show")) return;
-                const search = document.querySelector('[role="search"] input[name="q"]');
-                if (!search) return;
-                // Otherwise the slash lands in the box, and Firefox opens its own quick find
-                e.preventDefault();
-                search.select();
-            });
-        </script>
+        <script src="{{ crate::assets::url("bootstrap.bundle.min.js") }}"></script>
     </body>
 </html>

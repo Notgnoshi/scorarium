@@ -8,7 +8,7 @@ use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::contributor::Role;
 use crate::entity::AnyEntityId;
 use crate::holding::NewHolding;
-use crate::person::{self, Person, PersonId};
+use crate::person::{self, Person, PersonId, PersonSummary};
 use crate::publication::{self, ImportSeed, Publication, PublicationId};
 use crate::suggest::{self, SuggestField, Suggestion};
 use crate::value::Tag;
@@ -212,6 +212,15 @@ impl Library {
         person::in_library(&self.engine, self.id, role).await
     }
 
+    /// Summarize the people in the library, alphabetically by sort name
+    pub async fn people_summary(
+        &self,
+        role: Option<&Role>,
+        include_drafts: bool,
+    ) -> Result<Vec<PersonSummary>> {
+        person::summarize(&self.engine, self.id, role, include_drafts).await
+    }
+
     /// Count the publications and works with each tag in the library, alphabetically by tag
     ///
     /// Leave drafts out of the counts unless `include_drafts` is set.
@@ -220,7 +229,23 @@ impl Library {
         tag_counts(&mut conn, self.id, include_drafts).await
     }
 
-    /// Query the roles found in the library, along with how many people hold each role.
+    /// Count the publications in the library
+    ///
+    /// Leave drafts out unless `include_drafts` is set.
+    pub async fn publication_count(&self, include_drafts: bool) -> Result<usize> {
+        let mut conn = self.engine.begin_read().await?;
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) AS "count: u32" FROM publication
+               WHERE library_id = ? AND (? OR draft = 0)"#,
+            self.id.get(),
+            include_drafts
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(row.count as usize)
+    }
+
+    /// Count the people holding each role in the library, alphabetically by role
     pub async fn roles(&self, include_drafts: bool) -> Result<Vec<(Role, usize)>> {
         let mut conn = self.engine.begin_read().await?;
         role_counts(&mut conn, self.id, include_drafts).await
@@ -277,12 +302,18 @@ pub(crate) async fn role_counts(
     let rows = sqlx::query!(
         r#"SELECT held.role, COUNT(DISTINCT held.person_id) AS "count: u32"
            FROM (
-               SELECT person_id, role FROM publication_contributor WHERE library_id = ?1
+               SELECT pc.person_id, pc.role, publication.draft
+               FROM publication_contributor AS pc
+               JOIN publication ON publication.id = pc.publication_id
+               WHERE pc.library_id = ?1
                UNION ALL
-               SELECT person_id, role FROM work_contributor WHERE library_id = ?1
+               SELECT wc.person_id, wc.role, work.draft
+               FROM work_contributor AS wc
+               JOIN work ON work.id = wc.work_id
+               WHERE wc.library_id = ?1
            ) AS held
            JOIN person ON person.id = held.person_id
-           WHERE ?2 OR person.draft = 0
+           WHERE ?2 OR (person.draft = 0 AND held.draft = 0)
            GROUP BY held.role
            ORDER BY held.role"#,
         library.get(),
@@ -384,7 +415,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use crate::audit::{Action, AuditSubject};
-    use crate::entity::Entity;
+    use crate::entity::{Contributed, Entity};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
     use crate::{Engine, Error};
@@ -418,9 +449,10 @@ mod tests {
         library.delete().await.unwrap();
 
         let events: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .into_iter()
             .map(|e| {
                 let Some(AuditSubject::Library { label, .. }) = e.subject else {
@@ -491,6 +523,10 @@ mod tests {
             .await
             .unwrap();
         assert!(pen_name.is_draft());
+        draft
+            .add_contributor(satie.id(), "arranger".parse().unwrap())
+            .await
+            .unwrap();
 
         assert_eq!(
             library.roles(false).await.unwrap(),
@@ -502,6 +538,7 @@ mod tests {
         assert_eq!(
             library.roles(true).await.unwrap(),
             vec![
+                ("arranger".parse().unwrap(), 1),
                 ("author".parse().unwrap(), 1),
                 ("composer".parse().unwrap(), 1),
                 ("editor".parse().unwrap(), 1)

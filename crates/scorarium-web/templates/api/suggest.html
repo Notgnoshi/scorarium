@@ -1,0 +1,24 @@
+{% import "widget/suggestion.html" as suggestion %}
+{% for entry in entries %}
+    {% if let Some(id) = entry.suggestion_id %}
+        {% call suggestion::pick(id, entry.text) %}
+            {{ entry.text }}
+            {% if entry.draft %}<span class="badge small text-bg-secondary">Draft</span>{% endif %}
+            {% if let Some(detail) = entry.detail %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
+        {% endcall %}
+    {% else %}
+        {% call suggestion::value(entry.text) %}
+            {{ entry.text }}
+            {% if let Some(detail) = entry.detail %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
+        {% endcall %}
+    {% endif %}
+{% endfor %}
+{% if let Some((noun, name)) = create %}
+    {% if !entries.is_empty() %}<hr class="dropdown-divider">{% endif %}
+    {% call suggestion::pick("new", name) %}
+        <i class="bi bi-plus-lg" title="Create a new {{ noun }}"></i> New "{{ name }}"
+    {% endcall %}
+{% elif entries.is_empty() %}
+    {% call suggestion::empty() %}
+    {% endcall %}
+{% endif %}

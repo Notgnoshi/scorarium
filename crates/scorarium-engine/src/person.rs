@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ use scorarium_client::Source;
 use sqlx::SqliteConnection;
 
 use crate::asset::{self, AssetSource};
-use crate::audit::{Action, AuditEvent, AuditId, AuditSource, AuditSubject, Audited};
+use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::Role;
 use crate::enrich::Enrichment;
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
@@ -112,6 +113,11 @@ struct PersonRow {
 }
 
 impl Person {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -238,8 +244,8 @@ impl Person {
 
     /// Replace the person's profile image with the image from `source`
     ///
-    /// Returns [Error::InvalidValue] if the file is not recognized as an image, or
-    /// [Error::NotFound] if the person has been deleted.
+    /// Returns [Error::InvalidValue] if the file is not recognized as an image or is larger than
+    /// the limit, or [Error::NotFound] if the person has been deleted.
     pub async fn set_profile(&mut self, source: AssetSource<'_>) -> Result<()> {
         let staged = asset::stage(&self.engine, source).await?;
         let extension = staged.image_extension()?;
@@ -427,6 +433,7 @@ impl Entity for Person {
     type Id = PersonId;
     type Field = Field;
     type Proposal = Proposal;
+    const KIND: EntityKind = EntityKind::Person;
 
     async fn load(engine: &Engine, id: PersonId) -> Result<Option<Person>> {
         let mut conn = engine.begin_read().await?;
@@ -458,9 +465,9 @@ impl Entity for Person {
         self.last_modified_at
     }
 
-    async fn audit_log(&self, before: Option<AuditId>, limit: usize) -> Result<Vec<AuditEvent>> {
+    async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
         self.engine
-            .entity_audit_log(AnyEntityId::Person(self.id), self.library, before, limit)
+            .entity_audit_log(AnyEntityId::Person(self.id), self.library, offset, limit)
             .await
     }
 
@@ -590,9 +597,7 @@ impl Entity for Person {
         .commit()
         .await?;
         asset::remove_dirs(&self.engine, &[self.audit_subject()]);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine.forget_enrichment(AnyEntityId::Person(self.id));
         Ok(())
     }
 
@@ -696,20 +701,21 @@ pub(crate) async fn insert(
         .ok_or(Error::NotFound)
 }
 
-/// Get the name of the person with the id `person`, or none if `library` has no such person
-pub(crate) async fn name(
+/// Get the name and sort name of `person`, or none if `library` has no such person
+pub(crate) async fn names(
     conn: &mut SqliteConnection,
     library: LibraryId,
     person: PersonId,
-) -> Result<Option<String>> {
-    let name = sqlx::query_scalar!(
-        "SELECT name FROM person WHERE id = ? AND library_id = ?",
+) -> Result<Option<(String, String)>> {
+    let names = sqlx::query!(
+        "SELECT name, sort_name FROM person WHERE id = ? AND library_id = ?",
         person.get(),
         library.get()
     )
     .fetch_optional(conn)
-    .await?;
-    Ok(name)
+    .await?
+    .map(|row| (row.name, row.sort_name));
+    Ok(names)
 }
 
 /// List the people with the given `role` in `library`
@@ -759,6 +765,107 @@ pub(crate) async fn in_library(
         people.push(Person::from_row(engine, &mut conn, row).await?);
     }
     Ok(people)
+}
+
+/// A person in a listing, with the roles they hold and how often they are credited
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersonSummary {
+    pub id: PersonId,
+    pub name: String,
+    pub sort_name: String,
+    /// The absolute path of the profile image just like [Person::profile]
+    pub profile: Option<PathBuf>,
+    pub roles: Vec<Role>,
+    pub publications: usize,
+    pub works: usize,
+}
+
+/// Summarize the people in `library` with their visible roles and counts
+pub(crate) async fn summarize(
+    engine: &Engine,
+    library: LibraryId,
+    role: Option<&Role>,
+    include_drafts: bool,
+) -> Result<Vec<PersonSummary>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    let role_rows = sqlx::query!(
+        r#"SELECT person.id, person.name, person.sort_name, person.profile, held.role AS "role!"
+           FROM person
+           JOIN (
+               SELECT pc.person_id, pc.role, publication.draft
+               FROM publication_contributor AS pc
+               JOIN publication ON publication.id = pc.publication_id
+               WHERE pc.library_id = ?1
+               UNION ALL
+               SELECT wc.person_id, wc.role, work.draft
+               FROM work_contributor AS wc
+               JOIN work ON work.id = wc.work_id
+               WHERE wc.library_id = ?1
+           ) AS held ON held.person_id = person.id
+           WHERE person.library_id = ?1 AND (?2 OR (person.draft = 0 AND held.draft = 0))
+           GROUP BY person.id, held.role
+           ORDER BY person.id, held.role"#,
+        library,
+        include_drafts
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let count_rows = sqlx::query!(
+        r#"SELECT credited.person_id,
+                  COUNT(DISTINCT credited.publication_id) AS "publications: u32",
+                  COUNT(DISTINCT credited.work_id) AS "works: u32"
+           FROM (
+               SELECT pc.person_id, pc.publication_id, NULL AS work_id
+               FROM publication_contributor AS pc
+               JOIN publication ON publication.id = pc.publication_id
+               WHERE pc.library_id = ?1 AND (?2 OR publication.draft = 0)
+               UNION ALL
+               SELECT wc.person_id, publication.id AS publication_id, wc.work_id
+               FROM work_contributor AS wc
+               JOIN work ON work.id = wc.work_id
+               LEFT JOIN publication_work AS pw ON pw.work_id = wc.work_id
+               LEFT JOIN publication ON publication.id = pw.publication_id
+                                    AND (?2 OR publication.draft = 0)
+               WHERE wc.library_id = ?1 AND (?2 OR work.draft = 0)
+           ) AS credited
+           GROUP BY credited.person_id"#,
+        library,
+        include_drafts
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let counts: HashMap<i64, (usize, usize)> = count_rows
+        .into_iter()
+        .map(|row| {
+            let counts = (row.publications as usize, row.works as usize);
+            (row.person_id, counts)
+        })
+        .collect();
+
+    let mut summaries: Vec<PersonSummary> = Vec::new();
+    for row in role_rows {
+        let held = Role::from_valid(row.role);
+        match summaries.last_mut() {
+            Some(summary) if summary.id.get() == row.id => summary.roles.push(held),
+            _ => {
+                let (publications, works) = counts.get(&row.id).copied().unwrap_or_default();
+                summaries.push(PersonSummary {
+                    id: PersonId::new(row.id),
+                    name: row.name,
+                    sort_name: row.sort_name,
+                    profile: row.profile.map(|profile| engine.data_dir().join(profile)),
+                    roles: vec![held],
+                    publications,
+                    works,
+                });
+            }
+        }
+    }
+    summaries.retain(|summary| role.is_none_or(|role| summary.roles.contains(role)));
+    summaries
+        .sort_by_cached_key(|summary| (summary.sort_name.to_lowercase(), summary.name.clone()));
+    Ok(summaries)
 }
 
 /// Get person search candidates from the given library
@@ -917,7 +1024,7 @@ fn remove_profile(path: &Path) {
     // update failed, but that's not entirely true, because it's been removed from the db. So just
     // log a warning and move on.
     if let Err(e) = std::fs::remove_file(path) {
-        log::warn!("failed to remove {}: {e}", path.display());
+        tracing::warn!("failed to remove {}: {e}", path.display());
     }
 }
 
@@ -954,6 +1061,7 @@ pub fn derive_sort_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity::Contributed;
     use crate::holding::NewHolding;
     use crate::link::LinkKind;
     use crate::publication::ImportSeed;
@@ -1061,6 +1169,66 @@ mod tests {
             !dir.path()
                 .join(format!("assets/person/{}", person.id()))
                 .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn people_summary_counts_credits_once_per_entity() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let seed = |title: &str| ImportSeed::Title {
+            title: title.into(),
+            record: None,
+        };
+
+        let mut nocturnes = library
+            .import(seed("Nocturnes"), NewHolding::Physical { location: None })
+            .await
+            .unwrap();
+        let chopin = nocturnes
+            .create_contributor("Frederic Chopin", "editor".parse().unwrap())
+            .await
+            .unwrap();
+        for title in ["Nocturne No. 1", "Nocturne No. 2"] {
+            let mut work = nocturnes.create_work(title).await.unwrap();
+            work.add_contributor(chopin.id(), "composer".parse().unwrap())
+                .await
+                .unwrap();
+        }
+        nocturnes.commit().await.unwrap();
+        let mut draft = library
+            .import(seed("Untitled"), NewHolding::Physical { location: None })
+            .await
+            .unwrap();
+        draft
+            .add_contributor(chopin.id(), "arranger".parse().unwrap())
+            .await
+            .unwrap();
+
+        let summarize = async |include_drafts| {
+            let people = library.people_summary(None, include_drafts).await.unwrap();
+            people
+                .iter()
+                .map(|p| {
+                    let roles: Vec<_> = p.roles.iter().map(Role::to_string).collect();
+                    (roles, p.publications, p.works)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            summarize(false).await,
+            [(vec!["composer".into(), "editor".into()], 1, 2)]
+        );
+        assert_eq!(
+            summarize(true).await,
+            [(
+                vec!["arranger".into(), "composer".into(), "editor".into()],
+                2,
+                2
+            )]
         );
     }
 }

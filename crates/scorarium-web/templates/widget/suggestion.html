@@ -1,0 +1,19 @@
+{% macro link(href) %}
+    <a class="dropdown-item" role="option" href="{{ href }}">{{ caller() }}</a>
+{% endmacro %}
+
+{% macro value(text) %}
+    <button type="button" class="dropdown-item text-wrap" role="option" data-value="{{ text }}">{{ caller() }}</button>
+{% endmacro %}
+
+{% macro pick(id, text) %}
+    <button type="button"
+            class="dropdown-item text-wrap"
+            role="option"
+            data-value="{{ text }}"
+            data-pick="{{ id }}">{{ caller() }}</button>
+{% endmacro %}
+
+{% macro empty() %}
+    <span class="dropdown-item-text">No matches</span>
+{% endmacro %}

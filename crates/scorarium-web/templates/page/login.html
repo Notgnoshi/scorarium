@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+    {% match state %}
+    {% when PasswordState::Unclaimed %}
+    <p>Set the initial login password.</p>
+    <form method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control"
+                   type="password"
+                   id="password"
+                   name="password"
+                   autocomplete="new-password"
+                   required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="confirm">Confirm</label>
+            <input class="form-control"
+                   type="password"
+                   id="confirm"
+                   name="confirm"
+                   autocomplete="new-password"
+                   required>
+        </div>
+        <button class="btn btn-primary" type="submit">Set password</button>
+    </form>
+    {% when PasswordState::Claimed %}
+    <form method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control"
+                   type="password"
+                   id="password"
+                   name="password"
+                   autocomplete="current-password"
+                   required>
+        </div>
+        <button class="btn btn-primary" type="submit">Log in</button>
+    </form>
+    {% when PasswordState::NotNeeded %}
+    <p>This is a temporary demo instance. No password is needed.</p>
+    <form method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input type="hidden" name="password" value="">
+        <button class="btn btn-primary" type="submit">Log in</button>
+    </form>
+{% endmatch %}
+{% endblock %}

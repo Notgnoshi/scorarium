@@ -1,9 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use scorarium_cli::{LogWriter, ShellArgs};
 use scorarium_client::UserAgent;
-use scorarium_engine::legacy::archive::Archive;
 use scorarium_engine::{Engine, EngineOptions};
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
@@ -50,19 +49,6 @@ enum Command {
     Shell(ShellArgs),
 }
 
-/// Open the archive the global flags point at.
-async fn open_archive(data_dir: &Path, demo: bool) -> color_eyre::Result<Archive> {
-    if demo {
-        tracing::info!("using an in-memory demo library");
-        let archive = Archive::in_memory().await?;
-        archive.populate_demo().await?;
-        Ok(archive)
-    } else {
-        tracing::info!(data_dir = %data_dir.display(), "opening library");
-        Ok(Archive::open(data_dir, true).await?)
-    }
-}
-
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -71,15 +57,14 @@ async fn main() -> color_eyre::Result<()> {
         .with_default_directive(args.log_level.into())
         .from_env_lossy();
 
+    let log = LogWriter::default();
+
     match args.command {
-        Command::Serve(serve) => {
+        Command::Serve(_) => {
             tracing_subscriber::fmt().with_env_filter(filter).init();
-            let archive = open_archive(&args.data_dir, args.demo).await?;
-            scorarium_web::serve(serve, archive, args.demo, args.contact.as_deref()).await?;
         }
-        Command::Shell(shell) => {
+        Command::Shell(_) => {
             // Use a custom writer so that the logs don't corrupt the interactive prompt
-            let log = LogWriter::default();
             tracing_subscriber::fmt()
                 .with_env_filter(filter)
                 .with_writer({
@@ -87,21 +72,31 @@ async fn main() -> color_eyre::Result<()> {
                     move || log.clone()
                 })
                 .init();
-            if !args.demo && !args.data_dir.is_dir() {
-                color_eyre::eyre::bail!(
-                    "data directory {} does not exist",
-                    args.data_dir.display()
-                );
-            }
-            let options = EngineOptions::new(UserAgent::new(args.contact.as_deref()))?;
-            let engine = if args.demo {
-                tracing::info!("using an in-memory demo library");
-                Engine::demo(options).await?
-            } else {
-                tracing::info!(data_dir = %args.data_dir.display(), "opening library");
-                // The shell may share the database with a running server, so it never migrates it.
-                Engine::open(&args.data_dir, options.migrate_on_startup(false)).await?
-            };
+        }
+    }
+
+    if args.contact.is_none() {
+        tracing::warn!("some enrichment APIs grant higher rate limits when a contact email is set");
+    }
+
+    if matches!(args.command, Command::Shell(_)) && !args.demo && !args.data_dir.is_dir() {
+        color_eyre::eyre::bail!("data directory {} does not exist", args.data_dir.display());
+    }
+
+    // The shell an share the database with a running server, so only the server is allowed to migrate
+    let migrate = matches!(args.command, Command::Serve(_));
+    let options = EngineOptions::new(UserAgent::new(args.contact.as_deref()))?;
+    let engine = if args.demo {
+        tracing::info!("using an in-memory demo library");
+        Engine::demo(options).await?
+    } else {
+        tracing::info!(data_dir = %args.data_dir.display(), "opening library");
+        Engine::open(&args.data_dir, options.migrate_on_startup(migrate)).await?
+    };
+
+    match args.command {
+        Command::Serve(serve) => scorarium_web::serve(serve, engine).await?,
+        Command::Shell(shell) => {
             // The demo library is throwaway, so its history is too
             let history = (!args.demo).then(|| args.data_dir.join(".shell_history"));
             scorarium_cli::shell(shell, engine, history, log).await?;

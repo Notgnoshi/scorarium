@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{AnyEntity, Entity};
+use scorarium_engine::entity::{AnyEntity, Contributed, Entity};
 use scorarium_engine::person::Person;
 use scorarium_engine::work::Work;
 
@@ -11,6 +11,7 @@ pub(crate) async fn run(engine: &Engine, query: &str, out: &mut impl Write) -> e
     let rows: Vec<[String; 6]> = engine
         .search(query, true, 20)
         .await?
+        .hits
         .into_iter()
         .map(|hit| {
             let (kind, id, title) = describe(&hit.entity);

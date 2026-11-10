@@ -160,6 +160,7 @@ impl Engine {
     /// Log in with the password and start a session.
     pub async fn login(&self, password: &str) -> Result<Token> {
         if self.is_demo() {
+            tracing::info!("logged in");
             return Ok(self.sessions().create());
         }
         // The lock spans the whole sequence so that concurrent guesses are counted before they are
@@ -173,10 +174,12 @@ impl Engine {
             return Err(Error::WrongPassword);
         };
         if !verify_password(stored, password.to_owned()).await? {
+            tracing::warn!("rejected a login with the wrong password");
             throttle.record_failure();
             return Err(Error::WrongPassword);
         }
         throttle.reset();
+        tracing::info!("logged in");
         Ok(self.sessions().create())
     }
 
@@ -198,6 +201,7 @@ impl Engine {
     /// End the session with this token.
     pub fn logout(&self, token: &Token) {
         self.sessions().revoke(token);
+        tracing::info!("logged out");
     }
 
     pub async fn password_state(&self) -> Result<PasswordState> {
@@ -254,10 +258,10 @@ impl Engine {
         Ok(())
     }
 
-    /// Change the password after verifying the current one, and start a session.
+    /// Change the password of a claimed instance and start a session.
     ///
     /// End every other session, so the returned token is the only one that remains.
-    pub async fn change_password(&self, current: &str, new: &str) -> Result<Token> {
+    pub async fn change_password(&self, new: &str) -> Result<Token> {
         if self.is_demo() {
             return Err(Error::Generic(eyre::eyre!("the demo has no password")));
         }
@@ -266,34 +270,27 @@ impl Engine {
                 "The password must not be empty.".into(),
             ));
         }
-        // Attempting to change the password can be done without being logged in, so it needs to be
-        // throttled too.
-        //
-        // The lock spans the whole sequence so that no login or other change can interleave between
-        // verifying the current password and writing the new one.
-        let mut throttle = self.login_throttle().await;
-        if let Some(retry_after) = throttle.locked_for() {
-            return Err(Error::Throttled { retry_after });
-        }
-        let Some(stored) = self.stored_password_hash().await? else {
-            return Err(Error::Generic(eyre::eyre!("no password is set")));
-        };
-        if !verify_password(stored, current.to_owned()).await? {
-            throttle.record_failure();
-            return Err(Error::WrongPassword);
-        }
-        throttle.reset();
-
+        // Hash before taking the write lock so argon2 does not block other writers.
         let hash = hash_password(new.to_owned()).await?;
+
+        // Hold the login lock through the revocation so that a login in flight cannot issue a
+        // session after it.
+        let mut throttle = self.login_throttle().await;
         let mut tx = self.begin_write().await?;
-        sqlx::query!("UPDATE password SET password_hash = ? WHERE id = 1", hash)
+        let updated = sqlx::query!("UPDATE password SET password_hash = ? WHERE id = 1", hash)
             .execute(&mut *tx)
-            .await?;
+            .await?
+            .rows_affected();
+        if updated == 0 {
+            return Err(Error::Generic(eyre::eyre!("no password is set")));
+        }
         tx.record(AuditSource::User, Action::PasswordChanged, None, None)
             .await?
             .commit()
             .await?;
         self.sessions().revoke_all();
+        // Failed guesses at the old password say nothing about the new one.
+        throttle.reset();
         Ok(self.sessions().create())
     }
 }
@@ -327,9 +324,10 @@ mod tests {
         );
 
         let actions: Vec<_> = engine
-            .audit_log(None, 10)
+            .audit_log(0, 10)
             .await
             .unwrap()
+            .events
             .iter()
             .map(|e| e.action)
             .collect();
@@ -374,19 +372,32 @@ mod tests {
         engine.replace_password("secret").await.unwrap();
         let old = engine.login("secret").await.unwrap();
 
-        assert!(matches!(
-            engine.change_password("wrong", "next").await,
-            Err(Error::WrongPassword)
-        ));
-        assert!(engine.is_authenticated(&old));
-
-        let new = engine.change_password("secret", "next").await.unwrap();
+        let new = engine.change_password("next").await.unwrap();
         assert!(!engine.is_authenticated(&old));
         assert!(engine.is_authenticated(&new));
         assert!(matches!(
             engine.login("secret").await,
             Err(Error::WrongPassword)
         ));
+        engine.login("next").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_throttle_does_not_block_a_password_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        engine.replace_password("secret").await.unwrap();
+        for _ in 0..5 {
+            assert!(matches!(engine.login("x").await, Err(Error::WrongPassword)));
+        }
+        assert!(matches!(
+            engine.login("secret").await,
+            Err(Error::Throttled { .. })
+        ));
+
+        engine.change_password("next").await.unwrap();
         engine.login("next").await.unwrap();
     }
 

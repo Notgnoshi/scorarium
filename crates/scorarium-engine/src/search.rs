@@ -1,8 +1,8 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
 
-use scorarium_archive::fuzzy::{normalize, rank};
-
 use crate::entity::{AnyEntity, Entity, EntityKind};
+use crate::fuzzy::{normalize, score};
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
@@ -18,6 +18,14 @@ pub struct SearchHit {
     pub entity: AnyEntity,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct SearchResults {
+    /// The best `limit` hits by score
+    pub hits: Vec<SearchHit>,
+    /// How many total entities matched before the `limit` was applied
+    pub total_hits: usize,
+}
+
 impl Engine {
     /// Find committed publications, works, and people across every library, best match first
     pub async fn search(
@@ -25,9 +33,9 @@ impl Engine {
         query: &str,
         include_private: bool,
         limit: usize,
-    ) -> Result<Vec<SearchHit>> {
+    ) -> Result<SearchResults> {
         if limit == 0 || normalize(query).is_empty() {
-            return Ok(Vec::new());
+            return Ok(SearchResults::default());
         }
         let canonical = parse_identifier(query).map(|identifier| identifier.compact());
         let query = canonical.as_deref().unwrap_or(query);
@@ -37,7 +45,7 @@ impl Engine {
         for candidate in publication::candidates(&mut conn, scope).await? {
             candidates.push((EntityKind::Publication, candidate));
         }
-        for candidate in work::candidates(&mut conn, scope).await? {
+        for candidate in work::candidates(&mut conn, scope, None).await? {
             candidates.push((EntityKind::Work, candidate));
         }
         for candidate in person::candidates(&mut conn, scope).await? {
@@ -50,8 +58,14 @@ impl Engine {
 
         // Ranking and loading are separate statements, so an entity deleted in between is left out
         // rather than failing the search.
+        let mut ranked = score(query, &texts);
+        // score() is already best first, and a stable sort keeps that within a score. Break rank
+        // ties in favor of Persons, because a user searching "Chopin" should get the person entity
+        // ranked first over all of Chopin's works.
+        ranked.sort_by_key(|&(i, score)| (Reverse(score), candidates[i].0 != EntityKind::Person));
+        let total_hits = ranked.len();
         let mut entities = Vec::new();
-        for i in rank(query, &texts).into_iter().take(limit) {
+        for (i, _) in ranked.into_iter().take(limit) {
             let (kind, Candidate { id, .. }) = candidates[i];
             let entity = match kind {
                 EntityKind::Publication => {
@@ -93,7 +107,7 @@ impl Engine {
                 entity,
             });
         }
-        Ok(hits)
+        Ok(SearchResults { hits, total_hits })
     }
 }
 
@@ -124,9 +138,10 @@ mod tests {
                 .search("pro git", false, 10)
                 .await
                 .unwrap()
+                .hits
                 .is_empty()
         );
-        let hits = engine.search("pro git", true, 10).await.unwrap();
+        let hits = engine.search("pro git", true, 10).await.unwrap().hits;
         let [hit] = hits.as_slice() else {
             panic!("expected one hit, got {hits:?}");
         };
@@ -155,19 +170,47 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(engine.search("pro git", true, 10).await.unwrap().len(), 1);
-
         assert_eq!(
-            engine.search("rachmaninoff", true, 2).await.unwrap().len(),
-            2
+            engine.search("pro git", true, 10).await.unwrap().hits.len(),
+            1
         );
+
+        // The count includes the matches the limit cut
+        let limited = engine.search("rachmaninoff", true, 2).await.unwrap();
+        let all = engine.search("rachmaninoff", true, 100).await.unwrap();
+        assert_eq!(limited.hits.len(), 2);
+        assert!(all.hits.len() > 2);
+        assert_eq!(limited.total_hits, all.hits.len());
         assert!(
             engine
                 .search("rachmaninoff", true, 0)
                 .await
                 .unwrap()
+                .hits
                 .is_empty()
         );
+
+        // Tags are private
+        assert!(
+            engine
+                .search("anthology", false, 10)
+                .await
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+        assert!(
+            !engine
+                .search("anthology", true, 10)
+                .await
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+
+        // On equal score the person leads the items credited to them
+        let hits = engine.search("rachmaninoff", true, 10).await.unwrap().hits;
+        assert!(matches!(hits[0].entity, AnyEntity::Person(_)));
     }
 
     #[tokio::test]
@@ -175,7 +218,7 @@ mod tests {
         let engine = Engine::demo(crate::test::options()).await.unwrap();
         // Imported as the ISBN-10 0-8065-0180-4 and stored as 978-0-8065-0180-2
         for query in ["0-8065-0180-4", "ISBN 0806501804", "9780806501802"] {
-            let hits = engine.search(query, true, 10).await.unwrap();
+            let hits = engine.search(query, true, 10).await.unwrap().hits;
             let [hit] = hits.as_slice() else {
                 panic!("expected one hit for {query:?}, got {hits:?}");
             };

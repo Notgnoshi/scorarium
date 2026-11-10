@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT publication_contributor.person_id, person.name, person.sort_name,\n                    publication_contributor.role\n             FROM publication_contributor JOIN person ON person.id = publication_contributor.person_id\n             WHERE publication_contributor.publication_id = ?\n             ORDER BY publication_contributor.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "person_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "person_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "sort_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "sort_name"
+          }
+        }
+      },
+      {
+        "name": "role",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "04a4fd8471b52d76b33a78481dfb6c13bca04fa14874e7e85d7b70f276698c80"
+}

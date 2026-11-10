@@ -3,7 +3,7 @@ use std::num::ParseIntError;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use sqlx::{Sqlite, SqliteConnection, Transaction};
+use sqlx::{Connection, Sqlite, SqliteConnection, Transaction};
 
 use crate::entity::{AnyEntityId, EntityKind, Timestamp};
 use crate::library::LibraryId;
@@ -143,6 +143,7 @@ pub struct AuditEvent {
     pub source: AuditSource,
     pub action: Action,
     pub subject: Option<AuditSubject>,
+    pub subject_exists: bool,
     pub field: Option<String>,
 }
 
@@ -166,7 +167,10 @@ impl<'a> Audited<'a> {
         field: Option<&str>,
     ) -> Result<Recorded<'a>> {
         insert(&mut self.tx, source, action, subject, field).await?;
-        Ok(Recorded { tx: self.tx })
+        Ok(Recorded {
+            tx: self.tx,
+            pending: vec![describe(source, action, subject, field)],
+        })
     }
 
     /// Commit the transaction without recording an audit event.
@@ -179,6 +183,8 @@ impl<'a> Audited<'a> {
 
 pub(crate) struct Recorded<'a> {
     tx: Transaction<'a, Sqlite>,
+    /// The log lines to emit once the transaction commits.
+    pending: Vec<String>,
 }
 
 impl<'a> Recorded<'a> {
@@ -190,6 +196,7 @@ impl<'a> Recorded<'a> {
         field: Option<&str>,
     ) -> Result<Recorded<'a>> {
         insert(&mut self.tx, source, action, subject, field).await?;
+        self.pending.push(describe(source, action, subject, field));
         Ok(self)
     }
 
@@ -203,6 +210,8 @@ impl<'a> Recorded<'a> {
     ) -> Result<Recorded<'a>> {
         for subject in subjects {
             insert(&mut self.tx, source, action, Some(subject), field).await?;
+            self.pending
+                .push(describe(source, action, Some(subject), field));
         }
         Ok(self)
     }
@@ -217,6 +226,9 @@ impl<'a> Recorded<'a> {
         .execute(&mut *self.tx)
         .await?;
         self.tx.commit().await?;
+        for line in &self.pending {
+            tracing::info!("{line}");
+        }
         Ok(())
     }
 }
@@ -247,6 +259,30 @@ impl DerefMut for Recorded<'_> {
     fn deref_mut(&mut self) -> &mut SqliteConnection {
         &mut self.tx
     }
+}
+
+/// Describe an audit event in one line, for the log
+fn describe(
+    source: AuditSource,
+    action: Action,
+    subject: Option<&AuditSubject>,
+    field: Option<&str>,
+) -> String {
+    let mut line = format!("{source} {action}");
+    match subject {
+        None => {}
+        Some(AuditSubject::Library { id, label }) => {
+            line.push_str(&format!(" library {id} {label:?}"));
+        }
+        Some(AuditSubject::Entity { id, label, .. }) => {
+            line.push_str(&format!(" {} {} {label:?}", id.kind(), id.get()));
+        }
+    }
+    if let Some(field) = field {
+        line.push(' ');
+        line.push_str(field);
+    }
+    line
 }
 
 async fn insert(
@@ -300,6 +336,7 @@ struct AuditRow {
     entity_library_id: Option<i64>,
     entity_label: Option<String>,
     field: Option<String>,
+    subject_exists: bool,
 }
 
 impl AuditRow {
@@ -334,6 +371,7 @@ impl AuditRow {
             source: self.source.parse()?,
             action: self.action.parse()?,
             subject,
+            subject_exists: self.subject_exists,
             field: self.field,
         })
     }
@@ -343,69 +381,123 @@ fn size_to_id(limit: usize) -> i64 {
     i64::try_from(limit).unwrap_or(i64::MAX)
 }
 
+/// One page of the audit log
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditPage {
+    /// Newest first
+    pub events: Vec<AuditEvent>,
+    /// Events in the whole log, or on the entity
+    pub total: usize,
+}
+
 impl Engine {
-    /// Read audit events newest first, below `before` when given, at most `limit`
-    pub async fn audit_log(
-        &self,
-        before: Option<AuditId>,
-        limit: usize,
-    ) -> Result<Vec<AuditEvent>> {
-        let before = before.map(|id| id.0);
+    /// Read a page of the audit log, newest first, starting `offset` events in
+    pub async fn audit_log(&self, offset: usize, limit: usize) -> Result<AuditPage> {
+        let offset = size_to_id(offset);
         let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
+        // One transaction so that the total and the page see the same snapshot.
+        let mut tx = conn.begin().await?;
+        let total = sqlx::query_scalar!("SELECT COUNT(*) FROM audit_entry")
+            .fetch_one(&mut *tx)
+            .await?;
         let rows = sqlx::query_as!(
             AuditRow,
-            r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
-                      entity_kind, entity_id, entity_library_id, entity_label, field
+            r#"SELECT audit_entry.id, audit_entry.created_at AS "created_at: Timestamp",
+                      source, action, entity_kind, entity_id, entity_library_id, entity_label,
+                      field,
+                      (library.id IS NOT NULL OR publication.id IS NOT NULL
+                       OR work.id IS NOT NULL OR person.id IS NOT NULL) AS "subject_exists!: bool"
                FROM audit_entry
-               WHERE ?1 IS NULL OR id < ?1
-               ORDER BY id DESC
-               LIMIT ?2"#,
-            before,
+               LEFT JOIN library ON entity_kind = 'library' AND library.id = entity_id
+               LEFT JOIN publication ON entity_kind = 'publication'
+                   AND publication.id = entity_id AND publication.library_id = entity_library_id
+               LEFT JOIN work ON entity_kind = 'work'
+                   AND work.id = entity_id AND work.library_id = entity_library_id
+               LEFT JOIN person ON entity_kind = 'person'
+                   AND person.id = entity_id AND person.library_id = entity_library_id
+               ORDER BY audit_entry.id DESC
+               LIMIT ?2 OFFSET ?1"#,
+            offset,
             limit
         )
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *tx)
         .await?;
-        rows.into_iter().map(AuditRow::into_event).collect()
+        Ok(AuditPage {
+            events: rows
+                .into_iter()
+                .map(AuditRow::into_event)
+                .collect::<Result<_>>()?,
+            total: usize::try_from(total).map_err(eyre::Report::from)?,
+        })
     }
 
-    /// Read an entities audit log, paginated as [Engine::audit_log]
+    /// Read a page of an entity's audit log, as [Engine::audit_log]
     pub(crate) async fn entity_audit_log(
         &self,
         id: AnyEntityId,
         library: LibraryId,
-        before: Option<AuditId>,
+        offset: usize,
         limit: usize,
-    ) -> Result<Vec<AuditEvent>> {
+    ) -> Result<AuditPage> {
         let kind = id.kind().to_string();
         let id = id.get();
-        let before = before.map(|id| id.0);
+        let library = library.get();
+        let offset = size_to_id(offset);
         let limit = size_to_id(limit);
         let mut conn = self.begin_read().await?;
-        let rows = sqlx::query_as!(
-            AuditRow,
-            r#"SELECT id, created_at AS "created_at: Timestamp", source, action,
-                      entity_kind, entity_id, entity_library_id, entity_label, field
-               FROM audit_entry
-               WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3
-                 AND (?4 IS NULL OR id < ?4)
-               ORDER BY id DESC
-               LIMIT ?5"#,
+        let mut tx = conn.begin().await?;
+        let total = sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM audit_entry
+             WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3",
             kind,
             id,
-            library.get(),
-            before,
+            library
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let rows = sqlx::query_as!(
+            AuditRow,
+            r#"SELECT audit_entry.id, audit_entry.created_at AS "created_at: Timestamp",
+                      source, action, entity_kind, entity_id, entity_library_id, entity_label,
+                      field,
+                      (library.id IS NOT NULL OR publication.id IS NOT NULL
+                       OR work.id IS NOT NULL OR person.id IS NOT NULL) AS "subject_exists!: bool"
+               FROM audit_entry
+               LEFT JOIN library ON entity_kind = 'library' AND library.id = entity_id
+               LEFT JOIN publication ON entity_kind = 'publication'
+                   AND publication.id = entity_id AND publication.library_id = entity_library_id
+               LEFT JOIN work ON entity_kind = 'work'
+                   AND work.id = entity_id AND work.library_id = entity_library_id
+               LEFT JOIN person ON entity_kind = 'person'
+                   AND person.id = entity_id AND person.library_id = entity_library_id
+               WHERE entity_kind = ?1 AND entity_id = ?2 AND entity_library_id = ?3
+               ORDER BY audit_entry.id DESC
+               LIMIT ?5 OFFSET ?4"#,
+            kind,
+            id,
+            library,
+            offset,
             limit
         )
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *tx)
         .await?;
-        rows.into_iter().map(AuditRow::into_event).collect()
+        Ok(AuditPage {
+            events: rows
+                .into_iter()
+                .map(AuditRow::into_event)
+                .collect::<Result<_>>()?,
+            total: usize::try_from(total).map_err(eyre::Report::from)?,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entity::Entity;
+    use crate::holding::NewHolding;
+    use crate::publication::ImportSeed;
 
     #[tokio::test]
     async fn audit_events_round_trip() {
@@ -442,7 +534,7 @@ mod tests {
             .unwrap();
         tx.commit().await.unwrap();
 
-        let events = engine.audit_log(None, 10).await.unwrap();
+        let events = engine.audit_log(0, 10).await.unwrap().events;
         let subjects: Vec<_> = events
             .iter()
             .map(|e| (e.action, e.subject.clone(), e.field.clone()))
@@ -455,5 +547,52 @@ mod tests {
                 (Action::Created, Some(library), None),
             ]
         );
+
+        let page = engine.audit_log(1, 10).await.unwrap();
+        assert_eq!(page.total, 3);
+        assert_eq!(
+            page.events.iter().map(|e| e.action).collect::<Vec<_>>(),
+            [Action::Updated, Action::Created]
+        );
+    }
+
+    #[tokio::test]
+    async fn subject_exists_follows_the_subject() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Scores", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        publication.commit().await.unwrap();
+        let subjects_exist = async || {
+            let events = engine.audit_log(0, 100).await.unwrap().events;
+            let exist = |library: bool| {
+                events
+                    .iter()
+                    .filter(|e| matches!(e.subject, Some(AuditSubject::Library { .. })) == library)
+                    .map(|e| e.subject_exists)
+                    .collect::<Vec<_>>()
+            };
+            (exist(true), exist(false))
+        };
+
+        let (library_events, publication_events) = subjects_exist().await;
+        assert!(library_events.iter().all(|&exists| exists));
+        assert!(!publication_events.is_empty() && publication_events.iter().all(|&exists| exists));
+
+        publication.delete().await.unwrap();
+        let (library_events, publication_events) = subjects_exist().await;
+        assert!(library_events.iter().all(|&exists| exists));
+        assert!(publication_events.iter().all(|&exists| !exists));
     }
 }

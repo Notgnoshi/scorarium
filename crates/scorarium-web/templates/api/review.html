@@ -1,0 +1,4 @@
+{% import "widget/review_count.html" as review_count %}
+{{ queue }}
+{% call review_count::badge(queue.count, true) %}
+{% endcall %}

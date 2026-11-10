@@ -1,0 +1,44 @@
+<table class="table">
+    <thead class="text-nowrap">
+        <tr>
+            <th>When</th>
+            <th>Source</th>
+            <th>Action</th>
+            <th>Subject</th>
+            <th>Field</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+            <tr>
+                <td class="text-nowrap">
+                    <time datetime="{{ event.created_at.to_rfc3339() }}"
+                          title="{{ event.created_at.to_rfc3339() }}">{{ event.created_at.format("%Y-%m-%d %H:%M:%S") }}</time>
+                </td>
+                <td>{{ event.source.to_string().replace("_", " ") }}</td>
+                <td>{{ event.action.to_string().replace("_", " ") }}</td>
+                <td>
+                    {% match event.subject %}
+                    {% when Some(AuditSubject::Library { id, label }) %}
+                    library
+                    {% if event.subject_exists %}
+                        <a href="/library/{{ id }}">{{ label }}</a>
+                    {% else %}
+                        {{ label }}
+                    {% endif %}
+                    {% when Some(AuditSubject::Entity { id, library, label }) %}
+                    {{ id.kind() }}
+                    {% if event.subject_exists %}
+                        <a href="/library/{{ library }}/{{ id.kind() }}/{{ id.get() }}">{{ label }}</a>
+                    {% else %}
+                        {{ label }}
+                    {% endif %}
+                    {% when None %}
+        {% endmatch %}
+    </td>
+    <td>{% if let Some(field) = event.field %}{{ field }}{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{{ pagination }}

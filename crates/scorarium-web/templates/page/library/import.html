@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Import a publication</h1>
+    <form method="post" action="/library/{{ library }}/import">
+        <fieldset class="box">
+            <legend>Publication</legend>
+            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <label class="form-label" for="text">ISBN, ISMN, or title</label>
+            {{ text }}
+            <div id="candidate-summary" {% if record.is_none() %}hidden{% endif %}>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <div id="candidate-content" class="flex-grow-1"></div>
+                    <a id="candidate-link"
+                       href="{% if let Some(record) = record %}{{ record }}{% else %}#{% endif %}"
+                       target="_blank"
+                       title="Open the record"><i class="bi bi-box-arrow-up-right"></i></a>
+                </div>
+            </div>
+        </fieldset>
+        {{ holdings }}
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="form-check">
+                <input class="form-check-input"
+                       type="checkbox"
+                       id="more"
+                       name="more"
+                       value="on"
+                       {% if more %}checked{% endif %}>
+                <label class="form-check-label" for="more">Import more</label>
+            </div>
+            <button class="btn btn-primary" type="submit" title="Import a draft publication">Import</button>
+        </div>
+    </form>
+    <hr class="my-5">
+    <h2>Review queue</h2>
+    {{ queue }}
+{% endblock %}

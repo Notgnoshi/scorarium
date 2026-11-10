@@ -1,17 +1,27 @@
+use std::convert::Infallible;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_DISPOSITION, HeaderMap};
 use tempfile::{NamedTempFile, TempPath};
-use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use url::Url;
 
 use crate::audit::AuditSubject;
 use crate::entity::AnyEntityId;
 use crate::link::HttpUrl;
 use crate::{Engine, Error, Result};
+
+/// Maximum size users are allowed to upload to scorarium, in bytes
+pub const MAX_ASSET_SIZE: u64 = 512 * 1024 * 1024;
+
+fn too_large() -> Error {
+    Error::InvalidValue("The file is larger than 512 MB.".into())
+}
 
 /// The origin of a file to add to the library
 pub enum AssetSource<'a> {
@@ -22,6 +32,44 @@ pub enum AssetSource<'a> {
     },
     /// A file to download from the given HTTP URL
     Url(HttpUrl),
+    /// A file staged earlier with [`Engine::stage`]
+    Staged(StagedId),
+}
+
+/// The id of a staged file
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StagedId(String);
+
+impl StagedId {
+    fn generate() -> Self {
+        let mut buf = [0u8; 16];
+        getrandom::fill(&mut buf).expect("OS randomness unavailable");
+        StagedId(buf.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+}
+
+impl fmt::Display for StagedId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FromStr for StagedId {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(StagedId(s.to_owned()))
+    }
+}
+
+/// A file that has been staged and belongs to nothing yet
+#[derive(Clone, Debug)]
+pub struct StagedAsset {
+    pub id: StagedId,
+    pub filename: String,
+    pub size: u64,
+    /// The staged file, at its absolute path
+    pub file: PathBuf,
 }
 
 impl fmt::Debug for AssetSource<'_> {
@@ -32,11 +80,13 @@ impl fmt::Debug for AssetSource<'_> {
                 .field("filename", filename)
                 .finish(),
             AssetSource::Url(url) => f.debug_tuple("Url").field(url).finish(),
+            AssetSource::Staged(id) => f.debug_tuple("Staged").field(id).finish(),
         }
     }
 }
 
 /// A file in the staging directory, deleted on drop unless persisted
+#[derive(Debug)]
 pub(crate) struct Staged {
     path: TempPath,
     filename: String,
@@ -44,15 +94,24 @@ pub(crate) struct Staged {
 
 /// Write the file from `source` into the staging directory
 pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<Staged> {
+    if let AssetSource::Staged(id) = &source {
+        return engine.staged_files().remove(id).ok_or_else(|| {
+            Error::InvalidValue("The file is no longer available. Choose it again.".into())
+        });
+    }
     let (file, path) = NamedTempFile::new_in(engine.staging_dir())?.into_parts();
     let mut file = tokio::fs::File::from_std(file);
     let filename = match source {
-        AssetSource::Upload { mut data, filename } => {
+        AssetSource::Upload { data, filename } => {
             let filename = component(&filename)
                 .ok_or_else(|| Error::InvalidValue("A filename cannot be blank.".into()))?;
-            tokio::io::copy(&mut data, &mut file).await?;
+            let written = tokio::io::copy(&mut data.take(MAX_ASSET_SIZE + 1), &mut file).await?;
+            if written > MAX_ASSET_SIZE {
+                return Err(too_large());
+            }
             Some(filename)
         }
+        AssetSource::Staged(_) => unreachable!("handled before the temporary file is created"),
         AssetSource::Url(url) => {
             let mut response = engine
                 .downloads()
@@ -64,8 +123,20 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
             if !status.is_success() {
                 return Err(Error::InvalidValue(format!("{url} answered {status}.")));
             }
-            let filename = download_name(&url, response.headers());
+            if response
+                .content_length()
+                .is_some_and(|n| n > MAX_ASSET_SIZE)
+            {
+                return Err(too_large());
+            }
+            let filename = download_name(response.url(), response.headers());
+            // The header can be absent or wrong, so only this count bounds the disk usage.
+            let mut total: u64 = 0;
             while let Some(chunk) = response.chunk().await.map_err(eyre::Report::new)? {
+                total += chunk.len() as u64;
+                if total > MAX_ASSET_SIZE {
+                    return Err(too_large());
+                }
                 file.write_all(&chunk).await?;
             }
             filename
@@ -82,14 +153,9 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
     Ok(Staged { path, filename })
 }
 
-/// Get the filename for a download after the last segment of its URL, or else its `Content-Disposition` header
-fn download_name(url: &HttpUrl, headers: &HeaderMap) -> Option<String> {
-    let from_url = url
-        .as_url()
-        .path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .and_then(|segment| component(&percent_decode_str(segment).decode_utf8_lossy()));
-    from_url.or_else(|| {
+/// Get the filename for a download from its `Content-Disposition` header, or else after the last segment of `url`
+fn download_name(url: &Url, headers: &HeaderMap) -> Option<String> {
+    let from_header = || {
         let disposition = headers.get(CONTENT_DISPOSITION)?.to_str().ok()?;
         let filename = disposition.split(';').find_map(|param| {
             let (name, value) = param.split_once('=')?;
@@ -98,6 +164,10 @@ fn download_name(url: &HttpUrl, headers: &HeaderMap) -> Option<String> {
                 .then_some(value)
         })?;
         component(filename.trim().trim_matches('"'))
+    };
+    from_header().or_else(|| {
+        let segment = url.path_segments()?.next_back()?;
+        component(&percent_decode_str(segment).decode_utf8_lossy())
     })
 }
 
@@ -110,6 +180,40 @@ fn component(name: &str) -> Option<String> {
     match last {
         "" | "." | ".." => None,
         _ => Some(last.to_owned()),
+    }
+}
+
+impl Engine {
+    /// Stage the file from `source` until it is used or discarded
+    pub async fn stage(&self, source: AssetSource<'_>) -> Result<StagedAsset> {
+        let staged = stage(self, source).await?;
+        let id = StagedId::generate();
+        let asset = StagedAsset {
+            id: id.clone(),
+            filename: staged.filename.clone(),
+            size: std::fs::metadata(&staged.path)?.len(),
+            file: staged.path.to_path_buf(),
+        };
+        self.staged_files().insert(id, staged);
+        Ok(asset)
+    }
+
+    /// Look up a staged file, if it still exists
+    pub fn staged(&self, id: &StagedId) -> Option<StagedAsset> {
+        let files = self.staged_files();
+        let staged = files.get(id)?;
+        let size = std::fs::metadata(&staged.path).ok()?.len();
+        Some(StagedAsset {
+            id: id.clone(),
+            filename: staged.filename.clone(),
+            size,
+            file: staged.path.to_path_buf(),
+        })
+    }
+
+    /// Discard a staged file. Has no effect if it is already gone.
+    pub fn discard_staged(&self, id: &StagedId) {
+        self.staged_files().remove(id);
     }
 }
 
@@ -190,7 +294,7 @@ pub(crate) fn remove_dir(engine: &Engine, id: AnyEntityId) {
     match std::fs::remove_dir_all(&dir) {
         Err(e) if e.kind() != ErrorKind::NotFound => {
             // The rows are already gone, so an error would tell the caller the delete failed.
-            log::warn!("failed to remove {}: {e}", dir.display());
+            tracing::error!("failed to remove {}: {e}", dir.display());
         }
         _ => {}
     }

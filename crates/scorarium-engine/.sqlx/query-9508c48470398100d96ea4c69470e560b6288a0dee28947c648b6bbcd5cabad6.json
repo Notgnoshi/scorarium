@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"count: u32\" FROM publication\n               WHERE library_id = ? AND (? OR draft = 0)",
+  "describe": {
+    "columns": [
+      {
+        "name": "count: u32",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9508c48470398100d96ea4c69470e560b6288a0dee28947c648b6bbcd5cabad6"
+}

@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use scorarium_engine::contributor::{Contributor, Role};
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 

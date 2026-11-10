@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
 
-use scorarium_engine::legacy::archive::Archive;
-use scorarium_engine::legacy::client::{Client, UserAgent};
+use scorarium_engine::Engine;
+use tokio::signal::unix::{SignalKind, signal};
 
-use crate::{AppState, router};
+use crate::router::{Settings, router};
 
 #[derive(Debug, clap::Args)]
 pub struct ServeArgs {
@@ -15,45 +14,37 @@ pub struct ServeArgs {
     /// Allow the login cookie over plain HTTP
     #[arg(long, env = "SCORARIUM_INSECURE_COOKIES")]
     pub insecure_cookies: bool,
+
+    /// Let visitors to a demo upload files and fetch them from URLs
+    ///
+    /// Has no effect without --demo.
+    #[arg(long, env = "SCORARIUM_DEMO_FILES")]
+    pub demo_files: bool,
 }
 
-/// Serve the given archive until interrupted.
-pub async fn serve(
-    args: ServeArgs,
-    archive: Archive,
-    demo: bool,
-    contact: Option<&str>,
-) -> eyre::Result<()> {
-    tracing::info!(bind = %args.bind, "starting scorarium");
-
-    if contact.is_none() {
+pub async fn serve(args: ServeArgs, engine: Engine) -> eyre::Result<()> {
+    let listener = tokio::net::TcpListener::bind(args.bind).await?;
+    tracing::info!(bind = %args.bind, "serving");
+    let settings = Settings {
+        secure_cookies: !args.insecure_cookies,
+        demo_files: args.demo_files,
+    };
+    if engine.is_demo() && args.demo_files {
         tracing::warn!(
-            "No contact set; set SCORARIUM_CONTACT to get faster metadata API rate limits"
+            "demo files are enabled; anonymous users can upload files and make the server fetch \
+             any URL"
         );
     }
-    let sources = Client::new(UserAgent::new(contact))?;
-
-    let state = if demo {
-        AppState::demo(archive, sources)
-    } else {
-        AppState::new(archive, sources, !args.insecure_cookies)
-    };
-    let app = router(Arc::new(state));
-    let listener = tokio::net::TcpListener::bind(args.bind).await?;
-    axum::serve(listener, app)
+    axum::serve(listener, router(engine, settings))
         .with_graceful_shutdown(shutdown_signal())
         .await?;
-
     Ok(())
 }
 
 async fn shutdown_signal() {
-    use tokio::signal::unix::{SignalKind, signal};
-
-    let mut interrupt = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
     let mut terminate = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
     tokio::select! {
-        _ = interrupt.recv() => {},
-        _ = terminate.recv() => {},
+        _ = tokio::signal::ctrl_c() => {}
+        _ = terminate.recv() => {}
     }
 }

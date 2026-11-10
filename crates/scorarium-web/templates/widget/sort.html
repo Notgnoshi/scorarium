@@ -1,0 +1,15 @@
+{% macro header(sort, column, label) %}
+    <th class="text-body-secondary fw-normal">
+        <a class="{% if sort.column == column %}link-body-emphasis{% else %}link-secondary{% endif %} text-decoration-none"
+           href="{{ sort.href(*column) }}">
+            {{ label }}
+            {% if sort.is(*column, false) %}
+                <i class="bi bi-caret-up-fill" title="Sorted ascending"></i>
+            {% else if sort.is(*column, true) %}
+                <i class="bi bi-caret-down-fill" title="Sorted descending"></i>
+            {% else %}
+                <i class="bi bi-chevron-expand opacity-50" title="Sort by this column"></i>
+            {% endif %}
+        </a>
+    </th>
+{% endmacro %}

@@ -1,0 +1,45 @@
+<fieldset class="box">
+    <legend>Contributors</legend>
+    {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+    {% if !contributors.is_empty() %}
+        <table class="table">
+            <tbody>
+                {% for contributor in contributors %}
+                    <tr>
+                        <td>{{ contributor.name }}</td>
+                        <td>{{ contributor.role }}</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-link"
+                               href="/library/{{ library }}/person/{{ contributor.person }}/edit?back={{ back|urlencode }}"
+                               title="Edit person">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form class="d-inline" hx-post="{{ api }}/contributor/remove" hx-target="#contributors">
+                                <input type="hidden" name="person" value="{{ contributor.person }}">
+                                <input type="hidden" name="role" value="{{ contributor.role }}">
+                                <button class="btn btn-sm btn-link" title="Remove contributor">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+    <form class="row g-2" hx-post="{{ api }}/contributor/add" hx-target="#contributors">
+        <div class="col position-relative"
+             data-pick-icon="person"
+             data-existing="bi-person-check"
+             data-new="bi-person-plus">
+            {{ self.person() }}
+            <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+        </div>
+        <div class="col">{{ self.role() }}</div>
+        <div class="col-auto">
+            <button class="btn btn-outline-secondary" title="Add contributor">
+                <i class="bi bi-plus-lg"></i> Add
+            </button>
+        </div>
+    </form>
+</fieldset>

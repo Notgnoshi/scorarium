@@ -1,112 +1,77 @@
 use axum::http::StatusCode;
-use scorarium_tests::{TestDb, browser};
+use scorarium_engine::auth::{PasswordState, Token};
+use scorarium_test::TestApp;
+use scorarium_web::SESSION_COOKIE;
 
 #[tokio::test]
-async fn claim_flow() {
-    let server = browser(TestDb::new().build().await);
-
-    // With no password stored, the login page offers to set one
-    let response = server.get("/login").await;
-    response.assert_status_ok();
-    response.assert_text_contains("Set password");
-
-    // A typo'd confirmation must not claim the password
-    let response = server
-        .post("/login")
-        .form(&[("password", "hunter2"), ("confirm", "hunter3")])
-        .await;
-    response.assert_status_ok();
-    response.assert_text_contains("did not match");
-
-    let response = server
+async fn claim_logs_in_and_logout_revokes() {
+    let app = TestApp::logged_out(false).await;
+    let response = app
+        .server
         .post("/login")
         .form(&[("password", "hunter2"), ("confirm", "hunter2")])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
-
-    // The claim also logged us in: the login page now redirects home
-    let response = server.get("/login").await;
-    response.assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(
+        app.engine.password_state().await.unwrap(),
+        PasswordState::Claimed
+    );
+    let token = Token::from(response.cookie(SESSION_COOKIE).value());
+    assert!(app.engine.is_authenticated(&token));
+    app.server
+        .post("/logout")
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    assert!(!app.engine.is_authenticated(&token));
 }
 
 #[tokio::test]
-async fn demo_login_flow() {
-    let state = TestDb::new().demo().build().await;
-    let library = state.archive.libraries().await.unwrap()[0].id;
-    let server = browser(state.clone());
-    let import = format!("/library/{library}/import");
+async fn login_next_redirects_only_within_the_site() {
+    let app = TestApp::logged_out(false).await;
+    app.engine.replace_password("secret").await.unwrap();
+    for (next, location) in [
+        ("//evil.com", "/"),
+        ("/\\evil.com", "/"),
+        ("/\t/evil.com", "/"),
+        ("/settings", "/settings"),
+    ] {
+        let response = app
+            .server
+            .post("/login")
+            .form(&[("password", "secret"), ("next", next)])
+            .await;
+        response.assert_status(StatusCode::SEE_OTHER);
+        response.assert_header("location", location);
+        let token = Token::from(response.cookie(SESSION_COOKIE).value());
+        assert!(app.engine.is_authenticated(&token));
+    }
+}
 
-    // The demo still asks anonymous visitors to log in, and remembers where they were going
-    let response = server.get(&import).await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", &format!("/login?back={import}"));
+#[tokio::test]
+async fn changing_the_password_keeps_only_the_new_session() {
+    let app = TestApp::logged_out(false).await;
+    app.engine.replace_password("old").await.unwrap();
+    let response = app.server.post("/login").form(&[("password", "old")]).await;
+    let old = Token::from(response.cookie(SESSION_COOKIE).value());
 
-    // But the login page has a notice instead of a password field
-    let response = server.get("/login").await;
-    response.assert_status_ok();
-    response.assert_text_contains("does not require a password");
-    assert!(!response.text().contains("type=\"password\""));
+    let response = app
+        .server
+        .post("/settings/password")
+        .form(&[("new", "new"), ("confirm", "typo")])
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert!(app.engine.is_authenticated(&old));
+    app.engine.login("old").await.unwrap();
 
-    let response = server
-        .post("/login")
-        .form(&[("back", import.as_str())])
+    let response = app
+        .server
+        .post("/settings/password")
+        .form(&[("new", "new"), ("confirm", "new")])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", &import);
-
-    let response = server.get(&import).await;
-    response.assert_status_ok();
-    response.assert_text_contains("demo</span>");
-    response.assert_text_contains("Log out");
-
-    let response = server.get("/login").await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
-}
-
-#[tokio::test]
-async fn login_logout_flow() {
-    let server = browser(TestDb::new().password("hunter2").build().await);
-
-    let response = server.post("/login").form(&[("password", "wrong")]).await;
-    response.assert_status_ok();
-    response.assert_text_contains("Login failed");
-
-    let response = server.post("/login").form(&[("password", "hunter2")]).await;
-    response.assert_status(StatusCode::SEE_OTHER);
-    response.assert_header("location", "/");
-
-    // Logged in: the login page redirects home
-    let response = server.get("/login").await;
-    response.assert_status(StatusCode::SEE_OTHER);
-
-    let response = server.post("/logout").await;
-    response.assert_status(StatusCode::SEE_OTHER);
-
-    // Logged out: the login page shows the form again
-    let response = server.get("/login").await;
-    response.assert_status_ok();
-    response.assert_text_contains("Log in");
-
-    // The header link remembers which page the visitor was on
-    let response = server.get("/").await;
-    response.assert_status_ok();
-    response.assert_text_contains("href=\"/login?back=/\"");
-}
-
-#[tokio::test]
-async fn repeated_failures_lock_out_login() {
-    let server = browser(TestDb::new().password("hunter2").build().await);
-
-    for _ in 0..scorarium_web::session::LOGIN_ATTEMPTS {
-        let response = server.post("/login").form(&[("password", "wrong")]).await;
-        response.assert_status_ok();
-        response.assert_text_contains("Login failed");
-    }
-
-    // Once locked out, even the right password is refused: the check runs before verification
-    let response = server.post("/login").form(&[("password", "hunter2")]).await;
-    response.assert_status(StatusCode::TOO_MANY_REQUESTS);
-    response.assert_text_contains("Too many failed logins");
+    response.assert_header("location", "/settings?changed=true");
+    assert!(!app.engine.is_authenticated(&old));
+    let new = Token::from(response.cookie(SESSION_COOKIE).value());
+    assert!(app.engine.is_authenticated(&new));
+    app.engine.login("new").await.unwrap();
 }

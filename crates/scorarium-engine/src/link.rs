@@ -96,6 +96,32 @@ pub enum LinkKind {
     InternetArchive,
     Gutenberg,
     Librivox,
+    Wikipedia,
+}
+
+impl LinkKind {
+    /// Get the site name
+    pub fn name(self) -> &'static str {
+        match self {
+            LinkKind::OpenLibrary => "Open Library",
+            LinkKind::Wikidata => "Wikidata",
+            LinkKind::MusicBrainz => "MusicBrainz",
+            LinkKind::Imslp => "IMSLP",
+            LinkKind::Viaf => "VIAF",
+            LinkKind::Gnd => "GND",
+            LinkKind::Isni => "ISNI",
+            LinkKind::Loc => "Library of Congress",
+            LinkKind::K10plus => "K10plus",
+            LinkKind::Dnb => "DNB",
+            LinkKind::Harvard => "Harvard Library",
+            LinkKind::Goodreads => "Goodreads",
+            LinkKind::LibraryThing => "LibraryThing",
+            LinkKind::InternetArchive => "Internet Archive",
+            LinkKind::Gutenberg => "Project Gutenberg",
+            LinkKind::Librivox => "LibriVox",
+            LinkKind::Wikipedia => "Wikipedia",
+        }
+    }
 }
 
 impl fmt::Display for LinkKind {
@@ -117,6 +143,7 @@ impl fmt::Display for LinkKind {
             LinkKind::InternetArchive => "internetarchive",
             LinkKind::Gutenberg => "gutenberg",
             LinkKind::Librivox => "librivox",
+            LinkKind::Wikipedia => "wikipedia",
         })
     }
 }
@@ -142,6 +169,7 @@ impl FromStr for LinkKind {
             "internetarchive" => LinkKind::InternetArchive,
             "gutenberg" => LinkKind::Gutenberg,
             "librivox" => LinkKind::Librivox,
+            "wikipedia" => LinkKind::Wikipedia,
             other => return Err(eyre::eyre!("unknown link kind {other:?}").into()),
         })
     }
@@ -208,6 +236,10 @@ impl ExternalRecord {
                 (LinkKind::Gutenberg, gutenberg(entity, &segments)?)
             }
             "librivox.org" if entity == Person => (LinkKind::Librivox, librivox(&segments)?),
+            host if wikipedia_language(host).is_some() => (
+                LinkKind::Wikipedia,
+                wikipedia(wikipedia_language(host)?, url)?,
+            ),
             _ => return None,
         };
         Some(ExternalRecord::new(kind, id))
@@ -270,6 +302,12 @@ impl ExternalRecord {
                 format!("https://www.gutenberg.org/ebooks/author/{id}")
             }
             (LinkKind::Librivox, Person) => format!("https://librivox.org/author/{id}"),
+            (LinkKind::Wikipedia, _) => {
+                let (lang, title) = id.split_once(':')?;
+                let mut url = Url::parse(&format!("https://{lang}.wikipedia.org/wiki")).ok()?;
+                url.path_segments_mut().ok()?.push(title);
+                return HttpUrl::try_from(url).ok();
+            }
             _ => return None,
         };
         Url::parse(&url).ok()?.try_into().ok()
@@ -294,6 +332,17 @@ impl Link {
             url: url.parse()?,
             record,
         })
+    }
+
+    /// Get the site name for this link
+    pub fn site_name(&self) -> &str {
+        match &self.record {
+            Some(record) => record.kind().name(),
+            None => {
+                let host = self.url.as_url().host_str().unwrap_or("");
+                host.strip_prefix("www.").unwrap_or(host)
+            }
+        }
     }
 }
 
@@ -368,6 +417,53 @@ fn imslp(entity: EntityKind, url: &Url) -> Option<String> {
         None => (EntityKind::Work, title.as_str()),
     };
     (namespace == entity && !title.is_empty()).then(|| title.to_string())
+}
+
+/// Extract the language from a Wikipedia host such as "de.m.wikipedia.org"
+fn wikipedia_language(host: &str) -> Option<&str> {
+    let lang = host
+        .strip_suffix(".m.wikipedia.org")
+        .or_else(|| host.strip_suffix(".wikipedia.org"))?;
+    let well_formed = !lang.is_empty() && lang.bytes().all(|b| b.is_ascii_lowercase() || b == b'-');
+    well_formed.then_some(lang)
+}
+
+/// Parse a Wikipedia article URL into "{lang}:{title}"
+fn wikipedia(lang: &str, url: &Url) -> Option<String> {
+    // Non-article namespaces. Article titles may contain a colon, so a colon alone is not enough.
+    const NAMESPACES: [&str; 10] = [
+        "Special",
+        "File",
+        "Category",
+        "Talk",
+        "Template",
+        "Wikipedia",
+        "Help",
+        "Portal",
+        "User",
+        "Draft",
+    ];
+    let title = match url.path() {
+        "/w/index.php" => url
+            .query_pairs()
+            .find(|(key, _)| key == "title")?
+            .1
+            .into_owned(),
+        path => percent_decode_str(path.strip_prefix("/wiki/")?)
+            .decode_utf8()
+            .ok()?
+            .into_owned(),
+    };
+    let title = title.replace(' ', "_");
+    if title.is_empty() {
+        return None;
+    }
+    if let Some((namespace, _)) = title.split_once(':')
+        && NAMESPACES.contains(&namespace)
+    {
+        return None;
+    }
+    Some(format!("{lang}:{title}"))
 }
 
 /// https://www.wikidata.org/wiki/Property:P214
@@ -567,6 +663,20 @@ mod tests {
     }
 
     #[test]
+    fn site_name_prefers_the_recognized_site_and_strips_www() {
+        let imslp = Link::new(
+            1,
+            "https://imslp.org/wiki/Category:Bach,_Johann_Sebastian",
+            "imslp",
+            Some("Bach,_Johann_Sebastian".to_owned()),
+        )
+        .unwrap();
+        let other = Link::new(2, "https://www.example.com/page", "", None).unwrap();
+        assert_eq!(imslp.site_name(), "IMSLP");
+        assert_eq!(other.site_name(), "example.com");
+    }
+
+    #[test]
     fn urls_resolve_to_records() {
         use EntityKind::*;
         let openlibrary_id = |id: &'static str| Some((LinkKind::OpenLibrary, id));
@@ -585,6 +695,7 @@ mod tests {
         let internetarchive_id = |id: &'static str| Some((LinkKind::InternetArchive, id));
         let gutenberg_id = |id: &'static str| Some((LinkKind::Gutenberg, id));
         let librivox_id = |id: &'static str| Some((LinkKind::Librivox, id));
+        let wikipedia_id = |id: &'static str| Some((LinkKind::Wikipedia, id));
         let cases = &[
             (
                 Publication,
@@ -648,7 +759,22 @@ mod tests {
             (Person, "https://www.wikidata.org/wiki/Q42/", None),
             (Person, "https://www.wikidata.org/wiki/Property:P31", None),
             (Person, "https://wikidata.org/wiki/Q42", None),
-            (Person, "https://en.wikipedia.org/wiki/Douglas_Adams", None),
+            (
+                Person,
+                "https://en.wikipedia.org/wiki/Douglas_Adams",
+                wikipedia_id("en:Douglas_Adams"),
+            ),
+            (
+                Person,
+                "https://de.m.wikipedia.org/wiki/Douglas_Adams#Leben",
+                wikipedia_id("de:Douglas_Adams"),
+            ),
+            (
+                Work,
+                "https://en.wikipedia.org/w/index.php?title=Douglas+Adams&oldid=1",
+                wikipedia_id("en:Douglas_Adams"),
+            ),
+            (Person, "https://en.wikipedia.org/wiki/Special:Random", None),
             (
                 Person,
                 "https://musicbrainz.org/artist/1f9df192-a621-4f98-8bb4-38c0e9b3f9d4",
