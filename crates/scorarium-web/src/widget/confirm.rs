@@ -16,6 +16,12 @@ pub(crate) struct Confirm {
     pub action: &'static str,
     /// The URL that confirming posts to
     pub url: String,
+    /// The element that the answer is swapped into, as a CSS selector
+    ///
+    /// Confirming is a full-page post with `None`.
+    pub target: Option<String>,
+    /// The hidden fields that confirming posts
+    pub fields: Vec<(&'static str, String)>,
 }
 
 impl askama::filters::HtmlSafe for Confirm {}

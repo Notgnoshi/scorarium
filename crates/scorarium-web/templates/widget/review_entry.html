@@ -24,6 +24,22 @@
             <time datetime="{{ entry.queued_at.to_rfc3339() }}"
                   title="{{ entry.queued_at.format("%Y-%m-%d %H:%M:%S") }}">{{ entry.age() }}</time>
         </td>
+        <td class="text-end text-nowrap">
+            <form hx-post="/api/review/{{ entry.id.kind() }}/{{ entry.id.get() }}/discard"
+                  hx-target="#review-queue-dialog">
+                {% if entry.draft %}
+                    <button class="btn btn-sm btn-outline-danger py-0" type="submit" title="Discard draft">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                {% else %}
+                    <button class="btn btn-sm btn-outline-secondary py-0"
+                            type="submit"
+                            title="{% if entry.proposals > 0 %}Reject all proposals{% else %}Dismiss{% endif %}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                {% endif %}
+            </form>
+        </td>
     </tr>
 {% endmacro %}
 {% call draw(self, false) %}

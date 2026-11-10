@@ -1,4 +1,5 @@
 <div id="review-queue">
+    <div id="review-queue-dialog" data-dialog-slot></div>
     <h1>
         Review queue
         {% if !entries.is_empty() %}<span class="badge text-bg-secondary fs-6 align-middle">{{ count }}</span>{% endif %}
@@ -14,6 +15,7 @@
                     <th>Enrichment</th>
                     <th class="text-end">Proposals</th>
                     <th class="text-end">Age</th>
+                    <th><span class="visually-hidden">Discard</span></th>
                 </tr>
             </thead>
             <tbody class="table-group-divider">

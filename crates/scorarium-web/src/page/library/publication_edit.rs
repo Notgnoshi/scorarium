@@ -250,6 +250,8 @@ async fn render(
                     library.id(),
                     publication.id()
                 ),
+                target: None,
+                fields: vec![],
             },
         },
         library: library.id(),

@@ -121,6 +121,8 @@ async fn render(
                     "Delete person"
                 },
                 url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
+                target: None,
+                fields: vec![],
             },
         },
         library: library.id(),

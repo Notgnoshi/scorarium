@@ -6,11 +6,19 @@ use scorarium_engine::enrich::Enrichment;
 use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
+use scorarium_engine::review::ReviewItem;
 use scorarium_engine::work::Work;
+use serde::Deserialize;
 
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
+use crate::widget::confirm::{Confirm, count};
 use crate::widget::review_queue::ReviewQueue;
+
+#[derive(Deserialize)]
+pub struct DiscardForm {
+    confirmed: Option<String>,
+}
 
 pub async fn cancel(
     _session: ApiSession,
@@ -37,6 +45,129 @@ pub async fn retry(
         None => {}
     }
     queue(&engine).await
+}
+
+/// Ask before discarding an entry, then discard it
+pub async fn discard(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Path((kind, entity)): Path<(String, String)>,
+    axum::Form(form): axum::Form<DiscardForm>,
+) -> Result<Response> {
+    let Some(entity) = load(&engine, &kind, &entity).await? else {
+        return queue(&engine).await;
+    };
+    let Some(item) = (match &entity {
+        AnyEntity::Publication(publication) => publication.review_item().await?,
+        AnyEntity::Work(work) => work.review_item().await?,
+        AnyEntity::Person(person) => person.review_item().await?,
+    }) else {
+        return queue(&engine).await;
+    };
+
+    let case = if is_draft(&item.entity) {
+        "draft"
+    } else if item.proposals > 0 {
+        "proposals"
+    } else {
+        // Only the task keeps this entry in the queue, so there is nothing to confirm.
+        return finish(&engine, item).await;
+    };
+    if form.confirmed.as_deref() == Some(case) {
+        return finish(&engine, item).await;
+    }
+    let dialog = dialog(&item, case).await?;
+    Ok(Html(dialog.to_string()).into_response())
+}
+
+async fn finish(engine: &Engine, item: ReviewItem) -> Result<Response> {
+    match item.discard().await {
+        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine).await,
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn is_draft(entity: &AnyEntity) -> bool {
+    match entity {
+        AnyEntity::Publication(publication) => publication.is_draft(),
+        AnyEntity::Work(work) => work.is_draft(),
+        AnyEntity::Person(person) => person.is_draft(),
+    }
+}
+
+async fn dialog(item: &ReviewItem, case: &'static str) -> Result<Confirm> {
+    let subject = match &item.entity {
+        AnyEntity::Publication(publication) => untitled(publication),
+        AnyEntity::Work(work) => work.title(),
+        AnyEntity::Person(person) => person.name(),
+    };
+    let (title, message, also_deleted, action) = if case == "draft" {
+        let mut also_deleted = Vec::new();
+        let message = match &item.entity {
+            AnyEntity::Publication(_) => {
+                also_deleted = vec![
+                    "its digital files".to_owned(),
+                    "orphaned works".to_owned(),
+                    "orphaned people".to_owned(),
+                ];
+                format!("Discarding {subject} also deletes:")
+            }
+            AnyEntity::Work(work) => {
+                let publications = work.publications().await?;
+                let titles = publications.iter().map(untitled);
+                join(titles).map_or_else(String::new, |t| format!("It is removed from {t}"))
+            }
+            AnyEntity::Person(person) => {
+                let works = person.works().await?;
+                let publications = person.publications().await?;
+                let titles = works
+                    .iter()
+                    .map(Work::title)
+                    .chain(publications.iter().map(untitled));
+                join(titles).map_or_else(String::new, |t| format!("They are removed from {t}"))
+            }
+        };
+        (
+            format!("Discard {subject}?"),
+            message,
+            also_deleted,
+            "Discard draft",
+        )
+    } else {
+        (
+            "Reject all proposals?".to_owned(),
+            format!(
+                "This rejects {} for {subject}",
+                count(item.proposals, "edit proposal")
+            ),
+            vec![],
+            "Reject proposals",
+        )
+    };
+    Ok(Confirm {
+        id: "review-discard".to_owned(),
+        title,
+        message,
+        also_deleted,
+        action,
+        url: format!(
+            "/api/review/{}/{}/discard",
+            item.entity.id().kind(),
+            item.entity.id().get()
+        ),
+        target: Some("#review-queue-dialog".to_owned()),
+        fields: vec![("confirmed", case.to_owned())],
+    })
+}
+
+fn untitled(publication: &Publication) -> &str {
+    publication.title().unwrap_or("Untitled")
+}
+
+/// Join titles for a sentence, or return `None` when there are none
+fn join<'a>(titles: impl Iterator<Item = &'a str>) -> Option<String> {
+    let titles: Vec<&str> = titles.collect();
+    (!titles.is_empty()).then(|| titles.join(", "))
 }
 
 /// Return the review queue widget fragment as a response

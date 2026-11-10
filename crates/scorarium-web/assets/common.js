@@ -15,6 +15,12 @@ document.addEventListener("click", (event) => {
     }
 });
 
+document.addEventListener("htmx:after:settle", (event) => {
+    if (event.target.matches("[data-dialog-slot]")) {
+        event.target.querySelector("dialog")?.showModal();
+    }
+});
+
 // Focus the navbar search box on "/", unless the slash is being typed into something editable.
 document.addEventListener("keydown", (event) => {
     if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {

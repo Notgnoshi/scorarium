@@ -166,6 +166,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 )
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
                 .route("/review/{kind}/{entity}/retry", post(api::review::retry))
+                .route(
+                    "/review/{kind}/{entity}/discard",
+                    post(api::review::discard),
+                )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )

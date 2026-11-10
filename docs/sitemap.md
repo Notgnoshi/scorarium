@@ -12,6 +12,7 @@
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |
 | `/api/review/{kind}/{entity}/cancel`                             | POST   | Cancel enrichment                |
+| `/api/review/{kind}/{entity}/discard`                            | POST   | Confirm, then discard            |
 | `/api/review/{kind}/{entity}/retry`                              | POST   | Retry enrichment                 |
 | `/api/search`                                                    | GET    | Search suggestions               |
 | `/api/stage/{staged}/discard`                                    | POST   | Discard a staged file            |
