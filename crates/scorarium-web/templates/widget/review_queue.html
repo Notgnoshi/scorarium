@@ -1,10 +1,15 @@
 {% import "widget/sort.html" as sort %}
-<div id="review-queue">
+<div id="review-queue" data-size="full">
     <div id="review-queue-dialog" data-dialog-slot></div>
-    <h1>
-        Review queue
-        {% if !entries.is_empty() %}<span class="badge text-bg-secondary fs-6 align-middle">{{ count }}</span>{% endif %}
-    </h1>
+    <div class="d-flex align-items-center justify-content-between">
+        <h1>
+            Review queue
+            {% if !entries.is_empty() %}<span class="badge text-bg-secondary fs-6 align-middle">{{ count }}</span>{% endif %}
+        </h1>
+        {% if self.has_nested() %}
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-collapse-all>Collapse all</button>
+        {% endif %}
+    </div>
     {% if entries.is_empty() %}
         <p>Nothing to review</p>
     {% else %}
@@ -24,9 +29,7 @@
                     <th><span class="visually-hidden">Discard</span></th>
                 </tr>
             </thead>
-            <tbody class="table-group-divider">
-                {% for entry in entries %}{{ entry }}{% endfor %}
-            </tbody>
+            {% for entry in entries %}{{ entry }}{% endfor %}
         </table>
     {% endif %}
 </div>

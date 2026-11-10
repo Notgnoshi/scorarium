@@ -72,6 +72,11 @@ pub(crate) fn query(sort: &Sort) -> String {
 }
 
 impl ReviewQueue {
+    /// Report whether any top-level entry has nested entries that can be collapsed
+    fn has_nested(&self) -> bool {
+        self.entries.iter().any(|entry| !entry.nested.is_empty())
+    }
+
     /// Read the review queue, arrange it, and sort its top-level entries
     pub async fn new(engine: &Engine, sort: Sort) -> Result<ReviewQueue> {
         let count = engine.review_count().await?;
@@ -195,6 +200,35 @@ impl ReviewEntry {
     /// Count the entry's own proposals and those of its nested entries
     fn all_proposals(&self) -> usize {
         self.proposals + self.nested.iter().map(|n| n.proposals).sum::<usize>()
+    }
+
+    /// Summarize the nested entries that a collapsed entry hides, such as "30 draft works, 5
+    /// draft people"
+    fn hidden(&self) -> String {
+        let works = self
+            .nested
+            .iter()
+            .filter(|n| matches!(n.id, AnyEntityId::Work(_)))
+            .count();
+        let people = self
+            .nested
+            .iter()
+            .filter(|n| matches!(n.id, AnyEntityId::Person(_)))
+            .count();
+        let mut parts = Vec::new();
+        if works > 0 {
+            parts.push(format!(
+                "{works} draft {}",
+                if works == 1 { "work" } else { "works" }
+            ));
+        }
+        if people > 0 {
+            parts.push(format!(
+                "{people} draft {}",
+                if people == 1 { "person" } else { "people" }
+            ));
+        }
+        parts.join(", ")
     }
 
     fn kind_label(&self) -> &'static str {

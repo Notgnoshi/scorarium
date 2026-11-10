@@ -196,3 +196,9 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
 .holdings-add:not(:has([name="kind"][value="digital"]:checked)) > [data-file-input] {
     display: none;
 }
+
+#review-queue tbody[data-collapsed] > tr:not(:first-child),
+#review-queue tbody:not([data-collapsed]) [data-when="collapsed"],
+#review-queue tbody[data-collapsed] [data-when="expanded"] {
+    display: none;
+}

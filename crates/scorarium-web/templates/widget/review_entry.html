@@ -2,12 +2,25 @@
     <tr>
         <td {% if indented %}class="ps-5"{% endif %}>
             <div class="d-flex align-items-center gap-2">
+                {% if !indented && !entry.nested.is_empty() %}
+                    <button class="btn btn-sm btn-link text-body p-0" type="button" data-toggle-entry>
+                        <i class="bi bi-chevron-down" data-when="expanded" title="Collapse"></i>
+                        <i class="bi bi-chevron-right" data-when="collapsed" title="Expand"></i>
+                    </button>
+                {% else if !indented %}
+                    {# An invisible toggle keeps every top-level thumbnail at the same edge. #}
+                    <span class="btn btn-sm btn-link p-0 invisible"
+                          aria-hidden="true"><i class="bi bi-chevron-down"></i></span>
+                {% endif %}
                 <span title="{{ entry.kind_label() }}">{{ entry.hit.picture }}</span>
                 <div>
                     <a href="{{ entry.hit.href }}">{{ entry.hit.title }}</a>
                     {% if entry.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
                     {% if let Some(detail) = entry.hit.detail %}
                         <div class="small text-body-secondary">{{ detail }}</div>
+                    {% endif %}
+                    {% if !indented && !entry.nested.is_empty() %}
+                        <div class="small text-body-secondary" data-when="collapsed">{{ entry.hidden() }}</div>
                     {% endif %}
                 </div>
             </div>
@@ -19,7 +32,14 @@
             {% endif %}
         </td>
         <td class="text-nowrap">{{ entry.enrichment }}</td>
-        <td class="text-end">{% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}</td>
+        <td class="text-end">
+            {% if !indented && !entry.nested.is_empty() %}
+                <span data-when="expanded">{% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}</span>
+                <span data-when="collapsed">{% if entry.all_proposals() > 0 %}{{ entry.all_proposals() }}{% endif %}</span>
+            {% else %}
+                {% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}
+            {% endif %}
+        </td>
         <td class="text-end text-nowrap">
             <time datetime="{{ entry.queued_at.to_rfc3339() }}"
                   title="{{ entry.queued_at.format("%Y-%m-%d %H:%M:%S") }}">{{ entry.age() }}</time>
@@ -42,9 +62,11 @@
         </td>
     </tr>
 {% endmacro %}
-{% call draw(self, false) %}
-{% endcall %}
-{% for child in nested %}
-    {% call draw(child, true) %}
+<tbody class="table-group-divider" data-entry="{{ id.kind() }}/{{ id.get() }}">
+    {% call draw(self, false) %}
     {% endcall %}
-{% endfor %}
+    {% for child in nested %}
+        {% call draw(child, true) %}
+        {% endcall %}
+    {% endfor %}
+</tbody>
