@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Import a publication</h1>
+    <form method="post" action="/library/{{ library }}/import">
+        <fieldset class="box">
+            <legend>Publication</legend>
+            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <label class="form-label" for="text">ISBN, ISMN, or title</label>
+            <input class="form-control"
+                   type="text"
+                   id="text"
+                   name="text"
+                   value="{{ text }}"
+                   placeholder="978-0-486-25978-9"
+                   required
+                   autofocus>
+        </fieldset>
+        {{ holdings }}
+        <div class="d-flex justify-content-end mb-4">
+            <button class="btn btn-primary" type="submit" title="Import a draft publication">Import</button>
+        </div>
+    </form>
+{% endblock %}

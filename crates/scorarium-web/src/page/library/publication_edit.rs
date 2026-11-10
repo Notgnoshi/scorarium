@@ -6,7 +6,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
-use scorarium_engine::holding::{HoldingId, NewHolding};
+use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -373,13 +373,7 @@ async fn save(
     // Additions run before removals so that the publication never passes through having no
     // holdings.
     for holding in &added {
-        let holding = match holding {
-            AddedHolding::Physical { location } => NewHolding::Physical {
-                location: Some(location),
-            },
-            AddedHolding::Digital(id) => NewHolding::Digital(AssetSource::Staged(id.clone())),
-        };
-        publication.add_holding(holding).await?;
+        publication.add_holding(holding.as_new()).await?;
     }
     for (id, location) in locations {
         if publication.holdings().iter().any(|h| h.id == id) {

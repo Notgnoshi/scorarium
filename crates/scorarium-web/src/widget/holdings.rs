@@ -1,8 +1,8 @@
 use askama::Template;
 use scorarium_engine::Engine;
-use scorarium_engine::asset::{StagedAsset, StagedId};
+use scorarium_engine::asset::{AssetSource, StagedAsset, StagedId};
 use scorarium_engine::entity::Entity;
-use scorarium_engine::holding::{Holding, HoldingId, HoldingKind};
+use scorarium_engine::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::Publication;
 use serde::Deserialize;
@@ -42,6 +42,18 @@ enum HoldingEntry {
 }
 
 impl Holdings {
+    /// Draw an empty box, for a publication that does not exist yet
+    pub fn empty(library: LibraryId, files_allowed: bool) -> Holdings {
+        Holdings {
+            library,
+            entries: vec![],
+            removed: vec![],
+            kind: AddKind::default(),
+            location: String::new(),
+            files_allowed,
+        }
+    }
+
     /// Draw the holdings of `publication`
     pub fn of(publication: &Publication, files_allowed: bool) -> Holdings {
         let entry = |holding: &Holding| match &holding.kind {
@@ -65,12 +77,8 @@ impl Holdings {
             },
         };
         Holdings {
-            library: publication.library(),
             entries: publication.holdings().iter().map(entry).collect(),
-            removed: vec![],
-            kind: AddKind::default(),
-            location: String::new(),
-            files_allowed,
+            ..Holdings::empty(publication.library(), files_allowed)
         }
     }
 
@@ -167,7 +175,23 @@ pub(crate) enum AddedHolding {
     Digital(StagedId),
 }
 
+impl AddedHolding {
+    pub fn as_new(&self) -> NewHolding<'_> {
+        match self {
+            AddedHolding::Physical { location } => NewHolding::Physical {
+                location: Some(location),
+            },
+            AddedHolding::Digital(id) => NewHolding::Digital(AssetSource::Staged(id.clone())),
+        }
+    }
+}
+
 impl HoldingsForm {
+    /// Return the toggle in the add bar
+    pub fn kind(&self) -> AddKind {
+        self.kind
+    }
+
     /// List the holdings that the form adds
     pub fn added(&self) -> Vec<AddedHolding> {
         let physical = |location: &String| AddedHolding::Physical {
