@@ -313,9 +313,9 @@ async fn import_commit_review_discard() {
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
          import 978-0-486-99999-9\n\
+         publication 8 add work 'Chapter 1'\n\
          publication 8 add contributor 'Grace Hopper' author\n\
-         publication 8 add contributor 'Ada Lovelace' editor\n\
-         publication 8 add work 'Chapter 1'\n",
+         publication 8 add contributor 'Ada Lovelace' editor\n",
     )
     .await;
     result.unwrap();
