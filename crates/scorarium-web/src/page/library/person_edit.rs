@@ -18,6 +18,7 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::confirm::{Confirm, count};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture_box::PictureBox;
@@ -59,11 +60,10 @@ struct Edit {
     picture: PictureBox,
     library: LibraryId,
     id: PersonId,
-    draft: bool,
+    heading: EditHeading,
     name: String,
     sort_name: String,
     links: LinksInput,
-    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -82,30 +82,42 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = person.is_draft();
     let page = Edit {
         picture: PictureBox::profile(person, files_allowed),
         base: Base::new(header, person.name(), parents),
+        heading: EditHeading {
+            title: person.name().to_owned(),
+            draft,
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", person.name())
+                } else {
+                    format!("Delete {}?", person.name())
+                },
+                message: format!(
+                    "They will be removed from {} and {}.",
+                    count(person.publications().await?.len(), "publication"),
+                    count(person.works().await?.len(), "work")
+                ),
+                also_deleted: vec![],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete person"
+                },
+                url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: person.id(),
-        draft: person.is_draft(),
         name: form.name,
         sort_name: form.sort_name,
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
-        },
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", person.name()),
-            message: format!(
-                "They are removed from {} and {}.",
-                count(person.publications().await?.len(), "publication"),
-                count(person.works().await?.len(), "work")
-            ),
-            also_deleted: vec![],
-            action: "Delete person",
-            url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
-            target: None,
-            fields: vec![],
         },
         destination: back
             .clone()

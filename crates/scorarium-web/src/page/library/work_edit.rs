@@ -20,6 +20,7 @@ use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
@@ -57,13 +58,12 @@ struct Edit {
     picture: Picture,
     library: LibraryId,
     id: WorkId,
-    draft: bool,
+    heading: EditHeading,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
-    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -162,12 +162,37 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = work.is_draft();
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
+        heading: EditHeading {
+            title: work.title().to_owned(),
+            draft,
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", work.title())
+                } else {
+                    format!("Delete {}?", work.title())
+                },
+                message: format!(
+                    "It is removed from {}.",
+                    count(work.publications().await?.len(), "publication")
+                ),
+                also_deleted: vec![],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete work"
+                },
+                url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: work.id(),
-        draft: work.is_draft(),
         form,
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
@@ -180,19 +205,6 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", work.title()),
-            message: format!(
-                "It is removed from {}.",
-                count(work.publications().await?.len(), "publication")
-            ),
-            also_deleted: vec![],
-            action: "Delete work",
-            url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
-            target: None,
-            fields: vec![],
-        },
         destination: back
             .clone()
             .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),

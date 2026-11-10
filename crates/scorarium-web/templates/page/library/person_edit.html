@@ -1,11 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1 class="d-flex justify-content-between align-items-center">
-        <span>
-            {{ base.title }}
-            {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-        </span>
-    </h1>
+    {{ heading }}
     <div class="row">
         <div class="col-12 col-md-auto">{{ picture }}</div>
         <div class="col-12 col-md">
@@ -45,8 +40,4 @@
             </form>
         </div>
     </div>
-    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete person">
-        <i class="bi bi-trash"></i> Delete
-    </button>
-    {{ delete }}
 {% endblock %}

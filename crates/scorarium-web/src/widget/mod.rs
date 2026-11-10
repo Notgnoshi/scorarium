@@ -5,6 +5,7 @@ pub mod classification_input;
 pub mod confirm;
 pub mod contents;
 pub mod contributors;
+pub mod edit_heading;
 pub mod file_input;
 pub mod header;
 pub mod holdings;

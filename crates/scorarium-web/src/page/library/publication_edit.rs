@@ -21,6 +21,7 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::holdings::Holdings;
 use crate::widget::identifiers_input::{self, IdentifiersInput};
@@ -60,7 +61,7 @@ struct Edit {
     picture: PictureBox,
     library: LibraryId,
     id: PublicationId,
-    draft: bool,
+    heading: EditHeading,
     form: Form,
     identifiers: IdentifiersInput,
     tags: TagsInput,
@@ -68,7 +69,6 @@ struct Edit {
     contributors: Contributors,
     holdings: Holdings,
     contents: Contents,
-    delete: Confirm,
     destination: String,
     error: Option<String>,
 }
@@ -169,12 +169,45 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = publication.is_draft();
     let page = Edit {
         picture: PictureBox::cover(publication, files_allowed),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
+        heading: EditHeading {
+            title: publication.title().unwrap_or("Untitled").to_owned(),
+            draft,
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", publication.title().unwrap_or("Untitled"))
+                } else {
+                    format!("Delete {}?", publication.title().unwrap_or("Untitled"))
+                },
+                message: format!(
+                    "Deleting {} also deletes:",
+                    publication.title().unwrap_or("Untitled")
+                ),
+                also_deleted: vec![
+                    "its digital assets".to_owned(),
+                    "orphaned works".to_owned(),
+                    "orphaned contributors".to_owned(),
+                ],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete publication"
+                },
+                url: format!(
+                    "/library/{}/publication/{}/delete",
+                    library.id(),
+                    publication.id()
+                ),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: publication.id(),
-        draft: publication.is_draft(),
         form,
         identifiers: IdentifiersInput {
             identifiers: publication.identifiers().to_vec(),
@@ -189,27 +222,6 @@ async fn render(
         contributors: Contributors::new(publication, None),
         holdings: Holdings::new(publication, files_allowed),
         contents: Contents::new(publication, &publication.works().await?),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", publication.title().unwrap_or("Untitled")),
-            message: format!(
-                "Deleting {} also deletes:",
-                publication.title().unwrap_or("Untitled")
-            ),
-            also_deleted: vec![
-                "its digital assets".to_owned(),
-                "orphaned works".to_owned(),
-                "orphaned contributors".to_owned(),
-            ],
-            action: "Delete publication",
-            url: format!(
-                "/library/{}/publication/{}/delete",
-                library.id(),
-                publication.id()
-            ),
-            target: None,
-            fields: vec![],
-        },
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
     };
