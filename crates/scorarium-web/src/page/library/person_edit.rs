@@ -168,6 +168,32 @@ pub async fn get(
     .await
 }
 
+/// Apply the submitted form to `person`
+async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
+    let sort_name = match form.sort_name.trim() {
+        "" => derive_sort_name(&form.name),
+        sort_name => sort_name.to_owned(),
+    };
+    person.rename(&form.name, &sort_name).await?;
+    // Removals run first so that removing a link and adding it back leaves it present.
+    for link in parsed.remove_links {
+        person.remove_link(link).await?;
+    }
+    for url in parsed.add_links {
+        person.add_link(url).await?;
+    }
+    // The picture is saved last, because the engine refuses a file that is not an image only as it
+    // stores the file, and by then the name and links that the person typed are already saved.
+    if !form.picture.is_empty() {
+        let Ok(id) = form.picture.parse();
+        person.set_profile(AssetSource::Staged(id)).await?;
+    } else if form.remove_picture.is_some() {
+        person.clear_profile().await?;
+    }
+    Ok(())
+}
+
 pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
@@ -178,79 +204,30 @@ pub async fn post(
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let back = same_site_path(query.back);
-    let files_allowed = settings.files_allowed(&engine);
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
+    match save(&mut person, &form).await {
+        Ok(()) => {
+            let destination =
+                back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
+            Ok(Redirect::to(&destination).into_response())
+        }
         Err(e) => {
             let error = form_error(e)?;
-            return render(
+            render(
                 &engine,
                 header,
                 &library,
                 &person,
                 form,
-                files_allowed,
+                settings.files_allowed(&engine),
                 back,
                 Some(error),
             )
-            .await;
+            .await
         }
-    };
-    let sort_name = match form.sort_name.trim() {
-        "" => derive_sort_name(&form.name),
-        sort_name => sort_name.to_owned(),
-    };
-    if let Err(e) = person.rename(&form.name, &sort_name).await {
-        let error = form_error(e)?;
-        return render(
-            &engine,
-            header,
-            &library,
-            &person,
-            form,
-            files_allowed,
-            back,
-            Some(error),
-        )
-        .await;
     }
-    // Removals run first so that removing a link and adding it back leaves it present.
-    for link in parsed.remove_links {
-        person.remove_link(link).await?;
-    }
-    for url in parsed.add_links {
-        person.add_link(url).await?;
-    }
-    // The picture is saved last, because the engine refuses a file that is not an image only as it
-    // stores the file, and by then the name and links that the person typed are already saved.
-    let picture = if !form.picture.is_empty() {
-        let Ok(id) = form.picture.parse();
-        person.set_profile(AssetSource::Staged(id)).await
-    } else if form.remove_picture.is_some() {
-        person.clear_profile().await
-    } else {
-        Ok(())
-    };
-    if let Err(e) = picture {
-        let error = form_error(e)?;
-        return render(
-            &engine,
-            header,
-            &library,
-            &person,
-            form,
-            files_allowed,
-            back,
-            Some(error),
-        )
-        .await;
-    }
-    let destination =
-        back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
-    Ok(Redirect::to(&destination).into_response())
 }
 
 pub async fn delete(

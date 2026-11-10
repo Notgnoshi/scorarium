@@ -249,30 +249,12 @@ pub async fn get(
     .await
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    header: Header,
-    Path((library, work)): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    let library = view::load(&engine, &library).await?;
-    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            return render(header, &library, &work, form, status, back, Some(error)).await;
-        }
-    };
+/// Apply the submitted form to `work`
+async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
     // The title is the only field here the engine can reject, so setting it first leaves the work
     // untouched when it is.
-    if let Err(e) = work.set_title(&form.title).await {
-        let (status, error) = form_error(e)?;
-        return render(header, &library, &work, form, status, back, Some(error)).await;
-    }
+    work.set_title(&form.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))
@@ -301,9 +283,31 @@ pub async fn post(
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
-    let destination =
-        back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-    Ok(Redirect::to(&destination).into_response())
+    Ok(())
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    header: Header,
+    Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+) -> Result<Response> {
+    let back = same_site_path(query.back);
+    let library = view::load(&engine, &library).await?;
+    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    match save(&mut work, &form).await {
+        Ok(()) => {
+            let destination =
+                back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+            Ok(Redirect::to(&destination).into_response())
+        }
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            render(header, &library, &work, form, status, back, Some(error)).await
+        }
+    }
 }
 
 pub async fn delete(

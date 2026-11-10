@@ -312,59 +312,20 @@ pub async fn get(
     .await
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path((library, publication)): Path<(String, String)>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
-) -> Result<Response> {
-    let library = view::load(&engine, &library).await?;
-    let mut publication: Publication =
-        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
-    let files_allowed = settings.files_allowed(&engine);
-    let prepared = parse(&form).and_then(|parsed| {
-        let added = holdings.added();
-        let locations = holdings.locations()?;
-        let removed = holdings.removed()?;
-        check_holdings(&engine, &publication, &added, &removed)?;
-        Ok((parsed, added, locations, removed))
-    });
-    let (parsed, added, locations, removed) = match prepared {
-        Ok(prepared) => prepared,
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            return render(
-                &engine,
-                header,
-                files_allowed,
-                &library,
-                &publication,
-                form,
-                &holdings,
-                status,
-                Some(error),
-            )
-            .await;
-        }
-    };
+/// Apply the submitted form to `publication`
+async fn save(
+    engine: &Engine,
+    publication: &mut Publication,
+    form: &Form,
+    holdings: &HoldingsForm,
+) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
+    let added = holdings.added();
+    let locations = holdings.locations()?;
+    let removed = holdings.removed()?;
+    check_holdings(engine, publication, &added, &removed)?;
     // The title is set first, so that a rejected title leaves the publication untouched.
-    if let Err(e) = publication.set_title(&form.title).await {
-        let (status, error) = form_error(e)?;
-        return render(
-            &engine,
-            header,
-            files_allowed,
-            &library,
-            &publication,
-            form,
-            &holdings,
-            status,
-            Some(error),
-        )
-        .await;
-    }
+    publication.set_title(&form.title).await?;
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;
     publication.set_stars(parsed.stars).await?;
@@ -394,28 +355,11 @@ pub async fn post(
     // The cover is saved after the other Details fields, because the engine refuses a file that is
     // not an image only as it stores the file, and by then the fields that the person typed are
     // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
-    let cover = if !form.picture.is_empty() {
+    if !form.picture.is_empty() {
         let Ok(id) = form.picture.parse();
-        publication.set_cover(AssetSource::Staged(id)).await
+        publication.set_cover(AssetSource::Staged(id)).await?;
     } else if form.remove_picture.is_some() {
-        publication.clear_cover().await
-    } else {
-        Ok(())
-    };
-    if let Err(e) = cover {
-        let (status, error) = form_error(e)?;
-        return render(
-            &engine,
-            header,
-            files_allowed,
-            &library,
-            &publication,
-            form,
-            &holdings,
-            status,
-            Some(error),
-        )
-        .await;
+        publication.clear_cover().await?;
     }
     // Additions run before removals so that the publication never passes through having no
     // holdings.
@@ -438,12 +382,43 @@ pub async fn post(
     for id in removed {
         publication.remove_holding(id).await?;
     }
-    Ok(Redirect::to(&format!(
-        "/library/{}/publication/{}",
-        library.id(),
-        publication.id()
-    ))
-    .into_response())
+    Ok(())
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path((library, publication)): Path<(String, String)>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut publication: Publication =
+        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    match save(&engine, &mut publication, &form, &holdings).await {
+        Ok(()) => Ok(Redirect::to(&format!(
+            "/library/{}/publication/{}",
+            library.id(),
+            publication.id()
+        ))
+        .into_response()),
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            render(
+                &engine,
+                header,
+                settings.files_allowed(&engine),
+                &library,
+                &publication,
+                form,
+                &holdings,
+                status,
+                Some(error),
+            )
+            .await
+        }
+    }
 }
 
 pub async fn delete(
