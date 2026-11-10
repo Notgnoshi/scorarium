@@ -92,6 +92,15 @@ pub enum AnyEntity {
 }
 
 impl AnyEntity {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        match self {
+            AnyEntity::Publication(publication) => publication.engine(),
+            AnyEntity::Work(work) => work.engine(),
+            AnyEntity::Person(person) => person.engine(),
+        }
+    }
+
     pub fn id(&self) -> AnyEntityId {
         match self {
             AnyEntity::Publication(publication) => AnyEntityId::Publication(publication.id()),

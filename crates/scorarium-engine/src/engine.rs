@@ -10,6 +10,7 @@ use sqlx::{ConnectOptions, Sqlite, SqlitePool};
 use tracing::instrument::WithSubscriber;
 use tracing::subscriber::NoSubscriber;
 
+use crate::asset::{Staged, StagedId};
 use crate::audit::Audited;
 use crate::auth::{LoginThrottle, SessionStore};
 use crate::enrich::Task;
@@ -72,6 +73,7 @@ struct EngineInner {
     client: Client,
     downloads: reqwest::Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
+    staged: Mutex<HashMap<StagedId, Staged>>,
     sessions: SessionStore,
     login_throttle: tokio::sync::Mutex<LoginThrottle>,
     demo: bool,
@@ -158,6 +160,7 @@ impl Engine {
                 client,
                 downloads,
                 enrichments: Mutex::default(),
+                staged: Mutex::default(),
                 sessions: SessionStore::default(),
                 login_throttle: tokio::sync::Mutex::default(),
                 demo,
@@ -196,6 +199,14 @@ impl Engine {
             .enrichments
             .lock()
             .expect("enrichment registry lock poisoned")
+    }
+
+    /// Get the files staged ahead of the call that uses them
+    pub(crate) fn staged_files(&self) -> MutexGuard<'_, HashMap<StagedId, Staged>> {
+        self.inner
+            .staged
+            .lock()
+            .expect("staged file registry lock poisoned")
     }
 
     pub(crate) fn sessions(&self) -> &SessionStore {

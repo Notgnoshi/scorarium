@@ -1,0 +1,14 @@
+<span class="d-flex align-items-center gap-2">
+    <span class="thumbnail d-inline-flex align-items-center justify-content-center flex-shrink-0 border rounded text-body-secondary fs-4">
+        {% if let Some(cover) = cover %}
+            <img src="{{ cover }}" alt="" loading="lazy">
+        {% else %}
+            <i class="bi bi-book" title="No cover"></i>
+        {% endif %}
+    </span>
+    <span class="d-flex flex-column">
+        <span>{{ title }}</span>
+        {% if !detail.is_empty() %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
+        <span class="small text-body-secondary">From {{ source }}</span>
+    </span>
+</span>

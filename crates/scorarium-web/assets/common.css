@@ -155,12 +155,50 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
     border-bottom-right-radius: 0;
 }
 
-.holding-add-toggle[aria-expanded="false"] .bi-dash-lg,
-.holding-add-toggle[aria-expanded="true"] .bi-plus-lg {
+/* Every entry and the add bar share the box's columns, the kind, the content, and the action, so
+   that they line up. */
+.holdings {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.holdings > [data-entries] {
+    display: contents;
+}
+
+.holdings > [data-entries] > *,
+.holdings > hr,
+.holdings-add {
+    grid-column: 1 / -1;
+}
+
+.holding,
+.holdings-add,
+.holdings-add-physical {
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+}
+
+/* The file input's hint hangs beneath its field, level with nothing beside it. */
+.holdings-add {
+    align-items: start;
+}
+
+.holdings-add-physical,
+.holdings-add > [data-file-input] {
+    grid-column: 2 / -1;
+}
+
+.holdings-add:has([name="kind"][value="digital"]:checked) > .holdings-add-physical,
+.holdings-add:not(:has([name="kind"][value="digital"]:checked)) > [data-file-input] {
     display: none;
 }
 
-#holding-add:has(#holding-add-kind-digital:checked) #holding-add-physical,
-#holding-add:not(:has(#holding-add-kind-digital:checked)) #holding-add-digital {
+#review-queue tbody[data-collapsed] > tr:not(:first-child),
+#review-queue tbody:not([data-collapsed]) [data-when="collapsed"],
+#review-queue tbody[data-collapsed] [data-when="expanded"] {
     display: none;
 }

@@ -4,6 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
+use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
@@ -18,9 +19,10 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::confirm::{Confirm, count};
+use crate::widget::edit_heading::{CommitAction, EditHeading};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
-use crate::widget::picture_box::PictureBox;
+use crate::widget::picture_input::PictureInput;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -30,6 +32,9 @@ pub(crate) struct Form {
     add_link: Vec<String>,
     #[serde(default)]
     remove_link: Vec<String>,
+    #[serde(default)]
+    picture: String,
+    remove_picture: Option<String>,
 }
 
 struct Parsed {
@@ -56,20 +61,21 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
     base: Base,
-    picture: PictureBox,
+    picture: PictureInput,
     library: LibraryId,
     id: PersonId,
-    draft: bool,
+    heading: EditHeading,
     name: String,
     sort_name: String,
     links: LinksInput,
-    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn render(
+    engine: &Engine,
     header: Header,
     library: &Library,
     person: &Person,
@@ -82,30 +88,49 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = person.is_draft();
     let page = Edit {
-        picture: PictureBox::profile(person, files_allowed),
+        picture: PictureInput::profile(person, files_allowed).resubmitted(
+            engine,
+            &form.picture,
+            form.remove_picture.is_some(),
+        ),
         base: Base::new(header, person.name(), parents),
+        heading: EditHeading {
+            title: person.name().to_owned(),
+            commit: draft.then(|| CommitAction {
+                url: format!("/library/{}/person/{}/commit", library.id(), person.id()),
+                tooltip: "Commit this draft person",
+            }),
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", person.name())
+                } else {
+                    format!("Delete {}?", person.name())
+                },
+                message: format!(
+                    "They will be removed from {} and {}.",
+                    count(person.publications().await?.len(), "publication"),
+                    count(person.works().await?.len(), "work")
+                ),
+                also_deleted: vec![],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete person"
+                },
+                url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: person.id(),
-        draft: person.is_draft(),
         name: form.name,
         sort_name: form.sort_name,
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
-        },
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", person.name()),
-            message: format!(
-                "They are removed from {} and {}.",
-                count(person.publications().await?.len(), "publication"),
-                count(person.works().await?.len(), "work")
-            ),
-            also_deleted: vec![],
-            action: "Delete person",
-            url: format!("/library/{}/person/{}/delete", library.id(), person.id()),
-            target: None,
-            fields: vec![],
         },
         destination: back
             .clone()
@@ -132,8 +157,11 @@ pub async fn get(
         sort_name: person.sort_name().to_owned(),
         add_link: vec![],
         remove_link: vec![],
+        picture: String::new(),
+        remove_picture: None,
     };
     render(
+        &engine,
         header,
         &library,
         &person,
@@ -145,53 +173,14 @@ pub async fn get(
     .await
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path((library, person)): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    let files_allowed = settings.files_allowed(&engine);
-    let library = view::load(&engine, &library).await?;
-    let mut person: Person =
-        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
-        Err(e) => {
-            let error = form_error(e)?;
-            return render(
-                header,
-                &library,
-                &person,
-                form,
-                files_allowed,
-                back,
-                Some(error),
-            )
-            .await;
-        }
-    };
+/// Apply the submitted form to `person`
+async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
     let sort_name = match form.sort_name.trim() {
         "" => derive_sort_name(&form.name),
         sort_name => sort_name.to_owned(),
     };
-    if let Err(e) = person.rename(&form.name, &sort_name).await {
-        let error = form_error(e)?;
-        return render(
-            header,
-            &library,
-            &person,
-            form,
-            files_allowed,
-            back,
-            Some(error),
-        )
-        .await;
-    }
+    person.rename(&form.name, &sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {
         person.remove_link(link).await?;
@@ -199,9 +188,85 @@ pub async fn post(
     for url in parsed.add_links {
         person.add_link(url).await?;
     }
-    let destination =
-        back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
-    Ok(Redirect::to(&destination).into_response())
+    // The picture is saved last, because the engine refuses a file that is not an image only as it
+    // stores the file, and by then the name and links that the person typed are already saved.
+    if !form.picture.is_empty() {
+        let Ok(id) = form.picture.parse();
+        person.set_profile(AssetSource::Staged(id)).await?;
+    } else if form.remove_picture.is_some() {
+        person.clear_profile().await?;
+    }
+    Ok(())
+}
+
+/// Save the form, commit the draft if asked, and answer
+///
+/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
+/// successful commit ignores `back`.
+async fn submit(
+    engine: Engine,
+    settings: Settings,
+    header: Header,
+    (library, person): (String, String),
+    back: Option<String>,
+    form: Form,
+    commit: bool,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut person: Person =
+        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    let saved = match save(&mut person, &form).await {
+        Ok(()) if commit => person.commit().await,
+        saved => saved,
+    };
+    match saved {
+        Ok(()) => {
+            let destination = back
+                .filter(|_| !commit)
+                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
+            Ok(Redirect::to(&destination).into_response())
+        }
+        Err(e) => {
+            let error = form_error(e)?;
+            render(
+                &engine,
+                header,
+                &library,
+                &person,
+                form,
+                settings.files_allowed(&engine),
+                back,
+                Some(error),
+            )
+            .await
+        }
+    }
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+) -> Result<Response> {
+    let back = same_site_path(query.back);
+    submit(engine, settings, header, path, back, form, false).await
+}
+
+pub async fn commit(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+) -> Result<Response> {
+    let back = same_site_path(query.back);
+    submit(engine, settings, header, path, back, form, true).await
 }
 
 pub async fn delete(

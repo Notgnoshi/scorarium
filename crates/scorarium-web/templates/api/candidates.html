@@ -1,0 +1,10 @@
+{% import "widget/suggestion.html" as suggestion %}
+{% for candidate in candidates %}
+    {% call suggestion::pick(candidate.record, candidate.title) %}
+        {{ candidate }}
+    {% endcall %}
+{% endfor %}
+{% if candidates.is_empty() %}
+    {% call suggestion::empty() %}
+    {% endcall %}
+{% endif %}

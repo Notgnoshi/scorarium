@@ -1,4 +1,5 @@
 use axum::http::StatusCode;
+use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::person::Person;
 use scorarium_test::TestApp;
@@ -55,4 +56,41 @@ async fn back_is_honored_only_for_same_site_paths() {
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", back);
+}
+
+#[tokio::test]
+async fn a_staged_profile_picture_is_saved_with_the_form() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let edit = format!("/library/{}/person/{}/edit", library.id(), person.id());
+    let load = async || {
+        Person::load(&app.engine, person.id())
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    let png: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\0";
+    let staged = app
+        .engine
+        .stage(AssetSource::Upload {
+            data: Box::new(png),
+            filename: "satie.png".into(),
+        })
+        .await
+        .unwrap();
+    let id = staged.id.to_string();
+    assert!(person.profile().is_none());
+
+    let form = [("name", person.name()), ("sort_name", ""), ("picture", &id)];
+    app.server.post(&edit).form(&form).await;
+    assert!(load().await.profile().is_some());
+
+    let form = [
+        ("name", person.name()),
+        ("sort_name", ""),
+        ("remove_picture", "1"),
+    ];
+    app.server.post(&edit).form(&form).await;
+    assert!(load().await.profile().is_none());
 }

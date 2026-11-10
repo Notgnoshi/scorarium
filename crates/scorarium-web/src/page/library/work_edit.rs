@@ -20,6 +20,7 @@ use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
+use crate::widget::edit_heading::{CommitAction, EditHeading};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
@@ -57,13 +58,12 @@ struct Edit {
     picture: Picture,
     library: LibraryId,
     id: WorkId,
-    draft: bool,
+    heading: EditHeading,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
-    delete: Confirm,
     back: Option<String>,
     destination: String,
     error: Option<String>,
@@ -162,12 +162,40 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = work.is_draft();
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
+        heading: EditHeading {
+            title: work.title().to_owned(),
+            commit: draft.then(|| CommitAction {
+                url: format!("/library/{}/work/{}/commit", library.id(), work.id()),
+                tooltip: "Commit this draft work",
+            }),
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", work.title())
+                } else {
+                    format!("Delete {}?", work.title())
+                },
+                message: format!(
+                    "It is removed from {}.",
+                    count(work.publications().await?.len(), "publication")
+                ),
+                also_deleted: vec![],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete work"
+                },
+                url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: work.id(),
-        draft: work.is_draft(),
         form,
         catalog_numbers: CatalogNumbersInput {
             numbers: work.catalog_numbers().to_vec(),
@@ -180,19 +208,6 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", work.title()),
-            message: format!(
-                "It is removed from {}.",
-                count(work.publications().await?.len(), "publication")
-            ),
-            also_deleted: vec![],
-            action: "Delete work",
-            url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
-            target: None,
-            fields: vec![],
-        },
         destination: back
             .clone()
             .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
@@ -239,30 +254,12 @@ pub async fn get(
     .await
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    header: Header,
-    Path((library, work)): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    let library = view::load(&engine, &library).await?;
-    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            return render(header, &library, &work, form, status, back, Some(error)).await;
-        }
-    };
+/// Apply the submitted form to `work`
+async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
     // The title is the only field here the engine can reject, so setting it first leaves the work
     // untouched when it is.
-    if let Err(e) = work.set_title(&form.title).await {
-        let (status, error) = form_error(e)?;
-        return render(header, &library, &work, form, status, back, Some(error)).await;
-    }
+    work.set_title(&form.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))
@@ -291,9 +288,63 @@ pub async fn post(
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
-    let destination =
-        back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-    Ok(Redirect::to(&destination).into_response())
+    Ok(())
+}
+
+/// Save the form, commit the draft if asked, and answer
+///
+/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
+/// successful commit ignores `back`.
+async fn submit(
+    engine: Engine,
+    header: Header,
+    (library, work): (String, String),
+    back: Option<String>,
+    form: Form,
+    commit: bool,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let saved = match save(&mut work, &form).await {
+        Ok(()) if commit => work.commit().await,
+        saved => saved,
+    };
+    match saved {
+        Ok(()) => {
+            let destination = back
+                .filter(|_| !commit)
+                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+            Ok(Redirect::to(&destination).into_response())
+        }
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            render(header, &library, &work, form, status, back, Some(error)).await
+        }
+    }
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+) -> Result<Response> {
+    let back = same_site_path(query.back);
+    submit(engine, header, path, back, form, false).await
+}
+
+pub async fn commit(
+    _session: Session,
+    State(engine): State<Engine>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+) -> Result<Response> {
+    let back = same_site_path(query.back);
+    submit(engine, header, path, back, form, true).await
 }
 
 pub async fn delete(

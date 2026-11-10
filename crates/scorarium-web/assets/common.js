@@ -15,7 +15,6 @@ document.addEventListener("click", (event) => {
     }
 });
 
-// A dialog that htmx swaps into a slot opens itself. The slot is the target of the settle event.
 document.addEventListener("htmx:after:settle", (event) => {
     if (event.target.matches("[data-dialog-slot]")) {
         event.target.querySelector("dialog")?.showModal();

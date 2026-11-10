@@ -50,7 +50,7 @@ pub(crate) async fn enrich<E: Entity>(entity: &E, out: &mut impl Write) -> eyre:
     Ok(())
 }
 
-/// Cancel the entity's enrichment task whatever its state, failing when it has none.
+/// Cancel the entity's enrichment task if it is in progress, failing when it has none.
 pub(crate) fn cancel_enrichment<E: Entity>(
     entity: &E,
     kind: &str,

@@ -1,29 +1,133 @@
+{% macro staged_physical(typeahead) %}
+    <div class="holding">
+        <span>{{ crate::icon::Icon::PhysicalCopy }} Physical</span>
+        {{ typeahead }}
+        <button type="button" class="btn btn-outline-danger" title="Remove" data-remove>
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+{% endmacro %}
+{% macro staged_digital(id, filename) %}
+    <div class="holding">
+        <span>{{ crate::icon::Icon::DigitalFile }} Digital</span>
+        <span class="text-truncate" data-label>{{ filename }}</span>
+        <input type="hidden" name="staged" value="{{ id }}" data-staged>
+        <button type="button" class="btn btn-outline-danger" title="Remove" data-remove>
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+{% endmacro %}
 <fieldset class="box" data-holdings data-drop-zone="Drop files to add them">
     <legend>Holdings</legend>
-    <div id="holding-entries">{% for entry in entries %}{{ entry }}{% endfor %}</div>
-    {{ add }}
-    <template data-pending>
-        <div class="d-flex align-items-center gap-2 mb-2">
-            {{ crate::icon::Icon::DigitalFile }}
-            <span>Digital</span>
-            <span class="text-truncate" data-label></span>
-            <div class="progress flex-grow-1"
-                 role="progressbar"
-                 aria-label="Upload progress"
-                 aria-valuemin="0"
-                 aria-valuemax="100"
-                 aria-valuenow="0"
-                 data-progress>
-                <div class="progress-bar"></div>
+    {% for id in removed %}<input type="hidden" name="remove_holding" value="{{ id }}">{% endfor %}
+    <div class="holdings">
+        <div data-entries>
+            {% for entry in entries %}
+                {% match entry %}
+                {% when HoldingEntry::Physical with { id, location } %}
+                <div class="holding">
+                    <span>{{ crate::icon::Icon::PhysicalCopy }} Physical</span>
+                    {{ self.location_input(&("holding-{}-location"|format(id)), "holding_location", location) }}
+                    <input type="hidden" name="holding" value="{{ id }}">
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            title="Remove"
+                            data-remove
+                            data-holding="{{ id }}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                {% when HoldingEntry::Digital with { id, filename, href } %}
+                <div class="holding">
+                    <span>{{ crate::icon::Icon::DigitalFile }} Digital</span>
+                    <a class="text-truncate"
+                       href="{{ href }}"
+                       target="_blank"
+                       rel="noopener"
+                       title="Open in a new tab">{{ filename }}</a>
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            title="Remove"
+                            data-remove
+                            data-holding="{{ id }}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                {% when HoldingEntry::StagedPhysical with { location } %}
+                {% call staged_physical(self.location_input(&("holding-added-{}-location"|format(loop.index0)), "add_location", location)) %}
+                {% endcall %}
+                {% when HoldingEntry::StagedDigital with (staged) %}
+                {% call staged_digital(staged.id, staged.filename) %}
+                {% endcall %}
+            {% endmatch %}
+            {% endfor %}
+        </div>
+        <hr class="my-0">
+        <div class="holdings-add">
+            <div class="btn-group" role="group" aria-label="Kind">
+                <input class="btn-check"
+                       type="radio"
+                       name="kind"
+                       value="physical"
+                       id="holding-add-kind-physical"
+                       {% if kind == AddKind::Physical %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="holding-add-kind-physical">
+                    {{ crate::icon::Icon::PhysicalCopy }} Physical
+                </label>
+                {# A disabled label ignores the pointer, so the tooltip sits on a wrapper. #}
+                <span class="btn-group" {% if !files_allowed %}title="File uploads are disabled"{% endif %}>
+                    <input class="btn-check"
+                           type="radio"
+                           name="kind"
+                           value="digital"
+                           id="holding-add-kind-digital"
+                           {% if kind == AddKind::Digital %}checked{% endif %}
+                           {% if !files_allowed %}disabled{% endif %}>
+                    <label class="btn btn-outline-secondary" for="holding-add-kind-digital">
+                        {{ crate::icon::Icon::DigitalFile }} Digital
+                    </label>
+                </span>
             </div>
-            <span data-percent></span>
-            <div class="spinner-border spinner-border-sm" role="status" title="Fetching" data-spinner>
-                <span class="visually-hidden">Fetching</span>
+            <div class="holdings-add-physical">
+                {{ self.location_input("holding-add-location", "location", location) }}
+                <button type="button" class="btn btn-outline-secondary" title="Add the copy" data-add-button>
+                    <i class="bi bi-plus-lg"></i> Add
+                </button>
+            </div>
+            {{ self.file_input() }}
+        </div>
+    </div>
+    <template data-staged-physical>
+        {% call staged_physical(self.location_input("holding-added-location", "add_location", "")) %}
+        {% endcall %}
+    </template>
+    <template data-staged-digital>
+        {% call staged_digital("", "") %}
+        {% endcall %}
+    </template>
+    <template data-pending>
+        <div class="holding">
+            <span>{{ crate::icon::Icon::DigitalFile }} Digital</span>
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-truncate" data-label></span>
+                <div class="progress flex-grow-1"
+                     role="progressbar"
+                     aria-label="Upload progress"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="0"
+                     data-progress>
+                    <div class="progress-bar"></div>
+                </div>
+                <span data-percent></span>
+                <div class="spinner-border spinner-border-sm" role="status" title="Fetching" data-spinner>
+                    <span class="visually-hidden">Fetching</span>
+                </div>
             </div>
         </div>
     </template>
     <template data-failed>
-        <div class="alert alert-danger d-flex align-items-center gap-2 py-1 px-2 mb-2" role="alert">
+        <div class="alert alert-danger d-flex align-items-center gap-2 py-1 px-2 mb-0" role="alert">
             <i class="bi bi-exclamation-triangle" title="The transfer failed"></i>
             <span class="flex-grow-1" data-message></span>
             <button type="button" class="btn-close" title="Dismiss" aria-label="Dismiss" data-dismiss></button>

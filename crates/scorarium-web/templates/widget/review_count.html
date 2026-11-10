@@ -1,0 +1,5 @@
+{% macro badge(count, oob) %}
+    <span id="review-count"
+          class="badge text-bg-secondary{% if count == 0 %} d-none{% endif %}"
+          {% if oob %}hx-swap-oob="true"{% endif %}>{{ count }}</span>
+{% endmacro %}

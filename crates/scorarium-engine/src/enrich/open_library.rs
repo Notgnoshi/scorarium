@@ -3,7 +3,7 @@ use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
 use crate::enrich::SubTaskQueue;
-use crate::entity::{Entity, EntityKind};
+use crate::entity::{AnyEntityId, Entity, EntityKind};
 use crate::fuzzy::normalize;
 use crate::link::{ExternalRecord, LinkKind};
 use crate::person::{self, Person};
@@ -45,7 +45,7 @@ pub(crate) async fn edition(
         return Ok(());
     };
     let Some(publication) = Publication::load(&engine, publication).await? else {
-        queue.cancel();
+        engine.forget_enrichment(AnyEntityId::Publication(publication));
         return Ok(());
     };
 
@@ -252,7 +252,7 @@ pub(crate) async fn author(
         return Ok(());
     };
     let Some(publication) = Publication::load(&engine, publication).await? else {
-        queue.cancel();
+        engine.forget_enrichment(AnyEntityId::Publication(publication));
         return Ok(());
     };
 

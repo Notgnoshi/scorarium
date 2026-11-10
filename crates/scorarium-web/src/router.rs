@@ -47,6 +47,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::publication_edit::get).post(page::library::publication_edit::post),
         )
         .route(
+            "/library/{id}/publication/{publication}/commit",
+            post(page::library::publication_edit::commit),
+        )
+        .route(
             "/library/{id}/publication/{publication}/delete",
             post(page::library::publication_edit::delete),
         )
@@ -62,6 +66,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route(
             "/library/{id}/work/{work}/edit",
             get(page::library::work_edit::get).post(page::library::work_edit::post),
+        )
+        .route(
+            "/library/{id}/work/{work}/commit",
+            post(page::library::work_edit::commit),
         )
         .route(
             "/library/{id}/work/{work}/delete",
@@ -80,6 +88,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::person_edit::get).post(page::library::person_edit::post),
         )
         .route(
+            "/library/{id}/person/{person}/commit",
+            post(page::library::person_edit::commit),
+        )
+        .route(
             "/library/{id}/person/{person}/delete",
             post(page::library::person_edit::delete),
         )
@@ -95,6 +107,11 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::edit::get).post(page::library::edit::post),
         )
         .route("/library/{id}/delete", post(page::library::edit::delete))
+        .route(
+            "/library/{id}/import",
+            get(page::library::import::get).post(page::library::import::post),
+        )
+        .route("/review", get(page::review::get))
         .route("/search", get(page::search::get))
         .route("/login", get(page::login::get).post(page::login::post))
         .route("/logout", post(page::logout::post))
@@ -116,7 +133,14 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             "/api",
             Router::new()
                 .route("/search", get(api::search::get))
+                .route("/import/candidates", get(api::import::candidates))
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
+                .route(
+                    "/stage",
+                    post(api::stage::post).layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route("/stage/{staged}", get(api::stage::get))
+                .route("/stage/{staged}/discard", post(api::stage::discard))
                 .route(
                     "/library/{id}/work/{work}/contributor/add",
                     post(api::contributor::add::<Work>),
@@ -145,40 +169,12 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
                 )
+                .route("/review", get(api::review::get))
+                .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
+                .route("/review/{kind}/{entity}/retry", post(api::review::retry))
                 .route(
-                    "/library/{id}/publication/{publication}/holding/add",
-                    post(api::holding::add),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/location",
-                    post(api::holding::location),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/remove",
-                    post(api::holding::remove),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/holding/upload",
-                    post(api::holding::upload)
-                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
-                )
-                .route(
-                    "/library/{id}/person/{person}/profile/upload",
-                    post(api::picture::upload_profile)
-                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
-                )
-                .route(
-                    "/library/{id}/person/{person}/profile/remove",
-                    post(api::picture::remove_profile),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/cover/upload",
-                    post(api::picture::upload_cover)
-                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/cover/remove",
-                    post(api::picture::remove_cover),
+                    "/review/{kind}/{entity}/discard",
+                    post(api::review::discard),
                 )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),

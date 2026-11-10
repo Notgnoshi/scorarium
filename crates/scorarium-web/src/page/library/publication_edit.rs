@@ -4,7 +4,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
+use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
+use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -14,6 +16,7 @@ use serde::Deserialize;
 use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
+use crate::forms::Forms;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -21,11 +24,12 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
+use crate::widget::edit_heading::{CommitAction, EditHeading};
 use crate::widget::header::Header;
-use crate::widget::holdings::Holdings;
+use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{self, IdentifiersInput};
 use crate::widget::links_input::LinksInput;
-use crate::widget::picture_box::PictureBox;
+use crate::widget::picture_input::PictureInput;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -51,16 +55,19 @@ pub(crate) struct Form {
     add_link: Vec<String>,
     #[serde(default)]
     remove_link: Vec<String>,
+    #[serde(default)]
+    picture: String,
+    remove_picture: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "page/library/publication_edit.html")]
 struct Edit {
     base: Base,
-    picture: PictureBox,
+    picture: PictureInput,
     library: LibraryId,
     id: PublicationId,
-    draft: bool,
+    heading: EditHeading,
     form: Form,
     identifiers: IdentifiersInput,
     tags: TagsInput,
@@ -68,7 +75,6 @@ struct Edit {
     contributors: Contributors,
     holdings: Holdings,
     contents: Contents,
-    delete: Confirm,
     destination: String,
     error: Option<String>,
 }
@@ -124,6 +130,34 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     })
 }
 
+/// Refuse the holdings that would leave a missing file or a publication with no holdings
+fn check_holdings(
+    engine: &Engine,
+    publication: &Publication,
+    added: &[AddedHolding],
+    removed: &[HoldingId],
+) -> scorarium_engine::Result<()> {
+    let gone = added
+        .iter()
+        .any(|holding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none()));
+    if gone {
+        return Err(scorarium_engine::Error::InvalidValue(
+            "A file is no longer available. Choose it again.".to_owned(),
+        ));
+    }
+    let kept = publication
+        .holdings()
+        .iter()
+        .filter(|holding| !removed.contains(&holding.id))
+        .count();
+    if kept + added.len() == 0 {
+        return Err(scorarium_engine::Error::InvalidValue(
+            "A publication needs at least one holding.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 impl Edit {
     fn classification(&self) -> ClassificationInput {
         ClassificationInput {
@@ -156,12 +190,15 @@ impl Edit {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn render(
+    engine: &Engine,
     header: Header,
     files_allowed: bool,
     library: &Library,
     publication: &Publication,
     form: Form,
+    holdings: &HoldingsForm,
     status: StatusCode,
     error: Option<String>,
 ) -> Result<Response> {
@@ -169,12 +206,56 @@ async fn render(
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let draft = publication.is_draft();
     let page = Edit {
-        picture: PictureBox::cover(publication, files_allowed),
+        picture: PictureInput::cover(publication, files_allowed).resubmitted(
+            engine,
+            &form.picture,
+            form.remove_picture.is_some(),
+        ),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
+        heading: EditHeading {
+            title: publication.title().unwrap_or("Untitled").to_owned(),
+            commit: draft.then(|| CommitAction {
+                url: format!(
+                    "/library/{}/publication/{}/commit",
+                    library.id(),
+                    publication.id()
+                ),
+                tooltip: "Commit this draft publication",
+            }),
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: if draft {
+                    format!("Discard {}?", publication.title().unwrap_or("Untitled"))
+                } else {
+                    format!("Delete {}?", publication.title().unwrap_or("Untitled"))
+                },
+                message: format!(
+                    "Deleting {} also deletes:",
+                    publication.title().unwrap_or("Untitled")
+                ),
+                also_deleted: vec![
+                    "its digital assets".to_owned(),
+                    "orphaned works".to_owned(),
+                    "orphaned contributors".to_owned(),
+                ],
+                action: if draft {
+                    "Discard draft"
+                } else {
+                    "Delete publication"
+                },
+                url: format!(
+                    "/library/{}/publication/{}/delete",
+                    library.id(),
+                    publication.id()
+                ),
+                target: None,
+                fields: vec![],
+            },
+        },
         library: library.id(),
         id: publication.id(),
-        draft: publication.is_draft(),
         form,
         identifiers: IdentifiersInput {
             identifiers: publication.identifiers().to_vec(),
@@ -187,29 +268,8 @@ async fn render(
             links: publication.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(publication, None),
-        holdings: Holdings::new(publication, files_allowed),
+        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
         contents: Contents::new(publication, &publication.works().await?),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", publication.title().unwrap_or("Untitled")),
-            message: format!(
-                "Deleting {} also deletes:",
-                publication.title().unwrap_or("Untitled")
-            ),
-            also_deleted: vec![
-                "its digital assets".to_owned(),
-                "orphaned works".to_owned(),
-                "orphaned contributors".to_owned(),
-            ],
-            action: "Delete publication",
-            url: format!(
-                "/library/{}/publication/{}/delete",
-                library.id(),
-                publication.id()
-            ),
-            target: None,
-            fields: vec![],
-        },
         destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
     };
@@ -244,62 +304,37 @@ pub async fn get(
         remove_tag: vec![],
         add_link: vec![],
         remove_link: vec![],
+        picture: String::new(),
+        remove_picture: None,
     };
     render(
+        &engine,
         header,
         files_allowed,
         &library,
         &publication,
         form,
+        &HoldingsForm::default(),
         StatusCode::OK,
         None,
     )
     .await
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path((library, publication)): Path<(String, String)>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let library = view::load(&engine, &library).await?;
-    let mut publication: Publication =
-        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
-    let files_allowed = settings.files_allowed(&engine);
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            return render(
-                header,
-                files_allowed,
-                &library,
-                &publication,
-                form,
-                status,
-                Some(error),
-            )
-            .await;
-        }
-    };
-    // The title is the only field here the engine can reject, so setting it first leaves the
-    // publication untouched when it is.
-    if let Err(e) = publication.set_title(&form.title).await {
-        let (status, error) = form_error(e)?;
-        return render(
-            header,
-            files_allowed,
-            &library,
-            &publication,
-            form,
-            status,
-            Some(error),
-        )
-        .await;
-    }
+/// Apply the submitted form to `publication`
+async fn save(
+    engine: &Engine,
+    publication: &mut Publication,
+    form: &Form,
+    holdings: &HoldingsForm,
+) -> scorarium_engine::Result<()> {
+    let parsed = parse(form)?;
+    let added = holdings.added();
+    let locations = holdings.locations()?;
+    let removed = holdings.removed()?;
+    check_holdings(engine, publication, &added, &removed)?;
+    // The title is set first, so that a rejected title leaves the publication untouched.
+    publication.set_title(&form.title).await?;
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;
     publication.set_stars(parsed.stars).await?;
@@ -326,12 +361,96 @@ pub async fn post(
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
     }
-    Ok(Redirect::to(&format!(
-        "/library/{}/publication/{}",
-        library.id(),
-        publication.id()
-    ))
-    .into_response())
+    // The cover is saved after the other Details fields, because the engine refuses a file that is
+    // not an image only as it stores the file, and by then the fields that the person typed are
+    // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
+    if !form.picture.is_empty() {
+        let Ok(id) = form.picture.parse();
+        publication.set_cover(AssetSource::Staged(id)).await?;
+    } else if form.remove_picture.is_some() {
+        publication.clear_cover().await?;
+    }
+    // Additions run before removals so that the publication never passes through having no
+    // holdings.
+    for holding in &added {
+        publication.add_holding(holding.as_new()).await?;
+    }
+    for (id, location) in locations {
+        if publication.holdings().iter().any(|h| h.id == id) {
+            publication
+                .set_physical_holding_location(id, Some(location))
+                .await?;
+        }
+    }
+    for id in removed {
+        publication.remove_holding(id).await?;
+    }
+    Ok(())
+}
+
+/// Save the form, commit the draft if asked, and answer
+///
+/// A refusal from either step is shown in the form. A refused save blocks the commit.
+async fn submit(
+    engine: Engine,
+    settings: Settings,
+    header: Header,
+    (library, publication): (String, String),
+    (form, holdings): (Form, HoldingsForm),
+    commit: bool,
+) -> Result<Response> {
+    let library = view::load(&engine, &library).await?;
+    let mut publication: Publication =
+        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let saved = match save(&engine, &mut publication, &form, &holdings).await {
+        Ok(()) if commit => publication.commit().await,
+        saved => saved,
+    };
+    match saved {
+        Ok(()) => Ok(Redirect::to(&format!(
+            "/library/{}/publication/{}",
+            library.id(),
+            publication.id()
+        ))
+        .into_response()),
+        Err(e) => {
+            let (status, error) = form_error(e)?;
+            render(
+                &engine,
+                header,
+                settings.files_allowed(&engine),
+                &library,
+                &publication,
+                form,
+                &holdings,
+                status,
+                Some(error),
+            )
+            .await
+        }
+    }
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
+) -> Result<Response> {
+    submit(engine, settings, header, path, (form, holdings), false).await
+}
+
+pub async fn commit(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
+) -> Result<Response> {
+    submit(engine, settings, header, path, (form, holdings), true).await
 }
 
 pub async fn delete(

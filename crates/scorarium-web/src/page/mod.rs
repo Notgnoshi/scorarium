@@ -4,6 +4,7 @@ pub mod library;
 pub mod login;
 pub mod logout;
 pub mod password;
+pub mod review;
 pub mod search;
 pub mod settings;
 

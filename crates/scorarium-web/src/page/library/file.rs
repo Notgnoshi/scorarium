@@ -58,7 +58,7 @@ pub async fn profile(
 }
 
 /// Content types a browser may display in the browser
-const DISPLAYED_TYPES: [&str; 8] = [
+pub(crate) const DISPLAYED_TYPES: [&str; 8] = [
     "application/pdf",
     "image/jpeg",
     "image/png",

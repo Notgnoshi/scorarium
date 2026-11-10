@@ -1,15 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1 class="d-flex justify-content-between align-items-center">
-        <span>
-            {{ base.title }}
-            {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-        </span>
-    </h1>
+    {{ heading }}
     <div class="row">
         <div class="col-auto">{{ picture }}</div>
         <div class="col">
-            <form method="post"
+            <form id="edit"
+                  method="post"
                   action="/library/{{ library }}/work/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
                 <fieldset class="box">
                     <legend>Details</legend>
@@ -63,19 +59,19 @@
                             <textarea class="form-control" id="note" name="note" rows="4">{{ form.note }}</textarea>
                         </div>
                     </div>
-                    <button class="btn btn-primary" type="submit" title="Save changes">
-                        <i class="bi bi-floppy"></i> Save
-                    </button>
-                    <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes">
+                </fieldset>
+                <div class="d-flex justify-content-end gap-2 mb-4">
+                    <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
                         <i class="bi bi-x-lg"></i> Cancel
                     </a>
-                </fieldset>
+                    <button class="btn {% if heading.commit.is_some() %}btn-outline-primary{% else %}btn-primary{% endif %}"
+                            type="submit"
+                            title="Save changes">
+                        <i class="bi bi-floppy"></i> Save
+                    </button>
+                </div>
             </form>
         </div>
     </div>
     <div id="contributors">{{ contributors }}</div>
-    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete work">
-        <i class="bi bi-trash"></i> Delete
-    </button>
-    {{ delete }}
 {% endblock %}

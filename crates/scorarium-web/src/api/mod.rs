@@ -1,9 +1,10 @@
 pub mod contents;
 pub mod contributor;
-pub mod holding;
-pub mod picture;
+pub mod import;
 mod query;
+pub mod review;
 pub mod search;
+pub mod stage;
 pub mod suggest;
 mod upload;
 
