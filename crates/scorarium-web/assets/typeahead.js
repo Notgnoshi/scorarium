@@ -150,6 +150,9 @@ function attachTypeahead(input) {
                 setPick(entry.dataset.pick ?? "");
             }
             input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
+            // A search still pending for the earlier text would open the menu again over the form.
+            clearTimeout(timer);
+            controller?.abort();
             close();
         }
     });

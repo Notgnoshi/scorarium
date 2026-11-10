@@ -133,6 +133,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             "/api",
             Router::new()
                 .route("/search", get(api::search::get))
+                .route("/import/candidates", get(api::import::candidates))
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
                 .route(
                     "/stage",

@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod breadcrumbs;
+pub mod candidate;
 pub mod catalog_numbers_input;
 pub mod classification_input;
 pub mod confirm;

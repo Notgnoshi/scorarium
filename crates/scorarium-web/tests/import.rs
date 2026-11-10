@@ -129,3 +129,23 @@ async fn import_more_keeps_locations_and_drops_files() {
     assert!(location.contains("add_location=Attic"), "{location}");
     assert!(!location.contains(&staged), "{location}");
 }
+
+#[tokio::test]
+async fn import_attaches_a_picked_candidates_record() {
+    let app = TestApp::demo().await;
+    let library = app.engine.create_library("Books", false).await.unwrap();
+    let url = format!("/library/{}/import", library.id());
+    let record = "https://openlibrary.org/books/OL7636066M";
+
+    app.server
+        .post(&url)
+        .form(&[("text", "Pro Git"), ("record", record)])
+        .await;
+    let draft = newest(&library).await;
+    let links: Vec<String> = draft
+        .links()
+        .iter()
+        .map(|link| link.url.to_string())
+        .collect();
+    assert_eq!(links, [record]);
+}
