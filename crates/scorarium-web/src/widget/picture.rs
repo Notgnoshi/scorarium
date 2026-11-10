@@ -11,7 +11,7 @@ use scorarium_engine::work::Work;
 use crate::icon::Icon;
 
 /// A cover or profile picture, or the placeholder that stands in for a missing one
-#[derive(Template)]
+#[derive(Clone, Template)]
 #[template(path = "widget/picture.html")]
 pub(crate) struct Picture {
     /// The versioned URL of the picture, or `None` to show the placeholder
@@ -29,6 +29,17 @@ impl Picture {
     pub fn thumbnail(mut self) -> Picture {
         self.thumbnail = true;
         self
+    }
+
+    /// Show the file at `src` in place of the entity's own picture, or the placeholder for `None`
+    pub fn showing(mut self, src: Option<String>) -> Picture {
+        self.src = src;
+        self
+    }
+
+    /// Check whether the placeholder is shown in place of a picture
+    pub fn is_placeholder(&self) -> bool {
+        self.src.is_none()
     }
 
     /// Show the profile picture of a person summarized in `library`

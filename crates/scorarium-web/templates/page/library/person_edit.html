@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
     {{ heading }}
-    <div class="row">
-        <div class="col-12 col-md-auto">{{ picture }}</div>
-        <div class="col-12 col-md">
-            <form method="post"
-                  action="/library/{{ library }}/person/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
-                <fieldset class="box">
-                    <legend>Details</legend>
-                    {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+    <form method="post"
+          action="/library/{{ library }}/person/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
+        <fieldset class="box">
+            <legend>Details</legend>
+            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            <div class="row">
+                <div class="col-12 col-md-auto mb-3">{{ picture }}</div>
+                <div class="col-12 col-md">
                     <div class="row mb-3">
                         <label class="col-sm-2 col-form-label" for="name">Name</label>
                         <div class="col-sm-10">
@@ -26,18 +26,18 @@
                             <div class="form-text">Leave blank to sort by Last, First</div>
                         </div>
                     </div>
-                    <div class="row mb-3">
-                        <span class="col-sm-2 col-form-label">Links</span>
-                        <div class="col-sm-10">{{ links }}</div>
-                    </div>
-                    <button class="btn btn-primary" type="submit" title="Save changes">
-                        <i class="bi bi-floppy"></i> Save
-                    </button>
-                    <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
-                        <i class="bi bi-x-lg"></i> Cancel
-                    </a>
-                </fieldset>
-            </form>
-        </div>
-    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <span class="col-sm-2 col-form-label">Links</span>
+                <div class="col-sm-10">{{ links }}</div>
+            </div>
+            <button class="btn btn-primary" type="submit" title="Save changes">
+                <i class="bi bi-floppy"></i> Save
+            </button>
+            <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
+                <i class="bi bi-x-lg"></i> Cancel
+            </a>
+        </fieldset>
+    </form>
 {% endblock %}
