@@ -5,6 +5,7 @@ use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::enrich::Enrichment;
 use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
 use scorarium_engine::review::ReviewItem;
@@ -14,11 +15,41 @@ use serde::Deserialize;
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::review_queue::{self, ReviewQueue, Sort};
+use crate::widget::review_queue::{ReviewQueue, Size, Sort};
 
 #[derive(Default, Deserialize)]
 pub(crate) struct ReviewQuery {
     pub(crate) sort: Option<Sort>,
+    size: Option<SizeName>,
+    library: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SizeName {
+    Full,
+    Short,
+}
+
+impl ReviewQuery {
+    /// Turn the parameters into the size and the library that the widget draws
+    fn resolve(self) -> Result<(Size, Option<LibraryId>)> {
+        let size = match self.size {
+            Some(SizeName::Short) => Size::Short,
+            Some(SizeName::Full) | None => Size::Full {
+                sort: self.sort.unwrap_or_default(),
+            },
+        };
+        let library = self
+            .library
+            .map(|library| {
+                library
+                    .parse()
+                    .map_err(|_| scorarium_engine::Error::NotFound)
+            })
+            .transpose()?;
+        Ok((size, library))
+    }
 }
 
 #[derive(Deserialize)]
@@ -32,7 +63,8 @@ pub async fn get(
     State(engine): State<Engine>,
     Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
-    queue(&engine, query).await
+    let (size, library) = query.resolve()?;
+    queue(&engine, size, library).await
 }
 
 pub async fn cancel(
@@ -41,12 +73,13 @@ pub async fn cancel(
     Path((kind, entity)): Path<(String, String)>,
     Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
+    let (size, library) = query.resolve()?;
     if let Some(entity) = load(&engine, &kind, &entity).await?
         && let Some(enrichment) = enrichment_of(&entity)
     {
         enrichment.cancel();
     }
-    queue(&engine, query).await
+    queue(&engine, size, library).await
 }
 
 pub async fn retry(
@@ -55,13 +88,14 @@ pub async fn retry(
     Path((kind, entity)): Path<(String, String)>,
     Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
+    let (size, library) = query.resolve()?;
     match load(&engine, &kind, &entity).await? {
         Some(AnyEntity::Publication(publication)) => publication.enrich().await.map(drop)?,
         Some(AnyEntity::Work(work)) => work.enrich().await.map(drop)?,
         Some(AnyEntity::Person(person)) => person.enrich().await.map(drop)?,
         None => {}
     }
-    queue(&engine, query).await
+    queue(&engine, size, library).await
 }
 
 /// Ask before discarding an entry, then discard it
@@ -72,15 +106,16 @@ pub async fn discard(
     Query(query): Query<ReviewQuery>,
     axum::Form(form): axum::Form<DiscardForm>,
 ) -> Result<Response> {
+    let (size, library) = query.resolve()?;
     let Some(entity) = load(&engine, &kind, &entity).await? else {
-        return queue(&engine, query).await;
+        return queue(&engine, size, library).await;
     };
     let Some(item) = (match &entity {
         AnyEntity::Publication(publication) => publication.review_item().await?,
         AnyEntity::Work(work) => work.review_item().await?,
         AnyEntity::Person(person) => person.review_item().await?,
     }) else {
-        return queue(&engine, query).await;
+        return queue(&engine, size, library).await;
     };
 
     let case = if is_draft(&item.entity) {
@@ -89,18 +124,23 @@ pub async fn discard(
         "proposals"
     } else {
         // Only the task keeps this entry in the queue, so there is nothing to confirm.
-        return finish(&engine, item, query).await;
+        return finish(&engine, item, size, library).await;
     };
     if form.confirmed.as_deref() == Some(case) {
-        return finish(&engine, item, query).await;
+        return finish(&engine, item, size, library).await;
     }
-    let dialog = dialog(&item, case, &query).await?;
+    let dialog = dialog(&item, case, &size, library).await?;
     Ok(Html(dialog.to_string()).into_response())
 }
 
-async fn finish(engine: &Engine, item: ReviewItem, query: ReviewQuery) -> Result<Response> {
+async fn finish(
+    engine: &Engine,
+    item: ReviewItem,
+    size: Size,
+    library: Option<LibraryId>,
+) -> Result<Response> {
     match item.discard().await {
-        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine, query).await,
+        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine, size, library).await,
         Err(e) => Err(e.into()),
     }
 }
@@ -113,7 +153,12 @@ fn is_draft(entity: &AnyEntity) -> bool {
     }
 }
 
-async fn dialog(item: &ReviewItem, case: &'static str, query: &ReviewQuery) -> Result<Confirm> {
+async fn dialog(
+    item: &ReviewItem,
+    case: &'static str,
+    size: &Size,
+    library: Option<LibraryId>,
+) -> Result<Confirm> {
     let subject = match &item.entity {
         AnyEntity::Publication(publication) => untitled(publication),
         AnyEntity::Work(work) => work.title(),
@@ -172,7 +217,7 @@ async fn dialog(item: &ReviewItem, case: &'static str, query: &ReviewQuery) -> R
             "/api/review/{}/{}/discard?{}",
             item.entity.id().kind(),
             item.entity.id().get(),
-            review_queue::query(&query.sort.clone().unwrap_or_default()),
+            ReviewQueue::query(size, library),
         ),
         target: Some("#review-queue-dialog".to_owned()),
         fields: vec![("confirmed", case.to_owned())],
@@ -195,10 +240,9 @@ struct QueueAnswer {
     queue: ReviewQueue,
 }
 
-async fn queue(engine: &Engine, query: ReviewQuery) -> Result<Response> {
-    let sort = query.sort.unwrap_or_default();
+async fn queue(engine: &Engine, size: Size, library: Option<LibraryId>) -> Result<Response> {
     let answer = QueueAnswer {
-        queue: ReviewQueue::new(engine, sort).await?,
+        queue: ReviewQueue::new(engine, size, library).await?,
     };
     Ok((
         [

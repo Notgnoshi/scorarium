@@ -35,7 +35,10 @@
         }
         const map = load(root);
         for (const entry of entries(root)) {
-            entry.toggleAttribute("data-collapsed", map[entry.dataset.entry] === true);
+            // An entry the user has not toggled should keep the state the server drew.
+            if (entry.dataset.entry in map) {
+                entry.toggleAttribute("data-collapsed", map[entry.dataset.entry] === true);
+            }
         }
         refreshButton(root);
     };
@@ -76,7 +79,7 @@
         }
     });
 
-    // A swap brings every entry back expanded, so the saved state is applied again.
+    // A swap brings every entry back in the state the server drew, so the saved state is applied again.
     document.addEventListener("htmx:after:settle", apply);
     document.addEventListener("DOMContentLoaded", apply);
 }

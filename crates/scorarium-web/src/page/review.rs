@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::page::Base;
 use crate::widget::breadcrumbs::Crumb;
 use crate::widget::header::Header;
-use crate::widget::review_queue::ReviewQueue;
+use crate::widget::review_queue::{ReviewQueue, Size};
 
 #[derive(Template)]
 #[template(path = "page/review.html")]
@@ -26,7 +26,14 @@ pub async fn get(
 ) -> Result<Html<String>> {
     let page = Review {
         base: Base::new(header, "Review queue", vec![Crumb::new("Libraries", "/")]),
-        queue: ReviewQueue::new(&engine, query.sort.unwrap_or_default()).await?,
+        queue: ReviewQueue::new(
+            &engine,
+            Size::Full {
+                sort: query.sort.unwrap_or_default(),
+            },
+            None,
+        )
+        .await?,
     };
     Ok(Html(page.render()?))
 }

@@ -25,12 +25,14 @@
                 </div>
             </div>
         </td>
-        <td>
-            {% if !indented %}
-                <a class="text-body" href="/library/{{ entry.hit.library }}">{{ entry.hit.library_name }}</a>
-                {% if entry.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
-            {% endif %}
-        </td>
+        {% if entry.show_library %}
+            <td>
+                {% if !indented %}
+                    <a class="text-body" href="/library/{{ entry.hit.library }}">{{ entry.hit.library_name }}</a>
+                    {% if entry.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
+                {% endif %}
+            </td>
+        {% endif %}
         <td class="text-nowrap">{{ entry.enrichment }}</td>
         <td class="text-end">
             {% if !indented && !entry.nested.is_empty() %}
@@ -62,7 +64,9 @@
         </td>
     </tr>
 {% endmacro %}
-<tbody class="table-group-divider" data-entry="{{ id.kind() }}/{{ id.get() }}">
+<tbody class="table-group-divider"
+       data-entry="{{ id.kind() }}/{{ id.get() }}"
+       {% if collapsed %}data-collapsed{% endif %}>
     {% call draw(self, false) %}
     {% endcall %}
     {% for child in nested %}

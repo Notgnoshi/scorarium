@@ -6,6 +6,7 @@ use chrono::Utc;
 use scorarium_engine::Engine;
 use scorarium_engine::enrich::{Enrichment, EnrichmentState, EnrichmentStatus};
 use scorarium_engine::entity::{AnyEntity, AnyEntityId, Contributed, Entity, Timestamp};
+use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::{Person, PersonId};
 use scorarium_engine::publication::{self, Publication};
 use scorarium_engine::review::ReviewItem;
@@ -19,12 +20,27 @@ use crate::sort::{self, Column as _};
 #[template(path = "widget/review_queue.html")]
 pub(crate) struct ReviewQueue {
     pub(crate) count: usize,
-    sort: Sort,
-    /// The query string that draws this queue again in its current order
+    size: Size,
+    library: Option<LibraryId>,
+    /// The query string that draws this queue again
     query: String,
     /// The top-level entries, arranged in display order
     entries: Vec<ReviewEntry>,
+    /// The number of top-level entries before the size limited them
+    total: usize,
 }
+
+/// How much of the review queue to draw
+#[derive(Clone)]
+pub(crate) enum Size {
+    /// Sortable, with the heading, its count badge, and the button that collapses every entry
+    Full { sort: Sort },
+    /// The newest handful entries, collapsed, with a footer that links to the full queue
+    Short,
+}
+
+/// The number of top-level entries that the short size keeps
+const SHORT_LIMIT: usize = 5;
 
 /// A column of the review queue that can be sorted
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -64,23 +80,37 @@ impl sort::Column for Column {
 
 pub(crate) type Sort = sort::Sort<Column>;
 
-/// Write the query string that draws a queue in the given order again
-///
-/// The widget appends this to every route it posts to, because the URL of the page that embeds the
-/// queue does not necessarily carry the queue's order.
-pub(crate) fn query(sort: &Sort) -> String {
-    let direction = if sort.descending { "-" } else { "" };
-    format!("sort={direction}{}", sort.column.name())
-}
-
 impl ReviewQueue {
     /// Report whether any top-level entry has nested entries that can be collapsed
     fn has_nested(&self) -> bool {
         self.entries.iter().any(|entry| !entry.nested.is_empty())
     }
 
-    /// Read the review queue, arrange it, and sort its top-level entries
-    pub async fn new(engine: &Engine, sort: Sort) -> Result<ReviewQueue> {
+    /// Write the query string that draws a queue of the given size and library again
+    ///
+    /// The widget appends this to every route it posts to, because the URL of the page that
+    /// embeds the queue does not necessarily carry the queue's parameters.
+    pub(crate) fn query(size: &Size, library: Option<LibraryId>) -> String {
+        let mut parts = Vec::new();
+        match size {
+            Size::Full { sort } => {
+                let direction = if sort.descending { "-" } else { "" };
+                parts.push(format!("sort={direction}{}", sort.column.name()));
+            }
+            Size::Short => parts.push("size=short".to_owned()),
+        }
+        if let Some(library) = library {
+            parts.push(format!("library={library}"));
+        }
+        parts.join("&")
+    }
+
+    /// Read the review queue, arrange it, and keep what `size` and `library` ask for
+    pub async fn new(
+        engine: &Engine,
+        size: Size,
+        library: Option<LibraryId>,
+    ) -> Result<ReviewQueue> {
         let count = engine.review_count().await?;
         let queue = engine.review_queue().await?;
         let drafts: HashMap<AnyEntityId, &ReviewItem> = queue
@@ -89,21 +119,30 @@ impl ReviewQueue {
             .map(|item| (item.entity.id(), item))
             .collect();
 
-        // Finding what an entry carries costs queries, and only drafts can be carried.
+        let in_library =
+            |item: &ReviewItem| library.is_none_or(|library| item_library(item) == library);
+
+        // Finding what an entry carries costs queries, and only drafts can be carried. An entry
+        // carries only drafts of its own library, so the entries of other libraries are skipped.
         let mut carried = HashMap::new();
         if !drafts.is_empty() {
-            for item in queue.iter().filter(|item| !is_nestable(item)) {
+            for item in queue
+                .iter()
+                .filter(|item| !is_nestable(item) && in_library(item))
+            {
                 carried.insert(item.entity.id(), nested_ids(item, &drafts).await?);
             }
         }
 
         // A draft that no entry carries stays at the top level, so that the queue never hides a draft.
         let placed: HashSet<AnyEntityId> = carried.values().flatten().copied().collect();
-        let query = query(&sort);
+        let query = ReviewQueue::query(&size, library);
+        let collapsed = matches!(size, Size::Short);
         let mut entries: Vec<ReviewEntry> = queue
             .iter()
             .rev()
             .filter(|item| !placed.contains(&item.entity.id()))
+            .filter(|item| in_library(item))
             .map(|item| {
                 let nested = carried
                     .get(&item.entity.id())
@@ -111,16 +150,28 @@ impl ReviewQueue {
                     .flatten()
                     .map(|id| ReviewEntry::new(drafts[id], Vec::new(), &query))
                     .collect();
-                ReviewEntry::new(item, nested, &query)
+                let mut entry = ReviewEntry::new(item, nested, &query);
+                entry.collapsed = collapsed && !entry.nested.is_empty();
+                entry.show_library = library.is_none();
+                for nested in &mut entry.nested {
+                    nested.show_library = entry.show_library;
+                }
+                entry
             })
             .collect();
-        // The sort is stable, so that ties keep the default order.
-        entries.sort_by(|a, b| a.compare(b, &sort));
+        let total = entries.len();
+        match &size {
+            // The sort is stable, so that ties keep the default order.
+            Size::Full { sort } => entries.sort_by(|a, b| a.compare(b, sort)),
+            Size::Short => entries.truncate(SHORT_LIMIT),
+        }
         Ok(ReviewQueue {
             count,
-            sort,
+            size,
+            library,
             query,
             entries,
+            total,
         })
     }
 }
@@ -141,16 +192,19 @@ pub(crate) struct ReviewEntry {
     queued_at: Timestamp,
     /// The children draft works and draft people that the entry carries
     nested: Vec<ReviewEntry>,
-    /// The query string that keeps the queue's order across the entry's routes
+    /// The query string that keeps the queue's parameters across the entry's routes
     query: String,
+    collapsed: bool,
+    show_library: bool,
 }
 
 impl ReviewEntry {
     fn new(item: &ReviewItem, nested: Vec<ReviewEntry>, query: &str) -> ReviewEntry {
-        let (library, draft) = match &item.entity {
-            AnyEntity::Publication(publication) => (publication.library(), publication.is_draft()),
-            AnyEntity::Work(work) => (work.library(), work.is_draft()),
-            AnyEntity::Person(person) => (person.library(), person.is_draft()),
+        let library = item_library(item);
+        let draft = match &item.entity {
+            AnyEntity::Publication(publication) => publication.is_draft(),
+            AnyEntity::Work(work) => work.is_draft(),
+            AnyEntity::Person(person) => person.is_draft(),
         };
         let mut hit = Hit::new(library, item.library_name.clone(), &item.entity);
         hit.href.push_str("/edit");
@@ -168,6 +222,8 @@ impl ReviewEntry {
             queued_at: item.queued_at,
             nested,
             query: query.to_owned(),
+            collapsed: false,
+            show_library: true,
         }
     }
 
@@ -349,6 +405,14 @@ fn relative_age(queued_at: Timestamp, now: Timestamp) -> String {
     }
 }
 
+fn item_library(item: &ReviewItem) -> LibraryId {
+    match &item.entity {
+        AnyEntity::Publication(publication) => publication.library(),
+        AnyEntity::Work(work) => work.library(),
+        AnyEntity::Person(person) => person.library(),
+    }
+}
+
 fn is_nestable(item: &ReviewItem) -> bool {
     match &item.entity {
         AnyEntity::Publication(_) => false,
@@ -477,9 +541,15 @@ mod tests {
             .unwrap();
         second.add_work(work.id()).await.unwrap();
 
-        let queue = ReviewQueue::new(&app.engine, Sort::default())
-            .await
-            .unwrap();
+        let queue = ReviewQueue::new(
+            &app.engine,
+            Size::Full {
+                sort: Sort::default(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
 
         let nested = vec![
             AnyEntityId::Work(work.id()),

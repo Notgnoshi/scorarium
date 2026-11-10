@@ -17,6 +17,7 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::header::Header;
 use crate::widget::holdings::{AddKind, AddedHolding, Holdings, HoldingsForm};
+use crate::widget::review_queue::{ReviewQueue, Size};
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -33,28 +34,35 @@ struct Import {
     text: String,
     more: bool,
     holdings: Holdings,
+    queue: ReviewQueue,
     error: Option<String>,
 }
 
-fn render(
+async fn render(
+    engine: &Engine,
     header: Header,
     library: &Library,
     text: String,
     more: bool,
     holdings: Holdings,
-    status: StatusCode,
-    error: Option<String>,
+    error: Option<(StatusCode, String)>,
 ) -> Result<Response> {
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
+    let (status, error) = match error {
+        Some((status, message)) => (status, Some(message)),
+        None => (StatusCode::OK, None),
+    };
+    let queue = ReviewQueue::new(engine, Size::Short, Some(library.id())).await?;
     let page = Import {
         base: Base::new(header, "Import a publication", parents),
         library: library.id(),
         text,
         more,
         holdings,
+        queue,
         error,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -72,14 +80,15 @@ pub async fn get(
     let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
     let holdings = empty.resubmitted(&engine, &holdings);
     render(
+        &engine,
         header,
         &library,
         String::new(),
         form.more.is_some(),
         holdings,
-        StatusCode::OK,
         None,
     )
+    .await
 }
 
 /// Read the typed text as an identifier if it is one, and as a title otherwise
@@ -173,14 +182,15 @@ pub async fn post(
             let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
             let holdings = empty.resubmitted(&engine, &holdings);
             render(
+                &engine,
                 header,
                 &library,
                 form.text,
                 form.more.is_some(),
                 holdings,
-                status,
-                Some(error),
+                Some((status, error)),
             )
+            .await
         }
     }
 }
