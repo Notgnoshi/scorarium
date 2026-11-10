@@ -19,8 +19,12 @@
                     </button>
                 </div>
             </form>
-            <div class="col order-2 order-md-3 d-flex justify-content-end">
+            <div class="col order-2 order-md-3 d-flex justify-content-end gap-3">
                 {% if logged_in %}
+                    <a class="nav-link" href="/review">
+                        Review
+                        {% if review_count > 0 %}<span class="badge text-bg-secondary">{{ review_count }}</span>{% endif %}
+                    </a>
                     <a class="nav-link" href="/settings">Settings</a>
                 {% else %}
                     <a class="nav-link" href="{{ login_url }}">Log in</a>

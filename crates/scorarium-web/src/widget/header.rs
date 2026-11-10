@@ -14,6 +14,7 @@ pub struct Header {
     demo: bool,
     logged_in: bool,
     login_url: String,
+    review_count: usize,
     pub query: String,
 }
 
@@ -22,10 +23,17 @@ impl FromRequestParts<Engine> for Header {
 
     async fn from_request_parts(parts: &mut Parts, engine: &Engine) -> Result<Self, Error> {
         let Ok(viewer) = Viewer::from_request_parts(parts, engine).await;
+        let logged_in = viewer.is_logged_in();
+        let review_count = if logged_in {
+            engine.review_count().await?
+        } else {
+            0
+        };
         Ok(Header {
             demo: engine.is_demo(),
-            logged_in: viewer.is_logged_in(),
+            logged_in,
             login_url: auth::login_url(&parts.method, &parts.uri),
+            review_count,
             query: String::new(),
         })
     }
