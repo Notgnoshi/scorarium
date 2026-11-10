@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::{Contributed, Entity};
-use scorarium_engine::holding::HoldingKind;
-use scorarium_engine::publication::{Identifier, IdentifierKind, Publication};
+use scorarium_engine::holding::{HoldingKind, NewHolding};
+use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed, Publication};
 use scorarium_engine::value::Year;
 use scorarium_test::TestApp;
 
@@ -182,4 +182,49 @@ async fn edit_refuses_to_remove_every_holding() {
         .unwrap();
     assert_eq!(after.holdings().len(), 1);
     assert_eq!(after.title(), publication.title());
+}
+
+#[tokio::test]
+async fn commit_saves_the_form_and_then_commits() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let seed = ImportSeed::Title {
+        title: "Gymnopedies".into(),
+        record: None,
+    };
+    let draft = library
+        .import(seed, NewHolding::Physical { location: None })
+        .await
+        .unwrap();
+    let url = format!(
+        "/library/{}/publication/{}/commit",
+        library.id(),
+        draft.id()
+    );
+    let load = async || {
+        Publication::load(&app.engine, draft.id())
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    let form = |title| {
+        [
+            ("title", title),
+            ("publisher", ""),
+            ("year", ""),
+            ("note", ""),
+        ]
+    };
+
+    app.server.post(&url).form(&form(" ")).await;
+    assert!(load().await.is_draft());
+
+    app.server
+        .post(&url)
+        .form(&form("Renamed"))
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = load().await;
+    assert!(!after.is_draft());
+    assert_eq!(after.title(), Some("Renamed"));
 }

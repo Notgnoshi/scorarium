@@ -1,15 +1,23 @@
 <h1 class="d-flex justify-content-between align-items-center">
     <span>
         {{ title }}
-        {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+        {% if commit.is_some() %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
     </span>
     <span class="d-flex gap-2">
-        {% if draft %}
+        {% if let Some(commit) = commit %}
             <button class="btn btn-outline-danger btn-sm"
                     type="button"
                     data-dialog="{{ delete.id }}"
                     title="Discard this draft">
                 <i class="bi bi-trash"></i> Discard draft
+            </button>
+            <button class="btn btn-success btn-sm"
+                    type="submit"
+                    form="edit"
+                    formaction="{{ commit.url }}"
+                    formmethod="post"
+                    title="{{ commit.tooltip }}">
+                <i class="bi bi-check-lg"></i> Commit
             </button>
         {% else %}
             <button class="btn btn-outline-danger btn-sm"

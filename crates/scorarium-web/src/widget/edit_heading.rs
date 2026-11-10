@@ -7,9 +7,15 @@ use crate::widget::confirm::Confirm;
 #[template(path = "widget/edit_heading.html")]
 pub(crate) struct EditHeading {
     pub title: String,
-    pub draft: bool,
+    pub commit: Option<CommitAction>,
     /// The confirmation that the destructive button opens
     pub delete: Confirm,
+}
+
+pub(crate) struct CommitAction {
+    /// The route that saves the form and commits
+    pub url: String,
+    pub tooltip: &'static str,
 }
 
 impl askama::filters::HtmlSafe for EditHeading {}

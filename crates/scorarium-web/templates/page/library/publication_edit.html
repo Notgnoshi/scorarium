@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
     {{ heading }}
-    <form method="post" action="/library/{{ library }}/publication/{{ id }}/edit">
+    <form id="edit" method="post" action="/library/{{ library }}/publication/{{ id }}/edit">
         <fieldset class="box">
             <legend>Details</legend>
             {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
@@ -69,7 +69,9 @@
             <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
                 <i class="bi bi-x-lg"></i> Cancel
             </a>
-            <button class="btn btn-primary" type="submit" title="Save changes">
+            <button class="btn {% if heading.commit.is_some() %}btn-outline-primary{% else %}btn-primary{% endif %}"
+                    type="submit"
+                    title="Save changes">
                 <i class="bi bi-floppy"></i> Save
             </button>
         </div>

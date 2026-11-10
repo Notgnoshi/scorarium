@@ -21,11 +21,13 @@
 | `/library/{id}/edit`                                             | POST   | Save a library                   |
 | `/library/{id}/people/{role}`                                    | GET    | People with one role             |
 | `/library/{id}/people`                                           | GET    | People in a library              |
+| `/library/{id}/person/{person}/commit`                           | POST   | Save and commit a person         |
 | `/library/{id}/person/{person}/delete`                           | POST   | Delete a person                  |
 | `/library/{id}/person/{person}/edit`                             | GET    | Edit or delete a person          |
 | `/library/{id}/person/{person}/edit`                             | POST   | Save a person                    |
 | `/library/{id}/person/{person}/profile`                          | GET    | Profile picture                  |
 | `/library/{id}/person/{person}`                                  | GET    | Person details                   |
+| `/library/{id}/publication/{publication}/commit`                 | POST   | Save and commit a publication    |
 | `/library/{id}/publication/{publication}/cover`                  | GET    | Cover image                      |
 | `/library/{id}/publication/{publication}/delete`                 | POST   | Delete a publication             |
 | `/library/{id}/publication/{publication}/edit`                   | GET    | Edit or delete a publication     |
@@ -34,6 +36,7 @@
 | `/library/{id}/publication/{publication}`                        | GET    | Publication details              |
 | `/library/{id}/tag/{tag}`                                        | GET    | Entries with one tag             |
 | `/library/{id}/tags`                                             | GET    | Tags in a library                |
+| `/library/{id}/work/{work}/commit`                               | POST   | Save and commit a work           |
 | `/library/{id}/work/{work}/delete`                               | POST   | Delete a work                    |
 | `/library/{id}/work/{work}/edit`                                 | GET    | Edit or delete a work            |
 | `/library/{id}/work/{work}/edit`                                 | POST   | Save a work                      |

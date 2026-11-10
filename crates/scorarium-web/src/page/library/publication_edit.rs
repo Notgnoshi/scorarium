@@ -24,7 +24,7 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
-use crate::widget::edit_heading::EditHeading;
+use crate::widget::edit_heading::{CommitAction, EditHeading};
 use crate::widget::header::Header;
 use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{self, IdentifiersInput};
@@ -216,7 +216,14 @@ async fn render(
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
-            draft,
+            commit: draft.then(|| CommitAction {
+                url: format!(
+                    "/library/{}/publication/{}/commit",
+                    library.id(),
+                    publication.id()
+                ),
+                tooltip: "Commit this draft publication",
+            }),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -385,18 +392,25 @@ async fn save(
     Ok(())
 }
 
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
+/// Save the form, commit the draft if asked, and answer
+///
+/// A refusal from either step is shown in the form. A refused save blocks the commit.
+async fn submit(
+    engine: Engine,
+    settings: Settings,
     header: Header,
-    Path((library, publication)): Path<(String, String)>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
+    (library, publication): (String, String),
+    (form, holdings): (Form, HoldingsForm),
+    commit: bool,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
-    match save(&engine, &mut publication, &form, &holdings).await {
+    let saved = match save(&engine, &mut publication, &form, &holdings).await {
+        Ok(()) if commit => publication.commit().await,
+        saved => saved,
+    };
+    match saved {
         Ok(()) => Ok(Redirect::to(&format!(
             "/library/{}/publication/{}",
             library.id(),
@@ -419,6 +433,28 @@ pub async fn post(
             .await
         }
     }
+}
+
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
+) -> Result<Response> {
+    submit(engine, settings, header, path, (form, holdings), false).await
+}
+
+pub async fn commit(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
+) -> Result<Response> {
+    submit(engine, settings, header, path, (form, holdings), true).await
 }
 
 pub async fn delete(
