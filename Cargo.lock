@@ -2438,7 +2438,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scorarium"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "clap",
  "color-eyre",
@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "scorarium-cli"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "clap",
  "eyre",
@@ -2468,7 +2468,7 @@ dependencies = [
 
 [[package]]
 name = "scorarium-client"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "bytes",
  "eyre",
@@ -2485,7 +2485,7 @@ dependencies = [
 
 [[package]]
 name = "scorarium-engine"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "argon2",
  "chrono",
@@ -2509,7 +2509,7 @@ dependencies = [
 
 [[package]]
 name = "scorarium-test"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "axum-test",
  "cookie",
@@ -2521,7 +2521,7 @@ dependencies = [
 
 [[package]]
 name = "scorarium-web"
-version = "0.1.0"
+version = "0.2.0-rc0"
 dependencies = [
  "askama",
  "axum",

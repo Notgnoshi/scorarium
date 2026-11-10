@@ -12,6 +12,23 @@ the focus on user impact** rather than the mechanics of the change.
 
 <!-- Please add new changelog entries here -->
 
+# Scorarium - 0.2.0-rc0 - (2026-11-10)
+
+This release marks the end of a significant refactor intended to reduce some of the friction found
+when attempting to add metadata enrichment on top of the previous release.
+
+* Publications can now have digital holdings served by Scorarium
+* Publications can now have cover art, and people can now have profile pictures
+* Most tables can now be sorted by most columns
+* Lots of fiddly page layout improvements, and a few new listings pages
+
+## Under the hood
+
+* Draft entities have moved from in-memory maps into the database, providing a much easier to use
+  data model to the web crate
+* Pages use htmx to update in place instead of reloading the whole page.
+* There's a new widget system to share components between page
+
 # Scorarium - 0.1.0 - (2026-09-13)
 
 This release marks the completion of Scorarium's first milestone! Scorarium supports manually
