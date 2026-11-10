@@ -20,6 +20,9 @@
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |
 | `/api/search`                                                    | GET    | Search suggestions               |
+| `/api/stage/{staged}/discard`                                    | POST   | Discard a staged file            |
+| `/api/stage/{staged}`                                            | GET    | Preview a staged file            |
+| `/api/stage`                                                     | POST   | Stage a file or URL              |
 | `/assets/{name}`                                                 | GET    | Static assets                    |
 | `/library/{id}/delete`                                           | POST   | Delete a library                 |
 | `/library/{id}/edit`                                             | GET    | Edit or delete a library         |

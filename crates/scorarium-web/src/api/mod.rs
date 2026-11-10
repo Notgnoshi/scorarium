@@ -4,6 +4,7 @@ pub mod holding;
 pub mod picture;
 mod query;
 pub mod search;
+pub mod stage;
 pub mod suggest;
 mod upload;
 

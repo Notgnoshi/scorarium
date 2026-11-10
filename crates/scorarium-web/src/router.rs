@@ -118,6 +118,12 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route("/search", get(api::search::get))
                 .route("/library/{id}/suggest/{field}", get(api::suggest::get))
                 .route(
+                    "/stage",
+                    post(api::stage::post).layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
+                )
+                .route("/stage/{staged}", get(api::stage::get))
+                .route("/stage/{staged}/discard", post(api::stage::discard))
+                .route(
                     "/library/{id}/work/{work}/contributor/add",
                     post(api::contributor::add::<Work>),
                 )
