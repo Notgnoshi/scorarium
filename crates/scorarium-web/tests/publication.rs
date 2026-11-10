@@ -1,5 +1,7 @@
 use axum::http::StatusCode;
+use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::publication::{Identifier, IdentifierKind, Publication};
 use scorarium_engine::value::Year;
 use scorarium_test::TestApp;
@@ -107,4 +109,77 @@ async fn range_add_creates_links_and_is_idempotent() {
     app.server.post(&url).form(&form).await.assert_status_ok();
     assert_eq!(album.works().await.unwrap().len(), before + 4);
     assert_eq!(library.works().await.unwrap().len(), works.len() + 3);
+}
+
+#[tokio::test]
+async fn edit_adds_holdings_before_removing_the_only_one() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let only = publication.holdings()[0].id.to_string();
+    let pdf = AssetSource::Upload {
+        data: Box::new(&b"%PDF-1.4 not really"[..]),
+        filename: "score.pdf".into(),
+    };
+    let staged = app.engine.stage(pdf).await.unwrap().id.to_string();
+
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let form = [
+        ("title", publication.title().unwrap()),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+        ("remove_holding", &only),
+        ("add_location", "Piano bench"),
+        ("kind", "physical"),
+        ("location", "Music room"),
+        ("staged", &staged),
+    ];
+    app.server.post(&edit).form(&form).await;
+
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let physical = |location: &str| HoldingKind::Physical {
+        location: Some(location.into()),
+    };
+    let kinds: Vec<&HoldingKind> = after.holdings().iter().map(|h| &h.kind).collect();
+    assert_eq!(kinds.len(), 3);
+    assert_eq!(*kinds[0], physical("Piano bench"));
+    assert_eq!(*kinds[1], physical("Music room"));
+    assert!(matches!(kinds[2], HoldingKind::Digital { file } if file.ends_with("score.pdf")));
+}
+
+#[tokio::test]
+async fn edit_refuses_to_remove_every_holding() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let only = publication.holdings()[0].id.to_string();
+
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let form = [
+        ("title", "Renamed"),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+        ("remove_holding", &only),
+    ];
+    app.server.post(&edit).form(&form).await;
+
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.holdings().len(), 1);
+    assert_eq!(after.title(), publication.title());
 }

@@ -2,6 +2,7 @@ mod api;
 mod assets;
 mod auth;
 mod error;
+mod forms;
 mod hit;
 mod icon;
 mod page;

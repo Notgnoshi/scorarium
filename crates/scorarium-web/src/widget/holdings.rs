@@ -1,8 +1,10 @@
 use askama::Template;
+use scorarium_engine::asset::StagedId;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::{Holding, HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::{Publication, PublicationId};
+use serde::Deserialize;
 
 use crate::widget::file_input::FileInput;
 use crate::widget::typeahead::Typeahead;
@@ -159,4 +161,71 @@ impl HoldingEntry {
             location,
         )
     }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct HoldingsForm {
+    /// The ids of the existing physical holdings, paired by position with `holding_location`
+    holding: Vec<String>,
+    holding_location: Vec<String>,
+    remove_holding: Vec<String>,
+    add_location: Vec<String>,
+    staged: Vec<String>,
+    kind: AddKind,
+    /// A location typed in the add bar and not added
+    location: String,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AddKind {
+    #[default]
+    Physical,
+    Digital,
+}
+
+pub(crate) enum AddedHolding {
+    Physical { location: String },
+    Digital(StagedId),
+}
+
+impl HoldingsForm {
+    /// List the holdings that the form adds
+    pub fn added(&self) -> Vec<AddedHolding> {
+        let physical = |location: &String| AddedHolding::Physical {
+            location: location.clone(),
+        };
+        // The add bar's location counts as added so that a person who types one and saves does not
+        // lose it by forgetting to press the add button.
+        let pending = (self.kind == AddKind::Physical && !self.location.trim().is_empty())
+            .then_some(&self.location);
+        self.add_location
+            .iter()
+            .chain(pending)
+            .map(physical)
+            .chain(self.staged.iter().map(|id| {
+                let Ok(id) = id.parse();
+                AddedHolding::Digital(id)
+            }))
+            .collect()
+    }
+
+    /// Pair each existing physical holding with its location as edited
+    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, &str)>> {
+        self.holding
+            .iter()
+            .zip(&self.holding_location)
+            .map(|(id, location)| Ok((parse_id(id)?, location.as_str())))
+            .collect()
+    }
+
+    /// List the existing holdings that the form removes
+    pub fn removed(&self) -> scorarium_engine::Result<Vec<HoldingId>> {
+        self.remove_holding.iter().map(|id| parse_id(id)).collect()
+    }
+}
+
+fn parse_id(id: &str) -> scorarium_engine::Result<HoldingId> {
+    id.parse().map_err(|_| scorarium_engine::Error::NotFound)
 }

@@ -6,6 +6,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
+use scorarium_engine::holding::{HoldingId, NewHolding};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -15,6 +16,7 @@ use serde::Deserialize;
 use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
+use crate::forms::Forms;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -24,7 +26,7 @@ use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
-use crate::widget::holdings::Holdings;
+use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{self, IdentifiersInput};
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture_input::PictureInput;
@@ -126,6 +128,34 @@ fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
             .map(|id| parse_link_id(id))
             .collect::<scorarium_engine::Result<_>>()?,
     })
+}
+
+/// Refuse the holdings that would leave a missing file or a publication with no holdings
+fn check_holdings(
+    engine: &Engine,
+    publication: &Publication,
+    added: &[AddedHolding],
+    removed: &[HoldingId],
+) -> scorarium_engine::Result<()> {
+    let gone = added
+        .iter()
+        .any(|holding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none()));
+    if gone {
+        return Err(scorarium_engine::Error::InvalidValue(
+            "A file is no longer available. Choose it again.".to_owned(),
+        ));
+    }
+    let kept = publication
+        .holdings()
+        .iter()
+        .filter(|holding| !removed.contains(&holding.id))
+        .count();
+    if kept + added.len() == 0 {
+        return Err(scorarium_engine::Error::InvalidValue(
+            "A publication needs at least one holding.".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 impl Edit {
@@ -288,14 +318,21 @@ pub async fn post(
     Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, publication)): Path<(String, String)>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     let files_allowed = settings.files_allowed(&engine);
-    let parsed = match parse(&form) {
-        Ok(parsed) => parsed,
+    let prepared = parse(&form).and_then(|parsed| {
+        let added = holdings.added();
+        let locations = holdings.locations()?;
+        let removed = holdings.removed()?;
+        check_holdings(&engine, &publication, &added, &removed)?;
+        Ok((parsed, added, locations, removed))
+    });
+    let (parsed, added, locations, removed) = match prepared {
+        Ok(prepared) => prepared,
         Err(e) => {
             let (status, error) = form_error(e)?;
             return render(
@@ -352,8 +389,9 @@ pub async fn post(
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
     }
-    // The cover is saved last, because the engine refuses a file that is not an image only as it
-    // stores the file, and by then the other fields that the person typed are already saved.
+    // The cover is saved after the other Details fields, because the engine refuses a file that is
+    // not an image only as it stores the file, and by then the fields that the person typed are
+    // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
     let cover = if !form.picture.is_empty() {
         let Ok(id) = form.picture.parse();
         publication.set_cover(AssetSource::Staged(id)).await
@@ -375,6 +413,27 @@ pub async fn post(
             Some(error),
         )
         .await;
+    }
+    // Additions run before removals so that the publication never passes through having no
+    // holdings.
+    for holding in &added {
+        let holding = match holding {
+            AddedHolding::Physical { location } => NewHolding::Physical {
+                location: Some(location),
+            },
+            AddedHolding::Digital(id) => NewHolding::Digital(AssetSource::Staged(id.clone())),
+        };
+        publication.add_holding(holding).await?;
+    }
+    for (id, location) in locations {
+        if publication.holdings().iter().any(|h| h.id == id) {
+            publication
+                .set_physical_holding_location(id, Some(location))
+                .await?;
+        }
+    }
+    for id in removed {
+        publication.remove_holding(id).await?;
     }
     Ok(Redirect::to(&format!(
         "/library/{}/publication/{}",

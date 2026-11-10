@@ -2536,6 +2536,7 @@ dependencies = [
  "scorarium-engine",
  "scorarium-test",
  "serde",
+ "serde_html_form",
  "tokio",
  "tokio-util",
  "tower-http 0.7.1",
