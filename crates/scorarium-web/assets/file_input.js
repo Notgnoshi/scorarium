@@ -2,8 +2,61 @@
     let nextUploadId = 1;
     let runningTransfers = 0;
 
+    // The transfers running in each form, whose submit buttons are held until the last one ends.
+    const transfers = new WeakMap();
+
+    const hold = (form) => {
+        const running = transfers.get(form) ?? 0;
+        transfers.set(form, running + 1);
+        if (running > 0) {
+            return;
+        }
+        for (const control of form.elements) {
+            if (control.type === "submit" && !control.disabled) {
+                control.disabled = true;
+                control.dataset.held = "";
+            }
+        }
+    };
+
+    const release = (form) => {
+        const running = transfers.get(form) - 1;
+        transfers.set(form, running);
+        if (running > 0) {
+            return;
+        }
+        // Only the buttons that hold() disabled are enabled, so that a button the server drew
+        // disabled stays disabled.
+        for (const control of form.elements) {
+            if ("held" in control.dataset) {
+                control.disabled = false;
+                delete control.dataset.held;
+            }
+        }
+    };
+
+    // Submitting the form that holds the staged files, or cancelling it, is a decision about them,
+    // so neither asks. Any other form, such as a dialog's or the navbar search, decides nothing.
+    let decided = false;
+
+    document.addEventListener("submit", (event) => {
+        // A form that htmx sends does not leave the page, and has prevented the default by now.
+        const form = event.target;
+        if (!event.defaultPrevented && form.method !== "dialog" && form.querySelector("input[data-staged]")) {
+            decided = true;
+        }
+    });
+
+    document.addEventListener("click", (event) => {
+        // A modified click opens the link elsewhere and leaves this page as it is.
+        const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
+        if (!modified && event.target.closest("a[data-cancel]")) {
+            decided = true;
+        }
+    });
+
     window.addEventListener("beforeunload", (event) => {
-        if (runningTransfers > 0) {
+        if (runningTransfers > 0 || (!decided && document.querySelector("input[data-staged]"))) {
             event.preventDefault();
             event.returnValue = true;
         }
@@ -15,6 +68,7 @@
 
     const post = (root, id, form) => {
         const request = new XMLHttpRequest();
+        const owner = root.closest("form");
         // A fetch has no progress to show, because the browser cannot see the server's download.
         if (form.has("file")) {
             request.upload.addEventListener("progress", (event) => {
@@ -50,8 +104,14 @@
         // The loadend event fires exactly once after a load, error, abort, or timeout.
         request.addEventListener("loadend", () => {
             runningTransfers--;
+            if (owner) {
+                release(owner);
+            }
         });
         runningTransfers++;
+        if (owner) {
+            hold(owner);
+        }
         request.send(form);
     };
 
