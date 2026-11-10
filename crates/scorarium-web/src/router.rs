@@ -164,6 +164,8 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
                 )
+                .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
+                .route("/review/{kind}/{entity}/retry", post(api::review::retry))
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )

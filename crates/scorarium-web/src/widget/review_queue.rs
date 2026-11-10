@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use askama::Template;
 use chrono::Utc;
 use scorarium_engine::Engine;
+use scorarium_engine::enrich::{Enrichment, EnrichmentState, EnrichmentStatus};
 use scorarium_engine::entity::{AnyEntity, AnyEntityId, Contributed, Entity, Timestamp};
 use scorarium_engine::person::{Person, PersonId};
 use scorarium_engine::publication::{self, Publication};
@@ -70,6 +71,7 @@ pub(crate) struct ReviewEntry {
     hit: Hit,
     draft: bool,
     private: bool,
+    enrichment: EnrichmentCell,
     proposals: usize,
     queued_at: Timestamp,
     /// The children draft works and draft people that the entry carries
@@ -90,6 +92,10 @@ impl ReviewEntry {
             hit,
             draft,
             private: item.private,
+            enrichment: EnrichmentCell::new(
+                item.entity.id(),
+                item.enrichment.as_ref().map(Enrichment::status),
+            ),
             proposals: item.proposals,
             queued_at: item.queued_at,
             nested,
@@ -106,6 +112,80 @@ impl ReviewEntry {
 }
 
 impl askama::filters::HtmlSafe for ReviewEntry {}
+
+#[derive(Template)]
+#[template(path = "widget/enrichment.html")]
+pub(crate) struct EnrichmentCell {
+    entity: AnyEntityId,
+    state: Option<EnrichmentState>,
+    /// The count beside the icon, such as "2 of 5"
+    text: String,
+    action: Option<Action>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action {
+    Cancel,
+    Retry,
+}
+
+impl Action {
+    fn route(self) -> &'static str {
+        match self {
+            Action::Cancel => "cancel",
+            Action::Retry => "retry",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Action::Cancel => "Cancel",
+            Action::Retry => "Retry",
+        }
+    }
+}
+
+impl EnrichmentCell {
+    pub fn new(entity: AnyEntityId, status: Option<EnrichmentStatus>) -> EnrichmentCell {
+        let blank = EnrichmentCell {
+            entity,
+            state: None,
+            text: String::new(),
+            action: None,
+        };
+        let Some(status) = status else {
+            return blank;
+        };
+        let total = status.successful + status.pending + status.failed;
+        if total == 0 {
+            return blank;
+        }
+        let state = status.state();
+        let (text, action) = match state {
+            EnrichmentState::InProgress => {
+                let mut text = format!("{} of {total}", status.successful + status.failed);
+                if status.failed > 0 {
+                    text.push_str(&format!(", {} failed", status.failed));
+                }
+                (text, Some(Action::Cancel))
+            }
+            EnrichmentState::Failed => (
+                format!("{} of {total} failed", status.failed),
+                Some(Action::Retry),
+            ),
+            EnrichmentState::Cancelled => ("Cancelled".to_owned(), Some(Action::Retry)),
+            EnrichmentState::Completed => (format!("{total} of {total}"), None),
+        };
+        EnrichmentCell {
+            state: Some(state),
+            text,
+            action,
+            ..blank
+        }
+    }
+}
+
+impl askama::filters::HtmlSafe for EnrichmentCell {}
 
 fn relative_age(queued_at: Timestamp, now: Timestamp) -> String {
     let age = now - queued_at;
@@ -266,5 +346,35 @@ mod tests {
                 (AnyEntityId::Publication(first.id()), nested),
             ]
         );
+    }
+
+    #[test]
+    fn the_cell_reports_progress_and_offers_the_right_action() {
+        let status = |successful, pending, failed, cancelled| EnrichmentStatus {
+            successful,
+            pending,
+            failed,
+            cancelled,
+        };
+        let entity = AnyEntityId::Publication("1".parse().unwrap());
+        for (status, text, action) in [
+            (status(2, 3, 0, false), "2 of 5", Some(Action::Cancel)),
+            (
+                status(2, 2, 1, false),
+                "3 of 5, 1 failed",
+                Some(Action::Cancel),
+            ),
+            (status(4, 0, 1, false), "1 of 5 failed", Some(Action::Retry)),
+            (status(1, 0, 2, true), "Cancelled", Some(Action::Retry)),
+            (status(5, 0, 0, false), "5 of 5", None),
+            (status(0, 0, 0, false), "", None),
+        ] {
+            let cell = EnrichmentCell::new(entity, Some(status));
+            assert_eq!(
+                (cell.text.as_str(), cell.action),
+                (text, action),
+                "{status:?}"
+            );
+        }
     }
 }

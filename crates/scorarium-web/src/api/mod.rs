@@ -1,6 +1,7 @@
 pub mod contents;
 pub mod contributor;
 mod query;
+pub mod review;
 pub mod search;
 pub mod stage;
 pub mod suggest;

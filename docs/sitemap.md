@@ -11,6 +11,8 @@
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
 | `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
 | `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |
+| `/api/review/{kind}/{entity}/cancel`                             | POST   | Cancel enrichment                |
+| `/api/review/{kind}/{entity}/retry`                              | POST   | Retry enrichment                 |
 | `/api/search`                                                    | GET    | Search suggestions               |
 | `/api/stage/{staged}/discard`                                    | POST   | Discard a staged file            |
 | `/api/stage/{staged}`                                            | GET    | Preview a staged file            |

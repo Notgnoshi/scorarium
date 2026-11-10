@@ -18,6 +18,7 @@
                 {% if entry.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
             {% endif %}
         </td>
+        <td class="text-nowrap">{{ entry.enrichment }}</td>
         <td class="text-end">{% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}</td>
         <td class="text-end text-nowrap">
             <time datetime="{{ entry.queued_at.to_rfc3339() }}"
