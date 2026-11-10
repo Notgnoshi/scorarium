@@ -5,7 +5,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::Publication;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::widget::file_input::FileInput;
 use crate::widget::typeahead::Typeahead;
@@ -148,7 +148,7 @@ impl Holdings {
     }
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub(crate) struct HoldingsForm {
     /// The ids of the existing physical holdings, paired by position with `holding_location`
@@ -162,7 +162,7 @@ pub(crate) struct HoldingsForm {
     location: String,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AddKind {
     #[default]
@@ -190,6 +190,15 @@ impl HoldingsForm {
     /// Return the toggle in the add bar
     pub fn kind(&self) -> AddKind {
         self.kind
+    }
+
+    /// Write the form as a query string, leaving out the staged files
+    pub fn query_without_staged(&self) -> String {
+        let form = HoldingsForm {
+            staged: Vec::new(),
+            ..self.clone()
+        };
+        serde_html_form::to_string(form).expect("Holdings fields serialize as a form")
     }
 
     /// List the holdings that the form adds

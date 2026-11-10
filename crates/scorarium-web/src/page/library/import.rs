@@ -20,7 +20,9 @@ use crate::widget::holdings::{AddKind, AddedHolding, Holdings, HoldingsForm};
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
+    #[serde(default)]
     text: String,
+    more: Option<String>,
 }
 
 #[derive(Template)]
@@ -29,6 +31,7 @@ struct Import {
     base: Base,
     library: LibraryId,
     text: String,
+    more: bool,
     holdings: Holdings,
     error: Option<String>,
 }
@@ -37,6 +40,7 @@ fn render(
     header: Header,
     library: &Library,
     text: String,
+    more: bool,
     holdings: Holdings,
     status: StatusCode,
     error: Option<String>,
@@ -49,6 +53,7 @@ fn render(
         base: Base::new(header, "Import a publication", parents),
         library: library.id(),
         text,
+        more,
         holdings,
         error,
     };
@@ -61,13 +66,16 @@ pub async fn get(
     Extension(settings): Extension<Settings>,
     header: Header,
     Path(library): Path<String>,
+    Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
-    let holdings = Holdings::empty(library.id(), settings.files_allowed(&engine));
+    let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
+    let holdings = empty.resubmitted(&engine, &holdings);
     render(
         header,
         &library,
         String::new(),
+        form.more.is_some(),
         holdings,
         StatusCode::OK,
         None,
@@ -149,12 +157,30 @@ pub async fn post(
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     match import(&engine, &library, &form.text, &holdings).await {
+        Ok(_) if form.more.is_some() => {
+            // The next import keeps the holdings but not the files, because a file belongs to one
+            // publication.
+            let more = format!(
+                "/library/{}/import?more=on&{}",
+                library.id(),
+                holdings.query_without_staged()
+            );
+            Ok(Redirect::to(&more).into_response())
+        }
         Ok(edit) => Ok(Redirect::to(&edit).into_response()),
         Err(e) => {
             let (status, error) = form_error(e)?;
             let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
             let holdings = empty.resubmitted(&engine, &holdings);
-            render(header, &library, form.text, holdings, status, Some(error))
+            render(
+                header,
+                &library,
+                form.text,
+                form.more.is_some(),
+                holdings,
+                status,
+                Some(error),
+            )
         }
     }
 }

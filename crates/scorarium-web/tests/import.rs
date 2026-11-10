@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::HoldingKind;
@@ -95,4 +96,36 @@ async fn import_takes_an_identifier_or_a_title() {
 
     app.server.post(&url).form(&[("text", "Gymnopedies")]).await;
     assert_eq!(newest(&library).await.title(), Some("Gymnopedies"));
+}
+
+#[tokio::test]
+async fn import_more_keeps_locations_and_drops_files() {
+    let app = TestApp::demo().await;
+    let library = app
+        .engine
+        .create_library("Sheet music", false)
+        .await
+        .unwrap();
+    let url = format!("/library/{}/import", library.id());
+    let source = AssetSource::Upload {
+        data: Box::new(&b"%PDF-1.4 not really"[..]),
+        filename: "score.pdf".into(),
+    };
+    let staged = app.engine.stage(source).await.unwrap().id.to_string();
+
+    let form = [
+        ("text", "Gymnopedies"),
+        ("more", "on"),
+        ("kind", "physical"),
+        ("add_location", "Attic"),
+        ("staged", staged.as_str()),
+    ];
+    let response = app.server.post(&url).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    let location = response.header("location");
+    let location = location.to_str().unwrap();
+    assert!(location.starts_with(&format!("{url}?")), "{location}");
+    assert!(location.contains("add_location=Attic"), "{location}");
+    assert!(!location.contains(&staged), "{location}");
 }
