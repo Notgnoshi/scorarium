@@ -1,7 +1,9 @@
+use std::convert::Infallible;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use percent_encoding::percent_decode_str;
 use reqwest::header::{CONTENT_DISPOSITION, HeaderMap};
@@ -30,6 +32,44 @@ pub enum AssetSource<'a> {
     },
     /// A file to download from the given HTTP URL
     Url(HttpUrl),
+    /// A file staged earlier with [`Engine::stage`]
+    Staged(StagedId),
+}
+
+/// The id of a staged file
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StagedId(String);
+
+impl StagedId {
+    fn generate() -> Self {
+        let mut buf = [0u8; 16];
+        getrandom::fill(&mut buf).expect("OS randomness unavailable");
+        StagedId(buf.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+}
+
+impl fmt::Display for StagedId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl FromStr for StagedId {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(StagedId(s.to_owned()))
+    }
+}
+
+/// A file that has been staged and belongs to nothing yet
+#[derive(Clone, Debug)]
+pub struct StagedAsset {
+    pub id: StagedId,
+    pub filename: String,
+    pub size: u64,
+    /// The staged file, at its absolute path
+    pub file: PathBuf,
 }
 
 impl fmt::Debug for AssetSource<'_> {
@@ -40,11 +80,13 @@ impl fmt::Debug for AssetSource<'_> {
                 .field("filename", filename)
                 .finish(),
             AssetSource::Url(url) => f.debug_tuple("Url").field(url).finish(),
+            AssetSource::Staged(id) => f.debug_tuple("Staged").field(id).finish(),
         }
     }
 }
 
 /// A file in the staging directory, deleted on drop unless persisted
+#[derive(Debug)]
 pub(crate) struct Staged {
     path: TempPath,
     filename: String,
@@ -52,6 +94,11 @@ pub(crate) struct Staged {
 
 /// Write the file from `source` into the staging directory
 pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<Staged> {
+    if let AssetSource::Staged(id) = &source {
+        return engine.staged_files().remove(id).ok_or_else(|| {
+            Error::InvalidValue("The file is no longer available. Choose it again.".into())
+        });
+    }
     let (file, path) = NamedTempFile::new_in(engine.staging_dir())?.into_parts();
     let mut file = tokio::fs::File::from_std(file);
     let filename = match source {
@@ -64,6 +111,7 @@ pub(crate) async fn stage(engine: &Engine, source: AssetSource<'_>) -> Result<St
             }
             Some(filename)
         }
+        AssetSource::Staged(_) => unreachable!("handled before the temporary file is created"),
         AssetSource::Url(url) => {
             let mut response = engine
                 .downloads()
@@ -132,6 +180,40 @@ fn component(name: &str) -> Option<String> {
     match last {
         "" | "." | ".." => None,
         _ => Some(last.to_owned()),
+    }
+}
+
+impl Engine {
+    /// Stage the file from `source` until it is used or discarded
+    pub async fn stage(&self, source: AssetSource<'_>) -> Result<StagedAsset> {
+        let staged = stage(self, source).await?;
+        let id = StagedId::generate();
+        let asset = StagedAsset {
+            id: id.clone(),
+            filename: staged.filename.clone(),
+            size: std::fs::metadata(&staged.path)?.len(),
+            file: staged.path.to_path_buf(),
+        };
+        self.staged_files().insert(id, staged);
+        Ok(asset)
+    }
+
+    /// Look up a staged file, if it still exists
+    pub fn staged(&self, id: &StagedId) -> Option<StagedAsset> {
+        let files = self.staged_files();
+        let staged = files.get(id)?;
+        let size = std::fs::metadata(&staged.path).ok()?.len();
+        Some(StagedAsset {
+            id: id.clone(),
+            filename: staged.filename.clone(),
+            size,
+            file: staged.path.to_path_buf(),
+        })
+    }
+
+    /// Discard a staged file. Has no effect if it is already gone.
+    pub fn discard_staged(&self, id: &StagedId) {
+        self.staged_files().remove(id);
     }
 }
 

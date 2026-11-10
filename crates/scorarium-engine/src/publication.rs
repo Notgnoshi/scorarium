@@ -3125,4 +3125,48 @@ mod tests {
         );
         assert_eq!(reloaded.holdings()[1], file);
     }
+
+    #[tokio::test]
+    async fn a_staged_file_is_used_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let mut publication = library
+            .import(
+                ImportSeed::Title {
+                    title: "Gymnopedies".into(),
+                    record: None,
+                },
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let staged = engine
+            .stage(AssetSource::Upload {
+                data: Box::new(&b"%PDF-1.4 not really"[..]),
+                filename: "score.pdf".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(staged.filename, "score.pdf");
+        assert_eq!(staged.size, 19);
+        let holding = || NewHolding::Digital(AssetSource::Staged(staged.id.clone()));
+
+        publication.add_holding(holding()).await.unwrap();
+
+        let file = dir
+            .path()
+            .join(format!("assets/publication/{}/score.pdf", publication.id()));
+        assert_eq!(
+            publication.holdings()[1].kind,
+            HoldingKind::Digital { file }
+        );
+        assert!(engine.staged(&staged.id).is_none());
+        assert!(matches!(
+            publication.add_holding(holding()).await,
+            Err(Error::InvalidValue(_))
+        ));
+    }
 }
