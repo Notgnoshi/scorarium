@@ -107,6 +107,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::edit::get).post(page::library::edit::post),
         )
         .route("/library/{id}/delete", post(page::library::edit::delete))
+        .route("/review", get(page::review::get))
         .route("/search", get(page::search::get))
         .route("/login", get(page::login::get).post(page::login::post))
         .route("/logout", post(page::logout::post))

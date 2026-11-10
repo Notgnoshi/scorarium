@@ -9,6 +9,7 @@ description = "The scorarium web server"
 askama.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
+chrono.workspace = true
 clap.workspace = true
 eyre.workspace = true
 futures-util.workspace = true

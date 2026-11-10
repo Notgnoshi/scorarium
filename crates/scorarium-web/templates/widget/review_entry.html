@@ -1,0 +1,33 @@
+{% macro draw(entry, indented) %}
+    <tr>
+        <td {% if indented %}class="ps-5"{% endif %}>
+            <div class="d-flex align-items-center gap-2">
+                <span title="{{ entry.kind_label() }}">{{ entry.hit.picture }}</span>
+                <div>
+                    <a href="{{ entry.hit.href }}">{{ entry.hit.title }}</a>
+                    {% if entry.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                    {% if let Some(detail) = entry.hit.detail %}
+                        <div class="small text-body-secondary">{{ detail }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </td>
+        <td>
+            {% if !indented %}
+                <a class="text-body" href="/library/{{ entry.hit.library }}">{{ entry.hit.library_name }}</a>
+                {% if entry.private %}<i class="bi bi-lock-fill" title="Private"></i>{% endif %}
+            {% endif %}
+        </td>
+        <td class="text-end">{% if entry.proposals > 0 %}{{ entry.proposals }}{% endif %}</td>
+        <td class="text-end text-nowrap">
+            <time datetime="{{ entry.queued_at.to_rfc3339() }}"
+                  title="{{ entry.queued_at.format("%Y-%m-%d %H:%M:%S") }}">{{ entry.age() }}</time>
+        </td>
+    </tr>
+{% endmacro %}
+{% call draw(self, false) %}
+{% endcall %}
+{% for child in nested %}
+    {% call draw(child, true) %}
+    {% endcall %}
+{% endfor %}

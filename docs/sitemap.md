@@ -46,6 +46,7 @@
 | `/login`                                                         | GET    | Log in                           |
 | `/login`                                                         | POST   | Submit the password              |
 | `/logout`                                                        | POST   | Log out                          |
+| `/review`                                                        | GET    | Review queue                     |
 | `/search`                                                        | GET    | Search results                   |
 | `/settings/audit`                                                | GET    | Audit log                        |
 | `/settings/password`                                             | GET    | Change the password              |

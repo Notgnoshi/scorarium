@@ -1,0 +1,23 @@
+<div id="review-queue">
+    <h1>
+        Review queue
+        {% if !entries.is_empty() %}<span class="badge text-bg-secondary fs-6 align-middle">{{ count }}</span>{% endif %}
+    </h1>
+    {% if entries.is_empty() %}
+        <p>Nothing to review</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th>Entry</th>
+                    <th>Library</th>
+                    <th class="text-end">Proposals</th>
+                    <th class="text-end">Age</th>
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for entry in entries %}{{ entry }}{% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+</div>
