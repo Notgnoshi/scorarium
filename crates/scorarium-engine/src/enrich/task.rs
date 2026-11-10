@@ -57,9 +57,17 @@ impl Task {
         // Holding the lock across the flag and the drain means a concurrent enqueue either pushes
         // its subtask before the drain or sees the flag and spawns nothing.
         let mut subtasks = self.subtasks();
-        self.status.send_modify(|status| status.cancelled = true);
-        for subtask in subtasks.drain(..) {
-            subtask.abort();
+        let cancelled = self.status.send_if_modified(|status| {
+            let in_progress = status.state() == EnrichmentState::InProgress;
+            if in_progress {
+                status.cancelled = true;
+            }
+            in_progress
+        });
+        if cancelled {
+            for subtask in subtasks.drain(..) {
+                subtask.abort();
+            }
         }
     }
 }
@@ -89,10 +97,6 @@ impl SubTaskQueue {
             }
         });
         subtasks.push(handle.abort_handle());
-    }
-
-    pub(crate) fn cancel(&self) {
-        self.task.cancel();
     }
 
     /// Return whether the task was cancelled
@@ -152,7 +156,7 @@ impl Enrichment {
     pub(crate) fn needs_review(&self) -> bool {
         matches!(
             self.status().state(),
-            EnrichmentState::InProgress | EnrichmentState::Failed
+            EnrichmentState::InProgress | EnrichmentState::Failed | EnrichmentState::Cancelled
         )
     }
 
@@ -165,7 +169,9 @@ impl Enrichment {
         let _ = self.status.changed().await;
     }
 
-    /// Abort the task's pending and in-flight subtasks and remove it from the task registry
+    /// Stop the task if it is in progress, and keep it as cancelled
+    ///
+    /// Has no effect on a task that is over.
     pub fn cancel(self) {
         self.task.cancel();
     }
@@ -198,15 +204,20 @@ impl Engine {
         enrichment
     }
 
-    /// Return the enrichment task on for `root`, unless there is none or it was cancelled
+    /// Return the enrichment task of `root`, if it has one
     pub(crate) fn enrichment_of(&self, root: AnyEntityId) -> Option<Enrichment> {
-        let mut enrichments = self.enrichments();
-        let task = enrichments.get(&root)?;
-        if task.status.borrow().state() == EnrichmentState::Cancelled {
-            enrichments.remove(&root);
-            return None;
+        self.enrichments().get(&root).map(Enrichment::new)
+    }
+
+    /// Stop the enrichment task of `root` and forget it
+    ///
+    /// Has no effect if `root` has no task.
+    pub(crate) fn forget_enrichment(&self, root: AnyEntityId) {
+        // The registry lock is released before cancelling, which takes the task's subtasks lock.
+        let task = self.enrichments().remove(&root);
+        if let Some(task) = task {
+            task.cancel();
         }
-        Some(Enrichment::new(task))
     }
 
     /// Forget the enrichment task of `root` if it finished without failures
@@ -235,10 +246,7 @@ impl Engine {
     pub async fn wait_for_enrichment(&self) {
         loop {
             let handles: Vec<Enrichment> = {
-                let mut enrichments = self.enrichments();
-                enrichments
-                    .retain(|_, task| task.status.borrow().state() != EnrichmentState::Cancelled);
-                enrichments
+                self.enrichments()
                     .values()
                     .filter(|task| task.status.borrow().state() == EnrichmentState::InProgress)
                     .map(Enrichment::new)
@@ -313,7 +321,10 @@ mod tests {
         let kept = enrichment.clone();
         enrichment.cancel();
         assert_eq!(kept.status().state(), EnrichmentState::Cancelled);
-        assert!(engine.enrichment_of(root).is_none());
+        assert_eq!(
+            engine.enrichment_of(root).unwrap().status().state(),
+            EnrichmentState::Cancelled
+        );
         tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
             .await
             .unwrap();
@@ -331,6 +342,29 @@ mod tests {
             }
         );
     }
+
+    #[tokio::test]
+    async fn cancel_leaves_a_finished_task_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let root = AnyEntityId::Publication(PublicationId::new(1));
+        let enrichment = engine.start_enrichment(root, |queue| {
+            queue.enqueue(async { Err(Error::NotFound) });
+        });
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+
+        enrichment.cancel();
+
+        assert_eq!(
+            engine.enrichment_of(root).unwrap().status().state(),
+            EnrichmentState::Failed
+        );
+    }
+
     #[tokio::test]
     async fn a_subtask_can_end_its_task() {
         let dir = tempfile::tempdir().unwrap();
@@ -339,9 +373,9 @@ mod tests {
             .unwrap();
         let root = AnyEntityId::Publication(PublicationId::new(1));
         engine.start_enrichment(root, |queue| {
-            let task = queue.clone();
+            let engine = engine.clone();
             queue.enqueue(async move {
-                task.cancel();
+                engine.forget_enrichment(root);
                 Ok(())
             });
         });

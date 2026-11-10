@@ -180,6 +180,11 @@ struct PublicationRow {
 }
 
 impl Publication {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     /// Only a draft publication is allowed to be missing a title
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
@@ -1703,9 +1708,8 @@ impl Entity for Publication {
         tx.commit().await?;
         orphans.push(self.audit_subject());
         asset::remove_dirs(&self.engine, &orphans);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine
+            .forget_enrichment(AnyEntityId::Publication(self.id));
         Ok(())
     }
 

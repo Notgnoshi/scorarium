@@ -28,11 +28,11 @@ impl ReviewItem {
     ///
     /// Returns [Error::NotFound] if neither a task nor a draft nor a proposal remained to remove.
     pub async fn discard(self) -> Result<()> {
-        let cancelled = self.enrichment.is_some_and(|enrichment| {
-            let live = enrichment.needs_review();
-            enrichment.cancel();
-            live
-        });
+        let cancelled = self
+            .enrichment
+            .as_ref()
+            .is_some_and(Enrichment::needs_review);
+        self.entity.engine().forget_enrichment(self.entity.id());
         let result = match self.entity {
             AnyEntity::Publication(publication) => discard_entity(publication).await,
             AnyEntity::Work(work) => discard_entity(work).await,
@@ -415,12 +415,21 @@ mod tests {
             });
         });
 
-        let mut queue = engine.review_queue().await.unwrap();
+        let queue = engine.review_queue().await.unwrap();
         assert_eq!(queue.len(), 1);
         assert!(
             matches!(queue[0].entity, AnyEntity::Publication(ref p) if p.id() == publication.id())
         );
         assert!(queue[0].enrichment.is_some());
+        assert_eq!(engine.review_count().await.unwrap(), 1);
+
+        publication.enrichment().unwrap().cancel();
+        let mut queue = engine.review_queue().await.unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(
+            queue[0].enrichment.as_ref().unwrap().status().state(),
+            EnrichmentState::Cancelled
+        );
         assert_eq!(engine.review_count().await.unwrap(), 1);
 
         queue.pop().unwrap().discard().await.unwrap();

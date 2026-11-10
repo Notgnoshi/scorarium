@@ -113,6 +113,11 @@ struct PersonRow {
 }
 
 impl Person {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -592,9 +597,7 @@ impl Entity for Person {
         .commit()
         .await?;
         asset::remove_dirs(&self.engine, &[self.audit_subject()]);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine.forget_enrichment(AnyEntityId::Person(self.id));
         Ok(())
     }
 

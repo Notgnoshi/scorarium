@@ -152,6 +152,11 @@ struct WorkRow {
 }
 
 impl Work {
+    /// Return the engine the entity belongs to
+    pub(crate) fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
     pub fn title(&self) -> &str {
         &self.title
     }
@@ -1149,9 +1154,7 @@ impl Entity for Work {
             .await?;
         tx.commit().await?;
         asset::remove_dirs(&self.engine, &people);
-        if let Some(enrichment) = self.enrichment() {
-            enrichment.cancel();
-        }
+        self.engine.forget_enrichment(AnyEntityId::Work(self.id));
         Ok(())
     }
 
