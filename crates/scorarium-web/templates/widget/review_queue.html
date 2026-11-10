@@ -1,3 +1,4 @@
+{% import "widget/sort.html" as sort %}
 <div id="review-queue">
     <div id="review-queue-dialog" data-dialog-slot></div>
     <h1>
@@ -10,11 +11,16 @@
         <table class="table align-middle">
             <thead class="small text-uppercase text-nowrap">
                 <tr>
-                    <th>Entry</th>
-                    <th>Library</th>
-                    <th>Enrichment</th>
-                    <th class="text-end">Proposals</th>
-                    <th class="text-end">Age</th>
+                    {% call sort::header(sort, Column::Entry, "Entry") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Library, "Library") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Enrichment, "Enrichment") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Proposals, "Proposals") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Age, "Age") %}
+                    {% endcall %}
                     <th><span class="visually-hidden">Discard</span></th>
                 </tr>
             </thead>

@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
@@ -13,7 +13,12 @@ use serde::Deserialize;
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::review_queue::ReviewQueue;
+use crate::widget::review_queue::{self, ReviewQueue, Sort};
+
+#[derive(Default, Deserialize)]
+pub(crate) struct ReviewQuery {
+    pub(crate) sort: Option<Sort>,
+}
 
 #[derive(Deserialize)]
 pub struct DiscardForm {
@@ -24,19 +29,21 @@ pub async fn cancel(
     _session: ApiSession,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
+    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
     if let Some(entity) = load(&engine, &kind, &entity).await?
         && let Some(enrichment) = enrichment_of(&entity)
     {
         enrichment.cancel();
     }
-    queue(&engine).await
+    queue(&engine, query).await
 }
 
 pub async fn retry(
     _session: ApiSession,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
+    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
     match load(&engine, &kind, &entity).await? {
         Some(AnyEntity::Publication(publication)) => publication.enrich().await.map(drop)?,
@@ -44,7 +51,7 @@ pub async fn retry(
         Some(AnyEntity::Person(person)) => person.enrich().await.map(drop)?,
         None => {}
     }
-    queue(&engine).await
+    queue(&engine, query).await
 }
 
 /// Ask before discarding an entry, then discard it
@@ -52,17 +59,18 @@ pub async fn discard(
     _session: ApiSession,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
+    Query(query): Query<ReviewQuery>,
     axum::Form(form): axum::Form<DiscardForm>,
 ) -> Result<Response> {
     let Some(entity) = load(&engine, &kind, &entity).await? else {
-        return queue(&engine).await;
+        return queue(&engine, query).await;
     };
     let Some(item) = (match &entity {
         AnyEntity::Publication(publication) => publication.review_item().await?,
         AnyEntity::Work(work) => work.review_item().await?,
         AnyEntity::Person(person) => person.review_item().await?,
     }) else {
-        return queue(&engine).await;
+        return queue(&engine, query).await;
     };
 
     let case = if is_draft(&item.entity) {
@@ -71,18 +79,18 @@ pub async fn discard(
         "proposals"
     } else {
         // Only the task keeps this entry in the queue, so there is nothing to confirm.
-        return finish(&engine, item).await;
+        return finish(&engine, item, query).await;
     };
     if form.confirmed.as_deref() == Some(case) {
-        return finish(&engine, item).await;
+        return finish(&engine, item, query).await;
     }
-    let dialog = dialog(&item, case).await?;
+    let dialog = dialog(&item, case, &query).await?;
     Ok(Html(dialog.to_string()).into_response())
 }
 
-async fn finish(engine: &Engine, item: ReviewItem) -> Result<Response> {
+async fn finish(engine: &Engine, item: ReviewItem, query: ReviewQuery) -> Result<Response> {
     match item.discard().await {
-        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine).await,
+        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine, query).await,
         Err(e) => Err(e.into()),
     }
 }
@@ -95,7 +103,7 @@ fn is_draft(entity: &AnyEntity) -> bool {
     }
 }
 
-async fn dialog(item: &ReviewItem, case: &'static str) -> Result<Confirm> {
+async fn dialog(item: &ReviewItem, case: &'static str, query: &ReviewQuery) -> Result<Confirm> {
     let subject = match &item.entity {
         AnyEntity::Publication(publication) => untitled(publication),
         AnyEntity::Work(work) => work.title(),
@@ -151,9 +159,10 @@ async fn dialog(item: &ReviewItem, case: &'static str) -> Result<Confirm> {
         also_deleted,
         action,
         url: format!(
-            "/api/review/{}/{}/discard",
+            "/api/review/{}/{}/discard?{}",
             item.entity.id().kind(),
-            item.entity.id().get()
+            item.entity.id().get(),
+            review_queue::query(&query.sort.clone().unwrap_or_default()),
         ),
         target: Some("#review-queue-dialog".to_owned()),
         fields: vec![("confirmed", case.to_owned())],
@@ -171,8 +180,9 @@ fn join<'a>(titles: impl Iterator<Item = &'a str>) -> Option<String> {
 }
 
 /// Return the review queue widget fragment as a response
-async fn queue(engine: &Engine) -> Result<Response> {
-    let page = Html(ReviewQueue::new(engine).await?.to_string());
+async fn queue(engine: &Engine, query: ReviewQuery) -> Result<Response> {
+    let sort = query.sort.unwrap_or_default();
+    let page = Html(ReviewQueue::new(engine, sort).await?.to_string());
     Ok((
         [("HX-Retarget", "#review-queue"), ("HX-Reswap", "outerHTML")],
         page,

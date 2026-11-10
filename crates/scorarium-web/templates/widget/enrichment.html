@@ -14,7 +14,7 @@
 </span>
 {% if let Some(action) = action %}
     <form class="d-inline"
-          hx-post="/api/review/{{ entity.kind() }}/{{ entity.get() }}/{{ action.route() }}"
+          hx-post="/api/review/{{ entity.kind() }}/{{ entity.get() }}/{{ action.route() }}?{{ query }}"
           hx-target="#review-queue"
           hx-swap="outerHTML">
         <button class="btn btn-sm btn-outline-secondary py-0" type="submit">{{ action.label() }}</button>

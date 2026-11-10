@@ -25,7 +25,7 @@
                   title="{{ entry.queued_at.format("%Y-%m-%d %H:%M:%S") }}">{{ entry.age() }}</time>
         </td>
         <td class="text-end text-nowrap">
-            <form hx-post="/api/review/{{ entry.id.kind() }}/{{ entry.id.get() }}/discard"
+            <form hx-post="/api/review/{{ entry.id.kind() }}/{{ entry.id.get() }}/discard?{{ entry.query }}"
                   hx-target="#review-queue-dialog">
                 {% if entry.draft %}
                     <button class="btn btn-sm btn-outline-danger py-0" type="submit" title="Discard draft">

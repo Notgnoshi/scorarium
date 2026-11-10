@@ -1,8 +1,9 @@
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::Html;
 use scorarium_engine::Engine;
 
+use crate::api::review::ReviewQuery;
 use crate::auth::Session;
 use crate::error::Result;
 use crate::page::Base;
@@ -20,11 +21,12 @@ struct Review {
 pub async fn get(
     _session: Session,
     State(engine): State<Engine>,
+    Query(query): Query<ReviewQuery>,
     header: Header,
 ) -> Result<Html<String>> {
     let page = Review {
         base: Base::new(header, "Review queue", vec![Crumb::new("Libraries", "/")]),
-        queue: ReviewQueue::new(&engine).await?,
+        queue: ReviewQueue::new(&engine, query.sort.unwrap_or_default()).await?,
     };
     Ok(Html(page.render()?))
 }

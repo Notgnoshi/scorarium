@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use askama::Template;
@@ -12,18 +13,67 @@ use scorarium_engine::work::{self, Work, WorkId};
 
 use crate::error::Result;
 use crate::hit::Hit;
+use crate::sort::{self, Column as _};
 
 #[derive(Template)]
 #[template(path = "widget/review_queue.html")]
 pub(crate) struct ReviewQueue {
     count: usize,
+    sort: Sort,
     /// The top-level entries, arranged in display order
     entries: Vec<ReviewEntry>,
 }
 
+/// A column of the review queue that can be sorted
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Column {
+    /// The time since the entry was queued, which is the default order
+    #[default]
+    Age,
+    Entry,
+    Library,
+    Enrichment,
+    Proposals,
+}
+
+impl sort::Column for Column {
+    const ALL: &'static [Self] = &[
+        Column::Age,
+        Column::Entry,
+        Column::Library,
+        Column::Enrichment,
+        Column::Proposals,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Column::Age => "age",
+            Column::Entry => "entry",
+            Column::Library => "library",
+            Column::Enrichment => "enrichment",
+            Column::Proposals => "proposals",
+        }
+    }
+
+    fn descending_first(self) -> bool {
+        self == Column::Proposals
+    }
+}
+
+pub(crate) type Sort = sort::Sort<Column>;
+
+/// Write the query string that draws a queue in the given order again
+///
+/// The widget appends this to every route it posts to, because the URL of the page that embeds the
+/// queue does not necessarily carry the queue's order.
+pub(crate) fn query(sort: &Sort) -> String {
+    let direction = if sort.descending { "-" } else { "" };
+    format!("sort={direction}{}", sort.column.name())
+}
+
 impl ReviewQueue {
-    /// Read the review queue and arrange it
-    pub async fn new(engine: &Engine) -> Result<ReviewQueue> {
+    /// Read the review queue, arrange it, and sort its top-level entries
+    pub async fn new(engine: &Engine, sort: Sort) -> Result<ReviewQueue> {
         let count = engine.review_count().await?;
         let queue = engine.review_queue().await?;
         let drafts: HashMap<AnyEntityId, &ReviewItem> = queue
@@ -42,7 +92,8 @@ impl ReviewQueue {
 
         // A draft that no entry carries stays at the top level, so that the queue never hides a draft.
         let placed: HashSet<AnyEntityId> = carried.values().flatten().copied().collect();
-        let entries = queue
+        let query = query(&sort);
+        let mut entries: Vec<ReviewEntry> = queue
             .iter()
             .rev()
             .filter(|item| !placed.contains(&item.entity.id()))
@@ -51,12 +102,18 @@ impl ReviewQueue {
                     .get(&item.entity.id())
                     .into_iter()
                     .flatten()
-                    .map(|id| ReviewEntry::new(drafts[id], Vec::new()))
+                    .map(|id| ReviewEntry::new(drafts[id], Vec::new(), &query))
                     .collect();
-                ReviewEntry::new(item, nested)
+                ReviewEntry::new(item, nested, &query)
             })
             .collect();
-        Ok(ReviewQueue { count, entries })
+        // The sort is stable, so that ties keep the default order.
+        entries.sort_by(|a, b| a.compare(b, &sort));
+        Ok(ReviewQueue {
+            count,
+            sort,
+            entries,
+        })
     }
 }
 
@@ -76,10 +133,12 @@ pub(crate) struct ReviewEntry {
     queued_at: Timestamp,
     /// The children draft works and draft people that the entry carries
     nested: Vec<ReviewEntry>,
+    /// The query string that keeps the queue's order across the entry's routes
+    query: String,
 }
 
 impl ReviewEntry {
-    fn new(item: &ReviewItem, nested: Vec<ReviewEntry>) -> ReviewEntry {
+    fn new(item: &ReviewItem, nested: Vec<ReviewEntry>, query: &str) -> ReviewEntry {
         let (library, draft) = match &item.entity {
             AnyEntity::Publication(publication) => (publication.library(), publication.is_draft()),
             AnyEntity::Work(work) => (work.library(), work.is_draft()),
@@ -95,11 +154,47 @@ impl ReviewEntry {
             enrichment: EnrichmentCell::new(
                 item.entity.id(),
                 item.enrichment.as_ref().map(Enrichment::status),
+                query,
             ),
             proposals: item.proposals,
             queued_at: item.queued_at,
             nested,
+            query: query.to_owned(),
         }
+    }
+
+    /// Order two top-level entries by the sorted column
+    fn compare(&self, other: &ReviewEntry, sort: &Sort) -> Ordering {
+        let descending = sort.descending;
+        match sort.column {
+            Column::Age => {
+                // Ascending age is newest first, so the queued time compares in reverse.
+                sort::compare(Some(other.queued_at), Some(self.queued_at), descending)
+            }
+            Column::Entry => sort::compare(
+                Some(self.hit.title.to_lowercase()),
+                Some(other.hit.title.to_lowercase()),
+                descending,
+            ),
+            Column::Library => sort::compare(
+                Some(self.hit.library_name.to_lowercase()),
+                Some(other.hit.library_name.to_lowercase()),
+                descending,
+            ),
+            Column::Enrichment => {
+                sort::compare(self.enrichment.rank(), other.enrichment.rank(), descending)
+            }
+            Column::Proposals => sort::compare(
+                Some(self.all_proposals()),
+                Some(other.all_proposals()),
+                descending,
+            ),
+        }
+    }
+
+    /// Count the entry's own proposals and those of its nested entries
+    fn all_proposals(&self) -> usize {
+        self.proposals + self.nested.iter().map(|n| n.proposals).sum::<usize>()
     }
 
     fn kind_label(&self) -> &'static str {
@@ -121,6 +216,8 @@ pub(crate) struct EnrichmentCell {
     /// The count beside the icon, such as "2 of 5"
     text: String,
     action: Option<Action>,
+    /// The query string that keeps the queue's order across the cell's routes
+    query: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,12 +243,17 @@ impl Action {
 }
 
 impl EnrichmentCell {
-    pub fn new(entity: AnyEntityId, status: Option<EnrichmentStatus>) -> EnrichmentCell {
+    pub fn new(
+        entity: AnyEntityId,
+        status: Option<EnrichmentStatus>,
+        query: &str,
+    ) -> EnrichmentCell {
         let blank = EnrichmentCell {
             entity,
             state: None,
             text: String::new(),
             action: None,
+            query: query.to_owned(),
         };
         let Some(status) = status else {
             return blank;
@@ -182,6 +284,16 @@ impl EnrichmentCell {
             action,
             ..blank
         }
+    }
+
+    /// Rank the state for sorting, with a blank cell having no rank
+    fn rank(&self) -> Option<u8> {
+        self.state.as_ref().map(|state| match state {
+            EnrichmentState::Failed => 0,
+            EnrichmentState::Cancelled => 1,
+            EnrichmentState::InProgress => 2,
+            EnrichmentState::Completed => 3,
+        })
     }
 }
 
@@ -328,7 +440,9 @@ mod tests {
             .unwrap();
         second.add_work(work.id()).await.unwrap();
 
-        let queue = ReviewQueue::new(&app.engine).await.unwrap();
+        let queue = ReviewQueue::new(&app.engine, Sort::default())
+            .await
+            .unwrap();
 
         let nested = vec![
             AnyEntityId::Work(work.id()),
@@ -369,7 +483,7 @@ mod tests {
             (status(5, 0, 0, false), "5 of 5", None),
             (status(0, 0, 0, false), "", None),
         ] {
-            let cell = EnrichmentCell::new(entity, Some(status));
+            let cell = EnrichmentCell::new(entity, Some(status), "");
             assert_eq!(
                 (cell.text.as_str(), cell.action),
                 (text, action),
