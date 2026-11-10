@@ -8,8 +8,6 @@
 | `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
 | `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |
 | `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
-| `/api/library/{id}/publication/{publication}/cover/remove`       | POST   | Remove a cover                   |
-| `/api/library/{id}/publication/{publication}/cover/upload`       | POST   | Upload a cover                   |
 | `/api/library/{id}/publication/{publication}/holding/add`        | POST   | Add a physical holding           |
 | `/api/library/{id}/publication/{publication}/holding/location`   | POST   | Move a physical holding          |
 | `/api/library/{id}/publication/{publication}/holding/remove`     | POST   | Delete a holding                 |

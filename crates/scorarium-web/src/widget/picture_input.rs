@@ -2,6 +2,7 @@ use askama::Template;
 use scorarium_engine::Engine;
 use scorarium_engine::asset::StagedId;
 use scorarium_engine::person::Person;
+use scorarium_engine::publication::Publication;
 
 use crate::widget::file_input::FileInput;
 use crate::widget::picture::Picture;
@@ -21,8 +22,17 @@ impl askama::filters::HtmlSafe for PictureInput {}
 impl PictureInput {
     /// Show the person's stored profile picture, or the placeholder
     pub fn profile(person: &Person, files_allowed: bool) -> PictureInput {
+        PictureInput::new(Picture::from(person), files_allowed)
+    }
+
+    /// Show the publication's stored cover, or the placeholder
+    pub fn cover(publication: &Publication, files_allowed: bool) -> PictureInput {
+        PictureInput::new(Picture::from(publication), files_allowed)
+    }
+
+    fn new(picture: Picture, files_allowed: bool) -> PictureInput {
         PictureInput {
-            picture: Picture::from(person),
+            picture,
             staged: None,
             remove: false,
             input: FileInput {

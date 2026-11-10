@@ -4,6 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
+use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
@@ -26,7 +27,7 @@ use crate::widget::header::Header;
 use crate::widget::holdings::Holdings;
 use crate::widget::identifiers_input::{self, IdentifiersInput};
 use crate::widget::links_input::LinksInput;
-use crate::widget::picture_box::PictureBox;
+use crate::widget::picture_input::PictureInput;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -52,13 +53,16 @@ pub(crate) struct Form {
     add_link: Vec<String>,
     #[serde(default)]
     remove_link: Vec<String>,
+    #[serde(default)]
+    picture: String,
+    remove_picture: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "page/library/publication_edit.html")]
 struct Edit {
     base: Base,
-    picture: PictureBox,
+    picture: PictureInput,
     library: LibraryId,
     id: PublicationId,
     heading: EditHeading,
@@ -156,7 +160,9 @@ impl Edit {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn render(
+    engine: &Engine,
     header: Header,
     files_allowed: bool,
     library: &Library,
@@ -171,7 +177,11 @@ async fn render(
     ];
     let draft = publication.is_draft();
     let page = Edit {
-        picture: PictureBox::cover(publication, files_allowed),
+        picture: PictureInput::cover(publication, files_allowed).resubmitted(
+            engine,
+            &form.picture,
+            form.remove_picture.is_some(),
+        ),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
@@ -256,8 +266,11 @@ pub async fn get(
         remove_tag: vec![],
         add_link: vec![],
         remove_link: vec![],
+        picture: String::new(),
+        remove_picture: None,
     };
     render(
+        &engine,
         header,
         files_allowed,
         &library,
@@ -286,6 +299,7 @@ pub async fn post(
         Err(e) => {
             let (status, error) = form_error(e)?;
             return render(
+                &engine,
                 header,
                 files_allowed,
                 &library,
@@ -297,11 +311,11 @@ pub async fn post(
             .await;
         }
     };
-    // The title is the only field here the engine can reject, so setting it first leaves the
-    // publication untouched when it is.
+    // The title is set first, so that a rejected title leaves the publication untouched.
     if let Err(e) = publication.set_title(&form.title).await {
         let (status, error) = form_error(e)?;
         return render(
+            &engine,
             header,
             files_allowed,
             &library,
@@ -337,6 +351,30 @@ pub async fn post(
     }
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
+    }
+    // The cover is saved last, because the engine refuses a file that is not an image only as it
+    // stores the file, and by then the other fields that the person typed are already saved.
+    let cover = if !form.picture.is_empty() {
+        let Ok(id) = form.picture.parse();
+        publication.set_cover(AssetSource::Staged(id)).await
+    } else if form.remove_picture.is_some() {
+        publication.clear_cover().await
+    } else {
+        Ok(())
+    };
+    if let Err(e) = cover {
+        let (status, error) = form_error(e)?;
+        return render(
+            &engine,
+            header,
+            files_allowed,
+            &library,
+            &publication,
+            form,
+            status,
+            Some(error),
+        )
+        .await;
     }
     Ok(Redirect::to(&format!(
         "/library/{}/publication/{}",

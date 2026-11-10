@@ -168,15 +168,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     post(api::holding::upload)
                         .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
                 )
-                .route(
-                    "/library/{id}/publication/{publication}/cover/upload",
-                    post(api::picture::upload_cover)
-                        .layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/cover/remove",
-                    post(api::picture::remove_cover),
-                )
                 .fallback(|| async { StatusCode::NOT_FOUND })
                 .layer(middleware::from_fn(error::render_fragment)),
         )

@@ -14,7 +14,6 @@ pub mod library_nav;
 pub mod links_input;
 pub mod pagination;
 pub mod picture;
-pub mod picture_box;
 pub mod picture_input;
 pub mod stars;
 pub mod stars_input;
