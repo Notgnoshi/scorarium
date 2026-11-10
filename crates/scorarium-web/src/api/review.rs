@@ -1,3 +1,4 @@
+use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -23,6 +24,15 @@ pub(crate) struct ReviewQuery {
 #[derive(Deserialize)]
 pub struct DiscardForm {
     confirmed: Option<String>,
+}
+
+/// Draw the review queue, for a widget that refreshes itself
+pub async fn get(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Query(query): Query<ReviewQuery>,
+) -> Result<Response> {
+    queue(&engine, query).await
 }
 
 pub async fn cancel(
@@ -179,13 +189,23 @@ fn join<'a>(titles: impl Iterator<Item = &'a str>) -> Option<String> {
     (!titles.is_empty()).then(|| titles.join(", "))
 }
 
-/// Return the review queue widget fragment as a response
+#[derive(Template)]
+#[template(path = "api/review.html")]
+struct QueueAnswer {
+    queue: ReviewQueue,
+}
+
 async fn queue(engine: &Engine, query: ReviewQuery) -> Result<Response> {
     let sort = query.sort.unwrap_or_default();
-    let page = Html(ReviewQueue::new(engine, sort).await?.to_string());
+    let answer = QueueAnswer {
+        queue: ReviewQueue::new(engine, sort).await?,
+    };
     Ok((
-        [("HX-Retarget", "#review-queue"), ("HX-Reswap", "outerHTML")],
-        page,
+        [
+            ("HX-Retarget", "#review-queue"),
+            ("HX-Reswap", "outerMorph"),
+        ],
+        Html(answer.render()?),
     )
         .into_response())
 }

@@ -164,6 +164,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     "/library/{id}/publication/{publication}/contributor/remove",
                     post(api::contributor::remove::<Publication>),
                 )
+                .route("/review", get(api::review::get))
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
                 .route("/review/{kind}/{entity}/retry", post(api::review::retry))
                 .route(

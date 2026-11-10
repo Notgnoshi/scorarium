@@ -1,6 +1,11 @@
 {% import "widget/sort.html" as sort %}
-<div id="review-queue" data-size="full">
-    <div id="review-queue-dialog" data-dialog-slot></div>
+<div id="review-queue"
+     data-size="full"
+     hx-get="/api/review?{{ query }}"
+     hx-trigger="every 5s"
+     hx-swap="outerMorph"
+     hx-status:5xx="swap:none">
+    <div id="review-queue-dialog" data-dialog-slot hx-morph-skip></div>
     <div class="d-flex align-items-center justify-content-between">
         <h1>
             Review queue

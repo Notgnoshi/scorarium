@@ -1,3 +1,4 @@
+{% import "widget/review_count.html" as review_count %}
 <nav class="navbar navbar-expand bg-body-tertiary">
     <div class="container">
         <div class="row flex-grow-1 g-2 align-items-center">
@@ -23,7 +24,8 @@
                 {% if logged_in %}
                     <a class="nav-link" href="/review">
                         Review
-                        {% if review_count > 0 %}<span class="badge text-bg-secondary">{{ review_count }}</span>{% endif %}
+                        {% call review_count::badge(review_count, false) %}
+                        {% endcall %}
                     </a>
                     <a class="nav-link" href="/settings">Settings</a>
                 {% else %}

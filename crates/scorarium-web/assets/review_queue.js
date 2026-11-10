@@ -66,6 +66,16 @@
         refreshButton(root);
     });
 
+    // The morph skips the dialog slot, so a dialog whose confirmation was answered by replacing the
+    // queue stays open unless it is removed. When the answer is another dialog, the swap has
+    // already replaced the form, and nothing is removed.
+    document.addEventListener("htmx:after:swap", (event) => {
+        const form = event.target.closest?.("#review-queue-dialog form");
+        if (form?.isConnected) {
+            form.closest("dialog")?.remove();
+        }
+    });
+
     // A swap brings every entry back expanded, so the saved state is applied again.
     document.addEventListener("htmx:after:settle", apply);
     document.addEventListener("DOMContentLoaded", apply);

@@ -18,8 +18,10 @@ use crate::sort::{self, Column as _};
 #[derive(Template)]
 #[template(path = "widget/review_queue.html")]
 pub(crate) struct ReviewQueue {
-    count: usize,
+    pub(crate) count: usize,
     sort: Sort,
+    /// The query string that draws this queue again in its current order
+    query: String,
     /// The top-level entries, arranged in display order
     entries: Vec<ReviewEntry>,
 }
@@ -117,6 +119,7 @@ impl ReviewQueue {
         Ok(ReviewQueue {
             count,
             sort,
+            query,
             entries,
         })
     }

@@ -14,6 +14,7 @@
 | `/api/review/{kind}/{entity}/cancel`                             | POST   | Cancel enrichment                |
 | `/api/review/{kind}/{entity}/discard`                            | POST   | Confirm, then discard            |
 | `/api/review/{kind}/{entity}/retry`                              | POST   | Retry enrichment                 |
+| `/api/review`                                                    | GET    | Review queue widget              |
 | `/api/search`                                                    | GET    | Search suggestions               |
 | `/api/stage/{staged}/discard`                                    | POST   | Discard a staged file            |
 | `/api/stage/{staged}`                                            | GET    | Preview a staged file            |
