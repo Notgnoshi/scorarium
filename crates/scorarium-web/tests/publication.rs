@@ -7,7 +7,7 @@ use scorarium_engine::value::Year;
 use scorarium_test::TestApp;
 
 #[tokio::test]
-async fn edit_applies_scalars_and_staged_identifiers_in_one_save() {
+async fn edit_applies_scalars_and_identifiers_in_one_save() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
     let publication = library.publications().await.unwrap().pop().unwrap();
@@ -22,7 +22,8 @@ async fn edit_applies_scalars_and_staged_identifiers_in_one_save() {
             ("publisher", ""),
             ("year", "1999"),
             ("note", ""),
-            ("add_identifier", "isbn:9780793525041"),
+            ("identifier[new1][kind]", "isbn"),
+            ("identifier[new1][value]", "9780793525041"),
         ])
         .await
         .assert_status(StatusCode::SEE_OTHER);
@@ -34,6 +35,50 @@ async fn edit_applies_scalars_and_staged_identifiers_in_one_save() {
     assert_eq!(after.year().map(Year::get), Some(1999));
     let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-7935-2504-1").unwrap();
     assert!(after.identifiers().contains(&isbn));
+}
+
+#[tokio::test]
+async fn edit_changes_the_kind_of_an_identifier_and_removes_another() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut publication = library.publications().await.unwrap().pop().unwrap();
+    for identifier in publication.identifiers().to_vec() {
+        publication.remove_identifier(&identifier).await.unwrap();
+    }
+    let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-7935-2504-1").unwrap();
+    let publisher = Identifier::new(IdentifierKind::PublisherNumber, "HL 123").unwrap();
+    publication.add_identifier(isbn).await.unwrap();
+    publication.add_identifier(publisher).await.unwrap();
+
+    app.server
+        .post(&format!(
+            "/library/{}/publication/{}/edit",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("title", "Renamed"),
+            ("publisher", ""),
+            ("year", ""),
+            ("note", ""),
+            ("identifier[0][saved][kind]", "isbn"),
+            ("identifier[0][saved][value]", "978-0-7935-2504-1"),
+            ("identifier[0][removed]", "true"),
+            ("identifier[0][kind]", "isbn"),
+            ("identifier[0][value]", "978-0-7935-2504-1"),
+            ("identifier[1][saved][kind]", "publisher_number"),
+            ("identifier[1][saved][value]", "HL 123"),
+            ("identifier[1][kind]", "plate_number"),
+            ("identifier[1][value]", "HL 123"),
+        ])
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let plate = Identifier::new(IdentifierKind::PlateNumber, "HL 123").unwrap();
+    assert_eq!(after.identifiers(), [plate]);
 }
 
 #[tokio::test]

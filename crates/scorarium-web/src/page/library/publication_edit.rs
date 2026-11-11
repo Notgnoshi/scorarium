@@ -291,9 +291,7 @@ async fn render(
         library: library.id(),
         id: publication.id(),
         form,
-        identifiers: IdentifiersInput {
-            identifiers: publication.identifiers().to_vec(),
-        },
+        identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
         tags: TagsInput {
             library: library.id(),
             tags: publication.tags().to_vec(),
@@ -339,7 +337,7 @@ pub async fn get(
     };
     let posted = Posted {
         form,
-        identifiers: IdentifiersForm::default(),
+        identifiers: IdentifiersForm::from(publication.identifiers()),
         links: LinksForm::from(publication.links()),
         holdings: HoldingsForm::default(),
     };
@@ -378,6 +376,7 @@ async fn save(
     for identifier in parsed.identifiers.add {
         publication.add_identifier(identifier).await?;
     }
+    posted.identifiers = IdentifiersForm::from(publication.identifiers());
     for tag in &parsed.remove_tags {
         publication.remove_tag(tag).await?;
     }

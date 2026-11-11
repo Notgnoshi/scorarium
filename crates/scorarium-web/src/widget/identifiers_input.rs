@@ -1,43 +1,84 @@
 use askama::Template;
 use scorarium_engine::publication::{Identifier, IdentifierKind};
-use scorarium_engine::{Error, Result};
 use serde::Deserialize;
 
+use crate::forms;
 use crate::widget::list::Edits;
 use crate::widget::refusals::Refusals;
 
-/// An editable list of publication identifiers that posts `add_identifier` and
-/// `remove_identifier` for each change
-///
-/// Each posted value is `<kind>:<value>`, where the kind is the `IdentifierKind` display name.
-#[derive(Debug, Template)]
-#[template(path = "widget/identifiers_input.html")]
-pub struct IdentifiersInput {
-    pub identifiers: Vec<Identifier>,
+#[derive(Clone, Deserialize)]
+struct IdentifierFields {
+    kind: String,
+    value: String,
 }
 
-impl askama::filters::HtmlSafe for IdentifiersInput {}
+#[derive(Clone, Default, Deserialize)]
+#[serde(default)]
+struct IdentifierEntry {
+    saved: Option<IdentifierFields>,
+    removed: bool,
+    kind: String,
+    value: String,
+}
 
 #[derive(Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct IdentifiersForm {
-    add_identifier: Vec<String>,
-    remove_identifier: Vec<String>,
+    #[serde(deserialize_with = "forms::entries")]
+    identifier: Vec<IdentifierEntry>,
 }
 
 impl IdentifiersForm {
     pub fn parse(&self, refusals: &mut Refusals) -> Edits<Identifier, Identifier> {
-        let add = self
-            .add_identifier
+        let mut edits = Edits {
+            remove: vec![],
+            add: vec![],
+        };
+        for (n, entry) in self.identifier.iter().enumerate() {
+            let saved = match &entry.saved {
+                Some(saved) => {
+                    let address = saved
+                        .kind
+                        .parse()
+                        .and_then(|kind| Identifier::new(kind, &saved.value));
+                    match refusals.check(address) {
+                        Some(address) => Some((
+                            address,
+                            saved.kind != entry.kind || saved.value.trim() != entry.value.trim(),
+                        )),
+                        None => continue,
+                    }
+                }
+                None => None,
+            };
+            let field = format!("identifier[{n}][value]");
+            edits.entry(saved, entry.removed, &entry.value, |text| {
+                let identifier = entry
+                    .kind
+                    .parse()
+                    .and_then(|kind| Identifier::new(kind, text));
+                refusals.check_field(&field, identifier)
+            });
+        }
+        edits
+    }
+}
+
+impl From<&[Identifier]> for IdentifiersForm {
+    fn from(identifiers: &[Identifier]) -> Self {
+        let identifier = identifiers
             .iter()
-            .filter_map(|identifier| refusals.check(parse(identifier)))
+            .map(|identifier| IdentifierEntry {
+                saved: Some(IdentifierFields {
+                    kind: identifier.kind().to_string(),
+                    value: identifier.as_str().to_owned(),
+                }),
+                removed: false,
+                kind: identifier.kind().to_string(),
+                value: identifier.as_str().to_owned(),
+            })
             .collect();
-        let remove = self
-            .remove_identifier
-            .iter()
-            .filter_map(|identifier| refusals.check(parse(identifier)))
-            .collect();
-        Edits { remove, add }
+        IdentifiersForm { identifier }
     }
 }
 
@@ -51,33 +92,47 @@ pub(crate) fn kind_label(kind: IdentifierKind) -> Option<&'static str> {
     }
 }
 
-/// Parse an identifier staged as `<kind>:<value>`
-fn parse(staged: &str) -> Result<Identifier> {
-    // identifier values can contain colons
-    let Some((kind, value)) = staged.split_once(':') else {
-        return Err(Error::InvalidValue(format!(
-            "Unknown identifier '{staged}'."
-        )));
-    };
-    Identifier::new(kind.parse()?, value)
+struct EntryInput {
+    entry: IdentifierEntry,
+    refusal: Option<String>,
+    autofocus: bool,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Template)]
+#[template(path = "widget/identifiers_input.html")]
+pub struct IdentifiersInput {
+    entries: Vec<EntryInput>,
+    blank: EntryInput,
+}
 
-    #[test]
-    fn parse_splits_on_first_colon_only() {
-        let identifier = parse("plate_number:A:123").unwrap();
-        assert_eq!(identifier.kind(), IdentifierKind::PlateNumber);
-        assert_eq!(identifier.as_str(), "A:123");
-    }
+impl askama::filters::HtmlSafe for IdentifiersInput {}
 
-    #[test]
-    fn parse_requires_a_colon() {
-        assert!(matches!(
-            parse("9780306406157"),
-            Err(Error::InvalidValue(_))
-        ));
+impl IdentifiersInput {
+    /// Draw the entries of `form` beside the refusals of a Save
+    pub fn new(form: &IdentifiersForm, refusals: &Refusals) -> IdentifiersInput {
+        let entries = form
+            .identifier
+            .iter()
+            .enumerate()
+            .map(|(n, entry)| {
+                let field = format!("identifier[{n}][value]");
+                EntryInput {
+                    entry: entry.clone(),
+                    refusal: refusals.of(&field).map(str::to_owned),
+                    autofocus: refusals.first() == Some(field.as_str()),
+                }
+            })
+            .collect();
+        IdentifiersInput {
+            entries,
+            blank: EntryInput {
+                entry: IdentifierEntry {
+                    kind: IdentifierKind::Isbn.to_string(),
+                    ..IdentifierEntry::default()
+                },
+                refusal: None,
+                autofocus: true,
+            },
+        }
     }
 }

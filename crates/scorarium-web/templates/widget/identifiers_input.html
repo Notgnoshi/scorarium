@@ -1,41 +1,51 @@
-<div data-list-input="identifier">
-    <ul class="list-unstyled" data-entries>
-        {% for identifier in identifiers %}
-            <li class="d-flex align-items-center gap-2" data-value="{{ identifier.kind() }}:{{ identifier }}">
-                <span class="text-body-secondary"
-                      style="min-width: 5rem">{{ crate::widget::identifiers_input::kind_label(identifier.kind()).unwrap_or("") }}</span>
-                <span>{{ identifier }}</span>
-                <button type="button"
-                        class="btn btn-sm btn-link"
-                        data-remove
-                        data-key="{{ identifier.kind() }}:{{ identifier }}"
-                        title="Remove identifier">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </li>
-        {% endfor %}
-    </ul>
-    <template>
-        <li class="d-flex align-items-center gap-2">
-            <span class="text-body-secondary" style="min-width: 5rem" data-kind-label></span>
-            <span data-label></span>
-            <input type="hidden" name="add_identifier">
-            <button type="button" class="btn btn-sm btn-link" data-remove title="Remove identifier">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </li>
-    </template>
-    <div class="input-group">
-        <select class="form-select flex-grow-0 w-auto" data-add-kind>
-            <option value="isbn" selected>ISBN</option>
-            <option value="ismn">ISMN</option>
-            <option value="publisher_number">Publisher No.</option>
-            <option value="plate_number">Plate No.</option>
+{% import "widget/list.html" as list %}
+{% macro entry(key, input) %}
+    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% if let Some(saved) = input.entry.saved %}
+            <input type="hidden" name="identifier[{{ key }}][saved][kind]" value="{{ saved.kind }}">
+            <input type="hidden" name="identifier[{{ key }}][saved][value]" value="{{ saved.value }}">
+        {% endif %}
+        <select class="form-select w-auto"
+                id="identifier-{{ key }}-kind"
+                name="identifier[{{ key }}][kind]"
+                aria-label="Kind of identifier">
+            <option value="isbn" {% if input.entry.kind == "isbn" %}selected{% endif %}>ISBN</option>
+            <option value="ismn" {% if input.entry.kind == "ismn" %}selected{% endif %}>ISMN</option>
+            <option value="publisher_number"
+                    {% if input.entry.kind == "publisher_number" %}selected{% endif %}>Publisher No.</option>
+            <option value="plate_number"
+                    {% if input.entry.kind == "plate_number" %}selected{% endif %}>Plate No.</option>
         </select>
-        <input type="text" class="form-control" placeholder="Add identifier" data-add>
-        <button type="button"
-                class="btn btn-outline-secondary"
-                title="Add identifier"
-                data-add-button><i class="bi bi-plus-lg"></i> Add</button>
-    </div>
-</div>
+        <div class="flex-grow-1">
+            <input type="text"
+                   class="form-control{% if input.refusal.is_some() %} is-invalid{% endif %}"
+                   id="identifier-{{ key }}-value"
+                   name="identifier[{{ key }}][value]"
+                   value="{{ input.entry.value }}"
+                   aria-label="Identifier"
+                   {% if input.autofocus %}autofocus{% endif %}>
+            {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+        </div>
+        {% if input.entry.saved.is_some() %}
+            {% call list::removal("identifier", key, input.entry.removed, "Remove identifier", "Keep this identifier") %}
+            {% endcall %}
+        {% else %}
+            {% call list::remove("Remove identifier") %}
+            {% endcall %}
+        {% endif %}
+    </li>
+{% endmacro %}
+<ul class="list-unstyled mb-0" data-list data-list-enter>
+    {% for input in entries %}
+        {% call entry(loop.index0, input) %}
+        {% endcall %}
+    {% endfor %}
+    <template>
+        {% call entry("__key__", blank) %}
+        {% endcall %}
+    </template>
+    <li>
+        {% call list::add("Add an identifier") %}
+        {% endcall %}
+    </li>
+</ul>
