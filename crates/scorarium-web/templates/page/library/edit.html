@@ -2,7 +2,11 @@
 {% block content %}
     {{ heading }}
     {{ refusals }}
-    <form id="edit" method="post" action="/library/{{ id }}/edit{{ back.query() }}">
+    <form id="edit"
+          data-unsaved
+          {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
+          method="post"
+          action="/library/{{ id }}/edit{{ back.query() }}">
         <fieldset class="box">
             <legend>Details</legend>
             <div class="row mb-3">
