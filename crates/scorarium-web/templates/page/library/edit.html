@@ -5,37 +5,42 @@
     <form id="edit" method="post" action="/library/{{ id }}/edit">
         <fieldset class="box">
             <legend>Details</legend>
-            <div class="mb-3">
-                <label class="form-label" for="name">Name</label>
-                <input class="form-control{% if refusals.of("name").is_some() %} is-invalid{% endif %}"
-                       type="text"
-                       id="name"
-                       name="name"
-                       value="{{ name }}"
-                       required
-                       {% if refusals.first() == Some("name") %}autofocus{% endif %}>
-                {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+            <div class="row mb-3">
+                <label class="col-sm-2 col-form-label" for="name">Name</label>
+                <div class="col-sm-10">
+                    <input class="form-control{% if refusals.of("name").is_some() %} is-invalid{% endif %}"
+                           type="text"
+                           id="name"
+                           name="name"
+                           value="{{ name }}"
+                           required
+                           {% if refusals.first() == Some("name") %}autofocus{% endif %}>
+                    {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                </div>
             </div>
-            <div class="mb-3">
-                <div class="btn-group" role="group" aria-label="Visibility">
-                    <input class="btn-check"
-                           type="radio"
-                           name="visibility"
-                           id="visibility-public"
-                           value="public"
-                           {% if !private %}checked{% endif %}>
-                    <label class="btn btn-outline-secondary" for="visibility-public">
-                        <i class="bi bi-unlock-fill"></i> Public
-                    </label>
-                    <input class="btn-check"
-                           type="radio"
-                           name="visibility"
-                           id="visibility-private"
-                           value="private"
-                           {% if private %}checked{% endif %}>
-                    <label class="btn btn-outline-secondary" for="visibility-private">
-                        <i class="bi bi-lock-fill"></i> Private
-                    </label>
+            <div class="row mb-3">
+                <span class="col-sm-2 col-form-label">Visibility</span>
+                <div class="col-sm-10">
+                    <div class="btn-group" role="group" aria-label="Visibility">
+                        <input class="btn-check"
+                               type="radio"
+                               name="visibility"
+                               id="visibility-public"
+                               value="public"
+                               {% if !private %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="visibility-public">
+                            <i class="bi bi-unlock-fill"></i> Public
+                        </label>
+                        <input class="btn-check"
+                               type="radio"
+                               name="visibility"
+                               id="visibility-private"
+                               value="private"
+                               {% if private %}checked{% endif %}>
+                        <label class="btn btn-outline-secondary" for="visibility-private">
+                            <i class="bi bi-lock-fill"></i> Private
+                        </label>
+                    </div>
                 </div>
             </div>
         </fieldset>

@@ -2,14 +2,14 @@
 {% block content %}
     {{ heading }}
     {{ refusals }}
-    <div class="row">
-        <div class="col-auto">{{ picture }}</div>
-        <div class="col">
-            <form id="edit"
-                  method="post"
-                  action="/library/{{ library }}/work/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
-                <fieldset class="box">
-                    <legend>Details</legend>
+    <form id="edit"
+          method="post"
+          action="/library/{{ library }}/work/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
+        <fieldset class="box">
+            <legend>Details</legend>
+            <div class="row">
+                <div class="col-12 col-md-auto mb-3">{{ picture }}</div>
+                <div class="col-12 col-md">
                     <div class="row mb-3">
                         <label class="col-sm-2 col-form-label" for="title">Title</label>
                         <div class="col-sm-10">
@@ -39,31 +39,31 @@
                         <label class="col-sm-2 col-form-label" for="instrumentation">Instrumentation</label>
                         <div class="col-sm-10">{{ self.typeahead("instrumentation", form.instrumentation) }}</div>
                     </div>
-                    <div class="row mb-3">
-                        <span class="col-sm-2 col-form-label">Rating</span>
-                        <div class="col-sm-10 col-form-label">{{ self.stars() }}</div>
-                    </div>
-                    <div class="row mb-3">
-                        <span class="col-sm-2 col-form-label">Catalog numbers</span>
-                        <div class="col-sm-10">{{ catalog_numbers }}</div>
-                    </div>
-                    <div class="row mb-3">
-                        <label class="col-sm-2 col-form-label" for="tag">Tags</label>
-                        <div class="col-sm-10">{{ tags }}</div>
-                    </div>
-                    <div class="row mb-3">
-                        <span class="col-sm-2 col-form-label">Links</span>
-                        <div class="col-sm-10">{{ links }}</div>
-                    </div>
-                    <div class="row mb-3">
-                        <label class="col-sm-2 col-form-label" for="note">Note</label>
-                        <div class="col-sm-10">
-                            <textarea class="form-control" id="note" name="note" rows="4">{{ form.note }}</textarea>
-                        </div>
-                    </div>
-                </fieldset>
-            </form>
-        </div>
-    </div>
+                </div>
+            </div>
+            <div class="row mb-3 mt-4">
+                <span class="col-sm-2 col-form-label">Catalog numbers</span>
+                <div class="col-sm-10">{{ catalog_numbers }}</div>
+            </div>
+            <div class="row mb-3">
+                <span class="col-sm-2 col-form-label">Links</span>
+                <div class="col-sm-10">{{ links }}</div>
+            </div>
+            <div class="row mb-3 mt-4">
+                <span class="col-sm-2 col-form-label">Rating</span>
+                <div class="col-sm-10 col-form-label">{{ self.stars() }}</div>
+            </div>
+            <div class="row mb-3">
+                <label class="col-sm-2 col-form-label" for="tag">Tags</label>
+                <div class="col-sm-10">{{ tags }}</div>
+            </div>
+            <div class="row mb-3">
+                <label class="col-sm-2 col-form-label" for="note">Note</label>
+                <div class="col-sm-10">
+                    <textarea class="form-control" id="note" name="note" rows="4">{{ form.note }}</textarea>
+                </div>
+            </div>
+        </fieldset>
+    </form>
     <div id="contributors">{{ contributors }}</div>
 {% endblock %}
