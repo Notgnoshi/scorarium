@@ -1,30 +1,121 @@
+use std::fmt;
+
+use axum::body::Bytes;
 use axum::extract::{FromRequest, RawForm, Request};
 use axum::http::StatusCode;
-use serde::de::DeserializeOwned;
+use indexmap::IndexMap;
+use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
+use serde::{Deserialize, Serialize};
+use serde_qs::{ArrayFormat, Config};
 
 use crate::error::Error;
 
-/// Two views of one submitted form
-///
-/// A page's own fields and a widget's fields arrive in one body. Deserializing each struct from it
-/// keeps the widget's field names in the widget's module.
-pub(crate) struct Forms<A, B>(pub A, pub B);
+// browsers percent-encodes the brackets in a field's name.
+const CONFIG: Config = Config::new()
+    .use_form_encoding(true)
+    .array_format(ArrayFormat::Unindexed);
 
-impl<S, A, B> FromRequest<S> for Forms<A, B>
+/// Read a form from the bytes of a body or a query string
+pub(crate) fn from_bytes<T: DeserializeOwned>(input: &[u8]) -> Result<T, serde_qs::Error> {
+    CONFIG.deserialize_bytes(input)
+}
+
+/// Write `form` as a query string
+pub(crate) fn to_string<T: Serialize>(form: &T) -> Result<String, serde_qs::Error> {
+    CONFIG.serialize_string(form)
+}
+
+/// Read every value of a repeated name, keeping a lone blank one
+pub(crate) fn repeated<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    struct Values;
+
+    impl<'de> Visitor<'de> for Values {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("the values of a repeated name")
+        }
+
+        // serde_qs presents one blank value as a unit.
+        fn visit_unit<E>(self) -> Result<Vec<String>, E> {
+            Ok(vec![String::new()])
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<String>, E> {
+            Ok(vec![value.to_owned()])
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut values = Vec::new();
+            while let Some(value) = seq.next_element()? {
+                values.push(value);
+            }
+            Ok(values)
+        }
+    }
+
+    deserializer.deserialize_any(Values)
+}
+
+/// Read the entries of a list in the order of the page, discarding their keys
+pub(crate) fn entries<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
-    S: Send + Sync,
-    A: DeserializeOwned,
-    B: DeserializeOwned,
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
 {
+    let entries = IndexMap::<String, T>::deserialize(deserializer)?;
+    Ok(entries.into_values().collect())
+}
+
+/// The body of a submitted form
+///
+/// A page's fields and each widget's fields arrive together in one body.
+/// Each owner reads its own field struct.
+pub(crate) struct FormBody(Bytes);
+
+impl<S: Send + Sync> FromRequest<S> for FormBody {
     type Rejection = Error;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let RawForm(body) = RawForm::from_request(req, state)
             .await
             .map_err(|e| Error::new(e.status(), e))?;
-        let unprocessable = |e| Error::new(StatusCode::UNPROCESSABLE_ENTITY, e);
-        let a = serde_html_form::from_bytes(&body).map_err(unprocessable)?;
-        let b = serde_html_form::from_bytes(&body).map_err(unprocessable)?;
-        Ok(Forms(a, b))
+        Ok(Self(body))
+    }
+}
+
+impl FormBody {
+    /// Read the fields that `T` owns, ignoring the rest
+    pub fn read<T: DeserializeOwned>(&self) -> Result<T, Error> {
+        from_bytes(&self.0).map_err(|e| Error::new(StatusCode::UNPROCESSABLE_ENTITY, e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entries_reads_encoded_names_in_page_order() {
+        #[derive(Deserialize)]
+        struct Entry {
+            value: String,
+        }
+        #[derive(Deserialize)]
+        struct Form {
+            #[serde(deserialize_with = "entries")]
+            number: Vec<Entry>,
+        }
+        let body =
+            b"number%5B1%5D%5Bvalue%5D=b&number%5B0%5D%5Bvalue%5D=a&number%5Bnew1%5D%5Bvalue%5D=c";
+        let form: Form = from_bytes(body).unwrap();
+        let values: Vec<&str> = form
+            .number
+            .iter()
+            .map(|entry| entry.value.as_str())
+            .collect();
+        assert_eq!(values, ["b", "a", "c"]);
     }
 }

@@ -15,14 +15,15 @@ use serde::Deserialize;
 use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::page::library::entity::{self, parse_link_id};
-use crate::page::library::view;
+use crate::forms::FormBody;
+use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
-use crate::widget::links_input::LinksInput;
+use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::list::Edits;
 use crate::widget::picture_input::PictureInput;
 use crate::widget::refusals::Refusals;
 
@@ -31,45 +32,45 @@ pub(crate) struct Form {
     name: String,
     sort_name: String,
     #[serde(default)]
-    add_link: Vec<String>,
-    #[serde(default)]
-    remove_link: Vec<String>,
-    #[serde(default)]
     picture: String,
     remove_picture: Option<String>,
+}
+
+struct Posted {
+    form: Form,
+    links: LinksForm,
+}
+
+impl Posted {
+    fn read(body: &FormBody) -> Result<Posted> {
+        Ok(Posted {
+            form: body.read()?,
+            links: body.read()?,
+        })
+    }
 }
 
 struct Parsed {
     name: NonBlank,
     sort_name: NonBlank,
-    add_links: Vec<HttpUrl>,
-    remove_links: Vec<LinkId>,
+    links: Edits<LinkId, HttpUrl>,
 }
 
-fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
+    let form = &posted.form;
     let name = refusals.parse::<NonBlank>("name", &form.name);
     let sort_name = match form.sort_name.trim() {
         "" => name.as_ref().map(derive_sort_name),
         sort_name => refusals.check(sort_name.parse()),
     };
-    let add_links = form
-        .add_link
-        .iter()
-        .filter_map(|url| refusals.check(url.parse()))
-        .collect();
-    let remove_links = form
-        .remove_link
-        .iter()
-        .filter_map(|id| refusals.check(parse_link_id(id)))
-        .collect();
+    let links = posted.links.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
     Some(Parsed {
         name: name?,
         sort_name: sort_name?,
-        add_links,
-        remove_links,
+        links,
     })
 }
 
@@ -94,7 +95,7 @@ async fn render(
     header: Header,
     library: &Library,
     person: &Person,
-    form: Form,
+    posted: Posted,
     files_allowed: bool,
     back: Back,
     refusals: Refusals,
@@ -104,6 +105,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = person.is_draft();
+    let form = posted.form;
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
             engine,
@@ -151,9 +153,7 @@ async fn render(
         id: person.id(),
         name: form.name,
         sort_name: form.sort_name,
-        links: LinksInput {
-            links: person.links().iter().map(Into::into).collect(),
-        },
+        links: LinksInput::new(&posted.links, person.links(), &refusals),
         back,
         refusals,
     };
@@ -178,10 +178,12 @@ pub async fn get(
     let form = Form {
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
-        add_link: vec![],
-        remove_link: vec![],
         picture: String::new(),
         remove_picture: None,
+    };
+    let posted = Posted {
+        form,
+        links: LinksForm::from(person.links()),
     };
     let back = Back::new(
         query,
@@ -192,7 +194,7 @@ pub async fn get(
         header,
         &library,
         &person,
-        form,
+        posted,
         settings.files_allowed(&engine),
         back,
         Refusals::default(),
@@ -201,15 +203,21 @@ pub async fn get(
 }
 
 /// Apply the submitted form to `person`
-async fn save(person: &mut Person, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+async fn save(
+    person: &mut Person,
+    posted: &mut Posted,
+    parsed: Parsed,
+) -> scorarium_engine::Result<()> {
+    let form = &posted.form;
     person.rename(parsed.name, parsed.sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
-    for link in parsed.remove_links {
+    for link in parsed.links.remove {
         person.remove_link(link).await?;
     }
-    for url in parsed.add_links {
+    for url in parsed.links.add {
         person.add_link(url).await?;
     }
+    posted.links = LinksForm::from(person.links());
     // The picture is saved last, because the engine refuses a file that is not an image only as it
     // stores the file, and by then the name and links that the person typed are already saved.
     if !form.picture.is_empty() {
@@ -231,8 +239,9 @@ pub async fn post(
     header: Header,
     Path((library, person)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+    body: FormBody,
 ) -> Result<Response> {
+    let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
@@ -241,8 +250,8 @@ pub async fn post(
         format!("/library/{}/person/{}", library.id(), person.id()),
     );
     let mut refusals = Refusals::default();
-    if let Some(parsed) = parse(&form, &mut refusals) {
-        match save(&mut person, &form, parsed).await {
+    if let Some(parsed) = parse(&posted, &mut refusals) {
+        match save(&mut person, &mut posted, parsed).await {
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -257,7 +266,7 @@ pub async fn post(
         header,
         &library,
         &person,
-        form,
+        posted,
         settings.files_allowed(&engine),
         back,
         refusals,

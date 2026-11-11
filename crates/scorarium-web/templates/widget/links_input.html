@@ -1,40 +1,43 @@
-<div data-list-input="link">
-    <ul class="list-unstyled" data-entries>
-        {% for link in links %}
-            <li class="d-flex align-items-center gap-2" data-value="{{ link.href }}">
-                {{ link.icon }}
-                <span class="text-truncate" title="{{ link.href }}">{{ link.href }}</span>
-                <button type="button"
-                        class="btn btn-sm btn-link"
-                        data-remove
-                        data-key="{{ link.id }}"
-                        title="Remove link">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </li>
-        {% endfor %}
-    </ul>
+{% import "widget/list.html" as list %}
+{% macro entry(key, input) %}
+    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% if let Some(saved) = input.entry.saved %}
+            <input type="hidden" name="link[{{ key }}][saved][id]" value="{{ saved.id }}">
+            <input type="hidden" name="link[{{ key }}][saved][url]" value="{{ saved.url }}">
+        {% endif %}
+        {{ input.icon }}
+        <div class="flex-grow-1">
+            <input type="text"
+                   inputmode="url"
+                   class="form-control{% if input.refusal.is_some() %} is-invalid{% endif %}"
+                   id="link-{{ key }}-url"
+                   name="link[{{ key }}][url]"
+                   value="{{ input.entry.url }}"
+                   placeholder="https://"
+                   aria-label="Link"
+                   {% if input.autofocus %}autofocus{% endif %}>
+            {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+        </div>
+        {% if input.entry.saved.is_some() %}
+            {% call list::removal("link", key, input.entry.removed, "Remove link", "Keep this link") %}
+            {% endcall %}
+        {% else %}
+            {% call list::remove("Remove link") %}
+            {% endcall %}
+        {% endif %}
+    </li>
+{% endmacro %}
+<ul class="list-unstyled mb-0" data-list data-list-enter>
+    {% for input in entries %}
+        {% call entry(loop.index0, input) %}
+        {% endcall %}
+    {% endfor %}
     <template>
-        <li class="d-flex align-items-center gap-2">
-            <img class="link-favicon" data-favicon alt="" referrerpolicy="no-referrer" onerror="this.hidden = true">
-            <i class="bi bi-link-45deg" title="Link"></i>
-            <span class="text-truncate" data-label></span>
-            <input type="hidden" name="add_link">
-            <button type="button" class="btn btn-sm btn-link" data-remove title="Remove link">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </li>
+        {% call entry("__key__", blank) %}
+        {% endcall %}
     </template>
-    <div class="input-group">
-        <input type="url"
-               class="form-control"
-               placeholder="https://"
-               pattern="https?://.+"
-               title="An HTTP web address"
-               data-add>
-        <button type="button"
-                class="btn btn-outline-secondary"
-                title="Add link"
-                data-add-button><i class="bi bi-plus-lg"></i> Add</button>
-    </div>
-</div>
+    <li>
+        {% call list::add("Add a link") %}
+        {% endcall %}
+    </li>
+</ul>

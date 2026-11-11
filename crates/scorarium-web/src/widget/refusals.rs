@@ -16,7 +16,16 @@ impl Refusals {
     where
         T: FromStr<Err = scorarium_engine::Error>,
     {
-        match text.parse() {
+        self.check_field(field, text.parse())
+    }
+
+    /// Unwrap `result`, recording a refusal against `field` when it is an error
+    pub fn check_field<T>(
+        &mut self,
+        field: &str,
+        result: scorarium_engine::Result<T>,
+    ) -> Option<T> {
+        match result {
             Ok(value) => Some(value),
             Err(e) => {
                 self.entries.push((Some(field.to_owned()), e.to_string()));

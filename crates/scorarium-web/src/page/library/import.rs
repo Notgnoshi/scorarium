@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::Settings;
 use crate::auth::Session;
 use crate::error::Result;
-use crate::forms::Forms;
+use crate::forms::FormBody;
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::back_query;
@@ -109,8 +109,10 @@ pub async fn get(
     header: Header,
     uri: Uri,
     Path(library): Path<String>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
+    body: FormBody,
 ) -> Result<Response> {
+    let form: Form = body.read()?;
+    let holdings: HoldingsForm = body.read()?;
     let library = view::load(&engine, &library).await?;
     let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
     let holdings = empty.resubmitted(&engine, &holdings);
@@ -206,8 +208,10 @@ pub async fn post(
     header: Header,
     uri: Uri,
     Path(library): Path<String>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
+    body: FormBody,
 ) -> Result<Response> {
+    let form: Form = body.read()?;
+    let holdings: HoldingsForm = body.read()?;
     let library = view::load(&engine, &library).await?;
     let record = form.record().map(|(_, record)| record);
     match import(&engine, &library, &form.text, record, &holdings).await {

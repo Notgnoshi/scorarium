@@ -7,6 +7,7 @@ use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::Publication;
 use serde::{Deserialize, Serialize};
 
+use crate::forms;
 use crate::widget::file_input::FileInput;
 use crate::widget::typeahead::Typeahead;
 
@@ -152,10 +153,21 @@ impl Holdings {
 #[serde(default)]
 pub(crate) struct HoldingsForm {
     /// The ids of the existing physical holdings, paired by position with `holding_location`
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     holding: Vec<String>,
+    #[serde(
+        deserialize_with = "forms::repeated",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     holding_location: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     remove_holding: Vec<String>,
+    #[serde(
+        deserialize_with = "forms::repeated",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     add_location: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     staged: Vec<String>,
     kind: AddKind,
     /// A location typed in the add bar and not added
@@ -198,7 +210,7 @@ impl HoldingsForm {
             staged: Vec::new(),
             ..self.clone()
         };
-        serde_html_form::to_string(form).expect("Holdings fields serialize as a form")
+        forms::to_string(&form).expect("Holdings fields serialize as a form")
     }
 
     /// List the holdings that the form adds
@@ -222,11 +234,11 @@ impl HoldingsForm {
     }
 
     /// Pair each existing physical holding with its location as edited
-    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, &str)>> {
+    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, String)>> {
         self.holding
             .iter()
             .zip(&self.holding_location)
-            .map(|(id, location)| Ok((parse_id(id)?, location.as_str())))
+            .map(|(id, location)| Ok((parse_id(id)?, location.clone())))
             .collect()
     }
 

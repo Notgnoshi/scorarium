@@ -12,17 +12,18 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::page::library::entity::{self, parse_link_id};
-use crate::page::library::view;
+use crate::forms::FormBody;
+use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
-use crate::widget::catalog_numbers_input::CatalogNumbersInput;
+use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
-use crate::widget::links_input::LinksInput;
+use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::list::Edits;
 use crate::widget::picture::Picture;
 use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
@@ -39,17 +40,25 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
-    add_catalog_number: Vec<String>,
-    #[serde(default)]
-    remove_catalog_number: Vec<String>,
-    #[serde(default)]
     add_tag: Vec<String>,
     #[serde(default)]
     remove_tag: Vec<String>,
-    #[serde(default)]
-    add_link: Vec<String>,
-    #[serde(default)]
-    remove_link: Vec<String>,
+}
+
+struct Posted {
+    form: Form,
+    catalog_numbers: CatalogNumbersForm,
+    links: LinksForm,
+}
+
+impl Posted {
+    fn read(body: &FormBody) -> Result<Posted> {
+        Ok(Posted {
+            form: body.read()?,
+            catalog_numbers: body.read()?,
+            links: body.read()?,
+        })
+    }
 }
 
 #[derive(Template)]
@@ -73,15 +82,14 @@ struct Parsed {
     title: NonBlank,
     classification: Option<Classification>,
     stars: Option<Stars>,
-    add_catalog_numbers: Vec<CatalogNumber>,
-    remove_catalog_numbers: Vec<CatalogNumber>,
+    catalog_numbers: Edits<CatalogNumber, CatalogNumber>,
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
-    add_links: Vec<HttpUrl>,
-    remove_links: Vec<LinkId>,
+    links: Edits<LinkId, HttpUrl>,
 }
 
-fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
+    let form = &posted.form;
     let title = refusals.parse("title", &form.title);
     let classification = form
         .classification
@@ -90,16 +98,7 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
     let stars = form
         .stars
         .and_then(|stars| refusals.check(Stars::try_from(stars)));
-    let add_catalog_numbers = form
-        .add_catalog_number
-        .iter()
-        .filter_map(|number| refusals.check(number.parse()))
-        .collect();
-    let remove_catalog_numbers = form
-        .remove_catalog_number
-        .iter()
-        .filter_map(|number| refusals.check(number.parse()))
-        .collect();
+    let catalog_numbers = posted.catalog_numbers.parse(refusals);
     let add_tags = form
         .add_tag
         .iter()
@@ -110,16 +109,7 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
         .iter()
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
-    let add_links = form
-        .add_link
-        .iter()
-        .filter_map(|url| refusals.check(url.parse()))
-        .collect();
-    let remove_links = form
-        .remove_link
-        .iter()
-        .filter_map(|id| refusals.check(parse_link_id(id)))
-        .collect();
+    let links = posted.links.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
@@ -127,12 +117,10 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
         title: title?,
         classification,
         stars,
-        add_catalog_numbers,
-        remove_catalog_numbers,
+        catalog_numbers,
         add_tags,
         remove_tags,
-        add_links,
-        remove_links,
+        links,
     })
 }
 
@@ -172,7 +160,7 @@ async fn render(
     header: Header,
     library: &Library,
     work: &Work,
-    form: Form,
+    posted: Posted,
     back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
@@ -232,17 +220,17 @@ async fn render(
         },
         library: library.id(),
         id: work.id(),
-        form,
-        catalog_numbers: CatalogNumbersInput {
-            numbers: work.catalog_numbers().to_vec(),
-        },
+        catalog_numbers: CatalogNumbersInput::new(
+            &posted.catalog_numbers,
+            work.catalog_numbers(),
+            &refusals,
+        ),
+        form: posted.form,
         tags: TagsInput {
             library: library.id(),
             tags: work.tags().to_vec(),
         },
-        links: LinksInput {
-            links: work.links().iter().map(Into::into).collect(),
-        },
+        links: LinksInput::new(&posted.links, work.links(), &refusals),
         contributors: Contributors::new(work, None, here),
         back,
         refusals,
@@ -268,22 +256,28 @@ pub async fn get(
         instrumentation: text(work.instrumentation()),
         stars: work.stars().map(|stars| stars.get()),
         note: text(work.note()),
-        add_catalog_number: vec![],
-        remove_catalog_number: vec![],
         add_tag: vec![],
         remove_tag: vec![],
-        add_link: vec![],
-        remove_link: vec![],
+    };
+    let posted = Posted {
+        form,
+        catalog_numbers: CatalogNumbersForm::from(work.catalog_numbers()),
+        links: LinksForm::from(work.links()),
     };
     let back = Back::new(
         query,
         format!("/library/{}/work/{}", library.id(), work.id()),
     );
-    render(header, &library, &work, form, back, Refusals::default()).await
+    render(header, &library, &work, posted, back, Refusals::default()).await
 }
 
 /// Apply the submitted form to `work`
-async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+async fn save(
+    work: &mut Work,
+    posted: &mut Posted,
+    parsed: Parsed,
+) -> scorarium_engine::Result<()> {
+    let form = &posted.form;
     work.set_title(parsed.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
@@ -292,24 +286,26 @@ async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine:
     work.set_stars(parsed.stars).await?;
     work.set_note(Some(&form.note)).await?;
     // Removals run first so that removing an entry and adding it back leaves it present.
-    for number in &parsed.remove_catalog_numbers {
+    for number in &parsed.catalog_numbers.remove {
         work.remove_catalog_number(number).await?;
     }
-    for number in parsed.add_catalog_numbers {
+    for number in parsed.catalog_numbers.add {
         work.add_catalog_number(number).await?;
     }
+    posted.catalog_numbers = CatalogNumbersForm::from(work.catalog_numbers());
     for tag in &parsed.remove_tags {
         work.remove_tag(tag).await?;
     }
     for tag in parsed.add_tags {
         work.add_tag(tag).await?;
     }
-    for link in parsed.remove_links {
+    for link in parsed.links.remove {
         work.remove_link(link).await?;
     }
-    for url in parsed.add_links {
+    for url in parsed.links.add {
         work.add_link(url).await?;
     }
+    posted.links = LinksForm::from(work.links());
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
@@ -325,8 +321,9 @@ pub async fn post(
     header: Header,
     Path((library, work)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+    body: FormBody,
 ) -> Result<Response> {
+    let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
     let back = Back::new(
@@ -334,8 +331,8 @@ pub async fn post(
         format!("/library/{}/work/{}", library.id(), work.id()),
     );
     let mut refusals = Refusals::default();
-    if let Some(parsed) = parse(&form, &mut refusals) {
-        match save(&mut work, &form, parsed).await {
+    if let Some(parsed) = parse(&posted, &mut refusals) {
+        match save(&mut work, &mut posted, parsed).await {
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -345,7 +342,7 @@ pub async fn post(
             }
         }
     }
-    render(header, &library, &work, form, back, refusals).await
+    render(header, &library, &work, posted, back, refusals).await
 }
 
 pub async fn delete(

@@ -1,0 +1,27 @@
+{% macro removal(list, key, checked, remove, keep) %}
+    {% let id = list ~ "-" ~ key ~ "-removed" %}
+    <input type="checkbox"
+           class="btn-check"
+           id="{{ id }}"
+           name="{{ list }}[{{ key }}][removed]"
+           value="true"
+           {% if checked %}checked{% endif %}>
+    <label class="btn btn-outline-secondary" for="{{ id }}" title="{{ remove }}">
+        <i class="bi bi-x-lg"></i>
+    </label>
+    <label class="btn btn-outline-secondary" for="{{ id }}" title="{{ keep }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+    </label>
+{% endmacro %}
+
+{% macro remove(title) %}
+    <button type="button" class="btn btn-outline-secondary" data-list-remove title="{{ title }}">
+        <i class="bi bi-x-lg"></i>
+    </button>
+{% endmacro %}
+
+{% macro add(label) %}
+    <button type="button" class="btn btn-outline-secondary" data-list-add>
+        <i class="bi bi-plus-lg"></i> {{ label }}
+    </button>
+{% endmacro %}

@@ -202,3 +202,18 @@ html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
 #review-queue tbody[data-collapsed] [data-when="expanded"] {
     display: none;
 }
+
+[data-list-entry] > .btn-check:checked + .btn,
+[data-list-entry] > .btn-check:not(:checked) + .btn + .btn {
+    display: none;
+}
+
+[data-list-entry]:has(> .btn-check:checked) :is(.form-control, .form-select) {
+    color: var(--bs-secondary-color);
+    text-decoration: line-through;
+}
+
+[data-list-entry] > .btn-check:focus-visible + .btn + .btn {
+    border-color: var(--bs-btn-hover-border-color);
+    box-shadow: var(--bs-btn-focus-box-shadow);
+}
