@@ -13,6 +13,7 @@ chrono.workspace = true
 clap.workspace = true
 eyre.workspace = true
 futures-util.workspace = true
+indexmap.workspace = true
 infer.workspace = true
 percent-encoding.workspace = true
 rust-embed.workspace = true

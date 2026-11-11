@@ -160,7 +160,7 @@ async fn render(
     header: Header,
     library: &Library,
     work: &Work,
-    form: Form,
+    posted: Posted,
     back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
@@ -220,10 +220,12 @@ async fn render(
         },
         library: library.id(),
         id: work.id(),
-        form,
-        catalog_numbers: CatalogNumbersInput {
-            numbers: work.catalog_numbers().to_vec(),
-        },
+        catalog_numbers: CatalogNumbersInput::new(
+            &posted.catalog_numbers,
+            work.catalog_numbers(),
+            &refusals,
+        ),
+        form: posted.form,
         tags: TagsInput {
             library: library.id(),
             tags: work.tags().to_vec(),
@@ -259,15 +261,25 @@ pub async fn get(
         add_tag: vec![],
         remove_tag: vec![],
     };
+    let posted = Posted {
+        form,
+        catalog_numbers: CatalogNumbersForm::from(work.catalog_numbers()),
+        links: LinksForm::default(),
+    };
     let back = Back::new(
         query,
         format!("/library/{}/work/{}", library.id(), work.id()),
     );
-    render(header, &library, &work, form, back, Refusals::default()).await
+    render(header, &library, &work, posted, back, Refusals::default()).await
 }
 
 /// Apply the submitted form to `work`
-async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+async fn save(
+    work: &mut Work,
+    posted: &mut Posted,
+    parsed: Parsed,
+) -> scorarium_engine::Result<()> {
+    let form = &posted.form;
     work.set_title(parsed.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
@@ -282,6 +294,7 @@ async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine:
     for number in parsed.catalog_numbers.add {
         work.add_catalog_number(number).await?;
     }
+    posted.catalog_numbers = CatalogNumbersForm::from(work.catalog_numbers());
     for tag in &parsed.remove_tags {
         work.remove_tag(tag).await?;
     }
@@ -311,7 +324,7 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    let posted = Posted::read(&body)?;
+    let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
     let back = Back::new(
@@ -320,7 +333,7 @@ pub async fn post(
     );
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&posted, &mut refusals) {
-        match save(&mut work, &posted.form, parsed).await {
+        match save(&mut work, &mut posted, parsed).await {
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -330,7 +343,7 @@ pub async fn post(
             }
         }
     }
-    render(header, &library, &work, posted.form, back, refusals).await
+    render(header, &library, &work, posted, back, refusals).await
 }
 
 pub async fn delete(

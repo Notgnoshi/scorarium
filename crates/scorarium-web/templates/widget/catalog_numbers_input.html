@@ -1,35 +1,42 @@
-<div data-list-input="catalog_number">
-    <ul class="list-unstyled" data-entries>
-        {% for number in numbers %}
-            <li class="d-flex align-items-center gap-2" data-value="{{ number }}">
-                <span>{{ number }}</span>
-                {% if !number.is_recognized() %}
-                    <i class="bi bi-question-circle" title="Unrecognized catalog numbering"></i>
-                {% endif %}
-                <button type="button"
-                        class="btn btn-sm btn-link"
-                        data-remove
-                        data-key="{{ number }}"
-                        title="Remove catalog number">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </li>
-        {% endfor %}
-    </ul>
+{% import "widget/list.html" as list %}
+{% macro entry(key, input) %}
+    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% if let Some(saved) = input.entry.saved %}
+            <input type="hidden" name="catalog_number[{{ key }}][saved][value]" value="{{ saved.value }}">
+        {% endif %}
+        <div class="flex-grow-1">
+            <input type="text"
+                   class="form-control{% if input.refusal.is_some() %} is-invalid{% endif %}"
+                   id="catalog_number-{{ key }}-value"
+                   name="catalog_number[{{ key }}][value]"
+                   value="{{ input.entry.value }}"
+                   aria-label="Catalog number"
+                   {% if input.autofocus %}autofocus{% endif %}>
+            {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+        </div>
+        {% if input.unrecognized %}
+            <i class="bi bi-question-circle" title="Unrecognized catalog numbering"></i>
+        {% endif %}
+        {% if input.entry.saved.is_some() %}
+            {% call list::removal("catalog_number", key, input.entry.removed, "Remove catalog number", "Keep this catalog number") %}
+            {% endcall %}
+        {% else %}
+            {% call list::remove("Remove catalog number") %}
+            {% endcall %}
+        {% endif %}
+    </li>
+{% endmacro %}
+<ul class="list-unstyled mb-0" data-list>
+    {% for input in entries %}
+        {% call entry(loop.index0, input) %}
+        {% endcall %}
+    {% endfor %}
     <template>
-        <li class="d-flex align-items-center gap-2">
-            <span data-label></span>
-            <input type="hidden" name="add_catalog_number">
-            <button type="button" class="btn btn-sm btn-link" data-remove title="Remove catalog number">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </li>
+        {% call entry("__key__", blank) %}
+        {% endcall %}
     </template>
-    <div class="input-group">
-        <input type="text" class="form-control" placeholder="Add a catalog number" data-add>
-        <button type="button"
-                class="btn btn-outline-secondary"
-                title="Add catalog number"
-                data-add-button><i class="bi bi-plus-lg"></i> Add</button>
-    </div>
-</div>
+    <li>
+        {% call list::add("Add a catalog number") %}
+        {% endcall %}
+    </li>
+</ul>

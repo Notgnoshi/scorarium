@@ -3,8 +3,9 @@ use std::fmt;
 use axum::body::Bytes;
 use axum::extract::{FromRequest, RawForm, Request};
 use axum::http::StatusCode;
-use serde::Serialize;
+use indexmap::IndexMap;
 use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
+use serde::{Deserialize, Serialize};
 use serde_qs::{ArrayFormat, Config};
 
 use crate::error::Error;
@@ -58,6 +59,16 @@ pub(crate) fn repeated<'de, D: Deserializer<'de>>(
     deserializer.deserialize_any(Values)
 }
 
+/// Read the entries of a list in the order of the page, discarding their keys
+pub(crate) fn entries<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let entries = IndexMap::<String, T>::deserialize(deserializer)?;
+    Ok(entries.into_values().collect())
+}
+
 /// The body of a submitted form
 ///
 /// A page's fields and each widget's fields arrive together in one body.
@@ -79,5 +90,32 @@ impl FormBody {
     /// Read the fields that `T` owns, ignoring the rest
     pub fn read<T: DeserializeOwned>(&self) -> Result<T, Error> {
         from_bytes(&self.0).map_err(|e| Error::new(StatusCode::UNPROCESSABLE_ENTITY, e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entries_reads_encoded_names_in_page_order() {
+        #[derive(Deserialize)]
+        struct Entry {
+            value: String,
+        }
+        #[derive(Deserialize)]
+        struct Form {
+            #[serde(deserialize_with = "entries")]
+            number: Vec<Entry>,
+        }
+        let body =
+            b"number%5B1%5D%5Bvalue%5D=b&number%5B0%5D%5Bvalue%5D=a&number%5Bnew1%5D%5Bvalue%5D=c";
+        let form: Form = from_bytes(body).unwrap();
+        let values: Vec<&str> = form
+            .number
+            .iter()
+            .map(|entry| entry.value.as_str())
+            .collect();
+        assert_eq!(values, ["b", "a", "c"]);
     }
 }
