@@ -17,8 +17,7 @@ use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::forms::FormBody;
-use crate::page::library::entity::{self, parse_link_id};
-use crate::page::library::view;
+use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
@@ -28,8 +27,9 @@ use crate::widget::contributors::Contributors;
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
-use crate::widget::identifiers_input::{self, IdentifiersInput};
-use crate::widget::links_input::LinksInput;
+use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
+use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::list::Edits;
 use crate::widget::picture_input::PictureInput;
 use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
@@ -46,20 +46,30 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
-    add_identifier: Vec<String>,
-    #[serde(default)]
-    remove_identifier: Vec<String>,
-    #[serde(default)]
     add_tag: Vec<String>,
     #[serde(default)]
     remove_tag: Vec<String>,
     #[serde(default)]
-    add_link: Vec<String>,
-    #[serde(default)]
-    remove_link: Vec<String>,
-    #[serde(default)]
     picture: String,
     remove_picture: Option<String>,
+}
+
+struct Posted {
+    form: Form,
+    identifiers: IdentifiersForm,
+    links: LinksForm,
+    holdings: HoldingsForm,
+}
+
+impl Posted {
+    fn read(body: &FormBody) -> Result<Posted> {
+        Ok(Posted {
+            form: body.read()?,
+            identifiers: body.read()?,
+            links: body.read()?,
+            holdings: body.read()?,
+        })
+    }
 }
 
 #[derive(Template)]
@@ -86,15 +96,14 @@ struct Parsed {
     classification: Option<Classification>,
     year: Option<Year>,
     stars: Option<Stars>,
-    add_identifiers: Vec<Identifier>,
-    remove_identifiers: Vec<Identifier>,
+    identifiers: Edits<Identifier, Identifier>,
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
-    add_links: Vec<HttpUrl>,
-    remove_links: Vec<LinkId>,
+    links: Edits<LinkId, HttpUrl>,
 }
 
-fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
+    let form = &posted.form;
     let title = refusals.parse("title", &form.title);
     let classification = form
         .classification
@@ -107,16 +116,7 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
     let stars = form
         .stars
         .and_then(|stars| refusals.check(Stars::try_from(stars)));
-    let add_identifiers = form
-        .add_identifier
-        .iter()
-        .filter_map(|identifier| refusals.check(identifiers_input::parse(identifier)))
-        .collect();
-    let remove_identifiers = form
-        .remove_identifier
-        .iter()
-        .filter_map(|identifier| refusals.check(identifiers_input::parse(identifier)))
-        .collect();
+    let identifiers = posted.identifiers.parse(refusals);
     let add_tags = form
         .add_tag
         .iter()
@@ -127,16 +127,7 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
         .iter()
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
-    let add_links = form
-        .add_link
-        .iter()
-        .filter_map(|url| refusals.check(url.parse()))
-        .collect();
-    let remove_links = form
-        .remove_link
-        .iter()
-        .filter_map(|id| refusals.check(parse_link_id(id)))
-        .collect();
+    let links = posted.links.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
@@ -145,12 +136,10 @@ fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
         classification,
         year,
         stars,
-        add_identifiers,
-        remove_identifiers,
+        identifiers,
         add_tags,
         remove_tags,
-        add_links,
-        remove_links,
+        links,
     })
 }
 
@@ -345,12 +334,8 @@ pub async fn get(
             .unwrap_or_default(),
         stars: publication.stars().map(|stars| stars.get()),
         note: text(publication.note()),
-        add_identifier: vec![],
-        remove_identifier: vec![],
         add_tag: vec![],
         remove_tag: vec![],
-        add_link: vec![],
-        remove_link: vec![],
         picture: String::new(),
         remove_picture: None,
     };
@@ -383,10 +368,10 @@ async fn save(
     publication.set_stars(parsed.stars).await?;
     publication.set_note(Some(&form.note)).await?;
     // Removals run first so that removing an entry and adding it back leaves it present.
-    for identifier in &parsed.remove_identifiers {
+    for identifier in &parsed.identifiers.remove {
         publication.remove_identifier(identifier).await?;
     }
-    for identifier in parsed.add_identifiers {
+    for identifier in parsed.identifiers.add {
         publication.add_identifier(identifier).await?;
     }
     for tag in &parsed.remove_tags {
@@ -395,10 +380,10 @@ async fn save(
     for tag in parsed.add_tags {
         publication.add_tag(tag).await?;
     }
-    for link in parsed.remove_links {
+    for link in parsed.links.remove {
         publication.remove_link(link).await?;
     }
-    for url in parsed.add_links {
+    for url in parsed.links.add {
         publication.add_link(url).await?;
     }
     if let Some(classification) = parsed.classification {
@@ -443,22 +428,30 @@ async fn submit(
     query: BackQuery,
     commit: bool,
 ) -> Result<Response> {
-    let form: Form = body.read()?;
-    let holdings: HoldingsForm = body.read()?;
+    let posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
-    let parsed = parse(&form, &mut refusals);
-    let added = holdings.added();
-    let locations = holdings.locations()?;
-    let removed = holdings.removed()?;
+    let parsed = parse(&posted, &mut refusals);
+    let added = posted.holdings.added();
+    let locations = posted.holdings.locations()?;
+    let removed = posted.holdings.removed()?;
     refusals.check(check_holdings(&engine, &publication, &added, &removed));
     if refusals.is_empty()
         && let Some(parsed) = parsed
     {
-        let saved = match save(&mut publication, &form, parsed, &added, locations, removed).await {
+        let saved = match save(
+            &mut publication,
+            &posted.form,
+            parsed,
+            &added,
+            locations,
+            removed,
+        )
+        .await
+        {
             Ok(()) if commit => publication.commit().await,
             saved => saved,
         };
@@ -478,8 +471,8 @@ async fn submit(
         settings.files_allowed(&engine),
         &library,
         &publication,
-        form,
-        &holdings,
+        posted.form,
+        &posted.holdings,
         back,
         refusals,
     )

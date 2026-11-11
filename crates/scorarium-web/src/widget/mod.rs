@@ -13,6 +13,7 @@ pub mod holdings;
 pub mod identifiers_input;
 pub mod library_nav;
 pub mod links_input;
+pub mod list;
 pub mod pagination;
 pub mod picture;
 pub mod picture_input;

@@ -47,12 +47,6 @@ pub(crate) async fn in_library<E: Entity>(
     }
 }
 
-/// Parse a submitted link id
-pub(crate) fn parse_link_id(id: &str) -> scorarium_engine::Result<LinkId> {
-    id.parse()
-        .map_err(|_| scorarium_engine::Error::InvalidValue(format!("Unknown link '{id}'.")))
-}
-
 /// A link rendered as the recognized site's name, or the URL's host for a generic link
 #[derive(Debug)]
 pub(crate) struct ExternalLink {
