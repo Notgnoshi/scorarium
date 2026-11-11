@@ -35,28 +35,8 @@
         }
     };
 
-    // Submitting the form that holds the staged files, or cancelling it, is a decision about them,
-    // so neither asks. Any other form, such as a dialog's or the navbar search, decides nothing.
-    let decided = false;
-
-    document.addEventListener("submit", (event) => {
-        // A form that htmx sends does not leave the page, and has prevented the default by now.
-        const form = event.target;
-        if (!event.defaultPrevented && form.method !== "dialog" && form.querySelector("input[data-staged]")) {
-            decided = true;
-        }
-    });
-
-    document.addEventListener("click", (event) => {
-        // A modified click opens the link elsewhere and leaves this page as it is.
-        const modified = event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
-        if (!modified && event.target.closest("a[data-cancel]")) {
-            decided = true;
-        }
-    });
-
     window.addEventListener("beforeunload", (event) => {
-        if (runningTransfers > 0 || (!decided && document.querySelector("input[data-staged]"))) {
+        if (runningTransfers > 0) {
             event.preventDefault();
             event.returnValue = true;
         }

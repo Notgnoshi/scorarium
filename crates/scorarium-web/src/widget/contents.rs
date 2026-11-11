@@ -47,7 +47,7 @@ pub struct RangeFields {
 pub struct Contents {
     pub library: LibraryId,
     pub publication: PublicationId,
-    /// The edit page the box is on, carried as `back` by the edit pencils
+    /// The page the box is drawn on, carried as `back` by the edit pencils
     pub back: String,
     /// The works in book order
     pub works: Vec<ContainedWork>,
@@ -63,7 +63,7 @@ pub struct Contents {
 
 impl Contents {
     /// Build the box with no marks, no error, and the pre-filled add and range forms
-    pub fn new(publication: &Publication, works: &[Work]) -> Contents {
+    pub fn new(publication: &Publication, works: &[Work], page: String) -> Contents {
         let (person, name, role) = prefill(publication, works);
         let mut contained: Vec<ContainedWork> = works.iter().map(Into::into).collect();
         book_order(&mut contained);
@@ -71,11 +71,7 @@ impl Contents {
         Contents {
             library: publication.library(),
             publication: publication.id(),
-            back: format!(
-                "/library/{}/publication/{}/edit",
-                publication.library(),
-                publication.id()
-            ),
+            back: page,
             works: contained,
             numbered,
             marks: Marks::default(),

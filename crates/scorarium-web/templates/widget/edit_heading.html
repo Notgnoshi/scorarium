@@ -33,3 +33,18 @@
     {% endmatch %}
 </div>
 {{ delete }}
+<dialog id="unsaved" class="confirm">
+    <div class="confirm-header">
+        <h5 class="mb-0">Unsaved changes</h5>
+    </div>
+    <div class="confirm-footer pt-3">
+        <button class="btn btn-outline-secondary me-auto" type="button" data-unsaved-discard>Discard changes</button>
+        <form method="dialog">
+            <button class="btn btn-outline-secondary" type="submit" autofocus>Keep editing</button>
+        </form>
+        <button class="btn btn-primary" type="submit" form="edit" data-unsaved-save>
+            <i class="bi bi-floppy"></i>
+            {% if let EditMode::Import { .. } = mode %}Save draft{% else %}Save{% endif %}
+        </button>
+    </div>
+</dialog>

@@ -15,6 +15,7 @@ use crate::auth::{ApiSession, Viewer};
 use crate::error::Result;
 use crate::page::form_error;
 use crate::page::library::{entity, view};
+use crate::redirect::{Back, BackQuery, CurrentPage};
 use crate::widget::contents::{AddFields, Contents, Marks, RangeFields};
 
 #[derive(Default, Deserialize)]
@@ -251,6 +252,7 @@ async fn apply_remove(
 async fn render(
     mut publication: Publication,
     outcome: scorarium_engine::Result<Marks>,
+    query: BackQuery,
     restore: impl FnOnce(&mut Contents),
 ) -> Result<Response> {
     let (status, marks, error) = match outcome {
@@ -263,7 +265,15 @@ async fn render(
     // Reloading picks up works changed from another tab as well as this action's.
     publication.reload().await?;
     let works = publication.works().await?;
-    let mut contents = Contents::new(&publication, &works);
+    // The box is drawn on the publication's editor, which may be shown at the POST-only route of a
+    // refused Finish import, so its pencils return to the editor with only its opener.
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        publication.library(),
+        publication.id()
+    );
+    let back = Back::new(query, edit.clone());
+    let mut contents = Contents::new(&publication, &works, format!("{edit}{}", back.query()));
     contents.marks = marks;
     if error.is_some() {
         restore(&mut contents);
@@ -274,6 +284,7 @@ async fn render(
 
 pub async fn add(
     _session: ApiSession,
+    page: CurrentPage,
     State(engine): State<Engine>,
     Path((library, id)): Path<(String, String)>,
     axum::Form(form): axum::Form<AddForm>,
@@ -282,11 +293,15 @@ pub async fn add(
     let mut publication: Publication =
         entity::load(&engine, library.id(), &id, &Viewer::LoggedIn).await?;
     let outcome = apply_add(&engine, &mut publication, &form).await;
-    render(publication, outcome, |contents| contents.add = form.into()).await
+    render(publication, outcome, page.query(), |contents| {
+        contents.add = form.into()
+    })
+    .await
 }
 
 pub async fn add_range(
     _session: ApiSession,
+    page: CurrentPage,
     State(engine): State<Engine>,
     Path((library, id)): Path<(String, String)>,
     axum::Form(form): axum::Form<RangeForm>,
@@ -295,7 +310,7 @@ pub async fn add_range(
     let mut publication: Publication =
         entity::load(&engine, library.id(), &id, &Viewer::LoggedIn).await?;
     let outcome = apply_range(&engine, &mut publication, &form).await;
-    render(publication, outcome, |contents| {
+    render(publication, outcome, page.query(), |contents| {
         contents.range = form.into();
         contents.range_open = true;
     })
@@ -304,6 +319,7 @@ pub async fn add_range(
 
 pub async fn remove(
     _session: ApiSession,
+    page: CurrentPage,
     State(engine): State<Engine>,
     Path((library, id)): Path<(String, String)>,
     axum::Form(form): axum::Form<RemoveForm>,
@@ -314,5 +330,5 @@ pub async fn remove(
     let outcome = apply_remove(&engine, &mut publication, &form)
         .await
         .map(|()| Marks::default());
-    render(publication, outcome, |_| {}).await
+    render(publication, outcome, page.query(), |_| {}).await
 }

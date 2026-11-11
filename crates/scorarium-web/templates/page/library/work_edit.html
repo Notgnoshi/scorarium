@@ -3,8 +3,10 @@
     {{ heading }}
     {{ refusals }}
     <form id="edit"
+          data-unsaved="unsaved"
+          {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
-          action="/library/{{ library }}/work/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
+          action="/library/{{ library }}/work/{{ id }}/edit{{ back.query() }}">
         <fieldset class="box">
             <legend>Details</legend>
             <div class="row">

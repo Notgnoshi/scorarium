@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
     <h1>Import a publication</h1>
-    <form method="post" action="/library/{{ library }}/import">
+    <form data-unsaved
+          {% if error.is_some() %}data-unsaved-refused{% endif %}
+          method="post"
+          action="/library/{{ library }}/import">
         <fieldset class="box">
             <legend>Publication</legend>
             {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}

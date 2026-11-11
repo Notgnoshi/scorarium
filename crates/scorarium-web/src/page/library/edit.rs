@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
@@ -10,6 +10,7 @@ use super::view::load;
 use crate::auth::Session;
 use crate::error::Result;
 use crate::page::{Base, Crumb, form_error};
+use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
@@ -36,6 +37,7 @@ struct Edit {
     name: String,
     private: bool,
     heading: EditHeading,
+    back: Back,
     refusals: Refusals,
 }
 
@@ -44,6 +46,7 @@ fn render(
     library: &Library,
     publications: usize,
     (name, private): (&str, bool),
+    back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
     let status = if refusals.is_empty() {
@@ -66,7 +69,7 @@ fn render(
         heading: EditHeading {
             title: library.name().to_owned(),
             mode: EditMode::Committed,
-            cancel: format!("/library/{}", library.id()),
+            cancel: back.path().to_owned(),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: format!("Delete {}?", library.name()),
@@ -84,6 +87,7 @@ fn render(
                 fields: vec![],
             },
         },
+        back,
         refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -94,14 +98,17 @@ pub async fn get(
     State(engine): State<Engine>,
     header: Header,
     Path(id): Path<String>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Response> {
     let library = load(&engine, &id).await?;
+    let back = Back::new(query, format!("/library/{}", library.id()));
     let publications = library.publication_count(true).await?;
     render(
         header,
         &library,
         publications,
         (library.name(), library.is_private()),
+        back,
         Refusals::default(),
     )
 }
@@ -111,9 +118,11 @@ pub async fn post(
     State(engine): State<Engine>,
     header: Header,
     Path(id): Path<String>,
+    Query(query): Query<BackQuery>,
     axum::Form(form): axum::Form<Form>,
 ) -> Result<Response> {
     let mut library = load(&engine, &id).await?;
+    let back = Back::new(query, format!("/library/{}", library.id()));
     let private = form.visibility == Visibility::Private;
     let mut refusals = Refusals::default();
     if let Some(name) = refusals.parse("name", &form.name) {
@@ -127,7 +136,7 @@ pub async fn post(
         }
     }
     if refusals.is_empty() {
-        return Ok(Redirect::to(&format!("/library/{}", library.id())).into_response());
+        return Ok(Redirect::to(back.path_after_save()).into_response());
     }
     let publications = library.publication_count(true).await?;
     render(
@@ -135,6 +144,7 @@ pub async fn post(
         &library,
         publications,
         (&form.name, private),
+        back,
         refusals,
     )
 }

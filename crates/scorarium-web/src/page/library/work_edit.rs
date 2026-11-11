@@ -15,7 +15,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
-use crate::redirect::{BackQuery, same_site_path};
+use crate::redirect::{Back, BackQuery};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
@@ -65,7 +65,7 @@ struct Edit {
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 }
 
@@ -173,7 +173,7 @@ async fn render(
     library: &Library,
     work: &Work,
     form: Form,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
     let status = if refusals.is_empty() {
@@ -181,6 +181,12 @@ async fn render(
     } else {
         StatusCode::BAD_REQUEST
     };
+    let here = format!(
+        "/library/{}/work/{}/edit{}",
+        library.id(),
+        work.id(),
+        back.query()
+    );
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
@@ -196,9 +202,7 @@ async fn render(
             } else {
                 EditMode::Committed
             },
-            cancel: back
-                .clone()
-                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
+            cancel: back.path().to_owned(),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -216,7 +220,12 @@ async fn render(
                 } else {
                     "Delete work"
                 },
-                url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+                url: format!(
+                    "/library/{}/work/{}/delete{}",
+                    library.id(),
+                    work.id(),
+                    back.query()
+                ),
                 target: None,
                 fields: vec![],
             },
@@ -234,7 +243,7 @@ async fn render(
         links: LinksInput {
             links: work.links().iter().map(Into::into).collect(),
         },
-        contributors: Contributors::new(work, None),
+        contributors: Contributors::new(work, None, here),
         back,
         refusals,
     };
@@ -266,15 +275,11 @@ pub async fn get(
         add_link: vec![],
         remove_link: vec![],
     };
-    render(
-        header,
-        &library,
-        &work,
-        form,
-        same_site_path(query.back),
-        Refusals::default(),
-    )
-    .await
+    let back = Back::new(
+        query,
+        format!("/library/{}/work/{}", library.id(), work.id()),
+    );
+    render(header, &library, &work, form, back, Refusals::default()).await
 }
 
 /// Apply the submitted form to `work`
@@ -322,16 +327,17 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
-    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let back = Back::new(
+        query,
+        format!("/library/{}/work/{}", library.id(), work.id()),
+    );
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&form, &mut refusals) {
         match save(&mut work, &form, parsed).await {
             Ok(()) => {
-                let destination =
-                    back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-                return Ok(Redirect::to(&destination).into_response());
+                return Ok(Redirect::to(back.path_after_save()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;
@@ -346,9 +352,12 @@ pub async fn delete(
     _session: Session,
     State(engine): State<Engine>,
     Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Redirect> {
     let library = view::load(&engine, &library).await?;
     let work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let gone = format!("/library/{}/work/{}", library.id(), work.id());
     work.delete().await?;
-    Ok(Redirect::to(&format!("/library/{}", library.id())))
+    let back = Back::new(query, format!("/library/{}", library.id()));
+    Ok(Redirect::to(back.path_outside(&gone)))
 }

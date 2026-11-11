@@ -1,5 +1,6 @@
 use askama::Template;
 use axum::extract::{Query, State};
+use axum::http::Uri;
 use axum::response::Html;
 use scorarium_engine::Engine;
 
@@ -22,6 +23,7 @@ pub async fn get(
     _session: Session,
     State(engine): State<Engine>,
     Query(query): Query<ReviewQuery>,
+    uri: Uri,
     header: Header,
 ) -> Result<Html<String>> {
     let page = Review {
@@ -32,6 +34,7 @@ pub async fn get(
                 sort: query.sort.unwrap_or_default(),
             },
             None,
+            uri.path_and_query().map(|p| p.as_str()),
         )
         .await?,
     };
