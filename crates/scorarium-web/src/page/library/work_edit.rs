@@ -15,7 +15,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
-use crate::redirect::{BackQuery, same_site_path};
+use crate::redirect::{Back, BackQuery};
 use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
@@ -65,7 +65,7 @@ struct Edit {
     tags: TagsInput,
     links: LinksInput,
     contributors: Contributors,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 }
 
@@ -173,7 +173,7 @@ async fn render(
     library: &Library,
     work: &Work,
     form: Form,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
     let status = if refusals.is_empty() {
@@ -196,9 +196,7 @@ async fn render(
             } else {
                 EditMode::Committed
             },
-            cancel: back
-                .clone()
-                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
+            cancel: back.path().to_owned(),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -266,15 +264,11 @@ pub async fn get(
         add_link: vec![],
         remove_link: vec![],
     };
-    render(
-        header,
-        &library,
-        &work,
-        form,
-        same_site_path(query.back),
-        Refusals::default(),
-    )
-    .await
+    let back = Back::new(
+        query,
+        format!("/library/{}/work/{}", library.id(), work.id()),
+    );
+    render(header, &library, &work, form, back, Refusals::default()).await
 }
 
 /// Apply the submitted form to `work`
@@ -322,16 +316,17 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
-    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let back = Back::new(
+        query,
+        format!("/library/{}/work/{}", library.id(), work.id()),
+    );
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&form, &mut refusals) {
         match save(&mut work, &form, parsed).await {
             Ok(()) => {
-                let destination =
-                    back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-                return Ok(Redirect::to(&destination).into_response());
+                return Ok(Redirect::to(back.path()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;

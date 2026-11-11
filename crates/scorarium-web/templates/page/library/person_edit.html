@@ -2,9 +2,7 @@
 {% block content %}
     {{ heading }}
     {{ refusals }}
-    <form id="edit"
-          method="post"
-          action="/library/{{ library }}/person/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
+    <form id="edit" method="post" action="/library/{{ library }}/person/{{ id }}/edit{{ back.query() }}">
         <fieldset class="box">
             <legend>Details</legend>
             <div class="row">

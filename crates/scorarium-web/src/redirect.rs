@@ -1,3 +1,4 @@
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
 /// A query string of a page that can send the user back to where they came from
@@ -15,6 +16,36 @@ pub(crate) fn same_site_path(path: Option<String>) -> Option<String> {
             && !path[1..].starts_with(['/', '\\'])
             && !path.contains(|c: char| c.is_ascii_control())
     })
+}
+
+/// Where an edit page returns to
+pub(crate) struct Back {
+    /// The page the opened this page
+    opener: Option<String>,
+    default: String,
+}
+
+impl Back {
+    /// Keep the opener of `query` when it stays on this site, and fall back to `default`
+    pub fn new(query: BackQuery, default: String) -> Back {
+        Back {
+            opener: same_site_path(query.back),
+            default,
+        }
+    }
+
+    /// Get the path to return to
+    pub fn path(&self) -> &str {
+        self.opener.as_deref().unwrap_or(&self.default)
+    }
+
+    /// Write the query string that carries the opener to another route, empty with no opener
+    pub fn query(&self) -> String {
+        match &self.opener {
+            Some(opener) => format!("?back={}", utf8_percent_encode(opener, NON_ALPHANUMERIC)),
+            None => String::new(),
+        }
+    }
 }
 
 #[cfg(test)]

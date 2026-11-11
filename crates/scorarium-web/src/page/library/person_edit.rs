@@ -18,7 +18,7 @@ use crate::error::Result;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
-use crate::redirect::{BackQuery, same_site_path};
+use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
@@ -84,7 +84,7 @@ struct Edit {
     name: String,
     sort_name: String,
     links: LinksInput,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 }
 
@@ -96,7 +96,7 @@ async fn render(
     person: &Person,
     form: Form,
     files_allowed: bool,
-    back: Option<String>,
+    back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
     let parents = vec![
@@ -118,9 +118,7 @@ async fn render(
             } else {
                 EditMode::Committed
             },
-            cancel: back
-                .clone()
-                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
+            cancel: back.path().to_owned(),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -180,6 +178,10 @@ pub async fn get(
         picture: String::new(),
         remove_picture: None,
     };
+    let back = Back::new(
+        query,
+        format!("/library/{}/person/{}", library.id(), person.id()),
+    );
     render(
         &engine,
         header,
@@ -187,7 +189,7 @@ pub async fn get(
         &person,
         form,
         settings.files_allowed(&engine),
-        same_site_path(query.back),
+        back,
         Refusals::default(),
     )
     .await
@@ -226,17 +228,18 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
-    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    let back = Back::new(
+        query,
+        format!("/library/{}/person/{}", library.id(), person.id()),
+    );
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&form, &mut refusals) {
         match save(&mut person, &form, parsed).await {
             Ok(()) => {
-                let destination = back
-                    .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
-                return Ok(Redirect::to(&destination).into_response());
+                return Ok(Redirect::to(back.path()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;

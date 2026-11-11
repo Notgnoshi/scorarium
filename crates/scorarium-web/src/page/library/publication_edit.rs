@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::Extension;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
@@ -20,6 +20,7 @@ use crate::forms::Forms;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
+use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
@@ -76,6 +77,7 @@ struct Edit {
     contributors: Contributors,
     holdings: Holdings,
     contents: Contents,
+    back: Back,
     refusals: Refusals,
 }
 
@@ -180,6 +182,11 @@ fn check_holdings(
     Ok(())
 }
 
+/// Get the path of the page that shows `publication`
+fn publication_path(library: &Library, publication: &Publication) -> String {
+    format!("/library/{}/publication/{}", library.id(), publication.id())
+}
+
 impl Edit {
     fn classification(&self) -> ClassificationInput {
         ClassificationInput {
@@ -221,6 +228,7 @@ async fn render(
     publication: &Publication,
     form: Form,
     holdings: &HoldingsForm,
+    back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
     let status = if refusals.is_empty() {
@@ -245,15 +253,16 @@ async fn render(
             mode: if draft {
                 EditMode::Import {
                     finish: format!(
-                        "/library/{}/publication/{}/commit",
+                        "/library/{}/publication/{}/commit{}",
                         library.id(),
-                        publication.id()
+                        publication.id(),
+                        back.query()
                     ),
                 }
             } else {
                 EditMode::Committed
             },
-            cancel: format!("/library/{}/publication/{}", library.id(), publication.id()),
+            cancel: back.path().to_owned(),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -300,6 +309,7 @@ async fn render(
         contributors: Contributors::new(publication, None),
         holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
         contents: Contents::new(publication, &publication.works().await?),
+        back,
         refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
@@ -311,10 +321,12 @@ pub async fn get(
     Extension(settings): Extension<Settings>,
     header: Header,
     Path((library, publication)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let back = Back::new(query, publication_path(&library, &publication));
     let files_allowed = settings.files_allowed(&engine);
     let text = |value: Option<&str>| value.unwrap_or_default().to_owned();
     let form = Form {
@@ -344,6 +356,7 @@ pub async fn get(
         &publication,
         form,
         &HoldingsForm::default(),
+        back,
         Refusals::default(),
     )
     .await
@@ -421,11 +434,13 @@ async fn submit(
     header: Header,
     (library, publication): (String, String),
     (form, holdings): (Form, HoldingsForm),
+    query: BackQuery,
     commit: bool,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+    let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
     let parsed = parse(&form, &mut refusals);
     let added = holdings.added();
@@ -441,12 +456,7 @@ async fn submit(
         };
         match saved {
             Ok(()) => {
-                return Ok(Redirect::to(&format!(
-                    "/library/{}/publication/{}",
-                    library.id(),
-                    publication.id()
-                ))
-                .into_response());
+                return Ok(Redirect::to(back.path()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;
@@ -462,6 +472,7 @@ async fn submit(
         &publication,
         form,
         &holdings,
+        back,
         refusals,
     )
     .await
@@ -473,9 +484,19 @@ pub async fn post(
     Extension(settings): Extension<Settings>,
     header: Header,
     Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
     Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, (form, holdings), false).await
+    submit(
+        engine,
+        settings,
+        header,
+        path,
+        (form, holdings),
+        query,
+        false,
+    )
+    .await
 }
 
 pub async fn commit(
@@ -484,9 +505,19 @@ pub async fn commit(
     Extension(settings): Extension<Settings>,
     header: Header,
     Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
     Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, (form, holdings), true).await
+    submit(
+        engine,
+        settings,
+        header,
+        path,
+        (form, holdings),
+        query,
+        true,
+    )
+    .await
 }
 
 pub async fn delete(
