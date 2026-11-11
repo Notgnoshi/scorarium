@@ -16,6 +16,7 @@ use crate::error::Result;
 use crate::forms::Forms;
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
+use crate::redirect::back_query;
 use crate::widget::header::Header;
 use crate::widget::holdings::{AddKind, AddedHolding, Holdings, HoldingsForm};
 use crate::widget::review_queue::{ReviewQueue, Size};
@@ -208,7 +209,14 @@ pub async fn post(
             );
             Ok(Redirect::to(&more).into_response())
         }
-        Ok(edit) => Ok(Redirect::to(&edit).into_response()),
+        Ok(edit) => {
+            let opener = format!(
+                "/library/{}/import?{}",
+                library.id(),
+                holdings.query_without_staged()
+            );
+            Ok(Redirect::to(&format!("{edit}{}", back_query(&opener))).into_response())
+        }
         Err(e) => {
             let (status, error) = form_error(e)?;
             let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));

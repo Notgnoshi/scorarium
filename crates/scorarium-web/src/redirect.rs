@@ -56,10 +56,15 @@ impl Back {
     /// Write the query string that carries the opener to another route, empty with no opener
     pub fn query(&self) -> String {
         match &self.opener {
-            Some(opener) => format!("?back={}", utf8_percent_encode(opener, NON_ALPHANUMERIC)),
+            Some(opener) => back_query(opener),
             None => String::new(),
         }
     }
+}
+
+/// Write the query string that carries `opener` to another route
+pub(crate) fn back_query(opener: &str) -> String {
+    format!("?back={}", utf8_percent_encode(opener, NON_ALPHANUMERIC))
 }
 
 #[cfg(test)]
