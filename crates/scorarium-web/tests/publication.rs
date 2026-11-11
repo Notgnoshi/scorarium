@@ -228,3 +228,45 @@ async fn commit_saves_the_form_and_then_commits() {
     assert!(!after.is_draft());
     assert_eq!(after.title(), Some("Renamed"));
 }
+
+#[tokio::test]
+async fn edit_clears_the_location_of_the_only_holding() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut publication = library.publications().await.unwrap().pop().unwrap();
+    let only = publication.holdings()[0].id;
+    publication
+        .set_physical_holding_location(only, Some("Piano bench"))
+        .await
+        .unwrap();
+
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let form = [
+        ("title", publication.title().unwrap()),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+        ("holding", &only.to_string()),
+        ("holding_location", ""),
+        ("kind", "physical"),
+        ("location", ""),
+    ];
+    app.server
+        .post(&edit)
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.holdings()[0].kind,
+        HoldingKind::Physical { location: None }
+    );
+}
