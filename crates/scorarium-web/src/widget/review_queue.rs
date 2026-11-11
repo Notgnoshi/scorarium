@@ -521,7 +521,7 @@ mod tests {
         let app = TestApp::logged_out(false).await;
         let library = app
             .engine
-            .create_library("Sheet music", false)
+            .create_library("Sheet music".parse().unwrap(), false)
             .await
             .unwrap();
         let import = async |title: &str| {
@@ -534,9 +534,12 @@ mod tests {
         };
         let mut first = import("Gymnopedies").await;
         let mut second = import("Piano Classics").await;
-        let mut work = first.create_work("Gymnopedie No. 1").await.unwrap();
+        let mut work = first
+            .create_work("Gymnopedie No. 1".parse().unwrap())
+            .await
+            .unwrap();
         let person = work
-            .create_contributor("Erik Satie", "composer".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "composer".parse().unwrap())
             .await
             .unwrap();
         second.add_work(work.id()).await.unwrap();

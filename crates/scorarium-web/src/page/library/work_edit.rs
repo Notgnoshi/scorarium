@@ -6,7 +6,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::value::{Classification, Stars, Tag};
+use scorarium_engine::value::{Classification, NonBlank, Stars, Tag};
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 use serde::Deserialize;
 
@@ -20,10 +20,11 @@ use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
-use crate::widget::edit_heading::{CommitAction, EditHeading};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
+use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -65,11 +66,11 @@ struct Edit {
     links: LinksInput,
     contributors: Contributors,
     back: Option<String>,
-    destination: String,
-    error: Option<String>,
+    refusals: Refusals,
 }
 
 struct Parsed {
+    title: NonBlank,
     classification: Option<Classification>,
     stars: Option<Stars>,
     add_catalog_numbers: Vec<CatalogNumber>,
@@ -80,40 +81,58 @@ struct Parsed {
     remove_links: Vec<LinkId>,
 }
 
-fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
-    Ok(Parsed {
-        classification: form.classification.as_deref().map(str::parse).transpose()?,
-        stars: form.stars.map(Stars::try_from).transpose()?,
-        add_catalog_numbers: form
-            .add_catalog_number
-            .iter()
-            .map(|number| number.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_catalog_numbers: form
-            .remove_catalog_number
-            .iter()
-            .map(|number| number.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        add_tags: form
-            .add_tag
-            .iter()
-            .map(|tag| tag.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_tags: form
-            .remove_tag
-            .iter()
-            .map(|tag| tag.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        add_links: form
-            .add_link
-            .iter()
-            .map(|url| url.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_links: form
-            .remove_link
-            .iter()
-            .map(|id| parse_link_id(id))
-            .collect::<scorarium_engine::Result<_>>()?,
+fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+    let title = refusals.parse("title", &form.title);
+    let classification = form
+        .classification
+        .as_deref()
+        .and_then(|classification| refusals.check(classification.parse()));
+    let stars = form
+        .stars
+        .and_then(|stars| refusals.check(Stars::try_from(stars)));
+    let add_catalog_numbers = form
+        .add_catalog_number
+        .iter()
+        .filter_map(|number| refusals.check(number.parse()))
+        .collect();
+    let remove_catalog_numbers = form
+        .remove_catalog_number
+        .iter()
+        .filter_map(|number| refusals.check(number.parse()))
+        .collect();
+    let add_tags = form
+        .add_tag
+        .iter()
+        .filter_map(|tag| refusals.check(tag.parse()))
+        .collect();
+    let remove_tags = form
+        .remove_tag
+        .iter()
+        .filter_map(|tag| refusals.check(tag.parse()))
+        .collect();
+    let add_links = form
+        .add_link
+        .iter()
+        .filter_map(|url| refusals.check(url.parse()))
+        .collect();
+    let remove_links = form
+        .remove_link
+        .iter()
+        .filter_map(|id| refusals.check(parse_link_id(id)))
+        .collect();
+    if !refusals.is_empty() {
+        return None;
+    }
+    Some(Parsed {
+        title: title?,
+        classification,
+        stars,
+        add_catalog_numbers,
+        remove_catalog_numbers,
+        add_tags,
+        remove_tags,
+        add_links,
+        remove_links,
     })
 }
 
@@ -154,10 +173,14 @@ async fn render(
     library: &Library,
     work: &Work,
     form: Form,
-    status: StatusCode,
     back: Option<String>,
-    error: Option<String>,
+    refusals: Refusals,
 ) -> Result<Response> {
+    let status = if refusals.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
+    };
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
@@ -168,10 +191,14 @@ async fn render(
         base: Base::new(header, work.title(), parents),
         heading: EditHeading {
             title: work.title().to_owned(),
-            commit: draft.then(|| CommitAction {
-                url: format!("/library/{}/work/{}/commit", library.id(), work.id()),
-                tooltip: "Commit this draft work",
-            }),
+            mode: if draft {
+                EditMode::Draft
+            } else {
+                EditMode::Committed
+            },
+            cancel: back
+                .clone()
+                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -208,11 +235,8 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
-        destination: back
-            .clone()
-            .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
         back,
-        error,
+        refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
@@ -247,19 +271,15 @@ pub async fn get(
         &library,
         &work,
         form,
-        StatusCode::OK,
         same_site_path(query.back),
-        None,
+        Refusals::default(),
     )
     .await
 }
 
 /// Apply the submitted form to `work`
-async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
-    let parsed = parse(form)?;
-    // The title is the only field here the engine can reject, so setting it first leaves the work
-    // untouched when it is.
-    work.set_title(&form.title).await?;
+async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+    work.set_title(parsed.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))
@@ -291,60 +311,35 @@ async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+/// Save the form and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
-/// successful commit ignores `back`.
-async fn submit(
-    engine: Engine,
-    header: Header,
-    (library, work): (String, String),
-    back: Option<String>,
-    form: Form,
-    commit: bool,
-) -> Result<Response> {
-    let library = view::load(&engine, &library).await?;
-    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
-    let saved = match save(&mut work, &form).await {
-        Ok(()) if commit => work.commit().await,
-        saved => saved,
-    };
-    match saved {
-        Ok(()) => {
-            let destination = back
-                .filter(|_| !commit)
-                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-            Ok(Redirect::to(&destination).into_response())
-        }
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            render(header, &library, &work, form, status, back, Some(error)).await
-        }
-    }
-}
-
+/// A refusal is shown in the form.
 pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
     header: Header,
-    Path(path): Path<(String, String)>,
+    Path((library, work)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let back = same_site_path(query.back);
-    submit(engine, header, path, back, form, false).await
-}
-
-pub async fn commit(
-    _session: Session,
-    State(engine): State<Engine>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, header, path, back, form, true).await
+    let library = view::load(&engine, &library).await?;
+    let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let mut refusals = Refusals::default();
+    if let Some(parsed) = parse(&form, &mut refusals) {
+        match save(&mut work, &form, parsed).await {
+            Ok(()) => {
+                let destination =
+                    back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+                return Ok(Redirect::to(&destination).into_response());
+            }
+            Err(e) => {
+                let (_, message) = form_error(e)?;
+                refusals.refuse(message);
+            }
+        }
+    }
+    render(header, &library, &work, form, back, refusals).await
 }
 
 pub async fn delete(

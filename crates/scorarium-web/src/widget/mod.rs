@@ -16,6 +16,7 @@ pub mod links_input;
 pub mod pagination;
 pub mod picture;
 pub mod picture_input;
+pub mod refusals;
 pub mod review_queue;
 pub mod stars;
 pub mod stars_input;

@@ -11,7 +11,9 @@ use crate::auth::Session;
 use crate::error::Result;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::confirm::{Confirm, count};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
+use crate::widget::refusals::Refusals;
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -33,17 +35,22 @@ struct Edit {
     id: LibraryId,
     name: String,
     private: bool,
-    delete: Confirm,
-    error: Option<String>,
+    heading: EditHeading,
+    refusals: Refusals,
 }
 
 fn render(
     header: Header,
     library: &Library,
     publications: usize,
-    status: StatusCode,
-    error: Option<String>,
+    (name, private): (&str, bool),
+    refusals: Refusals,
 ) -> Result<Response> {
+    let status = if refusals.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
+    };
     let page = Edit {
         base: Base::new(
             header,
@@ -54,25 +61,30 @@ fn render(
             ],
         ),
         id: library.id(),
-        name: library.name().to_owned(),
-        private: library.is_private(),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", library.name()),
-            message: format!("Deleting {} also deletes:", library.name()),
-            also_deleted: vec![
-                format!(
-                    "its {} and associated assets",
-                    count(publications, "publication")
-                ),
-                "all works and persons".to_owned(),
-            ],
-            action: "Delete library",
-            url: format!("/library/{}/delete", library.id()),
-            target: None,
-            fields: vec![],
+        name: name.to_owned(),
+        private,
+        heading: EditHeading {
+            title: library.name().to_owned(),
+            mode: EditMode::Committed,
+            cancel: format!("/library/{}", library.id()),
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: format!("Delete {}?", library.name()),
+                message: format!("Deleting {} also deletes:", library.name()),
+                also_deleted: vec![
+                    format!(
+                        "its {} and associated assets",
+                        count(publications, "publication")
+                    ),
+                    "all works and persons".to_owned(),
+                ],
+                action: "Delete library",
+                url: format!("/library/{}/delete", library.id()),
+                target: None,
+                fields: vec![],
+            },
         },
-        error,
+        refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
@@ -85,7 +97,13 @@ pub async fn get(
 ) -> Result<Response> {
     let library = load(&engine, &id).await?;
     let publications = library.publication_count(true).await?;
-    render(header, &library, publications, StatusCode::OK, None)
+    render(
+        header,
+        &library,
+        publications,
+        (library.name(), library.is_private()),
+        Refusals::default(),
+    )
 }
 
 pub async fn post(
@@ -96,23 +114,29 @@ pub async fn post(
     axum::Form(form): axum::Form<Form>,
 ) -> Result<Response> {
     let mut library = load(&engine, &id).await?;
-    // Rename runs first so a rejected name also leaves the visibility untouched.
-    let result = match library.rename(&form.name).await {
-        Ok(()) => {
-            library
-                .set_private(form.visibility == Visibility::Private)
-                .await
-        }
-        Err(e) => Err(e),
-    };
-    match result {
-        Ok(()) => Ok(Redirect::to(&format!("/library/{}", library.id())).into_response()),
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            let publications = library.publication_count(true).await?;
-            render(header, &library, publications, status, Some(error))
+    let private = form.visibility == Visibility::Private;
+    let mut refusals = Refusals::default();
+    if let Some(name) = refusals.parse("name", &form.name) {
+        let result = match library.rename(name).await {
+            Ok(()) => library.set_private(private).await,
+            Err(e) => Err(e),
+        };
+        if let Err(e) = result {
+            let (_, message) = form_error(e)?;
+            refusals.refuse(message);
         }
     }
+    if refusals.is_empty() {
+        return Ok(Redirect::to(&format!("/library/{}", library.id())).into_response());
+    }
+    let publications = library.publication_count(true).await?;
+    render(
+        header,
+        &library,
+        publications,
+        (&form.name, private),
+        refusals,
+    )
 }
 
 pub async fn delete(

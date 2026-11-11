@@ -7,7 +7,11 @@ use scorarium_test::TestApp;
 #[tokio::test]
 async fn publication_page_follows_library_visibility_and_hides_drafts() {
     let app = TestApp::logged_out(true).await;
-    let mut library = app.engine.create_library("Secret", true).await.unwrap();
+    let mut library = app
+        .engine
+        .create_library("Secret".parse().unwrap(), true)
+        .await
+        .unwrap();
     let draft = library
         .import(
             ImportSeed::Title {
@@ -28,8 +32,16 @@ async fn publication_page_follows_library_visibility_and_hides_drafts() {
     app.server.get(&path).await.assert_status_not_found();
 
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Mine", false).await.unwrap();
-    let other = app.engine.create_library("Other", false).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Mine".parse().unwrap(), false)
+        .await
+        .unwrap();
+    let other = app
+        .engine
+        .create_library("Other".parse().unwrap(), false)
+        .await
+        .unwrap();
     let draft = library
         .import(
             ImportSeed::Title {

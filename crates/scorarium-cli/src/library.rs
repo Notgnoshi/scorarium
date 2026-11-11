@@ -5,6 +5,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::NewHolding;
 use scorarium_engine::library::Library;
 use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed};
+use scorarium_engine::value::NonBlank;
 
 use crate::reference;
 
@@ -96,15 +97,19 @@ pub(crate) enum Visibility {
     Private,
 }
 
-pub(crate) async fn create(engine: &Engine, raw: &str, visibility: Visibility) -> eyre::Result<()> {
+pub(crate) async fn create(
+    engine: &Engine,
+    name: NonBlank,
+    visibility: Visibility,
+) -> eyre::Result<()> {
     let private = matches!(visibility, Visibility::Private);
-    engine.create_library(raw, private).await?;
+    engine.create_library(name, private).await?;
     Ok(())
 }
 
 /// Rename a library, keeping its visibility.
-pub(crate) async fn set_name(engine: &Engine, reference: &str, raw: &str) -> eyre::Result<()> {
-    resolve(engine, reference).await?.rename(raw).await?;
+pub(crate) async fn set_name(engine: &Engine, reference: &str, name: NonBlank) -> eyre::Result<()> {
+    resolve(engine, reference).await?.rename(name).await?;
     Ok(())
 }
 

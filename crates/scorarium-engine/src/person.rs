@@ -18,6 +18,7 @@ use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::search::same_name;
 use crate::suggest::{Candidate, CandidateScope};
+use crate::value::NonBlank;
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -211,16 +212,8 @@ impl Person {
     /// Rename the person along with the given sort name
     ///
     /// Returns [Error::NotFound] if the person has been deleted.
-    pub async fn rename(
-        &mut self,
-        name: impl AsRef<str>,
-        sort_name: impl AsRef<str>,
-    ) -> Result<()> {
-        let name = clean_name(name.as_ref())?;
-        let sort_name = sort_name.as_ref().trim();
-        if sort_name.is_empty() {
-            return Err(Error::InvalidValue("A sort name cannot be blank.".into()));
-        }
+    pub async fn rename(&mut self, name: NonBlank, sort_name: NonBlank) -> Result<()> {
+        let (name, sort_name) = (name.as_str(), sort_name.as_str());
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         if self.name == name && self.sort_name == sort_name {
@@ -377,7 +370,7 @@ impl Person {
         value: Proposal,
     ) -> Result<Option<ProposalId>> {
         let (field, text) = match &value {
-            Proposal::Name(name) => ("name", clean_name(name)?.to_string()),
+            Proposal::Name(name) => ("name", name.parse::<NonBlank>()?.to_string()),
             Proposal::Link(url) => ("link", url.to_string()),
             Proposal::Profile(url) => ("profile", url.to_string()),
         };
@@ -497,7 +490,11 @@ impl Entity for Person {
             .ok_or(Error::NotFound)?;
         drop(conn);
         match proposal.value {
-            Proposal::Name(name) => self.rename(&name, derive_sort_name(&name)).await?,
+            Proposal::Name(name) => {
+                let name = name.parse::<NonBlank>()?;
+                let sort_name = derive_sort_name(&name);
+                self.rename(name, sort_name).await?
+            }
             Proposal::Link(url) => self.add_link(url).await?,
             Proposal::Profile(url) => self.set_profile(AssetSource::Url(url)).await?,
         }
@@ -681,11 +678,12 @@ pub(crate) async fn insert(
     engine: &Engine,
     conn: &mut SqliteConnection,
     library: LibraryId,
-    name: &str,
+    name: &NonBlank,
     draft: bool,
 ) -> Result<Person> {
     let library = library.get();
     let sort_name = derive_sort_name(name);
+    let (name, sort_name) = (name.as_str(), sort_name.as_str());
     let id = sqlx::query_scalar!(
         r#"INSERT INTO person (library_id, name, sort_name, draft) VALUES (?, ?, ?, ?)
            RETURNING id AS "id!""#,
@@ -1036,25 +1034,15 @@ fn audit_subject(id: PersonId, library: LibraryId, name: &str) -> AuditSubject {
     }
 }
 
-pub(crate) fn clean_name(name: &str) -> Result<&str> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(Error::InvalidValue(
-            "A person's name cannot be blank.".into(),
-        ));
-    }
-    Ok(name)
-}
-
 /// Derive a sort name, so that "Erik Satie" sorts as "Satie, Erik"
 ///
 /// Compound surnames like "Ralph Vaughan Williams" come out wrong. That is acceptable because the
 /// heuristic only has to be right often enough that the user rarely retypes a name.
-pub fn derive_sort_name(name: &str) -> String {
-    let mut parts: Vec<&str> = name.split_whitespace().collect();
+pub fn derive_sort_name(name: &NonBlank) -> NonBlank {
+    let mut parts: Vec<&str> = name.as_str().split_whitespace().collect();
     match parts.pop() {
-        Some(last) if !parts.is_empty() => format!("{last}, {}", parts.join(" ")),
-        _ => name.to_string(),
+        Some(last) if !parts.is_empty() => NonBlank(format!("{last}, {}", parts.join(" "))),
+        _ => name.clone(),
     }
 }
 
@@ -1072,7 +1060,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -1084,7 +1075,10 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
+            .create_contributor(
+                "Sergei Rachmaninoff".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         for url in [
@@ -1114,7 +1108,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -1126,7 +1123,7 @@ mod tests {
             .await
             .unwrap();
         let mut person = publication
-            .create_contributor("Erik Satie", "composer".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "composer".parse().unwrap())
             .await
             .unwrap();
         let staging = dir.path().join("staging");
@@ -1178,7 +1175,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let seed = |title: &str| ImportSeed::Title {
             title: title.into(),
             record: None,
@@ -1189,11 +1189,14 @@ mod tests {
             .await
             .unwrap();
         let chopin = nocturnes
-            .create_contributor("Frederic Chopin", "editor".parse().unwrap())
+            .create_contributor(
+                "Frederic Chopin".parse().unwrap(),
+                "editor".parse().unwrap(),
+            )
             .await
             .unwrap();
         for title in ["Nocturne No. 1", "Nocturne No. 2"] {
-            let mut work = nocturnes.create_work(title).await.unwrap();
+            let mut work = nocturnes.create_work(title.parse().unwrap()).await.unwrap();
             work.add_contributor(chopin.id(), "composer".parse().unwrap())
                 .await
                 .unwrap();

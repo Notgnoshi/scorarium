@@ -1,19 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
     {{ heading }}
+    {{ refusals }}
     <form id="edit"
           method="post"
           action="/library/{{ library }}/person/{{ id }}/edit{% if let Some(back) = back %}?back={{ back|urlencode }}{% endif %}">
         <fieldset class="box">
             <legend>Details</legend>
-            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
             <div class="row">
                 <div class="col-12 col-md-auto mb-3">{{ picture }}</div>
                 <div class="col-12 col-md">
                     <div class="row mb-3">
                         <label class="col-sm-2 col-form-label" for="name">Name</label>
                         <div class="col-sm-10">
-                            <input class="form-control" type="text" id="name" name="name" value="{{ name }}" required>
+                            <input class="form-control{% if refusals.of("name").is_some() %} is-invalid{% endif %}"
+                                   type="text"
+                                   id="name"
+                                   name="name"
+                                   value="{{ name }}"
+                                   required
+                                   {% if refusals.first() == Some("name") %}autofocus{% endif %}>
+                            {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -27,22 +34,12 @@
                             <div class="form-text">Leave blank to sort by Last, First</div>
                         </div>
                     </div>
+                    <div class="row mb-3">
+                        <span class="col-sm-2 col-form-label">Links</span>
+                        <div class="col-sm-10">{{ links }}</div>
+                    </div>
                 </div>
             </div>
-            <div class="row mb-3">
-                <span class="col-sm-2 col-form-label">Links</span>
-                <div class="col-sm-10">{{ links }}</div>
-            </div>
         </fieldset>
-        <div class="d-flex justify-content-end gap-2 mb-4">
-            <a class="btn btn-outline-secondary" href="{{ destination }}" title="Discard changes" data-cancel>
-                <i class="bi bi-x-lg"></i> Cancel
-            </a>
-            <button class="btn {% if heading.commit.is_some() %}btn-outline-primary{% else %}btn-primary{% endif %}"
-                    type="submit"
-                    title="Save changes">
-                <i class="bi bi-floppy"></i> Save
-            </button>
-        </div>
     </form>
 {% endblock %}

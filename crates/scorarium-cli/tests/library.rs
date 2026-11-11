@@ -39,8 +39,14 @@ async fn a_failing_script_stops_at_the_failing_line() {
 async fn library_show_rejects_an_ambiguous_reference() {
     let engine = scorarium_test::demo_engine().await;
     // A library named after another library's id, and a second "Books" differing only in case
-    let numeric = engine.create_library("1", false).await.unwrap();
-    let duplicate = engine.create_library("books", false).await.unwrap();
+    let numeric = engine
+        .create_library("1".parse().unwrap(), false)
+        .await
+        .unwrap();
+    let duplicate = engine
+        .create_library("books".parse().unwrap(), false)
+        .await
+        .unwrap();
 
     let (out, result) = run(&engine, "library 'sheet music' show\n").await;
     result.unwrap();
@@ -108,9 +114,9 @@ async fn library_create_rename_delete() {
     );
 
     let (_, result) = run(&engine, "library create '  '\n").await;
-    assert_eq!(
-        format!("{:#}", result.unwrap_err()),
-        "line 1: A library name cannot be blank."
+    assert!(
+        format!("{:#}", result.unwrap_err())
+            .contains("invalid value '  ' for '<name>': This cannot be blank.")
     );
 }
 
@@ -324,7 +330,7 @@ async fn import_commit_review_discard() {
     let (_, result) = run(&engine, "library books import '  '\n").await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
-        "line 1: A publication title cannot be blank."
+        "line 1: This cannot be blank."
     );
 
     let (out, result) = run(&engine, "review\n").await;

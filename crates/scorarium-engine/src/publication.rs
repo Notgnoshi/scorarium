@@ -21,7 +21,7 @@ use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
 use crate::person::{self, Person, PersonId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
-use crate::value::{Classification, Stars, Tag, Year, clean_text};
+use crate::value::{Classification, NonBlank, Stars, Tag, Year, clean_text};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -405,7 +405,7 @@ impl Publication {
     ) -> Result<Option<ProposalId>> {
         let (mut work, mut person) = (None, None);
         let (field, text) = match &value {
-            Proposal::Title(title) => ("title", Some(clean_title(title)?.to_string())),
+            Proposal::Title(title) => ("title", Some(title.parse::<NonBlank>()?.to_string())),
             Proposal::Publisher(publisher) => {
                 let publisher = clean_text(Some(publisher))
                     .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
@@ -508,12 +508,20 @@ impl Publication {
     /// Returns [Error::NotFound] if the publication has been deleted.
     #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) async fn propose_new_work(&self, source: Source, title: &str) -> Result<Work> {
-        let title = work::clean_title(title)?;
+        let title = title.parse::<NonBlank>()?;
         let mut tx = self.engine.begin_write().await?;
         Publication::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
-        let work = work::insert(&self.engine, &mut tx, self.library, title, true, None).await?;
+        let work = work::insert(
+            &self.engine,
+            &mut tx,
+            self.library,
+            title.as_str(),
+            true,
+            None,
+        )
+        .await?;
         let source = source.to_string();
         sqlx::query!(
             r#"INSERT INTO publication_proposal
@@ -547,12 +555,12 @@ impl Publication {
         name: &str,
         role: &Role,
     ) -> Result<Person> {
-        let name = person::clean_name(name)?;
+        let name = name.parse::<NonBlank>()?;
         let mut tx = self.engine.begin_write().await?;
         Publication::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
-        let person = person::insert(&self.engine, &mut tx, self.library, name, true).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, &name, true).await?;
         let source = source.to_string();
         sqlx::query!(
             r#"INSERT INTO publication_proposal
@@ -581,8 +589,8 @@ impl Publication {
     /// Retitle the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn set_title(&mut self, title: impl AsRef<str>) -> Result<()> {
-        let title = clean_title(title.as_ref())?;
+    pub async fn set_title(&mut self, title: NonBlank) -> Result<()> {
+        let title = title.as_str();
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         if self.title.as_deref() == Some(title) {
@@ -1169,15 +1177,14 @@ impl Publication {
     /// Create a work in the publication with the owning publication's draft state and classification
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    pub async fn create_work(&mut self, title: impl AsRef<str>) -> Result<Work> {
-        let title = work::clean_title(title.as_ref())?;
+    pub async fn create_work(&mut self, title: NonBlank) -> Result<Work> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         let work = work::insert(
             &self.engine,
             &mut tx,
             self.library,
-            title,
+            title.as_str(),
             self.draft,
             self.classification,
         )
@@ -1350,15 +1357,10 @@ impl Contributed for Publication {
         &self.contributors
     }
 
-    async fn create_contributor(
-        &mut self,
-        name: impl AsRef<str> + Send,
-        role: Role,
-    ) -> Result<Person> {
-        let name = person::clean_name(name.as_ref())?;
+    async fn create_contributor(&mut self, name: NonBlank, role: Role) -> Result<Person> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, &name, self.draft).await?;
         sqlx::query!(
             "INSERT INTO publication_contributor (library_id, publication_id, person_id, role)
              VALUES (?, ?, ?, ?)",
@@ -1578,7 +1580,7 @@ impl Entity for Publication {
             .ok_or(Error::NotFound)?;
         drop(conn);
         match proposal.value {
-            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Title(title) => self.set_title(title.parse()?).await?,
             Proposal::Publisher(publisher) => self.set_publisher(Some(&publisher)).await?,
             Proposal::Year(year) => self.set_year(Some(year)).await?,
             Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
@@ -1757,7 +1759,7 @@ pub(crate) async fn import(
 ) -> Result<Publication> {
     let (title, identifier, record) = match seed {
         ImportSeed::Title { title, record } => {
-            (Some(clean_title(&title)?.to_string()), None, record)
+            (Some(title.parse::<NonBlank>()?.to_string()), None, record)
         }
         ImportSeed::Identifier { identifier, record } => (None, Some(identifier), record),
     };
@@ -2153,16 +2155,6 @@ fn remove_cover(path: &Path) {
     }
 }
 
-fn clean_title(title: &str) -> Result<&str> {
-    let title = title.trim();
-    if title.is_empty() {
-        return Err(Error::InvalidValue(
-            "A publication title cannot be blank.".into(),
-        ));
-    }
-    Ok(title)
-}
-
 /// The kinds of identifier printed on a publication
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IdentifierKind {
@@ -2399,7 +2391,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2485,7 +2480,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2496,13 +2494,16 @@ mod tests {
             )
             .await
             .unwrap();
-        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
+        let mut work = publication
+            .create_work("Gymnopedie No. 1".parse().unwrap())
+            .await
+            .unwrap();
         let person = work
-            .create_contributor("Erik Satie", "composer".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "composer".parse().unwrap())
             .await
             .unwrap();
         let editor = publication
-            .create_contributor("Isidor Philipp", "editor".parse().unwrap())
+            .create_contributor("Isidor Philipp".parse().unwrap(), "editor".parse().unwrap())
             .await
             .unwrap();
         assert!(publication.is_draft());
@@ -2526,7 +2527,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut album = library
             .import(
                 ImportSeed::Title {
@@ -2537,13 +2541,22 @@ mod tests {
             )
             .await
             .unwrap();
-        let mut prelude = album.create_work("Prelude in C-sharp minor").await.unwrap();
+        let mut prelude = album
+            .create_work("Prelude in C-sharp minor".parse().unwrap())
+            .await
+            .unwrap();
         let composer = prelude
-            .create_contributor("Sergei Rachmaninoff", "composer".parse().unwrap())
+            .create_contributor(
+                "Sergei Rachmaninoff".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         let editor = album
-            .create_contributor("Alexander Siloti", "editor".parse().unwrap())
+            .create_contributor(
+                "Alexander Siloti".parse().unwrap(),
+                "editor".parse().unwrap(),
+            )
             .await
             .unwrap();
         let mut masterpieces = library
@@ -2586,7 +2599,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let publication = library
             .import(
                 ImportSeed::Title {
@@ -2607,7 +2623,10 @@ mod tests {
             )
             .await
             .unwrap();
-        let work = other.create_work("Chapter 1").await.unwrap();
+        let work = other
+            .create_work("Chapter 1".parse().unwrap())
+            .await
+            .unwrap();
 
         let current = Proposal::Title("Pro Git".into());
         assert!(
@@ -2643,7 +2662,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut a = library
             .import(
                 ImportSeed::Title {
@@ -2693,7 +2715,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2728,7 +2753,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2769,7 +2797,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2781,7 +2812,7 @@ mod tests {
             .await
             .unwrap();
         let satie = publication
-            .create_contributor("Erik Satie", "composer".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "composer".parse().unwrap())
             .await
             .unwrap()
             .id();
@@ -2821,7 +2852,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -2851,7 +2885,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-99999-9").unwrap();
         let record = ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M");
         let mut publication = library
@@ -2900,7 +2937,10 @@ mod tests {
             Err(Error::InvalidValue(_))
         ));
 
-        publication.set_title("Practical Vim").await.unwrap();
+        publication
+            .set_title("Practical Vim".parse().unwrap())
+            .await
+            .unwrap();
         publication.reload().await.unwrap();
         assert_eq!(publication.identifiers(), [isbn]);
         assert_eq!(publication.title(), Some("Practical Vim"));
@@ -3018,7 +3058,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let upload = |name: &str| {
             NewHolding::Digital(AssetSource::Upload {
                 data: Box::new(&b"%PDF-1.4 not really"[..]),
@@ -3079,7 +3122,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -3132,7 +3178,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {

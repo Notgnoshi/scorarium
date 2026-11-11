@@ -11,8 +11,8 @@ use crate::{Engine, Error, Result};
 
 /// Populate a demo database intended to exercise several different aspects of Scorarium's data model
 pub(crate) async fn populate(engine: &Engine) -> Result<()> {
-    let books = engine.create_library("Books", true).await?;
-    let sheet_music = engine.create_library("Sheet music", false).await?;
+    let books = engine.create_library("Books".parse()?, true).await?;
+    let sheet_music = engine.create_library("Sheet music".parse()?, false).await?;
 
     let mut practical_vim = create(&books, "Practical Vim", Some("Desk"), Prose).await?;
     practical_vim
@@ -29,7 +29,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         ))
         .await?;
     practical_vim
-        .create_contributor("Drew Neil", "author".parse()?)
+        .create_contributor("Drew Neil".parse()?, "author".parse()?)
         .await?;
     for tag in ["editor", "reference"] {
         practical_vim.add_tag(tag.parse()?).await?;
@@ -49,10 +49,10 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     pro_git.set_year(Some(Year::try_from(2014)?)).await?;
     pro_git.set_stars(Some(Stars::try_from(3)?)).await?;
     pro_git
-        .create_contributor("Scott Chacon", "author".parse()?)
+        .create_contributor("Scott Chacon".parse()?, "author".parse()?)
         .await?;
     pro_git
-        .create_contributor("Ben Straub", "author".parse()?)
+        .create_contributor("Ben Straub".parse()?, "author".parse()?)
         .await?;
     for url in [
         "https://openlibrary.org/books/OL26372169M/Pro_Git",
@@ -74,7 +74,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     bierce.set_publisher(Some("Citadel Press")).await?;
     bierce.set_year(Some(Year::try_from(1979)?)).await?;
     let mut ambrose_bierce = bierce
-        .create_contributor("Ambrose Bierce", "author".parse()?)
+        .create_contributor("Ambrose Bierce".parse()?, "author".parse()?)
         .await?;
     for url in [
         "https://www.wikidata.org/wiki/Q191050",
@@ -88,7 +88,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         "The Devil's Dictionary",
         "The Parenticide Club",
     ] {
-        let mut writing = bierce.create_work(title).await?;
+        let mut writing = bierce.create_work(title.parse()?).await?;
         writing
             .add_contributor(ambrose_bierce.id(), "author".parse()?)
             .await?;
@@ -120,7 +120,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         "Sergei Rachmaninoff",
     ] {
         russian_album
-            .create_contributor(composer, "composer".parse()?)
+            .create_contributor(composer.parse()?, "composer".parse()?)
             .await?;
     }
     let mut rachmaninoff = sheet_music
@@ -204,7 +204,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_contributor(rachmaninoff.id(), "composer".parse()?)
         .await?;
     let mut kirkor = isle_of_the_dead
-        .create_contributor("Georgy Kirkor", "arranger".parse()?)
+        .create_contributor("Georgy Kirkor".parse()?, "arranger".parse()?)
         .await?;
     for url in [
         "https://imslp.org/wiki/Category:Kirkor,_Georgy",
@@ -256,7 +256,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_link("https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)".parse()?)
         .await?;
     let satie = gymnopedies
-        .create_contributor("Erik Satie", "composer".parse()?)
+        .create_contributor("Erik Satie".parse()?, "composer".parse()?)
         .await?
         .id();
     for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
@@ -307,7 +307,7 @@ async fn piano_piece(
     key: &str,
     time_signature: Option<&str>,
 ) -> Result<Work> {
-    let mut work = publication.create_work(title).await?;
+    let mut work = publication.create_work(title.parse()?).await?;
     work.set_key(Some(key)).await?;
     work.set_time_signature(time_signature).await?;
     work.set_instrumentation(Some("piano")).await?;

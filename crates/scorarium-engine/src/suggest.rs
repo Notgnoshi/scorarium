@@ -465,7 +465,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         for (title, publisher) in [
             ("Russian piano album", "Schirmer"),
             ("Rachmaninoff masterpieces", "Dover"),
@@ -485,7 +488,10 @@ mod tests {
         }
         let mut album = library.publications().await.unwrap().remove(0);
         album
-            .create_contributor("Sergei Rachmaninoff", "Composer".parse().unwrap())
+            .create_contributor(
+                "Sergei Rachmaninoff".parse().unwrap(),
+                "Composer".parse().unwrap(),
+            )
             .await
             .unwrap();
 
@@ -528,7 +534,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut nocturnes = library
             .import(
                 ImportSeed::Title {
@@ -540,10 +549,16 @@ mod tests {
             .await
             .unwrap();
         let chopin = nocturnes
-            .create_contributor("Frederic Chopin", "composer".parse().unwrap())
+            .create_contributor(
+                "Frederic Chopin".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
-        let mut nocturne = nocturnes.create_work("Nocturne").await.unwrap();
+        let mut nocturne = nocturnes
+            .create_work("Nocturne".parse().unwrap())
+            .await
+            .unwrap();
         nocturne
             .add_contributor(chopin.id(), "composer".parse().unwrap())
             .await
@@ -553,10 +568,16 @@ mod tests {
             .await
             .unwrap();
         let faure = nocturnes
-            .create_contributor("Gabriel Faure", "composer".parse().unwrap())
+            .create_contributor(
+                "Gabriel Faure".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
-        let mut other = nocturnes.create_work("Nocturne").await.unwrap();
+        let mut other = nocturnes
+            .create_work("Nocturne".parse().unwrap())
+            .await
+            .unwrap();
         other
             .add_contributor(faure.id(), "composer".parse().unwrap())
             .await
@@ -651,7 +672,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut album = library
             .import(
                 ImportSeed::Title {
@@ -663,11 +687,17 @@ mod tests {
             .await
             .unwrap();
         let chopin = album
-            .create_contributor("Frederic Chopin", "composer".parse().unwrap())
+            .create_contributor(
+                "Frederic Chopin".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         let beethoven = album
-            .create_contributor("Ludwig van Beethoven", "Composer".parse().unwrap())
+            .create_contributor(
+                "Ludwig van Beethoven".parse().unwrap(),
+                "Composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         for (title, number, composer) in [
@@ -676,7 +706,7 @@ mod tests {
             ("Ballade", "Op. 23", chopin.id()),
             ("Septet", "Op. 20", beethoven.id()),
         ] {
-            let mut work = album.create_work(title).await.unwrap();
+            let mut work = album.create_work(title.parse().unwrap()).await.unwrap();
             work.add_contributor(composer, "Composer".parse().unwrap())
                 .await
                 .unwrap();

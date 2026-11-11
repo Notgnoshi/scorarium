@@ -8,7 +8,11 @@ use scorarium_test::TestApp;
 #[tokio::test]
 async fn a_private_librarys_cover_needs_login() {
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Secret", true).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Secret".parse().unwrap(), true)
+        .await
+        .unwrap();
     let mut publication = library
         .import(
             ImportSeed::Title {

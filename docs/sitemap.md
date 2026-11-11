@@ -28,7 +28,6 @@
 | `/library/{id}/import`                                           | POST   | Create a draft                   |
 | `/library/{id}/people/{role}`                                    | GET    | People with one role             |
 | `/library/{id}/people`                                           | GET    | People in a library              |
-| `/library/{id}/person/{person}/commit`                           | POST   | Save and commit a person         |
 | `/library/{id}/person/{person}/delete`                           | POST   | Delete a person                  |
 | `/library/{id}/person/{person}/edit`                             | GET    | Edit or delete a person          |
 | `/library/{id}/person/{person}/edit`                             | POST   | Save a person                    |
@@ -43,7 +42,6 @@
 | `/library/{id}/publication/{publication}`                        | GET    | Publication details              |
 | `/library/{id}/tag/{tag}`                                        | GET    | Entries with one tag             |
 | `/library/{id}/tags`                                             | GET    | Tags in a library                |
-| `/library/{id}/work/{work}/commit`                               | POST   | Save and commit a work           |
 | `/library/{id}/work/{work}/delete`                               | POST   | Delete a work                    |
 | `/library/{id}/work/{work}/edit`                                 | GET    | Edit or delete a work            |
 | `/library/{id}/work/{work}/edit`                                 | POST   | Save a work                      |

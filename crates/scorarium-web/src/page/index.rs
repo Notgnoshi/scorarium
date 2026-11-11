@@ -81,7 +81,11 @@ pub async fn post(
     header: Header,
     axum::Form(form): axum::Form<Form>,
 ) -> Result<Response> {
-    match engine.create_library(&form.name, true).await {
+    let result = match form.name.parse() {
+        Ok(name) => engine.create_library(name, true).await,
+        Err(e) => Err(e),
+    };
+    match result {
         Ok(library) => Ok(Redirect::to(&format!("/library/{}", library.id())).into_response()),
         Err(e) => {
             let (status, error) = form_error(e)?;

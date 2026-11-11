@@ -421,7 +421,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let publication = library
             .import(
                 ImportSeed::Title {
@@ -454,7 +457,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
         let publication = library
             .import(
@@ -539,7 +545,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut sonatas = library
             .import(
                 ImportSeed::Title {
@@ -551,7 +560,10 @@ mod tests {
             .await
             .unwrap();
         let beethoven = sonatas
-            .create_contributor("Ludwig van Beethoven", "composer".parse().unwrap())
+            .create_contributor(
+                "Ludwig van Beethoven".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
             .await
             .unwrap();
         sonatas.commit().await.unwrap();

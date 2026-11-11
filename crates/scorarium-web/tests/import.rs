@@ -24,7 +24,7 @@ async fn import_follows_the_holdings_rules() {
     let app = TestApp::demo().await;
     let library = app
         .engine
-        .create_library("Sheet music", false)
+        .create_library("Sheet music".parse().unwrap(), false)
         .await
         .unwrap();
     let url = format!("/library/{}/import", library.id());
@@ -79,7 +79,7 @@ async fn import_takes_an_identifier_or_a_title() {
     let app = TestApp::demo().await;
     let library = app
         .engine
-        .create_library("Sheet music", false)
+        .create_library("Sheet music".parse().unwrap(), false)
         .await
         .unwrap();
     let url = format!("/library/{}/import", library.id());
@@ -103,7 +103,7 @@ async fn import_more_keeps_locations_and_drops_files() {
     let app = TestApp::demo().await;
     let library = app
         .engine
-        .create_library("Sheet music", false)
+        .create_library("Sheet music".parse().unwrap(), false)
         .await
         .unwrap();
     let url = format!("/library/{}/import", library.id());
@@ -133,7 +133,11 @@ async fn import_more_keeps_locations_and_drops_files() {
 #[tokio::test]
 async fn import_attaches_a_picked_candidates_record() {
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Books", false).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Books".parse().unwrap(), false)
+        .await
+        .unwrap();
     let url = format!("/library/{}/import", library.id());
     let record = "https://openlibrary.org/books/OL7636066M";
 

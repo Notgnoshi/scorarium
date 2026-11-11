@@ -11,7 +11,7 @@ use crate::holding::NewHolding;
 use crate::person::{self, Person, PersonId, PersonSummary};
 use crate::publication::{self, ImportSeed, Publication, PublicationId};
 use crate::suggest::{self, SuggestField, Suggestion};
-use crate::value::Tag;
+use crate::value::{NonBlank, Tag};
 use crate::work::{self, Work};
 use crate::{Engine, Error, Result, asset};
 
@@ -91,8 +91,8 @@ impl Library {
     /// Rename the library
     ///
     /// Returns [Error::NotFound] if the library has been deleted.
-    pub async fn rename(&mut self, name: impl AsRef<str>) -> Result<()> {
-        let name = clean_name(name.as_ref())?;
+    pub async fn rename(&mut self, name: NonBlank) -> Result<()> {
+        let name = name.as_str();
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         if self.name == name {
@@ -334,16 +334,6 @@ fn audit_subject(id: LibraryId, label: &str) -> AuditSubject {
     }
 }
 
-fn clean_name(name: &str) -> Result<&str> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(Error::InvalidValue(
-            "A library name cannot be blank.".into(),
-        ));
-    }
-    Ok(name)
-}
-
 impl Engine {
     /// List every library, oldest first
     pub async fn libraries(&self) -> Result<Vec<Library>> {
@@ -383,8 +373,8 @@ impl Engine {
     /// Create a library with the given name and visibility
     ///
     /// Names need not be unique.
-    pub async fn create_library(&self, name: impl AsRef<str>, private: bool) -> Result<Library> {
-        let name = clean_name(name.as_ref())?;
+    pub async fn create_library(&self, name: NonBlank, private: bool) -> Result<Library> {
+        let name = name.as_str();
         let mut tx = self.begin_write().await?;
         let id = sqlx::query_scalar!(
             "INSERT INTO library (name, private) VALUES (?, ?) RETURNING id",
@@ -414,11 +404,11 @@ impl Engine {
 
 #[cfg(test)]
 mod tests {
+    use crate::Engine;
     use crate::audit::{Action, AuditSubject};
     use crate::entity::{Contributed, Entity};
     use crate::holding::NewHolding;
     use crate::publication::ImportSeed;
-    use crate::{Engine, Error};
 
     #[tokio::test]
     async fn create_and_load() {
@@ -426,14 +416,13 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let created = engine.create_library("  Scores ", true).await.unwrap();
+        let created = engine
+            .create_library("  Scores ".parse().unwrap(), true)
+            .await
+            .unwrap();
         let loaded = engine.library(created.id()).await.unwrap().unwrap();
         assert_eq!(loaded.name(), "Scores");
         assert!(loaded.is_private());
-        assert!(matches!(
-            engine.create_library("   ", false).await,
-            Err(Error::InvalidValue(_))
-        ));
     }
 
     #[tokio::test]
@@ -442,9 +431,12 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let mut library = engine.create_library("Scores", false).await.unwrap();
-        library.rename("Scores").await.unwrap();
-        library.rename("Music").await.unwrap();
+        let mut library = engine
+            .create_library("Scores".parse().unwrap(), false)
+            .await
+            .unwrap();
+        library.rename("Scores".parse().unwrap()).await.unwrap();
+        library.rename("Music".parse().unwrap()).await.unwrap();
         library.set_private(true).await.unwrap();
         library.delete().await.unwrap();
 
@@ -478,7 +470,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let seed = |title: &str| ImportSeed::Title {
             title: title.into(),
             record: None,
@@ -494,11 +489,17 @@ mod tests {
             .await
             .unwrap();
         let satie = gymnopedies
-            .create_contributor("Erik Satie", "editor".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "editor".parse().unwrap())
             .await
             .unwrap();
-        let mut first = gymnopedies.create_work("Gymnopedie No. 1").await.unwrap();
-        let mut second = gymnopedies.create_work("Gymnopedie No. 2").await.unwrap();
+        let mut first = gymnopedies
+            .create_work("Gymnopedie No. 1".parse().unwrap())
+            .await
+            .unwrap();
+        let mut second = gymnopedies
+            .create_work("Gymnopedie No. 2".parse().unwrap())
+            .await
+            .unwrap();
         first
             .add_contributor(satie.id(), "composer".parse().unwrap())
             .await
@@ -519,7 +520,7 @@ mod tests {
             .await
             .unwrap();
         let pen_name = draft
-            .create_contributor("Pen Name", "author".parse().unwrap())
+            .create_contributor("Pen Name".parse().unwrap(), "author".parse().unwrap())
             .await
             .unwrap();
         assert!(pen_name.is_draft());

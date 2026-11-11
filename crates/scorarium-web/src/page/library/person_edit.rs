@@ -9,6 +9,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::value::NonBlank;
 use serde::Deserialize;
 
 use crate::Settings;
@@ -19,10 +20,11 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::edit_heading::{CommitAction, EditHeading};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture_input::PictureInput;
+use crate::widget::refusals::Refusals;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -38,22 +40,36 @@ pub(crate) struct Form {
 }
 
 struct Parsed {
+    name: NonBlank,
+    sort_name: NonBlank,
     add_links: Vec<HttpUrl>,
     remove_links: Vec<LinkId>,
 }
 
-fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
-    Ok(Parsed {
-        add_links: form
-            .add_link
-            .iter()
-            .map(|url| url.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_links: form
-            .remove_link
-            .iter()
-            .map(|id| parse_link_id(id))
-            .collect::<scorarium_engine::Result<_>>()?,
+fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+    let name = refusals.parse::<NonBlank>("name", &form.name);
+    let sort_name = match form.sort_name.trim() {
+        "" => name.as_ref().map(derive_sort_name),
+        sort_name => refusals.check(sort_name.parse()),
+    };
+    let add_links = form
+        .add_link
+        .iter()
+        .filter_map(|url| refusals.check(url.parse()))
+        .collect();
+    let remove_links = form
+        .remove_link
+        .iter()
+        .filter_map(|id| refusals.check(parse_link_id(id)))
+        .collect();
+    if !refusals.is_empty() {
+        return None;
+    }
+    Some(Parsed {
+        name: name?,
+        sort_name: sort_name?,
+        add_links,
+        remove_links,
     })
 }
 
@@ -69,8 +85,7 @@ struct Edit {
     sort_name: String,
     links: LinksInput,
     back: Option<String>,
-    destination: String,
-    error: Option<String>,
+    refusals: Refusals,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -82,7 +97,7 @@ async fn render(
     form: Form,
     files_allowed: bool,
     back: Option<String>,
-    error: Option<(StatusCode, String)>,
+    refusals: Refusals,
 ) -> Result<Response> {
     let parents = vec![
         Crumb::new("Libraries", "/"),
@@ -98,10 +113,14 @@ async fn render(
         base: Base::new(header, person.name(), parents),
         heading: EditHeading {
             title: person.name().to_owned(),
-            commit: draft.then(|| CommitAction {
-                url: format!("/library/{}/person/{}/commit", library.id(), person.id()),
-                tooltip: "Commit this draft person",
-            }),
+            mode: if draft {
+                EditMode::Draft
+            } else {
+                EditMode::Committed
+            },
+            cancel: back
+                .clone()
+                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -132,13 +151,14 @@ async fn render(
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
         },
-        destination: back
-            .clone()
-            .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
         back,
-        error: error.as_ref().map(|(_, message)| message.clone()),
+        refusals,
     };
-    let status = error.map_or(StatusCode::OK, |(status, _)| status);
+    let status = if page.refusals.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
+    };
     Ok((status, Html(page.render()?)).into_response())
 }
 
@@ -168,19 +188,14 @@ pub async fn get(
         form,
         settings.files_allowed(&engine),
         same_site_path(query.back),
-        None,
+        Refusals::default(),
     )
     .await
 }
 
 /// Apply the submitted form to `person`
-async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> {
-    let parsed = parse(form)?;
-    let sort_name = match form.sort_name.trim() {
-        "" => derive_sort_name(&form.name),
-        sort_name => sort_name.to_owned(),
-    };
-    person.rename(&form.name, &sort_name).await?;
+async fn save(person: &mut Person, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+    person.rename(parsed.name, parsed.sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {
         person.remove_link(link).await?;
@@ -199,74 +214,47 @@ async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> 
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+/// Save the form and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
-/// successful commit ignores `back`.
-async fn submit(
-    engine: Engine,
-    settings: Settings,
-    header: Header,
-    (library, person): (String, String),
-    back: Option<String>,
-    form: Form,
-    commit: bool,
-) -> Result<Response> {
-    let library = view::load(&engine, &library).await?;
-    let mut person: Person =
-        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
-    let saved = match save(&mut person, &form).await {
-        Ok(()) if commit => person.commit().await,
-        saved => saved,
-    };
-    match saved {
-        Ok(()) => {
-            let destination = back
-                .filter(|_| !commit)
-                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
-            Ok(Redirect::to(&destination).into_response())
-        }
-        Err(e) => {
-            let error = form_error(e)?;
-            render(
-                &engine,
-                header,
-                &library,
-                &person,
-                form,
-                settings.files_allowed(&engine),
-                back,
-                Some(error),
-            )
-            .await
-        }
-    }
-}
-
+/// A refusal is shown in the form.
 pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
     Extension(settings): Extension<Settings>,
     header: Header,
-    Path(path): Path<(String, String)>,
+    Path((library, person)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
     let back = same_site_path(query.back);
-    submit(engine, settings, header, path, back, form, false).await
-}
-
-pub async fn commit(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, settings, header, path, back, form, true).await
+    let library = view::load(&engine, &library).await?;
+    let mut person: Person =
+        entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
+    let mut refusals = Refusals::default();
+    if let Some(parsed) = parse(&form, &mut refusals) {
+        match save(&mut person, &form, parsed).await {
+            Ok(()) => {
+                let destination = back
+                    .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
+                return Ok(Redirect::to(&destination).into_response());
+            }
+            Err(e) => {
+                let (_, message) = form_error(e)?;
+                refusals.refuse(message);
+            }
+        }
+    }
+    render(
+        &engine,
+        header,
+        &library,
+        &person,
+        form,
+        settings.files_allowed(&engine),
+        back,
+        refusals,
+    )
+    .await
 }
 
 pub async fn delete(

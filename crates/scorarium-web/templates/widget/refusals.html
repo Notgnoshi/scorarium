@@ -1,0 +1,8 @@
+{% if !self.is_empty() %}
+    <div class="alert alert-danger">
+        {% if self.first().is_some() %}<p class="mb-0">Invalid input.</p>{% endif %}
+        {% for (field, message) in entries %}
+            {% if field.is_none() %}<p class="mb-0">{{ message }}</p>{% endif %}
+        {% endfor %}
+    </div>
+{% endif %}
