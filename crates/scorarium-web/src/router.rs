@@ -1,12 +1,16 @@
-use axum::extract::DefaultBodyLimit;
+use std::time::Duration;
+
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::StatusCode;
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::MAX_ASSET_SIZE;
 use scorarium_engine::publication::Publication;
 use scorarium_engine::work::Work;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, MakeSpan, OnResponse, TraceLayer};
+use tracing::{Level, Span};
 
 use crate::{api, assets, error, page};
 
@@ -31,6 +35,23 @@ impl Settings {
 
 pub fn router(engine: Engine, settings: Settings) -> Router {
     let trace = TraceLayer::new_for_http()
+        .make_span_with(|request: &Request| {
+            // The review queue makes periodic requests, which are too spammy to log
+            let level = if request.uri().path() == "/api/review" {
+                Level::TRACE
+            } else {
+                Level::DEBUG
+            };
+            DefaultMakeSpan::new().level(level).make_span(request)
+        })
+        // Otherwise, log the request as normal
+        .on_response(|response: &Response, latency: Duration, span: &Span| {
+            if let Some(metadata) = span.metadata() {
+                DefaultOnResponse::new()
+                    .level(*metadata.level())
+                    .on_response(response, latency, span);
+            }
+        })
         .on_request(())
         .on_eos(())
         .on_failure(());
