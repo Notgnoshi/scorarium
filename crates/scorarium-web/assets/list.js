@@ -13,6 +13,32 @@
         field.focus();
     };
 
+    const suffix = (field) => field.name.slice(field.name.indexOf("]") + 1);
+
+    const sameField = (entry, field) =>
+        [...entry.querySelectorAll("input")].find((other) => suffix(other) === suffix(field));
+
+    document.addEventListener("keydown", (event) => {
+        const field = event.target;
+        const entry = field.closest?.("[data-list-enter] [data-list-entry]");
+        if (event.key !== "Enter" || event.defaultPrevented || !entry) {
+            return;
+        }
+        if (!field.matches("input:not([type=checkbox], [type=radio])")) {
+            return;
+        }
+        event.preventDefault();
+        let next = entry.nextElementSibling;
+        while (next && !(next.matches("[data-list-entry]") && sameField(next, field))) {
+            next = next.nextElementSibling;
+        }
+        if (next) {
+            sameField(next, field).focus();
+        } else if (field.value.trim() !== "") {
+            append(entry.closest("[data-list]"));
+        }
+    });
+
     document.addEventListener("click", (event) => {
         const add = event.target.closest("[data-list-add]");
         if (add) {
