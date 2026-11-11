@@ -24,7 +24,7 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
-use crate::widget::edit_heading::{CommitAction, EditHeading};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{self, IdentifiersInput};
@@ -75,7 +75,6 @@ struct Edit {
     contributors: Contributors,
     holdings: Holdings,
     contents: Contents,
-    destination: String,
     error: Option<String>,
 }
 
@@ -218,14 +217,18 @@ async fn render(
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
-            commit: draft.then(|| CommitAction {
-                url: format!(
-                    "/library/{}/publication/{}/commit",
-                    library.id(),
-                    publication.id()
-                ),
-                tooltip: "Commit this draft publication",
-            }),
+            mode: if draft {
+                EditMode::Import {
+                    finish: format!(
+                        "/library/{}/publication/{}/commit",
+                        library.id(),
+                        publication.id()
+                    ),
+                }
+            } else {
+                EditMode::Committed
+            },
+            cancel: format!("/library/{}/publication/{}", library.id(), publication.id()),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -272,7 +275,6 @@ async fn render(
         contributors: Contributors::new(publication, None),
         holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
         contents: Contents::new(publication, &publication.works().await?),
-        destination: format!("/library/{}/publication/{}", library.id(), publication.id()),
         error,
     };
     Ok((status, Html(page.render()?)).into_response())

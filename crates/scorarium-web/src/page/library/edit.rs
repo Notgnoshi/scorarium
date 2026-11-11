@@ -11,6 +11,7 @@ use crate::auth::Session;
 use crate::error::Result;
 use crate::page::{Base, Crumb, form_error};
 use crate::widget::confirm::{Confirm, count};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -33,7 +34,7 @@ struct Edit {
     id: LibraryId,
     name: String,
     private: bool,
-    delete: Confirm,
+    heading: EditHeading,
     error: Option<String>,
 }
 
@@ -56,21 +57,26 @@ fn render(
         id: library.id(),
         name: library.name().to_owned(),
         private: library.is_private(),
-        delete: Confirm {
-            id: "delete".to_owned(),
-            title: format!("Delete {}?", library.name()),
-            message: format!("Deleting {} also deletes:", library.name()),
-            also_deleted: vec![
-                format!(
-                    "its {} and associated assets",
-                    count(publications, "publication")
-                ),
-                "all works and persons".to_owned(),
-            ],
-            action: "Delete library",
-            url: format!("/library/{}/delete", library.id()),
-            target: None,
-            fields: vec![],
+        heading: EditHeading {
+            title: library.name().to_owned(),
+            mode: EditMode::Committed,
+            cancel: format!("/library/{}", library.id()),
+            delete: Confirm {
+                id: "delete".to_owned(),
+                title: format!("Delete {}?", library.name()),
+                message: format!("Deleting {} also deletes:", library.name()),
+                also_deleted: vec![
+                    format!(
+                        "its {} and associated assets",
+                        count(publications, "publication")
+                    ),
+                    "all works and persons".to_owned(),
+                ],
+                action: "Delete library",
+                url: format!("/library/{}/delete", library.id()),
+                target: None,
+                fields: vec![],
+            },
         },
         error,
     };

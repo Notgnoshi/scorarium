@@ -1,32 +1,32 @@
-<h1 class="d-flex justify-content-between align-items-center">
-    <span>
-        {{ title }}
-        {% if commit.is_some() %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-    </span>
-    <span class="d-flex gap-2">
-        {% if let Some(commit) = commit %}
-            <button class="btn btn-outline-danger btn-sm"
-                    type="button"
-                    data-dialog="{{ delete.id }}"
-                    title="Discard this draft">
-                <i class="bi bi-trash"></i> Discard draft
-            </button>
-            <button class="btn btn-success btn-sm"
-                    type="submit"
-                    form="edit"
-                    formaction="{{ commit.url }}"
-                    formmethod="post"
-                    title="{{ commit.tooltip }}">
-                <i class="bi bi-check-lg"></i> Commit
-            </button>
-        {% else %}
-            <button class="btn btn-outline-danger btn-sm"
-                    type="button"
-                    data-dialog="{{ delete.id }}"
-                    title="{{ delete.action }}">
-                <i class="bi bi-trash"></i> Delete
-            </button>
-        {% endif %}
-    </span>
+<h1>
+    {{ title }}
+    {% if let EditMode::Committed = mode %}{% else %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
 </h1>
+<div class="sticky-top bg-body border-bottom d-flex flex-wrap gap-2 py-2 mb-3">
+    <button class="btn btn-outline-danger me-auto"
+            type="button"
+            data-dialog="{{ delete.id }}"
+            title="{{ delete.action }}">
+        <i class="bi bi-trash"></i>
+        {% if let EditMode::Committed = mode %}Delete{% else %}Discard draft{% endif %}
+    </button>
+    <a class="btn btn-outline-secondary" href="{{ cancel }}" data-cancel>Cancel</a>
+    {% match mode %}
+    {% when EditMode::Import { finish } %}
+    <button class="btn btn-outline-primary" type="submit" form="edit" title="Save changes to the draft">
+        <i class="bi bi-floppy"></i> Save draft
+    </button>
+    <button class="btn btn-primary"
+            type="submit"
+            form="edit"
+            formaction="{{ finish }}"
+            title="Save changes and add this draft to the library">
+        <i class="bi bi-check-lg"></i> Finish import
+    </button>
+{% else %}
+    <button class="btn btn-primary" type="submit" form="edit" title="Save changes">
+        <i class="bi bi-floppy"></i> Save
+    </button>
+    {% endmatch %}
+</div>
 {{ delete }}

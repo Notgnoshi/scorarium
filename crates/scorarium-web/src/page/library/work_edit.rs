@@ -20,7 +20,7 @@ use crate::widget::catalog_numbers_input::CatalogNumbersInput;
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors::Contributors;
-use crate::widget::edit_heading::{CommitAction, EditHeading};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
@@ -65,7 +65,6 @@ struct Edit {
     links: LinksInput,
     contributors: Contributors,
     back: Option<String>,
-    destination: String,
     error: Option<String>,
 }
 
@@ -170,10 +169,14 @@ async fn render(
         base: Base::new(header, work.title(), parents),
         heading: EditHeading {
             title: work.title().to_owned(),
-            commit: draft.then(|| CommitAction {
-                url: format!("/library/{}/work/{}/commit", library.id(), work.id()),
-                tooltip: "Commit this draft work",
-            }),
+            mode: if draft {
+                EditMode::Draft
+            } else {
+                EditMode::Committed
+            },
+            cancel: back
+                .clone()
+                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -210,9 +213,6 @@ async fn render(
             links: work.links().iter().map(Into::into).collect(),
         },
         contributors: Contributors::new(work, None),
-        destination: back
-            .clone()
-            .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id())),
         back,
         error,
     };
@@ -291,29 +291,24 @@ async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+/// Save the form and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
-/// successful commit ignores `back`.
-async fn submit(
-    engine: Engine,
+/// A refusal is shown in the form.
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
     header: Header,
-    (library, work): (String, String),
-    back: Option<String>,
-    form: Form,
-    commit: bool,
+    Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
+    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
-    let saved = match save(&mut work, &form).await {
-        Ok(()) if commit => work.commit().await,
-        saved => saved,
-    };
-    match saved {
+    match save(&mut work, &form).await {
         Ok(()) => {
-            let destination = back
-                .filter(|_| !commit)
-                .unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+            let destination =
+                back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
             Ok(Redirect::to(&destination).into_response())
         }
         Err(e) => {
@@ -321,30 +316,6 @@ async fn submit(
             render(header, &library, &work, form, status, back, Some(error)).await
         }
     }
-}
-
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, header, path, back, form, false).await
-}
-
-pub async fn commit(
-    _session: Session,
-    State(engine): State<Engine>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, header, path, back, form, true).await
 }
 
 pub async fn delete(

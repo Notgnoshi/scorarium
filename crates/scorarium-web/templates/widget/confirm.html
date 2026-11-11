@@ -17,7 +17,7 @@
     </div>
     <div class="confirm-footer">
         <form method="dialog">
-            <button class="btn btn-secondary" type="submit" autofocus>Cancel</button>
+            <button class="btn btn-outline-secondary" type="submit" autofocus>Cancel</button>
         </form>
         <form {% if let Some(target) = target %}hx-post="{{ url }}" hx-target="{{ target }}"{% else %}method="post" action="{{ url }}"{% endif %}>
             {% for (name, value) in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}

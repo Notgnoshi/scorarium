@@ -20,7 +20,7 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{BackQuery, same_site_path};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::edit_heading::{CommitAction, EditHeading};
+use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture_input::PictureInput;
@@ -79,7 +79,6 @@ struct Edit {
     sort_name: String,
     links: LinksInput,
     back: Option<String>,
-    destination: String,
     error: Option<String>,
 }
 
@@ -108,10 +107,14 @@ async fn render(
         base: Base::new(header, person.name(), parents),
         heading: EditHeading {
             title: person.name().to_owned(),
-            commit: draft.then(|| CommitAction {
-                url: format!("/library/{}/person/{}/commit", library.id(), person.id()),
-                tooltip: "Commit this draft person",
-            }),
+            mode: if draft {
+                EditMode::Draft
+            } else {
+                EditMode::Committed
+            },
+            cancel: back
+                .clone()
+                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -142,9 +145,6 @@ async fn render(
         links: LinksInput {
             links: person.links().iter().map(Into::into).collect(),
         },
-        destination: back
-            .clone()
-            .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id())),
         back,
         error: error.as_ref().map(|(_, message)| message.clone()),
     };
@@ -205,31 +205,26 @@ async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> 
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+/// Save the form and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit, and a
-/// successful commit ignores `back`.
-async fn submit(
-    engine: Engine,
-    settings: Settings,
+/// A refusal is shown in the form.
+pub async fn post(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
     header: Header,
-    (library, person): (String, String),
-    back: Option<String>,
-    form: Form,
-    commit: bool,
+    Path((library, person)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
 ) -> Result<Response> {
+    let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
-    let saved = match save(&mut person, &form).await {
-        Ok(()) if commit => person.commit().await,
-        saved => saved,
-    };
-    match saved {
+    match save(&mut person, &form).await {
         Ok(()) => {
-            let destination = back
-                .filter(|_| !commit)
-                .unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
+            let destination =
+                back.unwrap_or_else(|| format!("/library/{}/person/{}", library.id(), person.id()));
             Ok(Redirect::to(&destination).into_response())
         }
         Err(e) => {
@@ -247,32 +242,6 @@ async fn submit(
             .await
         }
     }
-}
-
-pub async fn post(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, settings, header, path, back, form, false).await
-}
-
-pub async fn commit(
-    _session: Session,
-    State(engine): State<Engine>,
-    Extension(settings): Extension<Settings>,
-    header: Header,
-    Path(path): Path<(String, String)>,
-    Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
-) -> Result<Response> {
-    let back = same_site_path(query.back);
-    submit(engine, settings, header, path, back, form, true).await
 }
 
 pub async fn delete(

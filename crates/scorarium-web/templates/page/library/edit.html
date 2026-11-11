@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-    <h1>{{ base.title }}</h1>
-    <form method="post" action="/library/{{ id }}/edit">
+    {{ heading }}
+    <form id="edit" method="post" action="/library/{{ id }}/edit">
         <fieldset class="box">
             <legend>Details</legend>
             {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
@@ -31,16 +31,6 @@
                     </label>
                 </div>
             </div>
-            <button class="btn btn-primary" type="submit" title="Save changes">
-                <i class="bi bi-floppy"></i> Save
-            </button>
-            <a class="btn btn-outline-secondary" href="/library/{{ id }}" title="Discard changes">
-                <i class="bi bi-x-lg"></i> Cancel
-            </a>
         </fieldset>
     </form>
-    <button class="btn btn-outline-danger" type="button" data-dialog="delete" title="Delete library">
-        <i class="bi bi-trash"></i> Delete
-    </button>
-    {{ delete }}
 {% endblock %}
