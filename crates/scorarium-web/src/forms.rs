@@ -1,30 +1,31 @@
+use axum::body::Bytes;
 use axum::extract::{FromRequest, RawForm, Request};
 use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 
 use crate::error::Error;
 
-/// Two views of one submitted form
+/// The body of a submitted form
 ///
-/// A page's own fields and a widget's fields arrive in one body. Deserializing each struct from it
-/// keeps the widget's field names in the widget's module.
-pub(crate) struct Forms<A, B>(pub A, pub B);
+/// A page's fields and each widget's fields arrive together in one body.
+/// Each owner reads its own field struct.
+pub(crate) struct FormBody(Bytes);
 
-impl<S, A, B> FromRequest<S> for Forms<A, B>
-where
-    S: Send + Sync,
-    A: DeserializeOwned,
-    B: DeserializeOwned,
-{
+impl<S: Send + Sync> FromRequest<S> for FormBody {
     type Rejection = Error;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let RawForm(body) = RawForm::from_request(req, state)
             .await
             .map_err(|e| Error::new(e.status(), e))?;
-        let unprocessable = |e| Error::new(StatusCode::UNPROCESSABLE_ENTITY, e);
-        let a = serde_html_form::from_bytes(&body).map_err(unprocessable)?;
-        let b = serde_html_form::from_bytes(&body).map_err(unprocessable)?;
-        Ok(Forms(a, b))
+        Ok(Self(body))
+    }
+}
+
+impl FormBody {
+    /// Read the fields that `T` owns, ignoring the rest
+    pub fn read<T: DeserializeOwned>(&self) -> Result<T, Error> {
+        serde_html_form::from_bytes(&self.0)
+            .map_err(|e| Error::new(StatusCode::UNPROCESSABLE_ENTITY, e))
     }
 }

@@ -16,7 +16,7 @@ use serde::Deserialize;
 use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
-use crate::forms::Forms;
+use crate::forms::FormBody;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -439,10 +439,12 @@ async fn submit(
     settings: Settings,
     header: Header,
     (library, publication): (String, String),
-    (form, holdings): (Form, HoldingsForm),
+    body: FormBody,
     query: BackQuery,
     commit: bool,
 ) -> Result<Response> {
+    let form: Form = body.read()?;
+    let holdings: HoldingsForm = body.read()?;
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
@@ -491,18 +493,9 @@ pub async fn post(
     header: Header,
     Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
+    body: FormBody,
 ) -> Result<Response> {
-    submit(
-        engine,
-        settings,
-        header,
-        path,
-        (form, holdings),
-        query,
-        false,
-    )
-    .await
+    submit(engine, settings, header, path, body, query, false).await
 }
 
 pub async fn commit(
@@ -512,18 +505,9 @@ pub async fn commit(
     header: Header,
     Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
-    Forms(form, holdings): Forms<Form, HoldingsForm>,
+    body: FormBody,
 ) -> Result<Response> {
-    submit(
-        engine,
-        settings,
-        header,
-        path,
-        (form, holdings),
-        query,
-        true,
-    )
-    .await
+    submit(engine, settings, header, path, body, query, true).await
 }
 
 pub async fn delete(

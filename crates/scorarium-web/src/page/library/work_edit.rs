@@ -12,6 +12,7 @@ use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
+use crate::forms::FormBody;
 use crate::page::library::entity::{self, parse_link_id};
 use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
@@ -325,8 +326,9 @@ pub async fn post(
     header: Header,
     Path((library, work)): Path<(String, String)>,
     Query(query): Query<BackQuery>,
-    axum_extra::extract::Form(form): axum_extra::extract::Form<Form>,
+    body: FormBody,
 ) -> Result<Response> {
+    let form: Form = body.read()?;
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
     let back = Back::new(

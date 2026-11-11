@@ -19,7 +19,7 @@ scorarium-web = { path = "crates/scorarium-web" }
 argon2 = "0.6.0"
 askama = "0.16.1"
 axum = { version = "0.8.9", features = ["multipart"] }
-axum-extra = { version = "0.12.6", features = ["cookie", "form"] }
+axum-extra = { version = "0.12.6", features = ["cookie"] }
 axum-test = "21.1.0"
 bytes = "1.12.1"
 chrono = "0.4.45"
