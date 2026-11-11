@@ -4,7 +4,11 @@ use scorarium_test::TestApp;
 #[tokio::test]
 async fn tag_pages_require_login_and_validate_the_tag() {
     let app = TestApp::logged_out(false).await;
-    let library = app.engine.create_library("Public", false).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Public".parse().unwrap(), false)
+        .await
+        .unwrap();
     for path in [
         format!("/library/{}/tags", library.id()),
         format!("/library/{}/tag/piano", library.id()),
@@ -15,7 +19,11 @@ async fn tag_pages_require_login_and_validate_the_tag() {
     }
 
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Mine", false).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Mine".parse().unwrap(), false)
+        .await
+        .unwrap();
     app.server
         .get(&format!("/library/{}/tags", library.id()))
         .await

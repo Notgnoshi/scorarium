@@ -285,7 +285,9 @@ pub(crate) async fn run(
                             publication.add_contributor(person.id(), role).await?
                         }
                         Target::New => {
-                            publication.create_contributor(&person, role).await?;
+                            publication
+                                .create_contributor(person.parse()?, role)
+                                .await?;
                         }
                     }
                 }
@@ -293,7 +295,7 @@ pub(crate) async fn run(
                     match work::target(library, &work, new).await? {
                         Target::Existing(work) => publication.add_work(work.id()).await?,
                         Target::New => {
-                            publication.create_work(&work).await?;
+                            publication.create_work(work.parse()?).await?;
                         }
                     }
                 }

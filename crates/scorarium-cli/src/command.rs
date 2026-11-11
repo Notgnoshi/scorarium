@@ -9,7 +9,7 @@ use scorarium_engine::entity::ProposalId;
 use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::HttpUrl;
-use scorarium_engine::value::{Stars, Tag, Year};
+use scorarium_engine::value::{NonBlank, Stars, Tag, Year};
 use scorarium_engine::work::CatalogNumber;
 
 use crate::library::{self, Visibility};
@@ -96,7 +96,7 @@ enum LibrarySet {
     /// The library's name
     Name {
         #[arg(value_name = "name")]
-        name: String,
+        name: NonBlank,
     },
     /// Who can see the library
     Visibility {
@@ -114,7 +114,7 @@ enum LibraryCommand {
     /// Create a library
     Create {
         #[arg(value_name = "name")]
-        name: String,
+        name: NonBlank,
         /// The library's visibility
         #[arg(value_enum, value_name = "visibility", default_value_t = Visibility::Private)]
         visibility: Visibility,
@@ -239,7 +239,7 @@ pub(crate) enum PublicationSet {
     /// The publication's title
     Title {
         #[arg(value_name = "title")]
-        title: String,
+        title: NonBlank,
     },
     /// The publisher
     Publisher {
@@ -422,7 +422,7 @@ pub(crate) enum WorkSet {
     /// The work's title
     Title {
         #[arg(value_name = "title")]
-        title: String,
+        title: NonBlank,
     },
     /// The musical key
     Key {
@@ -598,12 +598,12 @@ pub(crate) enum PersonSet {
     /// The person's name
     Name {
         #[arg(value_name = "name")]
-        name: String,
+        name: NonBlank,
     },
     /// The name to sort by
     SortName {
         #[arg(value_name = "sort-name")]
-        sort_name: String,
+        sort_name: NonBlank,
     },
 }
 
@@ -795,7 +795,7 @@ impl Shell {
                 }
                 LibraryCommand::Create { name, visibility } => {
                     reject(library.as_deref(), "library", "create")?;
-                    library::create(&self.engine, &name, visibility).await?
+                    library::create(&self.engine, name, visibility).await?
                 }
                 LibraryCommand::Show => {
                     library::show(&self.engine, require(library.as_deref(), "library")?, out)
@@ -805,7 +805,7 @@ impl Shell {
                     let reference = require(library.as_deref(), "library")?;
                     match field {
                         LibrarySet::Name { name } => {
-                            library::set_name(&self.engine, reference, &name).await?
+                            library::set_name(&self.engine, reference, name).await?
                         }
                         LibrarySet::Visibility { visibility } => {
                             library::set_visibility(&self.engine, reference, visibility).await?

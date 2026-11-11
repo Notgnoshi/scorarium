@@ -4,7 +4,11 @@ use scorarium_test::TestApp;
 #[tokio::test]
 async fn people_pages_follow_library_visibility_and_validate_the_role() {
     let app = TestApp::logged_out(false).await;
-    let mut library = app.engine.create_library("Secret", true).await.unwrap();
+    let mut library = app
+        .engine
+        .create_library("Secret".parse().unwrap(), true)
+        .await
+        .unwrap();
     for path in [
         format!("/library/{}/people", library.id()),
         format!("/library/{}/people/composer", library.id()),

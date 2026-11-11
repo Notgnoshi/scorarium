@@ -10,7 +10,7 @@ use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
-use scorarium_engine::value::{Classification, Stars, Tag, Year};
+use scorarium_engine::value::{Classification, NonBlank, Stars, Tag, Year};
 use serde::Deserialize;
 
 use crate::Settings;
@@ -80,6 +80,7 @@ struct Edit {
 }
 
 struct Parsed {
+    title: NonBlank,
     classification: Option<Classification>,
     year: Option<Year>,
     stars: Option<Stars>,
@@ -94,6 +95,7 @@ struct Parsed {
 fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     let year = form.year.trim();
     Ok(Parsed {
+        title: form.title.parse()?,
         classification: form.classification.as_deref().map(str::parse).transpose()?,
         year: (!year.is_empty()).then(|| year.parse()).transpose()?,
         stars: form.stars.map(Stars::try_from).transpose()?,
@@ -333,8 +335,7 @@ async fn save(
     let locations = holdings.locations()?;
     let removed = holdings.removed()?;
     check_holdings(engine, publication, &added, &removed)?;
-    // The title is set first, so that a rejected title leaves the publication untouched.
-    publication.set_title(&form.title).await?;
+    publication.set_title(parsed.title).await?;
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;
     publication.set_stars(parsed.stars).await?;

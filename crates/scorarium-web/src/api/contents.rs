@@ -136,14 +136,14 @@ async fn apply_add(
         return Ok(marks);
     }
 
-    let mut work = publication.create_work(&form.title).await?;
+    let mut work = publication.create_work(form.title.parse()?).await?;
     if let Some(number) = number {
         work.add_catalog_number(number).await?;
     }
     if let Some(role) = role {
         match person {
             Some(person) => work.add_contributor(person.id(), role).await?,
-            None if !name.is_empty() => drop(work.create_contributor(name, role).await?),
+            None if !name.is_empty() => drop(work.create_contributor(name.parse()?, role).await?),
             None => {}
         }
     }
@@ -217,11 +217,19 @@ async fn apply_range(
             }
             continue;
         }
-        let mut work = publication.create_work(format!("{title} {number}")).await?;
+        let mut work = publication
+            .create_work(format!("{title} {number}").parse()?)
+            .await?;
         work.add_catalog_number(number).await?;
         match person {
             Some(id) => work.add_contributor(id, role.clone()).await?,
-            None => person = Some(work.create_contributor(name, role.clone()).await?.id()),
+            None => {
+                person = Some(
+                    work.create_contributor(name.parse()?, role.clone())
+                        .await?
+                        .id(),
+                )
+            }
         }
         marks.created.insert(work.id());
     }

@@ -6,7 +6,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::value::{Classification, Stars, Tag};
+use scorarium_engine::value::{Classification, NonBlank, Stars, Tag};
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 use serde::Deserialize;
 
@@ -70,6 +70,7 @@ struct Edit {
 }
 
 struct Parsed {
+    title: NonBlank,
     classification: Option<Classification>,
     stars: Option<Stars>,
     add_catalog_numbers: Vec<CatalogNumber>,
@@ -82,6 +83,7 @@ struct Parsed {
 
 fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
     Ok(Parsed {
+        title: form.title.parse()?,
         classification: form.classification.as_deref().map(str::parse).transpose()?,
         stars: form.stars.map(Stars::try_from).transpose()?,
         add_catalog_numbers: form
@@ -257,9 +259,7 @@ pub async fn get(
 /// Apply the submitted form to `work`
 async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
     let parsed = parse(form)?;
-    // The title is the only field here the engine can reject, so setting it first leaves the work
-    // untouched when it is.
-    work.set_title(&form.title).await?;
+    work.set_title(parsed.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))

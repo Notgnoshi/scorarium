@@ -13,6 +13,7 @@ use crate::library::LibraryId;
 use crate::person::{Person, PersonId};
 use crate::publication::{Publication, PublicationId};
 use crate::review::ReviewItem;
+use crate::value::NonBlank;
 use crate::work::{Work, WorkId};
 use crate::{Engine, Error, Result, asset};
 
@@ -216,7 +217,7 @@ pub trait Contributed: Entity {
     /// Returns [Error::NotFound] if the entity has been deleted.
     fn create_contributor(
         &mut self,
-        name: impl AsRef<str> + Send,
+        name: NonBlank,
         role: Role,
     ) -> impl Future<Output = Result<Person>> + Send;
 

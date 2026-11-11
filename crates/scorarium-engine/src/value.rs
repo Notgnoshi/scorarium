@@ -152,6 +152,34 @@ impl fmt::Display for Tag {
     }
 }
 
+/// Text that is not blank, with surrounding whitespace trimmed
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NonBlank(pub(crate) String);
+
+impl NonBlank {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for NonBlank {
+    type Err = Error;
+
+    fn from_str(input: &str) -> Result<NonBlank> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(Error::InvalidValue("This cannot be blank.".to_string()));
+        }
+        Ok(NonBlank(input.to_string()))
+    }
+}
+
+impl fmt::Display for NonBlank {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// Parse a whitespace separated list of tags
 pub fn parse_tags(input: &str) -> Result<Vec<Tag>> {
     let mut tags: Vec<Tag> = Vec::new();
@@ -212,5 +240,14 @@ mod tests {
         ));
         assert!(matches!("Noël".parse::<Tag>(), Err(Error::InvalidValue(_))));
         assert!(matches!("".parse::<Tag>(), Err(Error::InvalidValue(_))));
+    }
+
+    #[test]
+    fn non_blank_trims_and_refuses_blank() {
+        assert_eq!(
+            "\t  Sonatas\n ".parse::<NonBlank>().unwrap().as_str(),
+            "Sonatas"
+        );
+        assert!(" \t\n  ".parse::<NonBlank>().is_err());
     }
 }

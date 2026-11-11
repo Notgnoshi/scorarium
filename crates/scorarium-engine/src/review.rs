@@ -293,7 +293,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -325,7 +328,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -352,7 +358,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -395,7 +404,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -449,7 +461,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -481,7 +496,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Books", false).await.unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {

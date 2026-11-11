@@ -180,9 +180,12 @@ pub(crate) async fn run(
         PersonCommand::Set { field } => {
             let mut person = resolve(library, require(subject, "person")?).await?;
             match field {
-                PersonSet::Name { name } => person.rename(&name, derive_sort_name(&name)).await?,
+                PersonSet::Name { name } => {
+                    let sort_name = derive_sort_name(&name);
+                    person.rename(name, sort_name).await?
+                }
                 PersonSet::SortName { sort_name } => {
-                    person.rename(person.name().to_string(), &sort_name).await?
+                    person.rename(person.name().parse()?, sort_name).await?
                 }
             }
             Ok(())

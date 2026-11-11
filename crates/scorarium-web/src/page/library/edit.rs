@@ -96,8 +96,11 @@ pub async fn post(
     axum::Form(form): axum::Form<Form>,
 ) -> Result<Response> {
     let mut library = load(&engine, &id).await?;
-    // Rename runs first so a rejected name also leaves the visibility untouched.
-    let result = match library.rename(&form.name).await {
+    let result = match form.name.parse() {
+        Ok(name) => library.rename(name).await,
+        Err(e) => Err(e),
+    };
+    let result = match result {
         Ok(()) => {
             library
                 .set_private(form.visibility == Visibility::Private)

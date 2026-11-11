@@ -39,7 +39,10 @@ async fn apply_add<E: Contributed>(
     let role: Role = form.role.parse()?;
     match form.person.as_str() {
         "" => Err(invalid("Pick a person from the list.")),
-        "new" => entity.create_contributor(&form.name, role).await.map(drop),
+        "new" => entity
+            .create_contributor(form.name.parse()?, role)
+            .await
+            .map(drop),
         id => {
             let person: Person = entity::in_library(engine, entity.library(), id, "person").await?;
             entity.add_contributor(person.id(), role).await

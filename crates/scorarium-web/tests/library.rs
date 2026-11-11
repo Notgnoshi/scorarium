@@ -24,7 +24,11 @@ async fn create_requires_login_and_makes_a_private_library() {
 #[tokio::test]
 async fn private_library_redirects_anonymous_to_login() {
     let app = TestApp::logged_out(false).await;
-    let library = app.engine.create_library("Secret", true).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Secret".parse().unwrap(), true)
+        .await
+        .unwrap();
     let path = format!("/library/{}", library.id());
     let response = app.server.get(&path).await;
     response.assert_status(StatusCode::SEE_OTHER);
@@ -42,7 +46,11 @@ async fn private_library_redirects_anonymous_to_login() {
 #[tokio::test]
 async fn edit_renames_and_changes_visibility() {
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Old", true).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Old".parse().unwrap(), true)
+        .await
+        .unwrap();
     let response = app
         .server
         .post(&format!("/library/{}/edit", library.id()))
@@ -58,7 +66,11 @@ async fn edit_renames_and_changes_visibility() {
 #[tokio::test]
 async fn edit_with_a_blank_name_changes_nothing() {
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Old", true).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Old".parse().unwrap(), true)
+        .await
+        .unwrap();
     app.server
         .post(&format!("/library/{}/edit", library.id()))
         .form(&[("name", "  "), ("visibility", "public")])
@@ -72,7 +84,11 @@ async fn edit_with_a_blank_name_changes_nothing() {
 #[tokio::test]
 async fn delete_removes_the_library() {
     let app = TestApp::demo().await;
-    let library = app.engine.create_library("Doomed", true).await.unwrap();
+    let library = app
+        .engine
+        .create_library("Doomed".parse().unwrap(), true)
+        .await
+        .unwrap();
     let response = app
         .server
         .post(&format!("/library/{}/delete", library.id()))

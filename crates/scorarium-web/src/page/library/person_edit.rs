@@ -9,6 +9,7 @@ use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::value::NonBlank;
 use serde::Deserialize;
 
 use crate::Settings;
@@ -38,12 +39,21 @@ pub(crate) struct Form {
 }
 
 struct Parsed {
+    name: NonBlank,
+    sort_name: NonBlank,
     add_links: Vec<HttpUrl>,
     remove_links: Vec<LinkId>,
 }
 
 fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
+    let name: NonBlank = form.name.parse()?;
+    let sort_name = match form.sort_name.trim() {
+        "" => derive_sort_name(&name),
+        sort_name => sort_name.parse()?,
+    };
     Ok(Parsed {
+        name,
+        sort_name,
         add_links: form
             .add_link
             .iter()
@@ -176,11 +186,7 @@ pub async fn get(
 /// Apply the submitted form to `person`
 async fn save(person: &mut Person, form: &Form) -> scorarium_engine::Result<()> {
     let parsed = parse(form)?;
-    let sort_name = match form.sort_name.trim() {
-        "" => derive_sort_name(&form.name),
-        sort_name => sort_name.to_owned(),
-    };
-    person.rename(&form.name, &sort_name).await?;
+    person.rename(parsed.name, parsed.sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.remove_links {
         person.remove_link(link).await?;

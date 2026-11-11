@@ -18,7 +18,7 @@ use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
-use crate::value::{Classification, Stars, Tag, clean_text};
+use crate::value::{Classification, NonBlank, Stars, Tag, clean_text};
 use crate::{Engine, Error, Result, asset};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -313,8 +313,8 @@ impl Work {
     /// Retitle the work
     ///
     /// Returns [Error::NotFound] if the work has been deleted.
-    pub async fn set_title(&mut self, title: impl AsRef<str>) -> Result<()> {
-        let title = clean_title(title.as_ref())?;
+    pub async fn set_title(&mut self, title: NonBlank) -> Result<()> {
+        let title = title.as_str();
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
         if self.title == title {
@@ -347,7 +347,7 @@ impl Work {
     ) -> Result<Option<ProposalId>> {
         let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
         let (field, text, person) = match &value {
-            Proposal::Title(title) => ("title", clean_title(title)?.to_string(), None),
+            Proposal::Title(title) => ("title", title.parse::<NonBlank>()?.to_string(), None),
             Proposal::Key(key) => (
                 "key",
                 clean_text(Some(key))
@@ -441,12 +441,12 @@ impl Work {
         name: &str,
         role: &Role,
     ) -> Result<Person> {
-        let name = person::clean_name(name)?;
+        let name = name.parse::<NonBlank>()?;
         let mut tx = self.engine.begin_write().await?;
         Work::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
-        let person = person::insert(&self.engine, &mut tx, self.library, name, true).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, &name, true).await?;
         let source = source.to_string();
         sqlx::query!(
             r#"INSERT INTO work_proposal
@@ -821,15 +821,10 @@ impl Contributed for Work {
         &self.contributors
     }
 
-    async fn create_contributor(
-        &mut self,
-        name: impl AsRef<str> + Send,
-        role: Role,
-    ) -> Result<Person> {
-        let name = person::clean_name(name.as_ref())?;
+    async fn create_contributor(&mut self, name: NonBlank, role: Role) -> Result<Person> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let person = person::insert(&self.engine, &mut tx, self.library, name, self.draft).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, &name, self.draft).await?;
         sqlx::query!(
             "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
             self.library.get(),
@@ -1042,7 +1037,7 @@ impl Entity for Work {
             .ok_or(Error::NotFound)?;
         drop(conn);
         match proposal.value {
-            Proposal::Title(title) => self.set_title(title).await?,
+            Proposal::Title(title) => self.set_title(title.parse()?).await?,
             Proposal::Key(key) => self.set_key(Some(&key)).await?,
             Proposal::TimeSignature(time_signature) => {
                 self.set_time_signature(Some(&time_signature)).await?
@@ -1593,14 +1588,6 @@ fn audit_subject(id: WorkId, library: LibraryId, title: &str) -> AuditSubject {
     }
 }
 
-pub(crate) fn clean_title(title: &str) -> Result<&str> {
-    let title = title.trim();
-    if title.is_empty() {
-        return Err(Error::InvalidValue("A work title cannot be blank.".into()));
-    }
-    Ok(title)
-}
-
 /// A catalog numbering scheme that scorarium knows how to parse
 struct Scheme {
     aliases: &'static [&'static str],
@@ -1986,7 +1973,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut publication = library
             .import(
                 ImportSeed::Title {
@@ -1997,9 +1987,12 @@ mod tests {
             )
             .await
             .unwrap();
-        let mut work = publication.create_work("Gymnopedie No. 1").await.unwrap();
+        let mut work = publication
+            .create_work("Gymnopedie No. 1".parse().unwrap())
+            .await
+            .unwrap();
         let composer = work
-            .create_contributor("Erik Satie", "composer".parse().unwrap())
+            .create_contributor("Erik Satie".parse().unwrap(), "composer".parse().unwrap())
             .await
             .unwrap();
         let mut other = library
@@ -2037,7 +2030,10 @@ mod tests {
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
             .unwrap();
-        let library = engine.create_library("Sheet music", false).await.unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
         let mut a = library
             .import(
                 ImportSeed::Title {
@@ -2048,7 +2044,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let prelude = a.create_work("Prelude").await.unwrap();
+        let prelude = a.create_work("Prelude".parse().unwrap()).await.unwrap();
         let b = library
             .import(
                 ImportSeed::Title {
