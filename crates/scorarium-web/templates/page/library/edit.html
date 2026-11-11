@@ -1,13 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
     {{ heading }}
+    {{ refusals }}
     <form id="edit" method="post" action="/library/{{ id }}/edit">
         <fieldset class="box">
             <legend>Details</legend>
-            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
             <div class="mb-3">
                 <label class="form-label" for="name">Name</label>
-                <input class="form-control" type="text" id="name" name="name" value="{{ name }}" required>
+                <input class="form-control{% if refusals.of("name").is_some() %} is-invalid{% endif %}"
+                       type="text"
+                       id="name"
+                       name="name"
+                       value="{{ name }}"
+                       required
+                       {% if refusals.first() == Some("name") %}autofocus{% endif %}>
+                {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
             </div>
             <div class="mb-3">
                 <div class="btn-group" role="group" aria-label="Visibility">

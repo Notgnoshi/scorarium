@@ -24,6 +24,7 @@ use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::LinksInput;
 use crate::widget::picture::Picture;
+use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -65,7 +66,7 @@ struct Edit {
     links: LinksInput,
     contributors: Contributors,
     back: Option<String>,
-    error: Option<String>,
+    refusals: Refusals,
 }
 
 struct Parsed {
@@ -80,41 +81,58 @@ struct Parsed {
     remove_links: Vec<LinkId>,
 }
 
-fn parse(form: &Form) -> scorarium_engine::Result<Parsed> {
-    Ok(Parsed {
-        title: form.title.parse()?,
-        classification: form.classification.as_deref().map(str::parse).transpose()?,
-        stars: form.stars.map(Stars::try_from).transpose()?,
-        add_catalog_numbers: form
-            .add_catalog_number
-            .iter()
-            .map(|number| number.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_catalog_numbers: form
-            .remove_catalog_number
-            .iter()
-            .map(|number| number.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        add_tags: form
-            .add_tag
-            .iter()
-            .map(|tag| tag.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_tags: form
-            .remove_tag
-            .iter()
-            .map(|tag| tag.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        add_links: form
-            .add_link
-            .iter()
-            .map(|url| url.parse())
-            .collect::<scorarium_engine::Result<_>>()?,
-        remove_links: form
-            .remove_link
-            .iter()
-            .map(|id| parse_link_id(id))
-            .collect::<scorarium_engine::Result<_>>()?,
+fn parse(form: &Form, refusals: &mut Refusals) -> Option<Parsed> {
+    let title = refusals.parse("title", &form.title);
+    let classification = form
+        .classification
+        .as_deref()
+        .and_then(|classification| refusals.check(classification.parse()));
+    let stars = form
+        .stars
+        .and_then(|stars| refusals.check(Stars::try_from(stars)));
+    let add_catalog_numbers = form
+        .add_catalog_number
+        .iter()
+        .filter_map(|number| refusals.check(number.parse()))
+        .collect();
+    let remove_catalog_numbers = form
+        .remove_catalog_number
+        .iter()
+        .filter_map(|number| refusals.check(number.parse()))
+        .collect();
+    let add_tags = form
+        .add_tag
+        .iter()
+        .filter_map(|tag| refusals.check(tag.parse()))
+        .collect();
+    let remove_tags = form
+        .remove_tag
+        .iter()
+        .filter_map(|tag| refusals.check(tag.parse()))
+        .collect();
+    let add_links = form
+        .add_link
+        .iter()
+        .filter_map(|url| refusals.check(url.parse()))
+        .collect();
+    let remove_links = form
+        .remove_link
+        .iter()
+        .filter_map(|id| refusals.check(parse_link_id(id)))
+        .collect();
+    if !refusals.is_empty() {
+        return None;
+    }
+    Some(Parsed {
+        title: title?,
+        classification,
+        stars,
+        add_catalog_numbers,
+        remove_catalog_numbers,
+        add_tags,
+        remove_tags,
+        add_links,
+        remove_links,
     })
 }
 
@@ -155,10 +173,14 @@ async fn render(
     library: &Library,
     work: &Work,
     form: Form,
-    status: StatusCode,
     back: Option<String>,
-    error: Option<String>,
+    refusals: Refusals,
 ) -> Result<Response> {
+    let status = if refusals.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
+    };
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
@@ -214,7 +236,7 @@ async fn render(
         },
         contributors: Contributors::new(work, None),
         back,
-        error,
+        refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
@@ -249,16 +271,14 @@ pub async fn get(
         &library,
         &work,
         form,
-        StatusCode::OK,
         same_site_path(query.back),
-        None,
+        Refusals::default(),
     )
     .await
 }
 
 /// Apply the submitted form to `work`
-async fn save(work: &mut Work, form: &Form) -> scorarium_engine::Result<()> {
-    let parsed = parse(form)?;
+async fn save(work: &mut Work, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
     work.set_title(parsed.title).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
@@ -305,17 +325,21 @@ pub async fn post(
     let back = same_site_path(query.back);
     let library = view::load(&engine, &library).await?;
     let mut work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
-    match save(&mut work, &form).await {
-        Ok(()) => {
-            let destination =
-                back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
-            Ok(Redirect::to(&destination).into_response())
-        }
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            render(header, &library, &work, form, status, back, Some(error)).await
+    let mut refusals = Refusals::default();
+    if let Some(parsed) = parse(&form, &mut refusals) {
+        match save(&mut work, &form, parsed).await {
+            Ok(()) => {
+                let destination =
+                    back.unwrap_or_else(|| format!("/library/{}/work/{}", library.id(), work.id()));
+                return Ok(Redirect::to(&destination).into_response());
+            }
+            Err(e) => {
+                let (_, message) = form_error(e)?;
+                refusals.refuse(message);
+            }
         }
     }
+    render(header, &library, &work, form, back, refusals).await
 }
 
 pub async fn delete(
