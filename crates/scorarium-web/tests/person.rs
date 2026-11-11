@@ -55,6 +55,13 @@ async fn back_is_honored_only_for_same_site_paths() {
         .form(&form)
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", back.clone());
+    let response = app
+        .server
+        .post(&format!("{edit}?back={back}&next=https://example.com"))
+        .form(&form)
+        .await;
+    response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header("location", back);
 }
 

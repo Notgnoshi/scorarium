@@ -331,7 +331,7 @@ pub async fn post(
     if let Some(parsed) = parse(&form, &mut refusals) {
         match save(&mut work, &form, parsed).await {
             Ok(()) => {
-                return Ok(Redirect::to(back.path()).into_response());
+                return Ok(Redirect::to(back.path_after_save()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;

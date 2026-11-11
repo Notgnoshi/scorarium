@@ -457,7 +457,7 @@ async fn submit(
         };
         match saved {
             Ok(()) => {
-                return Ok(Redirect::to(back.path()).into_response());
+                return Ok(Redirect::to(back.path_after_save()).into_response());
             }
             Err(e) => {
                 let (_, message) = form_error(e)?;

@@ -10,6 +10,8 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub(crate) struct BackQuery {
     pub back: Option<String>,
+    /// The page to go to after a successful save, overriding `back`
+    pub next: Option<String>,
 }
 
 /// Keep `path` only when it stays on this site
@@ -27,6 +29,7 @@ pub(crate) fn same_site_path(path: Option<String>) -> Option<String> {
 pub(crate) struct Back {
     /// The page the opened this page
     opener: Option<String>,
+    next: Option<String>,
     default: String,
 }
 
@@ -35,6 +38,7 @@ impl Back {
     pub fn new(query: BackQuery, default: String) -> Back {
         Back {
             opener: same_site_path(query.back),
+            next: same_site_path(query.next),
             default,
         }
     }
@@ -42,6 +46,11 @@ impl Back {
     /// Get the path to return to
     pub fn path(&self) -> &str {
         self.opener.as_deref().unwrap_or(&self.default)
+    }
+
+    /// Get the path to go to after a successful save: the page being left for, or else `path()`
+    pub fn path_after_save(&self) -> &str {
+        self.next.as_deref().unwrap_or_else(|| self.path())
     }
 
     /// Get the path to return to, or the default when the opener is `gone` or beneath it
@@ -125,6 +134,7 @@ mod tests {
             let back = Back::new(
                 BackQuery {
                     back: Some(opener.to_owned()),
+                    next: None,
                 },
                 "/library/1".to_owned(),
             );
