@@ -7,7 +7,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
 /// A query string of a page that can send the user back to where they came from
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub(crate) struct BackQuery {
     pub back: Option<String>,
     /// The page to go to after a successful save, overriding `back`
@@ -95,6 +95,17 @@ impl<S: Send + Sync> FromRequestParts<S> for CurrentPage {
             .and_then(|value| value.parse::<Uri>().ok())
             .and_then(|uri| uri.path_and_query().map(ToString::to_string));
         Ok(CurrentPage(same_site_path(path)))
+    }
+}
+
+impl CurrentPage {
+    /// Read the `?back=` and `?next=` that the page carries in its query string
+    pub fn query(&self) -> BackQuery {
+        self.0
+            .as_deref()
+            .and_then(|page| page.split_once('?'))
+            .and_then(|(_, query)| serde_html_form::from_str(query).ok())
+            .unwrap_or_default()
     }
 }
 

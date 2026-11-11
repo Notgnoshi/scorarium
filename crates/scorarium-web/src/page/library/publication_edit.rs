@@ -236,6 +236,11 @@ async fn render(
     } else {
         StatusCode::BAD_REQUEST
     };
+    let here = format!(
+        "{}/edit{}",
+        publication_path(library, publication),
+        back.query()
+    );
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
@@ -307,9 +312,9 @@ async fn render(
         links: LinksInput {
             links: publication.links().iter().map(Into::into).collect(),
         },
-        contributors: Contributors::new(publication, None),
+        contributors: Contributors::new(publication, None, here.clone()),
         holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
-        contents: Contents::new(publication, &publication.works().await?),
+        contents: Contents::new(publication, &publication.works().await?, here),
         back,
         refusals,
     };

@@ -11,6 +11,7 @@ use crate::auth::{ApiSession, Viewer};
 use crate::error::Result;
 use crate::page::form_error;
 use crate::page::library::{entity, view};
+use crate::redirect::{Back, BackQuery, CurrentPage};
 use crate::widget::contributors::Contributors;
 
 #[derive(Deserialize)]
@@ -65,6 +66,7 @@ async fn apply_remove<E: Contributed>(
 async fn render<E: Contributed>(
     mut entity: E,
     outcome: scorarium_engine::Result<()>,
+    query: BackQuery,
 ) -> Result<Response> {
     let (status, error) = match outcome {
         Ok(()) => (StatusCode::OK, None),
@@ -75,12 +77,22 @@ async fn render<E: Contributed>(
     };
     // Reloading picks up contributors changed from another tab as well as this action's.
     entity.reload().await?;
-    let section = Contributors::new(&entity, error);
+    // The section is drawn on the entity's editor, which may be shown at the POST-only route of a
+    // refused Finish import, so its pencils return to the editor with only its opener.
+    let edit = format!(
+        "/library/{}/{}/{}/edit",
+        entity.library(),
+        E::KIND,
+        entity.id()
+    );
+    let back = Back::new(query, edit.clone());
+    let section = Contributors::new(&entity, error, format!("{edit}{}", back.query()));
     Ok((status, Html(askama::Template::render(&section)?)).into_response())
 }
 
 pub async fn add<E: Contributed>(
     _session: ApiSession,
+    page: CurrentPage,
     State(engine): State<Engine>,
     Path((library, id)): Path<(String, String)>,
     axum::Form(form): axum::Form<AddForm>,
@@ -88,11 +100,12 @@ pub async fn add<E: Contributed>(
     let library = view::load(&engine, &library).await?;
     let mut entity: E = entity::load(&engine, library.id(), &id, &Viewer::LoggedIn).await?;
     let outcome = apply_add(&engine, &mut entity, &form).await;
-    render(entity, outcome).await
+    render(entity, outcome, page.query()).await
 }
 
 pub async fn remove<E: Contributed>(
     _session: ApiSession,
+    page: CurrentPage,
     State(engine): State<Engine>,
     Path((library, id)): Path<(String, String)>,
     axum::Form(form): axum::Form<RemoveForm>,
@@ -100,5 +113,5 @@ pub async fn remove<E: Contributed>(
     let library = view::load(&engine, &library).await?;
     let mut entity: E = entity::load(&engine, library.id(), &id, &Viewer::LoggedIn).await?;
     let outcome = apply_remove(&engine, &mut entity, &form).await;
-    render(entity, outcome).await
+    render(entity, outcome, page.query()).await
 }
