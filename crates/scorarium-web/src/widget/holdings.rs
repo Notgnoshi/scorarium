@@ -234,11 +234,11 @@ impl HoldingsForm {
     }
 
     /// Pair each existing physical holding with its location as edited
-    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, &str)>> {
+    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, String)>> {
         self.holding
             .iter()
             .zip(&self.holding_location)
-            .map(|(id, location)| Ok((parse_id(id)?, location.as_str())))
+            .map(|(id, location)| Ok((parse_id(id)?, location.clone())))
             .collect()
     }
 

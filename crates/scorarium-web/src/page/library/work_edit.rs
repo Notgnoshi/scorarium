@@ -230,9 +230,7 @@ async fn render(
             library: library.id(),
             tags: work.tags().to_vec(),
         },
-        links: LinksInput {
-            links: work.links().iter().map(Into::into).collect(),
-        },
+        links: LinksInput::new(&posted.links, work.links(), &refusals),
         contributors: Contributors::new(work, None, here),
         back,
         refusals,
@@ -264,7 +262,7 @@ pub async fn get(
     let posted = Posted {
         form,
         catalog_numbers: CatalogNumbersForm::from(work.catalog_numbers()),
-        links: LinksForm::default(),
+        links: LinksForm::from(work.links()),
     };
     let back = Back::new(
         query,
@@ -307,6 +305,7 @@ async fn save(
     for url in parsed.links.add {
         work.add_link(url).await?;
     }
+    posted.links = LinksForm::from(work.links());
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }

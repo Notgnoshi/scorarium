@@ -95,7 +95,7 @@ async fn render(
     header: Header,
     library: &Library,
     person: &Person,
-    form: Form,
+    posted: Posted,
     files_allowed: bool,
     back: Back,
     refusals: Refusals,
@@ -105,6 +105,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = person.is_draft();
+    let form = posted.form;
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
             engine,
@@ -152,9 +153,7 @@ async fn render(
         id: person.id(),
         name: form.name,
         sort_name: form.sort_name,
-        links: LinksInput {
-            links: person.links().iter().map(Into::into).collect(),
-        },
+        links: LinksInput::new(&posted.links, person.links(), &refusals),
         back,
         refusals,
     };
@@ -182,6 +181,10 @@ pub async fn get(
         picture: String::new(),
         remove_picture: None,
     };
+    let posted = Posted {
+        form,
+        links: LinksForm::from(person.links()),
+    };
     let back = Back::new(
         query,
         format!("/library/{}/person/{}", library.id(), person.id()),
@@ -191,7 +194,7 @@ pub async fn get(
         header,
         &library,
         &person,
-        form,
+        posted,
         settings.files_allowed(&engine),
         back,
         Refusals::default(),
@@ -200,7 +203,12 @@ pub async fn get(
 }
 
 /// Apply the submitted form to `person`
-async fn save(person: &mut Person, form: &Form, parsed: Parsed) -> scorarium_engine::Result<()> {
+async fn save(
+    person: &mut Person,
+    posted: &mut Posted,
+    parsed: Parsed,
+) -> scorarium_engine::Result<()> {
+    let form = &posted.form;
     person.rename(parsed.name, parsed.sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.links.remove {
@@ -209,6 +217,7 @@ async fn save(person: &mut Person, form: &Form, parsed: Parsed) -> scorarium_eng
     for url in parsed.links.add {
         person.add_link(url).await?;
     }
+    posted.links = LinksForm::from(person.links());
     // The picture is saved last, because the engine refuses a file that is not an image only as it
     // stores the file, and by then the name and links that the person typed are already saved.
     if !form.picture.is_empty() {
@@ -232,7 +241,7 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    let posted = Posted::read(&body)?;
+    let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut person: Person =
         entity::load(&engine, library.id(), &person, &Viewer::LoggedIn).await?;
@@ -242,7 +251,7 @@ pub async fn post(
     );
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&posted, &mut refusals) {
-        match save(&mut person, &posted.form, parsed).await {
+        match save(&mut person, &mut posted, parsed).await {
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -257,7 +266,7 @@ pub async fn post(
         header,
         &library,
         &person,
-        posted.form,
+        posted,
         settings.files_allowed(&engine),
         back,
         refusals,

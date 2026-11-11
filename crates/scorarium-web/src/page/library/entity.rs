@@ -2,7 +2,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
-use scorarium_engine::link::{Link, LinkId};
+use scorarium_engine::link::Link;
 use scorarium_engine::person::PersonId;
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 
@@ -50,7 +50,6 @@ pub(crate) async fn in_library<E: Entity>(
 /// A link rendered as the recognized site's name, or the URL's host for a generic link
 #[derive(Debug)]
 pub(crate) struct ExternalLink {
-    pub id: LinkId,
     pub href: String,
     pub label: String,
     pub icon: Icon,
@@ -59,7 +58,6 @@ pub(crate) struct ExternalLink {
 impl From<&Link> for ExternalLink {
     fn from(link: &Link) -> ExternalLink {
         ExternalLink {
-            id: link.id,
             href: link.url.to_string(),
             label: link.site_name().to_owned(),
             icon: Icon::link(link),

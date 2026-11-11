@@ -215,8 +215,7 @@ async fn render(
     files_allowed: bool,
     library: &Library,
     publication: &Publication,
-    form: Form,
-    holdings: &HoldingsForm,
+    posted: Posted,
     back: Back,
     refusals: Refusals,
 ) -> Result<Response> {
@@ -235,6 +234,7 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = publication.is_draft();
+    let form = posted.form;
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
@@ -298,11 +298,9 @@ async fn render(
             library: library.id(),
             tags: publication.tags().to_vec(),
         },
-        links: LinksInput {
-            links: publication.links().iter().map(Into::into).collect(),
-        },
+        links: LinksInput::new(&posted.links, publication.links(), &refusals),
         contributors: Contributors::new(publication, None, here.clone()),
-        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, holdings),
+        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, &posted.holdings),
         contents: Contents::new(publication, &publication.works().await?, here),
         back,
         refusals,
@@ -339,14 +337,19 @@ pub async fn get(
         picture: String::new(),
         remove_picture: None,
     };
+    let posted = Posted {
+        form,
+        identifiers: IdentifiersForm::default(),
+        links: LinksForm::from(publication.links()),
+        holdings: HoldingsForm::default(),
+    };
     render(
         &engine,
         header,
         files_allowed,
         &library,
         &publication,
-        form,
-        &HoldingsForm::default(),
+        posted,
         back,
         Refusals::default(),
     )
@@ -356,12 +359,13 @@ pub async fn get(
 /// Apply the submitted form to `publication`
 async fn save(
     publication: &mut Publication,
-    form: &Form,
+    posted: &mut Posted,
     parsed: Parsed,
     added: &[AddedHolding],
-    locations: Vec<(HoldingId, &str)>,
+    locations: Vec<(HoldingId, String)>,
     removed: Vec<HoldingId>,
 ) -> scorarium_engine::Result<()> {
+    let form = &posted.form;
     publication.set_title(parsed.title).await?;
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;
@@ -386,6 +390,7 @@ async fn save(
     for url in parsed.links.add {
         publication.add_link(url).await?;
     }
+    posted.links = LinksForm::from(publication.links());
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
     }
@@ -406,7 +411,7 @@ async fn save(
     for (id, location) in locations {
         if publication.holdings().iter().any(|h| h.id == id) {
             publication
-                .set_physical_holding_location(id, Some(location))
+                .set_physical_holding_location(id, Some(&location))
                 .await?;
         }
     }
@@ -428,7 +433,7 @@ async fn submit(
     query: BackQuery,
     commit: bool,
 ) -> Result<Response> {
-    let posted = Posted::read(&body)?;
+    let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
     let mut publication: Publication =
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
@@ -444,7 +449,7 @@ async fn submit(
     {
         let saved = match save(
             &mut publication,
-            &posted.form,
+            &mut posted,
             parsed,
             &added,
             locations,
@@ -471,8 +476,7 @@ async fn submit(
         settings.files_allowed(&engine),
         &library,
         &publication,
-        posted.form,
-        &posted.holdings,
+        posted,
         back,
         refusals,
     )
