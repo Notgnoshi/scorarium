@@ -135,7 +135,7 @@
     document.addEventListener("keydown", (event) => {
         const box = boxOf(event);
         // A typeahead that picked a highlighted suggestion has already handled this Enter, and
-        // Enter in any other field submits the form as usual.
+        // Enter in any other field is left alone.
         const adding = box && event.target.matches("input[name=location]");
         if (adding && event.key === "Enter" && !event.defaultPrevented) {
             event.preventDefault();

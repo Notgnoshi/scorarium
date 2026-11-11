@@ -3,6 +3,9 @@
     {% if let EditMode::Committed = mode %}{% else %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
 </h1>
 <div class="sticky-top bg-body border-bottom d-flex flex-wrap gap-2 py-2 mb-3">
+    {# Browsers treat the first submit button on a form as the default. This form is complex enough
+    that I don't want Enter doing a submit. So add a hidden input to capture and suppress Enter #}
+    <button type="submit" form="edit" disabled hidden></button>
     <button class="btn btn-outline-danger me-auto"
             type="button"
             data-dialog="{{ delete.id }}"
