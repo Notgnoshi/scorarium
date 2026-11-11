@@ -39,6 +39,20 @@ impl Back {
         self.opener.as_deref().unwrap_or(&self.default)
     }
 
+    /// Get the path to return to, or the default when the opener is `gone` or beneath it
+    pub fn path_outside(&self, gone: &str) -> &str {
+        let Some(opener) = &self.opener else {
+            return &self.default;
+        };
+        let opener_path = opener
+            .split_once('?')
+            .map_or(opener.as_str(), |(path, _)| path);
+        match opener_path.strip_prefix(gone) {
+            Some(rest) if rest.is_empty() || rest.starts_with('/') => &self.default,
+            _ => opener,
+        }
+    }
+
     /// Write the query string that carries the opener to another route, empty with no opener
     pub fn query(&self) -> String {
         match &self.opener {
@@ -67,6 +81,27 @@ mod tests {
                 expected,
                 "{path:?}"
             );
+        }
+    }
+
+    #[test]
+    fn path_outside_falls_back_only_beneath_gone() {
+        for (opener, expected) in [
+            ("/library/1/work/1", "/library/1"),
+            ("/library/1/work/1/edit?back=/review", "/library/1"),
+            ("/library/1/work/12", "/library/1/work/12"),
+            (
+                "/library/1/publication/3/edit",
+                "/library/1/publication/3/edit",
+            ),
+        ] {
+            let back = Back::new(
+                BackQuery {
+                    back: Some(opener.to_owned()),
+                },
+                "/library/1".to_owned(),
+            );
+            assert_eq!(back.path_outside("/library/1/work/1"), expected, "{opener}");
         }
     }
 }

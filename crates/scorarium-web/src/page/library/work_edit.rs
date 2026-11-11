@@ -214,7 +214,12 @@ async fn render(
                 } else {
                     "Delete work"
                 },
-                url: format!("/library/{}/work/{}/delete", library.id(), work.id()),
+                url: format!(
+                    "/library/{}/work/{}/delete{}",
+                    library.id(),
+                    work.id(),
+                    back.query()
+                ),
                 target: None,
                 fields: vec![],
             },
@@ -341,9 +346,12 @@ pub async fn delete(
     _session: Session,
     State(engine): State<Engine>,
     Path((library, work)): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
 ) -> Result<Redirect> {
     let library = view::load(&engine, &library).await?;
     let work: Work = entity::load(&engine, library.id(), &work, &Viewer::LoggedIn).await?;
+    let gone = format!("/library/{}/work/{}", library.id(), work.id());
     work.delete().await?;
-    Ok(Redirect::to(&format!("/library/{}", library.id())))
+    let back = Back::new(query, format!("/library/{}", library.id()));
+    Ok(Redirect::to(back.path_outside(&gone)))
 }
