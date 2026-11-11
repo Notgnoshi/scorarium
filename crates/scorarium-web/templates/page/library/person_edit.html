@@ -3,7 +3,7 @@
     {{ heading }}
     {{ refusals }}
     <form id="edit"
-          data-unsaved
+          data-unsaved="unsaved"
           {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
           action="/library/{{ library }}/person/{{ id }}/edit{{ back.query() }}">
