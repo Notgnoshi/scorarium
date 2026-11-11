@@ -14,6 +14,7 @@ use scorarium_engine::work::{self, Work, WorkId};
 
 use crate::error::Result;
 use crate::hit::Hit;
+use crate::redirect::back_query;
 use crate::sort::{self, Column as _};
 
 #[derive(Template)]
@@ -110,6 +111,7 @@ impl ReviewQueue {
         engine: &Engine,
         size: Size,
         library: Option<LibraryId>,
+        opener: Option<&str>,
     ) -> Result<ReviewQueue> {
         let count = engine.review_count().await?;
         let queue = engine.review_queue().await?;
@@ -148,9 +150,9 @@ impl ReviewQueue {
                     .get(&item.entity.id())
                     .into_iter()
                     .flatten()
-                    .map(|id| ReviewEntry::new(drafts[id], Vec::new(), &query))
+                    .map(|id| ReviewEntry::new(drafts[id], Vec::new(), &query, opener))
                     .collect();
-                let mut entry = ReviewEntry::new(item, nested, &query);
+                let mut entry = ReviewEntry::new(item, nested, &query, opener);
                 entry.collapsed = collapsed && !entry.nested.is_empty();
                 entry.show_library = library.is_none();
                 for nested in &mut entry.nested {
@@ -199,7 +201,12 @@ pub(crate) struct ReviewEntry {
 }
 
 impl ReviewEntry {
-    fn new(item: &ReviewItem, nested: Vec<ReviewEntry>, query: &str) -> ReviewEntry {
+    fn new(
+        item: &ReviewItem,
+        nested: Vec<ReviewEntry>,
+        query: &str,
+        opener: Option<&str>,
+    ) -> ReviewEntry {
         let library = item_library(item);
         let draft = match &item.entity {
             AnyEntity::Publication(publication) => publication.is_draft(),
@@ -208,6 +215,9 @@ impl ReviewEntry {
         };
         let mut hit = Hit::new(library, item.library_name.clone(), &item.entity);
         hit.href.push_str("/edit");
+        if let Some(opener) = opener {
+            hit.href.push_str(&back_query(opener));
+        }
         ReviewEntry {
             id: item.entity.id(),
             hit,
@@ -549,6 +559,7 @@ mod tests {
             Size::Full {
                 sort: Sort::default(),
             },
+            None,
             None,
         )
         .await

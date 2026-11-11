@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
+use crate::redirect::CurrentPage;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::review_queue::{ReviewQueue, Size, Sort};
 
@@ -60,15 +61,17 @@ pub struct DiscardForm {
 /// Draw the review queue, for a widget that refreshes itself
 pub async fn get(
     _session: ApiSession,
+    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
     let (size, library) = query.resolve()?;
-    queue(&engine, size, library).await
+    queue(&engine, size, library, opener.as_deref()).await
 }
 
 pub async fn cancel(
     _session: ApiSession,
+    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
     Query(query): Query<ReviewQuery>,
@@ -79,11 +82,12 @@ pub async fn cancel(
     {
         enrichment.cancel();
     }
-    queue(&engine, size, library).await
+    queue(&engine, size, library, opener.as_deref()).await
 }
 
 pub async fn retry(
     _session: ApiSession,
+    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
     Query(query): Query<ReviewQuery>,
@@ -95,12 +99,13 @@ pub async fn retry(
         Some(AnyEntity::Person(person)) => person.enrich().await.map(drop)?,
         None => {}
     }
-    queue(&engine, size, library).await
+    queue(&engine, size, library, opener.as_deref()).await
 }
 
 /// Ask before discarding an entry, then discard it
 pub async fn discard(
     _session: ApiSession,
+    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
     Query(query): Query<ReviewQuery>,
@@ -108,14 +113,14 @@ pub async fn discard(
 ) -> Result<Response> {
     let (size, library) = query.resolve()?;
     let Some(entity) = load(&engine, &kind, &entity).await? else {
-        return queue(&engine, size, library).await;
+        return queue(&engine, size, library, opener.as_deref()).await;
     };
     let Some(item) = (match &entity {
         AnyEntity::Publication(publication) => publication.review_item().await?,
         AnyEntity::Work(work) => work.review_item().await?,
         AnyEntity::Person(person) => person.review_item().await?,
     }) else {
-        return queue(&engine, size, library).await;
+        return queue(&engine, size, library, opener.as_deref()).await;
     };
 
     let case = if is_draft(&item.entity) {
@@ -124,10 +129,10 @@ pub async fn discard(
         "proposals"
     } else {
         // Only the task keeps this entry in the queue, so there is nothing to confirm.
-        return finish(&engine, item, size, library).await;
+        return finish(&engine, item, size, library, opener.as_deref()).await;
     };
     if form.confirmed.as_deref() == Some(case) {
-        return finish(&engine, item, size, library).await;
+        return finish(&engine, item, size, library, opener.as_deref()).await;
     }
     let dialog = dialog(&item, case, &size, library).await?;
     Ok(Html(dialog.to_string()).into_response())
@@ -138,9 +143,12 @@ async fn finish(
     item: ReviewItem,
     size: Size,
     library: Option<LibraryId>,
+    opener: Option<&str>,
 ) -> Result<Response> {
     match item.discard().await {
-        Ok(()) | Err(scorarium_engine::Error::NotFound) => queue(engine, size, library).await,
+        Ok(()) | Err(scorarium_engine::Error::NotFound) => {
+            queue(engine, size, library, opener).await
+        }
         Err(e) => Err(e.into()),
     }
 }
@@ -240,9 +248,14 @@ struct QueueAnswer {
     queue: ReviewQueue,
 }
 
-async fn queue(engine: &Engine, size: Size, library: Option<LibraryId>) -> Result<Response> {
+async fn queue(
+    engine: &Engine,
+    size: Size,
+    library: Option<LibraryId>,
+    opener: Option<&str>,
+) -> Result<Response> {
     let answer = QueueAnswer {
-        queue: ReviewQueue::new(engine, size, library).await?,
+        queue: ReviewQueue::new(engine, size, library, opener).await?,
     };
     Ok((
         [

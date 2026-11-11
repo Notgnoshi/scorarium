@@ -1,3 +1,8 @@
+use std::convert::Infallible;
+
+use axum::extract::FromRequestParts;
+use axum::http::Uri;
+use axum::http::request::Parts;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
@@ -65,6 +70,23 @@ impl Back {
 /// Write the query string that carries `opener` to another route
 pub(crate) fn back_query(opener: &str) -> String {
     format!("?back={}", utf8_percent_encode(opener, NON_ALPHANUMERIC))
+}
+
+/// The same-site path and query of the page the browser shows, from htmx's `HX-Current-URL`
+pub(crate) struct CurrentPage(pub Option<String>);
+
+impl<S: Send + Sync> FromRequestParts<S> for CurrentPage {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Infallible> {
+        let path = parts
+            .headers
+            .get("HX-Current-URL")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<Uri>().ok())
+            .and_then(|uri| uri.path_and_query().map(ToString::to_string));
+        Ok(CurrentPage(same_site_path(path)))
+    }
 }
 
 #[cfg(test)]

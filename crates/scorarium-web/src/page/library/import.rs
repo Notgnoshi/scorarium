@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::{Entity, EntityKind};
@@ -60,6 +60,7 @@ async fn render(
     library: &Library,
     form: Form,
     holdings: Holdings,
+    opener: Option<&str>,
     error: Option<(StatusCode, String)>,
 ) -> Result<Response> {
     let parents = vec![
@@ -70,7 +71,7 @@ async fn render(
         Some((status, message)) => (status, Some(message)),
         None => (StatusCode::OK, None),
     };
-    let queue = ReviewQueue::new(engine, Size::Short, Some(library.id())).await?;
+    let queue = ReviewQueue::new(engine, Size::Short, Some(library.id()), opener).await?;
     let record = form.record().map(|(url, _)| url);
     let page = Import {
         base: Base::new(header, "Import a publication", parents),
@@ -106,13 +107,23 @@ pub async fn get(
     State(engine): State<Engine>,
     Extension(settings): Extension<Settings>,
     header: Header,
+    uri: Uri,
     Path(library): Path<String>,
     Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
     let library = view::load(&engine, &library).await?;
     let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
     let holdings = empty.resubmitted(&engine, &holdings);
-    render(&engine, header, &library, form, holdings, None).await
+    render(
+        &engine,
+        header,
+        &library,
+        form,
+        holdings,
+        uri.path_and_query().map(|p| p.as_str()),
+        None,
+    )
+    .await
 }
 
 /// Seed the draft with the picked candidate if there is one, and otherwise read the typed text as
@@ -193,6 +204,7 @@ pub async fn post(
     State(engine): State<Engine>,
     Extension(settings): Extension<Settings>,
     header: Header,
+    uri: Uri,
     Path(library): Path<String>,
     Forms(form, holdings): Forms<Form, HoldingsForm>,
 ) -> Result<Response> {
@@ -227,6 +239,7 @@ pub async fn post(
                 &library,
                 form,
                 holdings,
+                uri.path_and_query().map(|p| p.as_str()),
                 Some((status, error)),
             )
             .await
