@@ -6,7 +6,6 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
-use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -26,11 +25,11 @@ use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
-use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
+use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::PictureInput;
+use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
@@ -49,13 +48,11 @@ pub(crate) struct Form {
     add_tag: Vec<String>,
     #[serde(default)]
     remove_tag: Vec<String>,
-    #[serde(default)]
-    picture: String,
-    remove_picture: Option<String>,
 }
 
 struct Posted {
     form: Form,
+    picture: PictureForm,
     identifiers: IdentifiersForm,
     links: LinksForm,
     holdings: HoldingsForm,
@@ -65,6 +62,7 @@ impl Posted {
     fn read(body: &FormBody) -> Result<Posted> {
         Ok(Posted {
             form: body.read()?,
+            picture: body.read()?,
             identifiers: body.read()?,
             links: body.read()?,
             holdings: body.read()?,
@@ -100,6 +98,7 @@ struct Parsed {
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
+    picture: PictureEdit,
 }
 
 fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
@@ -128,6 +127,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
     let links = posted.links.parse(refusals);
+    let picture = posted.picture.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
@@ -140,38 +140,10 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         add_tags,
         remove_tags,
         links,
+        picture: picture?,
     })
 }
 
-/// Refuse the holdings that would leave a missing file or a publication with no holdings
-fn check_holdings(
-    engine: &Engine,
-    publication: &Publication,
-    added: &[AddedHolding],
-    removed: &[HoldingId],
-) -> scorarium_engine::Result<()> {
-    let gone = added
-        .iter()
-        .any(|holding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none()));
-    if gone {
-        return Err(scorarium_engine::Error::InvalidValue(
-            "A file is no longer available. Choose it again.".to_owned(),
-        ));
-    }
-    let kept = publication
-        .holdings()
-        .iter()
-        .filter(|holding| !removed.contains(&holding.id))
-        .count();
-    if kept + added.len() == 0 {
-        return Err(scorarium_engine::Error::InvalidValue(
-            "A publication needs at least one holding.".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-/// Get the path of the page that shows `publication`
 fn publication_path(library: &Library, publication: &Publication) -> String {
     format!("/library/{}/publication/{}", library.id(), publication.id())
 }
@@ -238,8 +210,8 @@ async fn render(
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
-            &form.picture,
-            form.remove_picture.is_some(),
+            &posted.picture,
+            &refusals,
         ),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
@@ -298,7 +270,13 @@ async fn render(
         },
         links: LinksInput::new(&posted.links, publication.links(), &refusals),
         contributors: Contributors::new(publication, None, here.clone()),
-        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, &posted.holdings),
+        holdings: Holdings::of(
+            engine,
+            publication,
+            &posted.holdings,
+            &refusals,
+            files_allowed,
+        ),
         contents: Contents::new(publication, &publication.works().await?, here),
         back,
         refusals,
@@ -332,14 +310,13 @@ pub async fn get(
         note: text(publication.note()),
         add_tag: vec![],
         remove_tag: vec![],
-        picture: String::new(),
-        remove_picture: None,
     };
     let posted = Posted {
         form,
+        picture: PictureForm::default(),
         identifiers: IdentifiersForm::from(publication.identifiers()),
         links: LinksForm::from(publication.links()),
-        holdings: HoldingsForm::default(),
+        holdings: HoldingsForm::from(publication.holdings()),
     };
     render(
         &engine,
@@ -359,9 +336,7 @@ async fn save(
     publication: &mut Publication,
     posted: &mut Posted,
     parsed: Parsed,
-    added: &[AddedHolding],
-    locations: Vec<(HoldingId, String)>,
-    removed: Vec<HoldingId>,
+    edits: HoldingEdits,
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     publication.set_title(parsed.title).await?;
@@ -396,25 +371,22 @@ async fn save(
     // The cover is saved after the other Details fields, because the engine refuses a file that is
     // not an image only as it stores the file, and by then the fields that the person typed are
     // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
-    if !form.picture.is_empty() {
-        let Ok(id) = form.picture.parse();
-        publication.set_cover(AssetSource::Staged(id)).await?;
-    } else if form.remove_picture.is_some() {
-        publication.clear_cover().await?;
+    match parsed.picture {
+        PictureEdit::Store(id) => publication.set_cover(AssetSource::Staged(id)).await?,
+        PictureEdit::Clear => publication.clear_cover().await?,
+        PictureEdit::Keep => {}
     }
     // Additions run before removals so that the publication never passes through having no
     // holdings.
-    for holding in added {
+    for holding in &edits.add {
         publication.add_holding(holding.as_new()).await?;
     }
-    for (id, location) in locations {
-        if publication.holdings().iter().any(|h| h.id == id) {
-            publication
-                .set_physical_holding_location(id, Some(&location))
-                .await?;
-        }
+    for (id, location) in edits.relocate {
+        publication
+            .set_physical_holding_location(id, Some(&location))
+            .await?;
     }
-    for id in removed {
+    for id in edits.remove {
         publication.remove_holding(id).await?;
     }
     Ok(())
@@ -439,23 +411,13 @@ async fn submit(
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
     let parsed = parse(&posted, &mut refusals);
-    let added = posted.holdings.added();
-    let locations = posted.holdings.locations()?;
-    let removed = posted.holdings.removed()?;
-    refusals.check(check_holdings(&engine, &publication, &added, &removed));
+    let edits = posted
+        .holdings
+        .parse(&engine, publication.holdings(), &mut refusals);
     if refusals.is_empty()
         && let Some(parsed) = parsed
     {
-        let saved = match save(
-            &mut publication,
-            &mut posted,
-            parsed,
-            &added,
-            locations,
-            removed,
-        )
-        .await
-        {
+        let saved = match save(&mut publication, &mut posted, parsed, edits).await {
             Ok(()) if commit => publication.commit().await,
             saved => saved,
         };

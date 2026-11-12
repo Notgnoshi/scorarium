@@ -42,18 +42,92 @@
         }
     });
 
+    const requests = new WeakMap();
+
+    document.addEventListener("list:remove", (event) => {
+        for (const root of event.target.querySelectorAll("[data-file-input]")) {
+            requests.get(root)?.abort();
+            discard(root);
+        }
+    });
+
+    const urlField = (root) => root.querySelector("[data-url-field]");
+    const stagedField = (root) => root.querySelector("[data-file-staged]");
+
+    const write = (root, selector, text) => {
+        for (const element of root.querySelectorAll(selector)) {
+            element.textContent = text;
+        }
+    };
+
+    const setMessage = (root, message) => {
+        write(root, "[data-file-message]", message);
+        urlField(root).classList.toggle("is-invalid", message !== "");
+    };
+
+    const setProgress = (root, percent) => {
+        const progress = root.querySelector("[data-file-progress]");
+        if (progress) {
+            progress.setAttribute("aria-valuenow", percent);
+            progress.querySelector(".progress-bar").style.width = `${percent}%`;
+        }
+        write(root, "[data-file-percent]", `${percent}%`);
+    };
+
+    const discard = (root) => {
+        const id = stagedField(root)?.value;
+        if (id) {
+            fetch(`${root.dataset.url}/${encodeURIComponent(id)}/discard`, {
+                method: "POST",
+                headers: { "HX-Current-URL": location.href },
+            });
+        }
+    };
+
+    const start = (root, id, name, source) => {
+        setMessage(root, "");
+        write(root, "[data-file-busy] [data-file-name]", name);
+        setProgress(root, 0);
+        const fetching = source === "url";
+        root.querySelector("[data-file-progress]")?.toggleAttribute("hidden", fetching);
+        root.querySelector("[data-file-percent]")?.toggleAttribute("hidden", fetching);
+        root.querySelector("[data-file-spinner]")?.toggleAttribute("hidden", !fetching);
+        root.dataset.state = "busy";
+        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name, source } }));
+    };
+
     const finish = (root, id, result) => {
+        const staged = stagedField(root);
+        if (result.ok) {
+            const { id: stagedId, name } = JSON.parse(result.body);
+            discard(root);
+            if (staged) {
+                staged.value = stagedId;
+            }
+            write(root, "[data-file-staged-name] [data-file-name]", name);
+            root.dataset.state = "staged";
+        } else {
+            root.dataset.state = staged?.value ? "staged" : "empty";
+            setMessage(root, result.message);
+        }
         root.dispatchEvent(new CustomEvent("upload:end", { bubbles: true, detail: { id, ...result } }));
     };
 
     const post = (root, id, form) => {
         const request = new XMLHttpRequest();
         const owner = root.closest("form");
+        const fail = (message) => {
+            if (form.has("url")) {
+                urlField(root).value = form.get("url");
+            }
+            finish(root, id, { ok: false, message });
+        };
         // A fetch has no progress to show, because the browser cannot see the server's download.
         if (form.has("file")) {
             request.upload.addEventListener("progress", (event) => {
                 if (event.lengthComputable) {
                     const { loaded, total } = event;
+                    setProgress(root, Math.floor((loaded / total) * 100));
                     root.dispatchEvent(
                         new CustomEvent("upload:progress", { bubbles: true, detail: { id, loaded, total } }),
                     );
@@ -75,14 +149,14 @@
             // A reverse proxy's own error page lacks the marker, which scorarium shouldn't display
             const page = new DOMParser().parseFromString(request.responseText, "text/html");
             const error = page.querySelector("[data-api-error]");
-            const message = error ? error.textContent.trim() : `The upload failed (${request.status}).`;
-            finish(root, id, { ok: false, message });
+            fail(error ? error.textContent.trim() : `The upload failed (${request.status}).`);
         });
-        request.addEventListener("error", () => {
-            finish(root, id, { ok: false, message: "The upload failed." });
-        });
+        request.addEventListener("error", () => fail("The upload failed."));
         // The loadend event fires exactly once after a load, error, abort, or timeout.
         request.addEventListener("loadend", () => {
+            if (requests.get(root) === request) {
+                requests.delete(root);
+            }
             runningTransfers--;
             if (owner) {
                 release(owner);
@@ -92,63 +166,76 @@
         if (owner) {
             hold(owner);
         }
+        requests.set(root, request);
         request.send(form);
     };
 
     const upload = (root, file) => {
-        const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: file.name, source: "file" },
-            }),
-        );
-
         const maxSize = Number(root.dataset.maxSize);
         if (file.size > maxSize) {
-            finish(root, id, { ok: false, message: `The file is larger than ${maxSize / 1024 / 1024} MB.` });
+            setMessage(root, `The file is larger than ${maxSize / 1024 / 1024} MB.`);
             return;
         }
+        const id = nextUploadId++;
+        start(root, id, file.name, "file");
         const form = new FormData();
         form.append("file", file);
         post(root, id, form);
     };
 
-    // A refusal reports through the same events as an upload, so a listener needs no special case.
-    // Its source is "file" so that a listener draws no spinner for a fetch that never starts.
-    const refuse = (root, message) => {
-        const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: "", source: "file" },
-            }),
+    const textFieldSelector = [
+        "textarea",
+        "input:not([type])",
+        "input[type=text], input[type=search], input[type=url], input[type=email]",
+        "input[type=tel], input[type=password], input[type=number]",
+        "[contenteditable]:not([contenteditable=false])",
+    ].join(", ");
+
+    const isFree = (root) =>
+        root.dataset.state === "empty" &&
+        [...root.closest("[data-list-entry]").querySelectorAll(textFieldSelector)].every(
+            (field) => field.value.trim() === "",
         );
-        finish(root, id, { ok: false, message });
+
+    // Find the file input of a zone that takes the next file, appending an entry when none is free.
+    const place = (zone) => {
+        const add = zone.querySelector("[data-list-add]");
+        if (!add) {
+            return zone.querySelector("[data-file-input]");
+        }
+        const inputs = () => [...zone.querySelectorAll("[data-file-input]")];
+        let root = inputs().find(isFree);
+        if (!root) {
+            add.click();
+            root = inputs().at(-1);
+        }
+        const reveal = root.closest("[data-list-entry]").querySelector("[data-file-reveal]");
+        if (reveal) {
+            reveal.checked = true;
+        }
+        return root;
     };
 
-    // Send each file as its own transfer when the input allows several, and refuse extra files
-    // otherwise.
     const uploadAll = (root, files) => {
-        if (files.length > 1 && !("multiple" in root.dataset)) {
-            refuse(root, "Paste or drop one file.");
+        const zone = root.closest("[data-drop-zone]");
+        if (zone?.querySelector("[data-list-add]")) {
+            Array.from(files).forEach((file, i) => upload(i === 0 ? root : place(zone), file));
+            return;
+        }
+        if (files.length > 1) {
+            setMessage(root, "Paste or drop one file.");
             return;
         }
         Array.from(files).forEach((file) => upload(root, file));
     };
 
-    const isDisabled = (root) => root.querySelector("[data-url-field]").disabled;
+    const isDisabled = (root) => urlField(root).disabled;
 
     const fetchUrl = (root, field) => {
         const url = field.value.trim();
         field.value = "";
         const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: url, source: "url" },
-            }),
-        );
+        start(root, id, url, "url");
         const form = new FormData();
         form.append("url", url);
         post(root, id, form);
@@ -159,11 +246,31 @@
         if (browse) {
             browse.closest("[data-file-input]").querySelector("input[type=file]").click();
         }
+        const clear = event.target.closest("[data-drop-zone] [data-file-clear]");
+        if (clear) {
+            const root = clear.closest("[data-drop-zone]").querySelector("[data-file-input]");
+            discard(root);
+            const staged = stagedField(root);
+            if (staged) {
+                staged.value = "";
+            }
+            setMessage(root, "");
+            root.dataset.state = "empty";
+        }
     });
 
     document.addEventListener("change", (event) => {
         const root = event.target.closest("[data-file-input]");
-        if (!root || event.target.type !== "file") {
+        if (!root) {
+            return;
+        }
+        if (event.target.matches("[data-url-field]")) {
+            if (event.target.value.trim() !== "") {
+                fetchUrl(root, event.target);
+            }
+            return;
+        }
+        if (event.target.type !== "file") {
             return;
         }
         // Copy the files first, because clearing the chooser empties its list. Clearing lets the
@@ -179,7 +286,7 @@
             return;
         }
         event.preventDefault();
-        if (event.target.reportValidity() && event.target.value.trim() !== "") {
+        if (event.target.value.trim() !== "") {
             fetchUrl(root, event.target);
         }
     });
@@ -198,7 +305,7 @@
         }
         // The pasted text has not landed in the field yet.
         setTimeout(() => {
-            if (field.value.trim() !== "" && field.checkValidity()) {
+            if (field.value.trim() !== "") {
                 fetchUrl(root, field);
             }
         });
@@ -207,8 +314,7 @@
     // Find the drop zone that contains the target, unless its file input is disabled.
     const dropZoneAt = (target) => {
         const zone = target.closest("[data-drop-zone]");
-        const root = zone?.querySelector("[data-file-input]");
-        return root && !isDisabled(root) ? zone : null;
+        return zone && !zone.querySelector("[data-url-field]:disabled") ? zone : null;
     };
 
     const carriesDroppable = (event) => {
@@ -219,14 +325,6 @@
     // The enter and leave events fire for every child, so the depth is counted to know when the
     // drag leaves the page.
     let dragDepth = 0;
-
-    const textFieldSelector = [
-        "textarea",
-        "input:not([type])",
-        "input[type=text], input[type=search], input[type=url], input[type=email]",
-        "input[type=tel], input[type=password], input[type=number]",
-        "[contenteditable]:not([contenteditable=false])",
-    ].join(", ");
 
     // Text dropped into a text field is harmless, but a file has no ordinary drop there.
     const isTextDrop = (event) =>
@@ -292,17 +390,21 @@
         if (!zone) {
             return;
         }
-        const root = zone.querySelector("[data-file-input]");
-        const files = event.dataTransfer.files;
+        const files = Array.from(event.dataTransfer.files);
         if (files.length > 0) {
-            uploadAll(root, files);
+            if (zone.querySelector("[data-list-add]")) {
+                files.forEach((file) => upload(place(zone), file));
+            } else {
+                uploadAll(place(zone), files);
+            }
         } else {
             const url = event.dataTransfer
                 .getData("text/uri-list")
                 .split(/\r?\n/)
                 .find((entry) => /^https?:\/\//.test(entry));
             if (url) {
-                const field = root.querySelector("[data-url-field]");
+                const root = place(zone);
+                const field = urlField(root);
                 field.value = url;
                 fetchUrl(root, field);
             }

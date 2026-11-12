@@ -2,12 +2,12 @@
 {% block content %}
     <h1>Import a publication</h1>
     <form data-unsaved
-          {% if error.is_some() %}data-unsaved-refused{% endif %}
+          {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
           action="/library/{{ library }}/import">
         <fieldset class="box">
             <legend>Publication</legend>
-            {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+            {{ refusals }}
             <label class="form-label" for="text">ISBN, ISMN, or title</label>
             {{ text }}
             <div id="candidate-summary" {% if record.is_none() %}hidden{% endif %}>

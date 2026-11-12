@@ -45,6 +45,11 @@ impl Refusals {
         }
     }
 
+    /// Record a refusal against `field`
+    pub fn refuse_field(&mut self, field: &str, message: impl Into<String>) {
+        self.entries.push((Some(field.to_owned()), message.into()));
+    }
+
     /// Record a refusal that concerns no field
     pub fn refuse(&mut self, message: impl Into<String>) {
         self.entries.push((None, message.into()));

@@ -178,11 +178,14 @@ async fn edit_adds_holdings_before_removing_the_only_one() {
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
-        ("remove_holding", &only),
-        ("add_location", "Piano bench"),
-        ("kind", "physical"),
-        ("location", "Music room"),
-        ("staged", &staged),
+        ("holding[0][saved][id]", &only),
+        ("holding[0][removed]", "true"),
+        ("holding[new1][location]", "Piano bench"),
+        ("holding[new2][kind]", "physical"),
+        ("holding[new2][location]", "Music room"),
+        ("holding[new3][kind]", "digital"),
+        ("holding[new3][staged]", &staged),
+        ("holding[new4][kind]", "digital"),
     ];
     app.server.post(&edit).form(&form).await;
 
@@ -217,7 +220,8 @@ async fn edit_refuses_to_remove_every_holding() {
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
-        ("remove_holding", &only),
+        ("holding[0][saved][id]", &only),
+        ("holding[0][removed]", "true"),
     ];
     app.server.post(&edit).form(&form).await;
 
@@ -295,10 +299,8 @@ async fn edit_clears_the_location_of_the_only_holding() {
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
-        ("holding", &only.to_string()),
-        ("holding_location", ""),
-        ("kind", "physical"),
-        ("location", ""),
+        ("holding[0][saved][id]", &only.to_string()),
+        ("holding[0][location]", ""),
     ];
     app.server
         .post(&edit)
@@ -313,5 +315,76 @@ async fn edit_clears_the_location_of_the_only_holding() {
     assert_eq!(
         after.holdings()[0].kind,
         HoldingKind::Physical { location: None }
+    );
+}
+
+#[tokio::test]
+async fn edit_refuses_a_file_field_that_holds_text() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let form = [
+        ("title", "Renamed"),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+        ("holding[new1][kind]", "digital"),
+        ("holding[new1][url]", "https://example.com/score.pdf"),
+    ];
+    app.server
+        .post(&edit)
+        .form(&form)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.title(), publication.title());
+    assert_eq!(after.holdings(), publication.holdings());
+}
+
+#[tokio::test]
+async fn edit_ignores_a_holding_that_the_library_no_longer_has() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let only = publication.holdings()[0].id;
+    let gone = (only.get() + 1000).to_string();
+    let form = [
+        ("title", publication.title().unwrap()),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+        ("holding[0][saved][id]", &only.to_string()),
+        ("holding[0][location]", "Piano bench"),
+        ("holding[1][saved][id]", &gone),
+        ("holding[1][removed]", "true"),
+    ];
+    app.server
+        .post(&edit)
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let kinds: Vec<&HoldingKind> = after.holdings().iter().map(|h| &h.kind).collect();
+    assert_eq!(
+        kinds,
+        [&HoldingKind::Physical {
+            location: Some("Piano bench".into())
+        }]
     );
 }

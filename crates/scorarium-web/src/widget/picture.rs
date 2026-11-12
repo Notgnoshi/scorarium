@@ -31,15 +31,12 @@ impl Picture {
         self
     }
 
-    /// Show the file at `src` in place of the entity's own picture, or the placeholder for `None`
-    pub fn showing(mut self, src: Option<String>) -> Picture {
-        self.src = src;
-        self
+    pub fn src(&self) -> Option<&str> {
+        self.src.as_deref()
     }
 
-    /// Check whether the placeholder is shown in place of a picture
-    pub fn is_placeholder(&self) -> bool {
-        self.src.is_none()
+    pub fn icon(&self) -> Icon {
+        self.icon.clone()
     }
 
     /// Show the profile picture of a person summarized in `library`

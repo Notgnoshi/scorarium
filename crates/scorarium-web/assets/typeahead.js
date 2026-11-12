@@ -168,3 +168,9 @@ document.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead);
 document.addEventListener("htmx:after:settle", (event) =>
     event.target.querySelectorAll("input[data-typeahead]").forEach(attachTypeahead),
 );
+// An appended list entry enters the page without htmx.
+document.addEventListener("focusin", (event) => {
+    if (event.target.matches?.("input[data-typeahead]")) {
+        attachTypeahead(event.target);
+    }
+});

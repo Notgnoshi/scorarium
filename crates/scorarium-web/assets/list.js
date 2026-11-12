@@ -48,6 +48,7 @@
         const entry = event.target.closest("[data-list-remove]")?.closest("[data-list-entry]");
         if (entry) {
             entry.closest("[data-list]").querySelector("[data-list-add]").focus();
+            entry.dispatchEvent(new CustomEvent("list:remove", { bubbles: true }));
             entry.remove();
         }
     });

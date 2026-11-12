@@ -101,3 +101,29 @@ async fn a_staged_profile_picture_is_saved_with_the_form() {
     app.server.post(&edit).form(&form).await;
     assert!(load().await.profile().is_none());
 }
+
+#[tokio::test]
+async fn unfetched_picture_text_refuses_the_form() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let response = app
+        .server
+        .post(&format!(
+            "/library/{}/person/{}/edit",
+            library.id(),
+            person.id()
+        ))
+        .form(&[
+            ("name", "Renamed"),
+            ("sort_name", ""),
+            ("picture_url", "https://example.com/satie.png"),
+        ])
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    let saved = Person::load(&app.engine, person.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.name(), person.name());
+}

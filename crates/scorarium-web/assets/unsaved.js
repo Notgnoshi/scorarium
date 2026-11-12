@@ -55,6 +55,17 @@
         return url;
     };
 
+    const disableSubmits = (form) =>
+        // A button disabled during the event is not posted as the submitter.
+        setTimeout(() => {
+            for (const control of form.elements) {
+                if (control.type === "submit" && !control.disabled) {
+                    control.disabled = true;
+                    control.dataset.submitted = "";
+                }
+            }
+        });
+
     document.addEventListener("click", (event) => {
         const link = event.target.closest("a[href]");
         if (link && !event.defaultPrevented && leaves(event, link)) {
@@ -77,6 +88,7 @@
             // A page restored from the history cache after this submit holds no unsaved changes.
             snapshots.set(form, serialize(form));
             delete form.dataset.unsavedRefused;
+            disableSubmits(form);
         } else if (form.closest("dialog")) {
             // A form in a dialog, such as Delete's, has already asked.
             decided = true;
@@ -112,6 +124,10 @@
     window.addEventListener("pageshow", (event) => {
         if (event.persisted) {
             decided = false;
+            for (const control of document.querySelectorAll("[data-submitted]")) {
+                control.disabled = false;
+                delete control.dataset.submitted;
+            }
         }
     });
 }
