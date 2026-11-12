@@ -32,12 +32,20 @@ function attachTypeahead(input) {
         input.setAttribute("aria-expanded", "false");
     }
 
+    // An empty box is left to `required`, so an optional picker can still be submitted blank.
+    const unpicked = () =>
+        Boolean(input.dataset.pickRequired) && !picked.value && input.value.trim() !== "";
+
+    function unflag() {
+        if (input.dataset.pickRequired && !unpicked()) {
+            input.classList.remove("is-invalid");
+        }
+    }
+
     function setPick(id) {
         picked.value = id;
         picked.dispatchEvent(new Event("change", { bubbles: true }));
-        // An empty box is left to `required`, so an optional picker can still be submitted blank.
-        const unpicked = !id && input.dataset.pickRequired && input.value.trim() !== "";
-        input.setCustomValidity(unpicked ? input.dataset.pickRequired : "");
+        input.setCustomValidity(unpicked() ? input.dataset.pickRequired : "");
     }
 
     async function refresh(text) {
@@ -89,6 +97,7 @@ function attachTypeahead(input) {
     input.addEventListener("input", () => {
         if (picked) {
             setPick("");
+            unflag();
         }
         const text = input.value.trim();
         if (!text) {
@@ -172,6 +181,9 @@ function attachTypeahead(input) {
     input.addEventListener("blur", () => {
         windowLeft = !document.hasFocus();
         close();
+        if (unpicked() && !windowLeft) {
+            input.classList.add("is-invalid");
+        }
     });
 
     // Keep focus in the input until the entry's click fires, so blur does not close the menu first.
@@ -183,6 +195,7 @@ function attachTypeahead(input) {
             input.value = entry.dataset.value;
             if (picked) {
                 setPick(entry.dataset.pick ?? "");
+                unflag();
             }
             input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
             // A search still pending for the earlier text would open the menu again over the form.

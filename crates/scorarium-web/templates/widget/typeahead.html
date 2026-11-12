@@ -17,4 +17,5 @@
         <input type="hidden" name="{{ picked_name }}" value="{{ picked_value }}">
     {% endif %}
     <div class="dropdown-menu w-100" id="{{ id }}-menu" role="listbox" data-bs-popper="static"></div>
+    {% if let Some(message) = pick_required %}<div class="invalid-feedback">{{ message }}</div>{% endif %}
 </div>
