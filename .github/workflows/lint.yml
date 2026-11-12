@@ -13,7 +13,7 @@ jobs:
     format:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Setup Rust toolchain
               uses: dtolnay/rust-toolchain@master
               with:
@@ -25,14 +25,14 @@ jobs:
     dprint:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Setup dprint
-              uses: dprint/check@v2.2
+              uses: dprint/check@v2.6
 
     djlint:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Setup djlint
               run: pipx install djlint==1.49.9
             - name: Check HTML template formatting
@@ -42,20 +42,20 @@ jobs:
     build:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Setup Rust toolchain
               uses: dtolnay/rust-toolchain@master
               with:
                 toolchain: stable
                 components: clippy
             - name: Setup Rust cache
-              uses: swatinem/rust-cache@v2
+              uses: swatinem/rust-cache@v2.9.3
             - name: Build
               run: cargo build --all-targets --all-features
             - name: Clippy
               run: cargo clippy --no-deps --all-targets --all-features
             - name: Setup sqlx-cli
-              uses: taiki-e/install-action@v2
+              uses: taiki-e/install-action@v2.90.3
               with:
                 tool: sqlx-cli
             # 'cargo sqlx prepare' overrides SQLX_OFFLINE, so this checks the .sqlx/ metadata
@@ -70,16 +70,16 @@ jobs:
     test:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Setup Rust toolchain
               uses: dtolnay/rust-toolchain@master
               with:
                 toolchain: stable
                 components: llvm-tools-preview
             - name: Setup Rust cache
-              uses: swatinem/rust-cache@v2
+              uses: swatinem/rust-cache@v2.9.3
             - name: Setup nextest
-              uses: taiki-e/install-action@v2
+              uses: taiki-e/install-action@v2.90.3
               with:
                 tool: cargo-nextest,cargo-llvm-cov
             - name: Test
@@ -93,7 +93,7 @@ jobs:
                   echo "PERCENT=$PERCENT"
                   echo "COVERAGE_PERCENT=$PERCENT" >> $GITHUB_ENV
             - name: Update coverage badge
-              uses: schneegans/dynamic-badges-action@v1.7.0
+              uses: schneegans/dynamic-badges-action@v1.9.0
               if: github.ref_name == github.event.repository.default_branch
               with:
                 # https://github.com/Notgnoshi/scorarium/settings/secrets/actions
@@ -113,7 +113,7 @@ jobs:
         # Don't fail the pipeline, but do send a strong enough signal to get noticed.
         continue-on-error: true
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7.0.1
             - name: Check vendored asset freshness
               run: |
                   outdated=0
