@@ -77,7 +77,6 @@ struct EntryInput {
     entry: LinkEntry,
     icon: Icon,
     refusal: Option<String>,
-    autofocus: bool,
 }
 
 #[derive(Template)]
@@ -106,7 +105,6 @@ impl LinksInput {
                         .find(|link| link.url.to_string() == url)
                         .map_or(Icon::Link, Icon::link),
                     refusal: refusals.of(&field).map(str::to_owned),
-                    autofocus: refusals.first() == Some(field.as_str()),
                 }
             })
             .collect();
@@ -116,7 +114,6 @@ impl LinksInput {
                 entry: LinkEntry::default(),
                 icon: Icon::Link,
                 refusal: None,
-                autofocus: false,
             },
         }
     }

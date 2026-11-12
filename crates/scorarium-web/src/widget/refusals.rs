@@ -63,9 +63,9 @@ impl Refusals {
             .map(|(_, message)| message.as_str())
     }
 
-    /// Find the first field that was refused
-    pub fn first(&self) -> Option<&str> {
-        self.entries.iter().find_map(|(field, _)| field.as_deref())
+    /// Check whether a field was refused
+    pub fn is_invalid(&self) -> bool {
+        self.entries.iter().any(|(field, _)| field.is_some())
     }
 
     pub fn is_empty(&self) -> bool {

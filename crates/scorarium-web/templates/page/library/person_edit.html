@@ -20,8 +20,7 @@
                                    id="name"
                                    name="name"
                                    value="{{ name }}"
-                                   required
-                                   {% if refusals.first() == Some("name") %}autofocus{% endif %}>
+                                   required>
                             {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
                         </div>
                     </div>

@@ -14,8 +14,7 @@
                    name="link[{{ key }}][url]"
                    value="{{ input.entry.url }}"
                    placeholder="https://"
-                   aria-label="Link"
-                   {% if input.autofocus %}autofocus{% endif %}>
+                   aria-label="Link">
             {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
         </div>
         {% if input.entry.saved.is_some() %}

@@ -20,8 +20,7 @@
                                    id="title"
                                    name="title"
                                    value="{{ form.title }}"
-                                   required
-                                   {% if refusals.first() == Some("title") %}autofocus{% endif %}>
+                                   required>
                             {% if let Some(reason) = refusals.of("title") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
                         </div>
                     </div>
@@ -42,8 +41,7 @@
                                    max="9999"
                                    id="year"
                                    name="year"
-                                   value="{{ form.year }}"
-                                   {% if refusals.first() == Some("year") %}autofocus{% endif %}>
+                                   value="{{ form.year }}">
                             {% if let Some(reason) = refusals.of("year") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
                         </div>
                     </div>

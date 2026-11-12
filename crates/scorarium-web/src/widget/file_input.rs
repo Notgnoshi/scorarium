@@ -24,7 +24,6 @@ pub(crate) struct FileInput {
     pub url_text: String,
     /// Why a Save refused the URL text
     pub refusal: Option<String>,
-    pub autofocus: bool,
     /// The tooltip of the browse button, which is then drawn as an icon
     pub browse_icon: Option<&'static str>,
 }

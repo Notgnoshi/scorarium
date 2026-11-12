@@ -75,6 +75,13 @@ async fn render(
     };
     let queue = ReviewQueue::new(engine, Size::Short, Some(library.id()), opener).await?;
     let record = form.record().map(|(url, _)| url);
+    let mut attrs = vec![
+        ("required", String::new()),
+        ("data-no-default-pick", String::new()),
+    ];
+    if refusals.is_empty() {
+        attrs.push(("autofocus", String::new()));
+    }
     let page = Import {
         base: Base::new(header, "Import a publication", parents),
         library: library.id(),
@@ -89,11 +96,7 @@ async fn render(
                 record.as_ref().map(ToString::to_string).unwrap_or_default(),
             )),
             pick_required: None,
-            attrs: vec![
-                ("required", String::new()),
-                ("autofocus", String::new()),
-                ("data-no-default-pick", String::new()),
-            ],
+            attrs,
         },
         record,
         more: form.more.is_some(),
