@@ -43,7 +43,7 @@ impl Contributors {
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
             value: String::new(),
-            picked: Some(("person", String::new())),
+            picked: Some(("person".to_owned(), String::new())),
             pick_required: Some("Pick a person from the list".to_owned()),
             attrs: vec![("required", String::new())],
         }

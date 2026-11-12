@@ -92,7 +92,7 @@ async fn render(
             placeholder: "978-0-486-25978-9".to_owned(),
             value: form.text,
             picked: Some((
-                "record",
+                "record".to_owned(),
                 record.as_ref().map(ToString::to_string).unwrap_or_default(),
             )),
             pick_required: None,

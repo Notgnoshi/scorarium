@@ -32,7 +32,7 @@ pub struct Typeahead {
     /// The current text
     pub value: String,
     /// The hidden input that stores the picked entity's id: its field name and initial value
-    pub picked: Option<(&'static str, String)>,
+    pub picked: Option<(String, String)>,
     /// The validation error message to display when a pick is *required* (to disallow free text entry)
     pub pick_required: Option<String>,
     /// Any extra attributes to add to the `<input>`

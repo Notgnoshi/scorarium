@@ -112,7 +112,7 @@ impl Contents {
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
             value: name.to_owned(),
-            picked: Some(("person", person.to_owned())),
+            picked: Some(("person".to_owned(), person.to_owned())),
             pick_required: Some("Pick a person from the list".to_owned()),
             attrs: if required {
                 vec![("required", String::new())]
@@ -130,7 +130,7 @@ impl Contents {
             url: format!("/api/library/{}/suggest/work", self.library),
             placeholder: "Work".to_owned(),
             value: self.add.title.clone(),
-            picked: Some(("work", self.add.work.clone())),
+            picked: Some(("work".to_owned(), self.add.work.clone())),
             pick_required: None,
             attrs: vec![
                 ("data-typeahead-with", "person".to_owned()),
