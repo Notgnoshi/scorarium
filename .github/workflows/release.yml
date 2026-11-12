@@ -112,9 +112,7 @@ jobs:
             # Pushing a new :latest is what untags the previous one, so prune here rather than on a schedule.
             - name: Prune untagged images
               if: github.ref_name == github.event.repository.default_branch
-              uses: actions/delete-package-versions@v5
+              uses: dataaxiom/ghcr-cleanup-action@v1.2.2
               with:
-                package-name: scorarium
-                package-type: container
-                min-versions-to-keep: 0
-                delete-only-untagged-versions: "true"
+                package: scorarium
+                delete-untagged: true
