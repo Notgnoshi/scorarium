@@ -42,6 +42,15 @@
         }
     });
 
+    const requests = new WeakMap();
+
+    document.addEventListener("list:remove", (event) => {
+        for (const root of event.target.querySelectorAll("[data-file-input]")) {
+            requests.get(root)?.abort();
+            discard(root);
+        }
+    });
+
     const urlField = (root) => root.querySelector("[data-url-field]");
     const stagedField = (root) => root.querySelector("[data-file-staged]");
 
@@ -145,6 +154,9 @@
         request.addEventListener("error", () => fail("The upload failed."));
         // The loadend event fires exactly once after a load, error, abort, or timeout.
         request.addEventListener("loadend", () => {
+            if (requests.get(root) === request) {
+                requests.delete(root);
+            }
             runningTransfers--;
             if (owner) {
                 release(owner);
@@ -154,6 +166,7 @@
         if (owner) {
             hold(owner);
         }
+        requests.set(root, request);
         request.send(form);
     };
 
