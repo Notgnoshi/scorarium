@@ -1,10 +1,8 @@
-use std::fmt;
-
 use axum::body::Bytes;
 use axum::extract::{FromRequest, RawForm, Request};
 use axum::http::StatusCode;
 use indexmap::IndexMap;
-use serde::de::{DeserializeOwned, Deserializer, SeqAccess, Visitor};
+use serde::de::{DeserializeOwned, Deserializer};
 use serde::{Deserialize, Serialize};
 use serde_qs::{ArrayFormat, Config};
 
@@ -23,40 +21,6 @@ pub(crate) fn from_bytes<T: DeserializeOwned>(input: &[u8]) -> Result<T, serde_q
 /// Write `form` as a query string
 pub(crate) fn to_string<T: Serialize>(form: &T) -> Result<String, serde_qs::Error> {
     CONFIG.serialize_string(form)
-}
-
-/// Read every value of a repeated name, keeping a lone blank one
-pub(crate) fn repeated<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Vec<String>, D::Error> {
-    struct Values;
-
-    impl<'de> Visitor<'de> for Values {
-        type Value = Vec<String>;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("the values of a repeated name")
-        }
-
-        // serde_qs presents one blank value as a unit.
-        fn visit_unit<E>(self) -> Result<Vec<String>, E> {
-            Ok(vec![String::new()])
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Vec<String>, E> {
-            Ok(vec![value.to_owned()])
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
-            let mut values = Vec::new();
-            while let Some(value) = seq.next_element()? {
-                values.push(value);
-            }
-            Ok(values)
-        }
-    }
-
-    deserializer.deserialize_any(Values)
 }
 
 /// Read the entries of a list in the order of the page, discarding their keys

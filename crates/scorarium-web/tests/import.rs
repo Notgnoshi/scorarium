@@ -36,17 +36,14 @@ async fn import_follows_the_holdings_rules() {
         app.engine.stage(source).await.unwrap().id.to_string()
     };
 
-    app.server.post(&url).form(&[("text", "Gymnopedies")]).await;
+    let blank = [("text", "Gymnopedies"), ("holding[0][location]", "")];
+    app.server.post(&url).form(&blank).await;
     assert_eq!(
         holdings(&library).await,
         [HoldingKind::Physical { location: None }]
     );
 
-    let typed = [
-        ("text", "Gnossiennes"),
-        ("kind", "physical"),
-        ("location", "Shelf 3"),
-    ];
+    let typed = [("text", "Gnossiennes"), ("holding[0][location]", "Shelf 3")];
     app.server.post(&url).form(&typed).await;
     assert_eq!(
         holdings(&library).await,
@@ -58,9 +55,10 @@ async fn import_follows_the_holdings_rules() {
     let (score, parts) = (stage("score.pdf").await, stage("parts.pdf").await);
     let files = [
         ("text", "Sarabandes"),
-        ("kind", "digital"),
-        ("staged", score.as_str()),
-        ("staged", parts.as_str()),
+        ("holding[new1][kind]", "digital"),
+        ("holding[new1][staged]", score.as_str()),
+        ("holding[new2][kind]", "digital"),
+        ("holding[new2][staged]", parts.as_str()),
     ];
     app.server.post(&url).form(&files).await;
     assert!(matches!(
@@ -68,8 +66,11 @@ async fn import_follows_the_holdings_rules() {
         [HoldingKind::Digital { .. }, HoldingKind::Digital { .. }]
     ));
 
-    // Digital with no file is refused, so no fourth draft is created.
-    let nothing = [("text", "Nocturnes"), ("kind", "digital")];
+    let no_file = [("text", "Nocturnes"), ("holding[new1][kind]", "digital")];
+    app.server.post(&url).form(&no_file).await;
+    assert_eq!(library.publications().await.unwrap().len(), 3);
+
+    let nothing = [("text", "Nocturnes")];
     app.server.post(&url).form(&nothing).await;
     assert_eq!(library.publications().await.unwrap().len(), 3);
 }
@@ -86,7 +87,7 @@ async fn import_takes_an_identifier_or_a_title() {
 
     app.server
         .post(&url)
-        .form(&[("text", "9780486253923")])
+        .form(&[("text", "9780486253923"), ("holding[0][location]", "")])
         .await;
     let draft = newest(&library).await;
     let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
@@ -94,7 +95,10 @@ async fn import_takes_an_identifier_or_a_title() {
     assert_eq!(draft.title(), None);
     assert_eq!(draft.identifiers(), [isbn]);
 
-    app.server.post(&url).form(&[("text", "Gymnopedies")]).await;
+    app.server
+        .post(&url)
+        .form(&[("text", "Gymnopedies"), ("holding[0][location]", "")])
+        .await;
     assert_eq!(newest(&library).await.title(), Some("Gymnopedies"));
 }
 
@@ -116,18 +120,27 @@ async fn import_more_keeps_locations_and_drops_files() {
     let form = [
         ("text", "Gymnopedies"),
         ("more", "on"),
-        ("kind", "physical"),
-        ("add_location", "Attic"),
-        ("staged", staged.as_str()),
+        ("holding[0][location]", "Attic"),
+        ("holding[new1][kind]", "digital"),
+        ("holding[new1][staged]", staged.as_str()),
     ];
     let response = app.server.post(&url).form(&form).await;
 
     response.assert_status(StatusCode::SEE_OTHER);
     let location = response.header("location");
     let location = location.to_str().unwrap();
-    assert!(location.starts_with(&format!("{url}?")), "{location}");
-    assert!(location.contains("add_location=Attic"), "{location}");
-    assert!(!location.contains(&staged), "{location}");
+    let query = location.strip_prefix(&format!("{url}?")).unwrap();
+    app.server
+        .post(&url)
+        .text(format!("text=Gnossiennes&{query}"))
+        .content_type("application/x-www-form-urlencoded")
+        .await;
+    assert_eq!(
+        holdings(&library).await,
+        [HoldingKind::Physical {
+            location: Some("Attic".into())
+        }]
+    );
 }
 
 #[tokio::test]
@@ -143,7 +156,11 @@ async fn import_attaches_a_picked_candidates_record() {
 
     app.server
         .post(&url)
-        .form(&[("text", "Pro Git"), ("record", record)])
+        .form(&[
+            ("text", "Pro Git"),
+            ("record", record),
+            ("holding[0][location]", ""),
+        ])
         .await;
     let draft = newest(&library).await;
     let links: Vec<String> = draft

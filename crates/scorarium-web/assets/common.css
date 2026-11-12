@@ -234,8 +234,7 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     border-bottom-right-radius: 0;
 }
 
-/* Every entry and the add bar share the box's columns, the kind, the content, and the action, so
-   that they line up. */
+/* Every entry shares the columns of the box, the kind, the content, and the action. */
 .holdings {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -243,36 +242,20 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     align-items: center;
 }
 
-.holdings > [data-entries] {
-    display: contents;
-}
-
-.holdings > [data-entries] > *,
-.holdings > hr,
-.holdings-add {
+.holdings > li {
     grid-column: 1 / -1;
 }
 
-.holding,
-.holdings-add,
-.holdings-add-physical {
+.holding {
     display: grid;
     grid-template-columns: subgrid;
     align-items: center;
 }
 
-/* The file input's hint hangs beneath its field, level with nothing beside it. */
-.holdings-add {
-    align-items: start;
-}
-
-.holdings-add-physical,
-.holdings-add > [data-file-input] {
-    grid-column: 2 / -1;
-}
-
-.holdings-add:has([name="kind"][value="digital"]:checked) > .holdings-add-physical,
-.holdings-add:not(:has([name="kind"][value="digital"]:checked)) > [data-file-input] {
+.holding:has([value="digital"]:checked) > .dropdown,
+.holding:not(:has([value="digital"]:checked)) > [data-file-input],
+.holding:has([data-state="busy"], [data-state="staged"]) > .holding-kind,
+.holding:not(:has([data-state="busy"], [data-state="staged"])) > .holding-digital {
     display: none;
 }
 

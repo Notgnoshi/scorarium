@@ -216,15 +216,13 @@
         return root;
     };
 
-    // Send each file as its own transfer when the input allows several, and refuse extra files
-    // otherwise.
     const uploadAll = (root, files) => {
         const zone = root.closest("[data-drop-zone]");
         if (zone?.querySelector("[data-list-add]")) {
             Array.from(files).forEach((file, i) => upload(i === 0 ? root : place(zone), file));
             return;
         }
-        if (files.length > 1 && !("multiple" in root.dataset)) {
+        if (files.length > 1) {
             setMessage(root, "Paste or drop one file.");
             return;
         }

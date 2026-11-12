@@ -13,16 +13,14 @@ pub(crate) struct FileInput {
     pub hint: &'static str,
     /// Whether files uploads are disabled
     pub disabled: bool,
-    /// Whether one paste, drop, or choice may carry several files, each sent as its own transfer
-    pub multiple: bool,
     /// The name of the hidden field that holds the id of the staged file
-    pub staged_name: Option<String>,
+    pub staged_name: String,
     /// The staged file that the form holds
     pub staged: Option<StagedAsset>,
     /// Whether the name and the progress of a file take the place of the field
     pub shows_file: bool,
     /// The name that the form posts the URL field under
-    pub url_name: Option<String>,
+    pub url_name: String,
     pub url_text: String,
     /// Why a Save refused the URL text
     pub refusal: Option<String>,

@@ -18,7 +18,8 @@ use crate::page::library::view;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::back_query;
 use crate::widget::header::Header;
-use crate::widget::holdings::{AddKind, AddedHolding, Holdings, HoldingsForm};
+use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
+use crate::widget::refusals::Refusals;
 use crate::widget::review_queue::{ReviewQueue, Size};
 use crate::widget::typeahead::Typeahead;
 
@@ -50,7 +51,7 @@ struct Import {
     more: bool,
     holdings: Holdings,
     queue: ReviewQueue,
-    error: Option<String>,
+    refusals: Refusals,
 }
 
 /// Draw the page with the form as submitted
@@ -61,15 +62,16 @@ async fn render(
     form: Form,
     holdings: Holdings,
     opener: Option<&str>,
-    error: Option<(StatusCode, String)>,
+    refusals: Refusals,
 ) -> Result<Response> {
     let parents = vec![
         Crumb::new("Libraries", "/"),
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
-    let (status, error) = match error {
-        Some((status, message)) => (status, Some(message)),
-        None => (StatusCode::OK, None),
+    let status = if refusals.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
     };
     let queue = ReviewQueue::new(engine, Size::Short, Some(library.id()), opener).await?;
     let record = form.record().map(|(url, _)| url);
@@ -97,7 +99,7 @@ async fn render(
         more: form.more.is_some(),
         holdings,
         queue,
-        error,
+        refusals,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
@@ -112,10 +114,19 @@ pub async fn get(
     body: FormBody,
 ) -> Result<Response> {
     let form: Form = body.read()?;
-    let holdings: HoldingsForm = body.read()?;
+    let mut holdings: HoldingsForm = body.read()?;
+    if holdings.is_empty() {
+        holdings = HoldingsForm::starting();
+    }
     let library = view::load(&engine, &library).await?;
-    let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
-    let holdings = empty.resubmitted(&engine, &holdings);
+    let refusals = Refusals::default();
+    let holdings = Holdings::new(
+        &engine,
+        library.id(),
+        &holdings,
+        &refusals,
+        settings.files_allowed(&engine),
+    );
     render(
         &engine,
         header,
@@ -123,7 +134,7 @@ pub async fn get(
         form,
         holdings,
         uri.path_and_query().map(|p| p.as_str()),
-        None,
+        refusals,
     )
     .await
 }
@@ -152,40 +163,16 @@ fn seed(text: &str, record: Option<ExternalRecord>) -> ImportSeed {
     }
 }
 
-/// List the holdings to import, which defaults to one physical holding with no location
-fn holdings_to_add(holdings: &HoldingsForm) -> scorarium_engine::Result<Vec<AddedHolding>> {
-    let mut added = holdings.added();
-    if added.is_empty() {
-        if holdings.kind() == AddKind::Digital {
-            return Err(scorarium_engine::Error::InvalidValue(
-                "Add a file, or switch to Physical.".to_owned(),
-            ));
-        }
-        added.push(AddedHolding::Physical {
-            location: String::new(),
-        });
-    }
-    Ok(added)
-}
-
 /// Create the draft, and return the path of its edit page
 async fn import(
-    engine: &Engine,
     library: &Library,
     text: &str,
     record: Option<ExternalRecord>,
-    holdings: &HoldingsForm,
+    holdings: &[AddedHolding],
 ) -> scorarium_engine::Result<String> {
-    let added = holdings_to_add(holdings)?;
-    let gone = added
-        .iter()
-        .any(|holding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none()));
-    if gone {
-        return Err(scorarium_engine::Error::InvalidValue(
-            "A file is no longer available. Choose it again.".to_owned(),
-        ));
-    }
-    let (first, rest) = added.split_first().expect("holdings_to_add is not empty");
+    let (first, rest) = holdings
+        .split_first()
+        .expect("A parsed form with no refusal adds a holding");
     let mut draft = library.import(seed(text, record), first.as_new()).await?;
     // The draft exists by now, so a failure to add a later holding is logged and not shown. The
     // edit page can add the holding again.
@@ -214,39 +201,43 @@ pub async fn post(
     let holdings: HoldingsForm = body.read()?;
     let library = view::load(&engine, &library).await?;
     let record = form.record().map(|(_, record)| record);
-    match import(&engine, &library, &form.text, record, &holdings).await {
-        Ok(_) if form.more.is_some() => {
-            // The next import keeps the holdings but not the files, because a file belongs to one
-            // publication.
-            let more = format!(
-                "/library/{}/import?more=on&{}",
-                library.id(),
-                holdings.query_without_staged()
-            );
-            Ok(Redirect::to(&more).into_response())
-        }
-        Ok(edit) => {
-            let opener = format!(
-                "/library/{}/import?{}",
-                library.id(),
-                holdings.query_without_staged()
-            );
-            Ok(Redirect::to(&format!("{edit}{}", back_query(&opener))).into_response())
-        }
-        Err(e) => {
-            let (status, error) = form_error(e)?;
-            let empty = Holdings::empty(library.id(), settings.files_allowed(&engine));
-            let holdings = empty.resubmitted(&engine, &holdings);
-            render(
-                &engine,
-                header,
-                &library,
-                form,
-                holdings,
-                uri.path_and_query().map(|p| p.as_str()),
-                Some((status, error)),
-            )
-            .await
+    let mut refusals = Refusals::default();
+    let edits = holdings.parse(&engine, &[], &mut refusals);
+    if refusals.is_empty() {
+        match import(&library, &form.text, record, &edits.add).await {
+            Ok(edit) => {
+                // The next import keeps the physical holdings but not the files, because a file
+                // belongs to one publication.
+                let query = holdings.physical_query();
+                let path = if form.more.is_some() {
+                    format!("/library/{}/import?more=on&{query}", library.id())
+                } else {
+                    let opener = format!("/library/{}/import?{query}", library.id());
+                    format!("{edit}{}", back_query(&opener))
+                };
+                return Ok(Redirect::to(&path).into_response());
+            }
+            Err(e) => {
+                let (_, message) = form_error(e)?;
+                refusals.refuse(message);
+            }
         }
     }
+    let holdings = Holdings::new(
+        &engine,
+        library.id(),
+        &holdings,
+        &refusals,
+        settings.files_allowed(&engine),
+    );
+    render(
+        &engine,
+        header,
+        &library,
+        form,
+        holdings,
+        uri.path_and_query().map(|p| p.as_str()),
+        refusals,
+    )
+    .await
 }

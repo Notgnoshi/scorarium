@@ -270,7 +270,13 @@ async fn render(
         },
         links: LinksInput::new(&posted.links, publication.links(), &refusals),
         contributors: Contributors::new(publication, None, here.clone()),
-        holdings: Holdings::of(publication, files_allowed).resubmitted(engine, &posted.holdings),
+        holdings: Holdings::of(
+            engine,
+            publication,
+            &posted.holdings,
+            &refusals,
+            files_allowed,
+        ),
         contents: Contents::new(publication, &publication.works().await?, here),
         back,
         refusals,
@@ -310,7 +316,7 @@ pub async fn get(
         picture: PictureForm::default(),
         identifiers: IdentifiersForm::from(publication.identifiers()),
         links: LinksForm::from(publication.links()),
-        holdings: HoldingsForm::default(),
+        holdings: HoldingsForm::from(publication.holdings()),
     };
     render(
         &engine,

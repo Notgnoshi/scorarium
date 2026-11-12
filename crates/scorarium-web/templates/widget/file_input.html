@@ -1,24 +1,18 @@
 <div data-file-input
      data-url="{{ url }}"
      data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}"
-     data-state="{% if staged.is_some() %}staged{% else %}empty{% endif %}"
-     {% if multiple %}data-multiple{% endif %}>
-    <input type="file"
-           class="d-none"
-           {% if multiple %}multiple{% endif %}
-           {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
-    {% if let Some(staged_name) = staged_name %}
-        <input type="hidden"
-               name="{{ staged_name }}"
-               value="{% if let Some(staged) = staged %}{{ staged.id }}{% endif %}"
-               data-file-staged>
-    {% endif %}
+     data-state="{% if staged.is_some() %}staged{% else %}empty{% endif %}">
+    <input type="file" class="d-none" {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
+    <input type="hidden"
+           name="{{ staged_name }}"
+           value="{% if let Some(staged) = staged %}{{ staged.id }}{% endif %}"
+           data-file-staged>
     <div {% if shows_file %}data-file-empty{% endif %}>
-        <span class="input-group input-group-sm has-validation"
+        <span class="input-group {% if browse_icon.is_some() %}input-group-sm{% endif %} has-validation"
               {% if disabled %}title="File uploads are disabled"{% endif %}>
             <input type="text"
                    inputmode="url"
-                   {% if let Some(url_name) = url_name %} name="{{ url_name }}" {% else %} form="no-form" {% endif %}
+                   name="{{ url_name }}"
                    class="form-control {% if refusal.is_some() %}is-invalid{% endif %}"
                    value="{{ url_text }}"
                    placeholder="{{ hint }}"
@@ -61,7 +55,7 @@
             </div>
         </div>
         <div data-file-staged-name>
-            <span class="text-truncate" data-file-name>
+            <span class="d-block text-truncate" data-file-name>
                 {%- if let Some(staged) = staged %}{{ staged.filename }}{% endif -%}
             </span>
         </div>
