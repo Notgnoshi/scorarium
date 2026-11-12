@@ -132,9 +132,15 @@ function attachTypeahead(input) {
                     input.blur();
                 }
                 break;
-            case "Tab":
-                close();
+            case "Tab": {
+                const active = isOpen() && menu.querySelector(".dropdown-item.active");
+                if (active && input.dataset.pickRequired) {
+                    active.click();
+                } else {
+                    close();
+                }
                 break;
+            }
         }
     });
 
