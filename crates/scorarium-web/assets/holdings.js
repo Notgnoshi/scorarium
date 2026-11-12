@@ -142,32 +142,4 @@
             add(box);
         }
     });
-
-    // A second submission would add every new holding again, so the buttons of a form with a
-    // Holdings box stay disabled once it is sent.
-    document.addEventListener("submit", (event) => {
-        const form = event.target;
-        if (event.defaultPrevented || !form.querySelector("[data-holdings]")) {
-            return;
-        }
-        // Disabled after the event, so that the pressed button still counts as the submitter.
-        setTimeout(() => {
-            for (const control of form.elements) {
-                if (control.type === "submit" && !control.disabled) {
-                    control.disabled = true;
-                    control.dataset.submitted = "";
-                }
-            }
-        });
-    });
-
-    // A page that the browser restores from its history cache would otherwise keep them disabled.
-    window.addEventListener("pageshow", (event) => {
-        if (event.persisted) {
-            for (const control of document.querySelectorAll("[data-submitted]")) {
-                control.disabled = false;
-                delete control.dataset.submitted;
-            }
-        }
-    });
 }
