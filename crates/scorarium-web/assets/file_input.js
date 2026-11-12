@@ -212,7 +212,16 @@
 
     document.addEventListener("change", (event) => {
         const root = event.target.closest("[data-file-input]");
-        if (!root || event.target.type !== "file") {
+        if (!root) {
+            return;
+        }
+        if (event.target.matches("[data-url-field]")) {
+            if (event.target.value.trim() !== "" && event.target.checkValidity()) {
+                fetchUrl(root, event.target);
+            }
+            return;
+        }
+        if (event.target.type !== "file") {
             return;
         }
         // Copy the files first, because clearing the chooser empties its list. Clearing lets the
