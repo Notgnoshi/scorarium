@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::forms;
 use crate::widget::file_input::FileInput;
+use crate::widget::refusals::Refusals;
 use crate::widget::typeahead::Typeahead;
 
 #[derive(Template)]
@@ -190,6 +191,12 @@ pub(crate) enum AddKind {
     Digital,
 }
 
+pub(crate) struct HoldingEdits {
+    pub add: Vec<AddedHolding>,
+    pub relocate: Vec<(HoldingId, String)>,
+    pub remove: Vec<HoldingId>,
+}
+
 pub(crate) enum AddedHolding {
     Physical { location: String },
     Digital(StagedId),
@@ -241,21 +248,37 @@ impl HoldingsForm {
             .collect()
     }
 
-    /// Pair each existing physical holding with its location as edited
-    pub fn locations(&self) -> scorarium_engine::Result<Vec<(HoldingId, String)>> {
-        self.holding
+    /// Read the edits that the form makes to `holdings`
+    pub fn parse(
+        &self,
+        engine: &Engine,
+        holdings: &[Holding],
+        refusals: &mut Refusals,
+    ) -> HoldingEdits {
+        let known = |id: &String| {
+            let id = id.parse::<HoldingId>().ok()?;
+            holdings.iter().any(|h| h.id == id).then_some(id)
+        };
+        let add = self.added();
+        let relocate = self
+            .holding
             .iter()
             .zip(&self.holding_location)
-            .map(|(id, location)| Ok((parse_id(id)?, location.clone())))
-            .collect()
+            .filter_map(|(id, location)| Some((known(id)?, location.clone())))
+            .collect();
+        let remove: Vec<HoldingId> = self.remove_holding.iter().filter_map(known).collect();
+        let gone = |holding: &AddedHolding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none());
+        if add.iter().any(gone) {
+            refusals.refuse("A file is no longer available. Choose it again.");
+        }
+        let kept = holdings.iter().filter(|h| !remove.contains(&h.id)).count();
+        if kept + add.len() == 0 {
+            refusals.refuse("A publication needs at least one holding.");
+        }
+        HoldingEdits {
+            add,
+            relocate,
+            remove,
+        }
     }
-
-    /// List the existing holdings that the form removes
-    pub fn removed(&self) -> scorarium_engine::Result<Vec<HoldingId>> {
-        self.remove_holding.iter().map(|id| parse_id(id)).collect()
-    }
-}
-
-fn parse_id(id: &str) -> scorarium_engine::Result<HoldingId> {
-    id.parse().map_err(|_| scorarium_engine::Error::NotFound)
 }

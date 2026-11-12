@@ -6,7 +6,6 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
-use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -26,7 +25,7 @@ use crate::widget::contents::Contents;
 use crate::widget::contributors::Contributors;
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
-use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
+use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
@@ -145,35 +144,6 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
     })
 }
 
-/// Refuse the holdings that would leave a missing file or a publication with no holdings
-fn check_holdings(
-    engine: &Engine,
-    publication: &Publication,
-    added: &[AddedHolding],
-    removed: &[HoldingId],
-) -> scorarium_engine::Result<()> {
-    let gone = added
-        .iter()
-        .any(|holding| matches!(holding, AddedHolding::Digital(id) if engine.staged(id).is_none()));
-    if gone {
-        return Err(scorarium_engine::Error::InvalidValue(
-            "A file is no longer available. Choose it again.".to_owned(),
-        ));
-    }
-    let kept = publication
-        .holdings()
-        .iter()
-        .filter(|holding| !removed.contains(&holding.id))
-        .count();
-    if kept + added.len() == 0 {
-        return Err(scorarium_engine::Error::InvalidValue(
-            "A publication needs at least one holding.".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-/// Get the path of the page that shows `publication`
 fn publication_path(library: &Library, publication: &Publication) -> String {
     format!("/library/{}/publication/{}", library.id(), publication.id())
 }
@@ -360,9 +330,7 @@ async fn save(
     publication: &mut Publication,
     posted: &mut Posted,
     parsed: Parsed,
-    added: &[AddedHolding],
-    locations: Vec<(HoldingId, String)>,
-    removed: Vec<HoldingId>,
+    edits: HoldingEdits,
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     publication.set_title(parsed.title).await?;
@@ -404,17 +372,15 @@ async fn save(
     }
     // Additions run before removals so that the publication never passes through having no
     // holdings.
-    for holding in added {
+    for holding in &edits.add {
         publication.add_holding(holding.as_new()).await?;
     }
-    for (id, location) in locations {
-        if publication.holdings().iter().any(|h| h.id == id) {
-            publication
-                .set_physical_holding_location(id, Some(&location))
-                .await?;
-        }
+    for (id, location) in edits.relocate {
+        publication
+            .set_physical_holding_location(id, Some(&location))
+            .await?;
     }
-    for id in removed {
+    for id in edits.remove {
         publication.remove_holding(id).await?;
     }
     Ok(())
@@ -439,23 +405,13 @@ async fn submit(
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
     let parsed = parse(&posted, &mut refusals);
-    let added = posted.holdings.added();
-    let locations = posted.holdings.locations()?;
-    let removed = posted.holdings.removed()?;
-    refusals.check(check_holdings(&engine, &publication, &added, &removed));
+    let edits = posted
+        .holdings
+        .parse(&engine, publication.holdings(), &mut refusals);
     if refusals.is_empty()
         && let Some(parsed) = parsed
     {
-        let saved = match save(
-            &mut publication,
-            &mut posted,
-            parsed,
-            &added,
-            locations,
-            removed,
-        )
-        .await
-        {
+        let saved = match save(&mut publication, &mut posted, parsed, edits).await {
             Ok(()) if commit => publication.commit().await,
             saved => saved,
         };
