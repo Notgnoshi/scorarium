@@ -218,6 +218,9 @@ async fn edit_applies_contributor_edits_in_one_save() {
             ("contributor[new2][person]", "new"),
             ("contributor[new2][name]", "Created"),
             ("contributor[new2][role]", "editor"),
+            ("contributor[new3][person]", "new"),
+            ("contributor[new3][name]", "created"),
+            ("contributor[new3][role]", "arranger"),
         ],
     );
     app.server
@@ -240,6 +243,7 @@ async fn edit_applies_contributor_edits_in_one_save() {
     assert_eq!(
         roles,
         [
+            ("Created", "arranger"),
             ("Created", "editor"),
             ("Kept", "composer"),
             ("Moved", "translator")

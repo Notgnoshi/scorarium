@@ -1,9 +1,10 @@
 use askama::Template;
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::{Contributor, Role};
-use scorarium_engine::entity::Contributed;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::{Person, PersonId};
+use scorarium_engine::search::same_name;
 use scorarium_engine::value::NonBlank;
 use serde::Deserialize;
 
@@ -169,13 +170,27 @@ fn person_id(id: &str) -> scorarium_engine::Result<PersonId> {
 impl ContributorEdits {
     /// Add before removing, so that changing a role never orphans and deletes the person
     pub async fn apply<E: Contributed>(self, entity: &mut E) -> scorarium_engine::Result<()> {
+        let mut created: Vec<(String, PersonId)> = vec![];
         for (pick, role) in self.add {
-            match pick {
-                PersonPick::Existing(person) => entity.add_contributor(person, role).await?,
+            let person = match pick {
+                PersonPick::Existing(person) => person,
                 PersonPick::New(name) => {
-                    entity.create_contributor(name, role).await?;
+                    let known = created
+                        .iter()
+                        .find(|(spelling, _)| same_name(spelling, name.as_str()))
+                        .map(|(_, person)| *person);
+                    match known {
+                        Some(person) => person,
+                        None => {
+                            let spelling = name.as_str().to_owned();
+                            let person = entity.create_contributor(name, role).await?.id();
+                            created.push((spelling, person));
+                            continue;
+                        }
+                    }
                 }
-            }
+            };
+            entity.add_contributor(person, role).await?;
         }
         for (person, role) in &self.remove {
             entity.remove_contributor(*person, role).await?;
