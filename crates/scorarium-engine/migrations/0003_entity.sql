@@ -16,7 +16,7 @@ CREATE TABLE publication (
 ) STRICT;
 
 CREATE TABLE holding (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     publication_id INTEGER NOT NULL REFERENCES publication(id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('physical', 'digital')),
     location TEXT,
