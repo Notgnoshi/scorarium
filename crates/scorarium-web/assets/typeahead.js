@@ -1,5 +1,3 @@
-const DEBOUNCE_MS = 150;
-
 function attachTypeahead(input) {
     if (input.dataset.typeaheadAttached) {
         return;
@@ -7,7 +5,6 @@ function attachTypeahead(input) {
     input.dataset.typeaheadAttached = "true";
     const menu = document.getElementById(input.getAttribute("aria-controls"));
     const picked = input.parentElement.querySelector("input[type=hidden]");
-    let timer = null;
     let controller = null;
 
     const entries = () => [...menu.querySelectorAll(".dropdown-item")];
@@ -88,14 +85,13 @@ function attachTypeahead(input) {
         if (picked) {
             setPick("");
         }
-        clearTimeout(timer);
         const text = input.value.trim();
         if (!text) {
             controller?.abort();
             close();
             return;
         }
-        timer = setTimeout(() => refresh(text), DEBOUNCE_MS);
+        refresh(text);
     });
 
     input.addEventListener("keydown", (event) => {
@@ -151,7 +147,6 @@ function attachTypeahead(input) {
             }
             input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
             // A search still pending for the earlier text would open the menu again over the form.
-            clearTimeout(timer);
             controller?.abort();
             close();
         }
