@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{Identifier, Publication, PublicationId};
@@ -22,7 +22,7 @@ use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
-use crate::widget::contributors::Contributors;
+use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
@@ -55,6 +55,7 @@ struct Posted {
     picture: PictureForm,
     identifiers: IdentifiersForm,
     links: LinksForm,
+    contributors: ContributorsForm,
     holdings: HoldingsForm,
 }
 
@@ -65,6 +66,7 @@ impl Posted {
             picture: body.read()?,
             identifiers: body.read()?,
             links: body.read()?,
+            contributors: body.read()?,
             holdings: body.read()?,
         })
     }
@@ -82,7 +84,7 @@ struct Edit {
     identifiers: IdentifiersInput,
     tags: TagsInput,
     links: LinksInput,
-    contributors: Contributors,
+    contributors: ContributorsInput,
     holdings: Holdings,
     contents: Contents,
     back: Back,
@@ -98,10 +100,17 @@ struct Parsed {
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
+    contributors: ContributorEdits,
     picture: PictureEdit,
 }
 
-fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
+async fn parse(
+    engine: &Engine,
+    library: LibraryId,
+    posted: &mut Posted,
+    refusals: &mut Refusals,
+) -> Result<Option<Parsed>> {
+    let contributors = posted.contributors.parse(engine, library, refusals).await?;
     let form = &posted.form;
     let title = refusals.parse("title", &form.title);
     let classification = form
@@ -129,10 +138,10 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
     let links = posted.links.parse(refusals);
     let picture = posted.picture.parse(refusals);
     if !refusals.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(Parsed {
-        title: title?,
+    Ok(title.zip(picture).map(|(title, picture)| Parsed {
+        title,
         classification,
         year,
         stars,
@@ -140,8 +149,9 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         add_tags,
         remove_tags,
         links,
-        picture: picture?,
-    })
+        contributors,
+        picture,
+    }))
 }
 
 fn publication_path(library: &Library, publication: &Publication) -> String {
@@ -270,7 +280,13 @@ async fn render(
             tags: publication.tags().to_vec(),
         },
         links: LinksInput::new(&posted.links, publication.links(), &refusals),
-        contributors: Contributors::new(publication, None, here.clone()),
+        contributors: ContributorsInput::new(
+            &posted.contributors,
+            publication.contributors(),
+            library.id(),
+            &here,
+            &refusals,
+        ),
         holdings: Holdings::of(
             engine,
             publication,
@@ -317,6 +333,7 @@ pub async fn get(
         picture: PictureForm::default(),
         identifiers: IdentifiersForm::from(publication.identifiers()),
         links: LinksForm::from(publication.links()),
+        contributors: ContributorsForm::from(publication.contributors()),
         holdings: HoldingsForm::from(publication.holdings()),
     };
     render(
@@ -366,6 +383,8 @@ async fn save(
         publication.add_link(url).await?;
     }
     posted.links = LinksForm::from(publication.links());
+    parsed.contributors.apply(publication).await?;
+    posted.contributors = ContributorsForm::from(publication.contributors());
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
     }
@@ -411,7 +430,7 @@ async fn submit(
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
-    let parsed = parse(&posted, &mut refusals);
+    let parsed = parse(&engine, library.id(), &mut posted, &mut refusals).await?;
     let edits = posted
         .holdings
         .parse(&engine, publication.holdings(), &mut refusals);
