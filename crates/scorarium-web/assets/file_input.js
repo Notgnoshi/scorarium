@@ -183,9 +183,47 @@
         post(root, id, form);
     };
 
+    const textFieldSelector = [
+        "textarea",
+        "input:not([type])",
+        "input[type=text], input[type=search], input[type=url], input[type=email]",
+        "input[type=tel], input[type=password], input[type=number]",
+        "[contenteditable]:not([contenteditable=false])",
+    ].join(", ");
+
+    const isFree = (root) =>
+        root.dataset.state === "empty" &&
+        [...root.closest("[data-list-entry]").querySelectorAll(textFieldSelector)].every(
+            (field) => field.value.trim() === "",
+        );
+
+    // Find the file input of a zone that takes the next file, appending an entry when none is free.
+    const place = (zone) => {
+        const add = zone.querySelector("[data-list-add]");
+        if (!add) {
+            return zone.querySelector("[data-file-input]");
+        }
+        const inputs = () => [...zone.querySelectorAll("[data-file-input]")];
+        let root = inputs().find(isFree);
+        if (!root) {
+            add.click();
+            root = inputs().at(-1);
+        }
+        const reveal = root.closest("[data-list-entry]").querySelector("[data-file-reveal]");
+        if (reveal) {
+            reveal.checked = true;
+        }
+        return root;
+    };
+
     // Send each file as its own transfer when the input allows several, and refuse extra files
     // otherwise.
     const uploadAll = (root, files) => {
+        const zone = root.closest("[data-drop-zone]");
+        if (zone?.querySelector("[data-list-add]")) {
+            Array.from(files).forEach((file, i) => upload(i === 0 ? root : place(zone), file));
+            return;
+        }
         if (files.length > 1 && !("multiple" in root.dataset)) {
             setMessage(root, "Paste or drop one file.");
             return;
@@ -278,8 +316,7 @@
     // Find the drop zone that contains the target, unless its file input is disabled.
     const dropZoneAt = (target) => {
         const zone = target.closest("[data-drop-zone]");
-        const root = zone?.querySelector("[data-file-input]");
-        return root && !isDisabled(root) ? zone : null;
+        return zone && !zone.querySelector("[data-url-field]:disabled") ? zone : null;
     };
 
     const carriesDroppable = (event) => {
@@ -290,14 +327,6 @@
     // The enter and leave events fire for every child, so the depth is counted to know when the
     // drag leaves the page.
     let dragDepth = 0;
-
-    const textFieldSelector = [
-        "textarea",
-        "input:not([type])",
-        "input[type=text], input[type=search], input[type=url], input[type=email]",
-        "input[type=tel], input[type=password], input[type=number]",
-        "[contenteditable]:not([contenteditable=false])",
-    ].join(", ");
 
     // Text dropped into a text field is harmless, but a file has no ordinary drop there.
     const isTextDrop = (event) =>
@@ -363,16 +392,20 @@
         if (!zone) {
             return;
         }
-        const root = zone.querySelector("[data-file-input]");
-        const files = event.dataTransfer.files;
+        const files = Array.from(event.dataTransfer.files);
         if (files.length > 0) {
-            uploadAll(root, files);
+            if (zone.querySelector("[data-list-add]")) {
+                files.forEach((file) => upload(place(zone), file));
+            } else {
+                uploadAll(place(zone), files);
+            }
         } else {
             const url = event.dataTransfer
                 .getData("text/uri-list")
                 .split(/\r?\n/)
                 .find((entry) => /^https?:\/\//.test(entry));
             if (url) {
+                const root = place(zone);
                 const field = urlField(root);
                 field.value = url;
                 fetchUrl(root, field);
