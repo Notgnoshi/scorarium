@@ -148,6 +148,10 @@ impl Holdings {
             staged_name: None,
             staged: None,
             shows_file: false,
+            url_name: None,
+            url_text: String::new(),
+            refusal: None,
+            autofocus: false,
         }
     }
 }

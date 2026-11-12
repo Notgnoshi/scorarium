@@ -21,6 +21,12 @@ pub(crate) struct FileInput {
     pub staged: Option<StagedAsset>,
     /// Whether the name and the progress of a file take the place of the field
     pub shows_file: bool,
+    /// The name that the form posts the URL field under
+    pub url_name: Option<String>,
+    pub url_text: String,
+    /// Why a Save refused the URL text
+    pub refusal: Option<String>,
+    pub autofocus: bool,
 }
 
 impl askama::filters::HtmlSafe for FileInput {}

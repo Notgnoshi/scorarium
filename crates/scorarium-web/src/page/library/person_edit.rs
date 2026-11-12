@@ -64,6 +64,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         sort_name => refusals.check(sort_name.parse()),
     };
     let links = posted.links.parse(refusals);
+    let picture = posted.picture.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
@@ -71,7 +72,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         name: name?,
         sort_name: sort_name?,
         links,
-        picture: posted.picture.parse(),
+        picture: picture?,
     })
 }
 
@@ -108,7 +109,11 @@ async fn render(
     let draft = person.is_draft();
     let form = posted.form;
     let page = Edit {
-        picture: PictureInput::profile(person, files_allowed).resubmitted(engine, &posted.picture),
+        picture: PictureInput::profile(person, files_allowed).resubmitted(
+            engine,
+            &posted.picture,
+            &refusals,
+        ),
         base: Base::new(header, person.name(), parents),
         heading: EditHeading {
             title: person.name().to_owned(),

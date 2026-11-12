@@ -128,6 +128,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
     let links = posted.links.parse(refusals);
+    let picture = posted.picture.parse(refusals);
     if !refusals.is_empty() {
         return None;
     }
@@ -140,7 +141,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         add_tags,
         remove_tags,
         links,
-        picture: posted.picture.parse(),
+        picture: picture?,
     })
 }
 
@@ -237,8 +238,11 @@ async fn render(
     let draft = publication.is_draft();
     let form = posted.form;
     let page = Edit {
-        picture: PictureInput::cover(publication, files_allowed)
-            .resubmitted(engine, &posted.picture),
+        picture: PictureInput::cover(publication, files_allowed).resubmitted(
+            engine,
+            &posted.picture,
+            &refusals,
+        ),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),

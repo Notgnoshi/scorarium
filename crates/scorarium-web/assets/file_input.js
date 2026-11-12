@@ -216,7 +216,7 @@
             return;
         }
         if (event.target.matches("[data-url-field]")) {
-            if (event.target.value.trim() !== "" && event.target.checkValidity()) {
+            if (event.target.value.trim() !== "") {
                 fetchUrl(root, event.target);
             }
             return;
@@ -237,7 +237,7 @@
             return;
         }
         event.preventDefault();
-        if (event.target.reportValidity() && event.target.value.trim() !== "") {
+        if (event.target.value.trim() !== "") {
             fetchUrl(root, event.target);
         }
     });
@@ -256,7 +256,7 @@
         }
         // The pasted text has not landed in the field yet.
         setTimeout(() => {
-            if (field.value.trim() !== "" && field.checkValidity()) {
+            if (field.value.trim() !== "") {
                 fetchUrl(root, field);
             }
         });

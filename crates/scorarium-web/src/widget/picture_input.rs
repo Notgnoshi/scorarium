@@ -7,12 +7,14 @@ use serde::Deserialize;
 
 use crate::widget::file_input::FileInput;
 use crate::widget::picture::Picture;
+use crate::widget::refusals::Refusals;
 
 #[derive(Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct PictureForm {
     picture: String,
     remove_picture: Option<String>,
+    picture_url: String,
 }
 
 pub(crate) enum PictureEdit {
@@ -22,15 +24,19 @@ pub(crate) enum PictureEdit {
 }
 
 impl PictureForm {
-    pub fn parse(&self) -> PictureEdit {
-        if !self.picture.is_empty() {
+    pub fn parse(&self, refusals: &mut Refusals) -> Option<PictureEdit> {
+        if !self.picture_url.trim().is_empty() {
+            refusals.refuse_field("picture_url", "Not fetched.");
+            return None;
+        }
+        Some(if !self.picture.is_empty() {
             let Ok(id) = self.picture.parse();
             PictureEdit::Store(id)
         } else if self.remove_picture.is_some() {
             PictureEdit::Clear
         } else {
             PictureEdit::Keep
-        }
+        })
     }
 }
 
@@ -68,12 +74,24 @@ impl PictureInput {
                 staged_name: Some("picture".to_owned()),
                 staged: None,
                 shows_file: false,
+                url_name: Some("picture_url".to_owned()),
+                url_text: String::new(),
+                refusal: None,
+                autofocus: false,
             },
         }
     }
 
     /// Draw the input as a submitted form left it, for a form that was not saved
-    pub fn resubmitted(mut self, engine: &Engine, form: &PictureForm) -> PictureInput {
+    pub fn resubmitted(
+        mut self,
+        engine: &Engine,
+        form: &PictureForm,
+        refusals: &Refusals,
+    ) -> PictureInput {
+        self.input.url_text.clone_from(&form.picture_url);
+        self.input.refusal = refusals.of("picture_url").map(str::to_owned);
+        self.input.autofocus = refusals.first() == Some("picture_url");
         let Ok(id) = form.picture.parse::<StagedId>();
         let staged = engine.staged(&id).filter(|_| !form.picture.is_empty());
         if staged.is_some() {

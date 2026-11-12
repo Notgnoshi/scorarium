@@ -16,18 +16,22 @@
     <div {% if shows_file %}data-file-empty{% endif %}>
         <span class="input-group input-group-sm has-validation"
               {% if disabled %}title="File uploads are disabled"{% endif %}>
-            <input type="url"
-                   form="no-form"
-                   class="form-control"
-                   pattern="https?://.+"
+            <input type="text"
+                   inputmode="url"
+                   {% if let Some(url_name) = url_name %} name="{{ url_name }}" {% else %} form="no-form" {% endif %}
+                   class="form-control {% if refusal.is_some() %}is-invalid{% endif %}"
+                   value="{{ url_text }}"
                    placeholder="{{ hint }}"
                    data-url-field
+                   {% if autofocus %}autofocus{% endif %}
                    {% if disabled %}disabled{% endif %}>
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-browse
                     {% if disabled %}disabled{% endif %}>Browse</button>
-            <div class="invalid-feedback" data-file-message></div>
+            <div class="invalid-feedback" data-file-message>
+                {%- if let Some(refusal) = refusal %}{{ refusal }}{% endif -%}
+            </div>
         </span>
     </div>
     {% if shows_file %}
