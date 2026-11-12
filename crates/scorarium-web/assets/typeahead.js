@@ -133,7 +133,35 @@ function attachTypeahead(input) {
         }
     });
 
-    input.addEventListener("blur", close);
+    let windowLeft = false;
+    let clickedIn = false;
+
+    input.addEventListener("focus", () => {
+        if (windowLeft) {
+            windowLeft = false;
+            return;
+        }
+        input.select();
+        const text = input.value.trim();
+        if (text) {
+            refresh(text);
+        }
+    });
+
+    input.addEventListener("mousedown", () => {
+        clickedIn = document.activeElement !== input;
+    });
+
+    input.addEventListener("click", () => {
+        if (clickedIn) {
+            input.select();
+        }
+    });
+
+    input.addEventListener("blur", () => {
+        windowLeft = !document.hasFocus();
+        close();
+    });
 
     // Keep focus in the input until the entry's click fires, so blur does not close the menu first.
     menu.addEventListener("pointerdown", (event) => event.preventDefault());
