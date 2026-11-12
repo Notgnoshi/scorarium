@@ -1,23 +1,58 @@
 <div data-file-input
      data-url="{{ url }}"
      data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}"
+     data-state="{% if staged.is_some() %}staged{% else %}empty{% endif %}"
      {% if multiple %}data-multiple{% endif %}>
     <input type="file"
            class="d-none"
            {% if multiple %}multiple{% endif %}
            {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
-    <span class="input-group input-group-sm" {% if disabled %}title="File uploads are disabled"{% endif %}>
-        <input type="url"
-               form="no-form"
-               class="form-control"
-               pattern="https?://.+"
-               placeholder="{{ hint }}"
-               data-url-field
-               {% if disabled %}disabled{% endif %}>
-        <button type="button"
-                class="btn btn-outline-secondary"
-                data-browse
-                {% if disabled %}disabled{% endif %}>Browse</button>
-    </span>
-    <div class="form-text">Drag, paste, or browse</div>
+    {% if let Some(staged_name) = staged_name %}
+        <input type="hidden"
+               name="{{ staged_name }}"
+               value="{% if let Some(staged) = staged %}{{ staged.id }}{% endif %}"
+               data-file-staged>
+    {% endif %}
+    <div {% if shows_file %}data-file-empty{% endif %}>
+        <span class="input-group input-group-sm has-validation"
+              {% if disabled %}title="File uploads are disabled"{% endif %}>
+            <input type="url"
+                   form="no-form"
+                   class="form-control"
+                   pattern="https?://.+"
+                   placeholder="{{ hint }}"
+                   data-url-field
+                   {% if disabled %}disabled{% endif %}>
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    data-browse
+                    {% if disabled %}disabled{% endif %}>Browse</button>
+            <div class="invalid-feedback" data-file-message></div>
+        </span>
+    </div>
+    {% if shows_file %}
+        <div data-file-busy>
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-truncate" data-file-name></span>
+                <div class="progress flex-grow-1"
+                     role="progressbar"
+                     aria-label="Upload progress"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="0"
+                     data-file-progress>
+                    <div class="progress-bar"></div>
+                </div>
+                <span data-file-percent></span>
+                <div class="spinner-border spinner-border-sm" role="status" title="Fetching" data-file-spinner>
+                    <span class="visually-hidden">Fetching</span>
+                </div>
+            </div>
+        </div>
+        <div data-file-staged-name>
+            <span class="text-truncate" data-file-name>
+                {%- if let Some(staged) = staged %}{{ staged.filename }}{% endif -%}
+            </span>
+        </div>
+    {% endif %}
 </div>

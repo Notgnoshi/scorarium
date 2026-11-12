@@ -64,8 +64,6 @@
         const { id, name, source } = event.detail;
         const entry = clone(box, "template[data-pending]");
         entry.dataset.transfer = id;
-        // The end of the transfer does not repeat the name, which a failure must show.
-        entry.dataset.name = name;
         if (source === "url") {
             entry.querySelector("[data-label]").textContent = `Fetching ${name}`;
             entry.querySelector("[data-progress]").hidden = true;
@@ -102,16 +100,7 @@
             entry.replaceWith(staged);
             return;
         }
-        const failed = clone(box, "template[data-failed]");
-        failed.dataset.transfer = event.detail.id;
-        // A refusal has no name, and a fetch's message often names its URL already, so the name
-        // leads the message only when the message lacks it.
-        const { name } = entry.dataset;
-        const { message } = event.detail;
-        const named = !name || message.includes(name);
-        const text = named ? message : `${name}: ${message}`;
-        failed.querySelector("[data-message]").textContent = text;
-        entry.replaceWith(failed);
+        entry.remove();
     });
 
     document.addEventListener("click", (event) => {
@@ -119,11 +108,8 @@
         if (!box) {
             return;
         }
-        const dismiss = event.target.closest("[data-transfer] [data-dismiss]");
         const removeButton = event.target.closest("[data-remove]");
-        if (dismiss) {
-            dismiss.closest("[data-transfer]").remove();
-        } else if (removeButton) {
+        if (removeButton) {
             remove(box, removeButton);
         } else if (event.target.closest("[data-add-button]")) {
             add(box);

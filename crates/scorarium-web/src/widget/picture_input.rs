@@ -38,8 +38,6 @@ impl PictureForm {
 #[template(path = "widget/picture_input.html")]
 pub(crate) struct PictureInput {
     picture: Picture,
-    /// The staged file that the form will store as the picture once submitted
-    staged: Option<StagedId>,
     remove: bool,
     input: FileInput,
 }
@@ -60,7 +58,6 @@ impl PictureInput {
     fn new(picture: Picture, files_allowed: bool) -> PictureInput {
         PictureInput {
             picture,
-            staged: None,
             remove: false,
             input: FileInput {
                 url: "/api/stage".to_owned(),
@@ -68,6 +65,9 @@ impl PictureInput {
                 hint: "Paste a picture or URL",
                 disabled: !files_allowed,
                 multiple: false,
+                staged_name: Some("picture".to_owned()),
+                staged: None,
+                shows_file: false,
             },
         }
     }
@@ -75,9 +75,10 @@ impl PictureInput {
     /// Draw the input as a submitted form left it, for a form that was not saved
     pub fn resubmitted(mut self, engine: &Engine, form: &PictureForm) -> PictureInput {
         let Ok(id) = form.picture.parse::<StagedId>();
-        if !form.picture.is_empty() && engine.staged(&id).is_some() {
+        let staged = engine.staged(&id).filter(|_| !form.picture.is_empty());
+        if staged.is_some() {
             self.picture = self.picture.showing(Some(format!("/api/stage/{id}")));
-            self.staged = Some(id);
+            self.input.staged = staged;
         } else if form.remove_picture.is_some() {
             self.picture = self.picture.showing(None);
             self.remove = true;

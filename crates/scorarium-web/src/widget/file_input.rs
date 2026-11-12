@@ -1,4 +1,5 @@
 use askama::Template;
+use scorarium_engine::asset::StagedAsset;
 
 /// A control that takes a file and uploads it
 #[derive(Template)]
@@ -14,6 +15,12 @@ pub(crate) struct FileInput {
     pub disabled: bool,
     /// Whether one paste, drop, or choice may carry several files, each sent as its own transfer
     pub multiple: bool,
+    /// The name of the hidden field that holds the id of the staged file
+    pub staged_name: Option<String>,
+    /// The staged file that the form holds
+    pub staged: Option<StagedAsset>,
+    /// Whether the name and the progress of a file take the place of the field
+    pub shows_file: bool,
 }
 
 impl askama::filters::HtmlSafe for FileInput {}

@@ -42,18 +42,83 @@
         }
     });
 
+    const urlField = (root) => root.querySelector("[data-url-field]");
+    const stagedField = (root) => root.querySelector("[data-file-staged]");
+
+    const write = (root, selector, text) => {
+        for (const element of root.querySelectorAll(selector)) {
+            element.textContent = text;
+        }
+    };
+
+    const setMessage = (root, message) => {
+        write(root, "[data-file-message]", message);
+        urlField(root).classList.toggle("is-invalid", message !== "");
+    };
+
+    const setProgress = (root, percent) => {
+        const progress = root.querySelector("[data-file-progress]");
+        if (progress) {
+            progress.setAttribute("aria-valuenow", percent);
+            progress.querySelector(".progress-bar").style.width = `${percent}%`;
+        }
+        write(root, "[data-file-percent]", `${percent}%`);
+    };
+
+    const discard = (root) => {
+        const id = stagedField(root)?.value;
+        if (id) {
+            fetch(`${root.dataset.url}/${encodeURIComponent(id)}/discard`, {
+                method: "POST",
+                headers: { "HX-Current-URL": location.href },
+            });
+        }
+    };
+
+    const start = (root, id, name, source) => {
+        setMessage(root, "");
+        write(root, "[data-file-busy] [data-file-name]", name);
+        setProgress(root, 0);
+        const fetching = source === "url";
+        root.querySelector("[data-file-progress]")?.toggleAttribute("hidden", fetching);
+        root.querySelector("[data-file-percent]")?.toggleAttribute("hidden", fetching);
+        root.querySelector("[data-file-spinner]")?.toggleAttribute("hidden", !fetching);
+        root.dataset.state = "busy";
+        root.dispatchEvent(new CustomEvent("upload:start", { bubbles: true, detail: { id, name, source } }));
+    };
+
     const finish = (root, id, result) => {
+        const staged = stagedField(root);
+        if (result.ok) {
+            const { id: stagedId, name } = JSON.parse(result.body);
+            discard(root);
+            if (staged) {
+                staged.value = stagedId;
+            }
+            write(root, "[data-file-staged-name] [data-file-name]", name);
+            root.dataset.state = "staged";
+        } else {
+            root.dataset.state = staged?.value ? "staged" : "empty";
+            setMessage(root, result.message);
+        }
         root.dispatchEvent(new CustomEvent("upload:end", { bubbles: true, detail: { id, ...result } }));
     };
 
     const post = (root, id, form) => {
         const request = new XMLHttpRequest();
         const owner = root.closest("form");
+        const fail = (message) => {
+            if (form.has("url")) {
+                urlField(root).value = form.get("url");
+            }
+            finish(root, id, { ok: false, message });
+        };
         // A fetch has no progress to show, because the browser cannot see the server's download.
         if (form.has("file")) {
             request.upload.addEventListener("progress", (event) => {
                 if (event.lengthComputable) {
                     const { loaded, total } = event;
+                    setProgress(root, Math.floor((loaded / total) * 100));
                     root.dispatchEvent(
                         new CustomEvent("upload:progress", { bubbles: true, detail: { id, loaded, total } }),
                     );
@@ -75,12 +140,9 @@
             // A reverse proxy's own error page lacks the marker, which scorarium shouldn't display
             const page = new DOMParser().parseFromString(request.responseText, "text/html");
             const error = page.querySelector("[data-api-error]");
-            const message = error ? error.textContent.trim() : `The upload failed (${request.status}).`;
-            finish(root, id, { ok: false, message });
+            fail(error ? error.textContent.trim() : `The upload failed (${request.status}).`);
         });
-        request.addEventListener("error", () => {
-            finish(root, id, { ok: false, message: "The upload failed." });
-        });
+        request.addEventListener("error", () => fail("The upload failed."));
         // The loadend event fires exactly once after a load, error, abort, or timeout.
         request.addEventListener("loadend", () => {
             runningTransfers--;
@@ -96,59 +158,35 @@
     };
 
     const upload = (root, file) => {
-        const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: file.name, source: "file" },
-            }),
-        );
-
         const maxSize = Number(root.dataset.maxSize);
         if (file.size > maxSize) {
-            finish(root, id, { ok: false, message: `The file is larger than ${maxSize / 1024 / 1024} MB.` });
+            setMessage(root, `The file is larger than ${maxSize / 1024 / 1024} MB.`);
             return;
         }
+        const id = nextUploadId++;
+        start(root, id, file.name, "file");
         const form = new FormData();
         form.append("file", file);
         post(root, id, form);
-    };
-
-    // A refusal reports through the same events as an upload, so a listener needs no special case.
-    // Its source is "file" so that a listener draws no spinner for a fetch that never starts.
-    const refuse = (root, message) => {
-        const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: "", source: "file" },
-            }),
-        );
-        finish(root, id, { ok: false, message });
     };
 
     // Send each file as its own transfer when the input allows several, and refuse extra files
     // otherwise.
     const uploadAll = (root, files) => {
         if (files.length > 1 && !("multiple" in root.dataset)) {
-            refuse(root, "Paste or drop one file.");
+            setMessage(root, "Paste or drop one file.");
             return;
         }
         Array.from(files).forEach((file) => upload(root, file));
     };
 
-    const isDisabled = (root) => root.querySelector("[data-url-field]").disabled;
+    const isDisabled = (root) => urlField(root).disabled;
 
     const fetchUrl = (root, field) => {
         const url = field.value.trim();
         field.value = "";
         const id = nextUploadId++;
-        root.dispatchEvent(
-            new CustomEvent("upload:start", {
-                bubbles: true,
-                detail: { id, name: url, source: "url" },
-            }),
-        );
+        start(root, id, url, "url");
         const form = new FormData();
         form.append("url", url);
         post(root, id, form);
@@ -158,6 +196,17 @@
         const browse = event.target.closest("[data-file-input] [data-browse]");
         if (browse) {
             browse.closest("[data-file-input]").querySelector("input[type=file]").click();
+        }
+        const clear = event.target.closest("[data-drop-zone] [data-file-clear]");
+        if (clear) {
+            const root = clear.closest("[data-drop-zone]").querySelector("[data-file-input]");
+            discard(root);
+            const staged = stagedField(root);
+            if (staged) {
+                staged.value = "";
+            }
+            setMessage(root, "");
+            root.dataset.state = "empty";
         }
     });
 
@@ -302,7 +351,7 @@
                 .split(/\r?\n/)
                 .find((entry) => /^https?:\/\//.test(entry));
             if (url) {
-                const field = root.querySelector("[data-url-field]");
+                const field = urlField(root);
                 field.value = url;
                 fetchUrl(root, field);
             }

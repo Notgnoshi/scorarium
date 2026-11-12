@@ -1,19 +1,14 @@
 <div data-picture-input data-drop-zone="Drop a picture">
     <div class="position-relative d-inline-block" data-picture>{{ picture }}</div>
-    <input type="hidden"
-           name="picture"
-           value="{% if let Some(staged) = staged %}{{ staged }}{% endif %}"
-           {% if staged.is_some() %}data-staged{% endif %}>
     <input type="hidden" name="remove_picture" value="1" {% if !remove %}disabled{% endif %}>
     <div class="mt-2">{{ input }}</div>
     <button class="btn btn-sm btn-outline-danger mt-2"
             type="button"
             title="Remove the picture"
-            data-remove
+            data-file-clear
             {% if picture.is_placeholder() %}hidden{% endif %}>
         <i class="bi bi-trash"></i> Remove
     </button>
-    <div class="alert alert-danger mt-2 mb-0" data-message role="alert" hidden></div>
     <template data-staged-picture>{{ self.staged_template() }}</template>
     <template data-placeholder-picture>{{ self.placeholder_template() }}</template>
 </div>

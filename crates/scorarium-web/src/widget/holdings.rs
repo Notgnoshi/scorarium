@@ -145,6 +145,9 @@ impl Holdings {
             hint: "Paste a file or URL",
             disabled: !self.files_allowed,
             multiple: true,
+            staged_name: None,
+            staged: None,
+            shows_file: false,
         }
     }
 }

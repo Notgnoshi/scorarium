@@ -121,6 +121,12 @@ fieldset.box > legend {
 }
 
 /* Show every enabled drop zone while a file or link is dragged over the page. */
+[data-file-input]:not([data-state="empty"]) > [data-file-empty],
+[data-file-input]:not([data-state="busy"]) > [data-file-busy],
+[data-file-input]:not([data-state="staged"]) > [data-file-staged-name] {
+    display: none;
+}
+
 [data-drop-zone] {
     position: relative;
 }
