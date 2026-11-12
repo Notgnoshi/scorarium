@@ -30,8 +30,6 @@
         input.value = field.value;
         entry.querySelector(".dropdown-menu").id = `${id}-menu`;
         box.querySelector("[data-entries]").append(entry);
-        // The typeahead finds its menu by id, so it is attached once it is in the page.
-        attachTypeahead(input);
         field.value = "";
         // Let the typeahead cancel its pending request and close its menu.
         field.dispatchEvent(new Event("input"));
