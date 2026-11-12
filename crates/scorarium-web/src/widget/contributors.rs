@@ -45,6 +45,7 @@ impl Contributors {
             value: String::new(),
             picked: Some(("person".to_owned(), String::new())),
             pick_required: Some("Pick a person from the list".to_owned()),
+            refusal: None,
             attrs: vec![("required", String::new())],
         }
     }
@@ -59,6 +60,7 @@ impl Contributors {
             value: String::new(),
             picked: None,
             pick_required: None,
+            refusal: None,
             attrs: vec![("required", String::new())],
         }
     }

@@ -96,6 +96,7 @@ async fn render(
                 record.as_ref().map(ToString::to_string).unwrap_or_default(),
             )),
             pick_required: None,
+            refusal: None,
             attrs,
         },
         record,

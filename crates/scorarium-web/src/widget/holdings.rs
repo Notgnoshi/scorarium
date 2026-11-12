@@ -218,6 +218,7 @@ fn location_input(library: LibraryId, key: &str, location: &str) -> Typeahead {
         value: location.to_owned(),
         picked: None,
         pick_required: None,
+        refusal: None,
         attrs: vec![("aria-label", "Location".to_owned())],
     }
 }

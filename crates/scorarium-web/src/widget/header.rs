@@ -50,6 +50,7 @@ impl Header {
             value: self.query.clone(),
             picked: None,
             pick_required: None,
+            refusal: None,
             attrs: Vec::new(),
         }
     }

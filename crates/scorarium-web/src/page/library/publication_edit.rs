@@ -175,6 +175,7 @@ impl Edit {
             value: value.to_owned(),
             picked: None,
             pick_required: None,
+            refusal: None,
             attrs: vec![],
         }
     }
