@@ -24,20 +24,18 @@ use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::PictureInput;
+use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
     name: String,
     sort_name: String,
-    #[serde(default)]
-    picture: String,
-    remove_picture: Option<String>,
 }
 
 struct Posted {
     form: Form,
+    picture: PictureForm,
     links: LinksForm,
 }
 
@@ -45,6 +43,7 @@ impl Posted {
     fn read(body: &FormBody) -> Result<Posted> {
         Ok(Posted {
             form: body.read()?,
+            picture: body.read()?,
             links: body.read()?,
         })
     }
@@ -54,6 +53,7 @@ struct Parsed {
     name: NonBlank,
     sort_name: NonBlank,
     links: Edits<LinkId, HttpUrl>,
+    picture: PictureEdit,
 }
 
 fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
@@ -71,6 +71,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         name: name?,
         sort_name: sort_name?,
         links,
+        picture: posted.picture.parse(),
     })
 }
 
@@ -107,11 +108,7 @@ async fn render(
     let draft = person.is_draft();
     let form = posted.form;
     let page = Edit {
-        picture: PictureInput::profile(person, files_allowed).resubmitted(
-            engine,
-            &form.picture,
-            form.remove_picture.is_some(),
-        ),
+        picture: PictureInput::profile(person, files_allowed).resubmitted(engine, &posted.picture),
         base: Base::new(header, person.name(), parents),
         heading: EditHeading {
             title: person.name().to_owned(),
@@ -178,11 +175,10 @@ pub async fn get(
     let form = Form {
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
-        picture: String::new(),
-        remove_picture: None,
     };
     let posted = Posted {
         form,
+        picture: PictureForm::default(),
         links: LinksForm::from(person.links()),
     };
     let back = Back::new(
@@ -208,7 +204,6 @@ async fn save(
     posted: &mut Posted,
     parsed: Parsed,
 ) -> scorarium_engine::Result<()> {
-    let form = &posted.form;
     person.rename(parsed.name, parsed.sort_name).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.links.remove {
@@ -220,11 +215,10 @@ async fn save(
     posted.links = LinksForm::from(person.links());
     // The picture is saved last, because the engine refuses a file that is not an image only as it
     // stores the file, and by then the name and links that the person typed are already saved.
-    if !form.picture.is_empty() {
-        let Ok(id) = form.picture.parse();
-        person.set_profile(AssetSource::Staged(id)).await?;
-    } else if form.remove_picture.is_some() {
-        person.clear_profile().await?;
+    match parsed.picture {
+        PictureEdit::Store(id) => person.set_profile(AssetSource::Staged(id)).await?,
+        PictureEdit::Clear => person.clear_profile().await?,
+        PictureEdit::Keep => {}
     }
     Ok(())
 }

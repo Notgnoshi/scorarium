@@ -3,9 +3,36 @@ use scorarium_engine::Engine;
 use scorarium_engine::asset::StagedId;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
+use serde::Deserialize;
 
 use crate::widget::file_input::FileInput;
 use crate::widget::picture::Picture;
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct PictureForm {
+    picture: String,
+    remove_picture: Option<String>,
+}
+
+pub(crate) enum PictureEdit {
+    Keep,
+    Store(StagedId),
+    Clear,
+}
+
+impl PictureForm {
+    pub fn parse(&self) -> PictureEdit {
+        if !self.picture.is_empty() {
+            let Ok(id) = self.picture.parse();
+            PictureEdit::Store(id)
+        } else if self.remove_picture.is_some() {
+            PictureEdit::Clear
+        } else {
+            PictureEdit::Keep
+        }
+    }
+}
 
 #[derive(Template)]
 #[template(path = "widget/picture_input.html")]
@@ -46,12 +73,12 @@ impl PictureInput {
     }
 
     /// Draw the input as a submitted form left it, for a form that was not saved
-    pub fn resubmitted(mut self, engine: &Engine, picture: &str, remove: bool) -> PictureInput {
-        let Ok(id) = picture.parse::<StagedId>();
-        if !picture.is_empty() && engine.staged(&id).is_some() {
+    pub fn resubmitted(mut self, engine: &Engine, form: &PictureForm) -> PictureInput {
+        let Ok(id) = form.picture.parse::<StagedId>();
+        if !form.picture.is_empty() && engine.staged(&id).is_some() {
             self.picture = self.picture.showing(Some(format!("/api/stage/{id}")));
             self.staged = Some(id);
-        } else if remove {
+        } else if form.remove_picture.is_some() {
             self.picture = self.picture.showing(None);
             self.remove = true;
         }

@@ -30,7 +30,7 @@ use crate::widget::holdings::{AddedHolding, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::PictureInput;
+use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
@@ -49,13 +49,11 @@ pub(crate) struct Form {
     add_tag: Vec<String>,
     #[serde(default)]
     remove_tag: Vec<String>,
-    #[serde(default)]
-    picture: String,
-    remove_picture: Option<String>,
 }
 
 struct Posted {
     form: Form,
+    picture: PictureForm,
     identifiers: IdentifiersForm,
     links: LinksForm,
     holdings: HoldingsForm,
@@ -65,6 +63,7 @@ impl Posted {
     fn read(body: &FormBody) -> Result<Posted> {
         Ok(Posted {
             form: body.read()?,
+            picture: body.read()?,
             identifiers: body.read()?,
             links: body.read()?,
             holdings: body.read()?,
@@ -100,6 +99,7 @@ struct Parsed {
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
+    picture: PictureEdit,
 }
 
 fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
@@ -140,6 +140,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         add_tags,
         remove_tags,
         links,
+        picture: posted.picture.parse(),
     })
 }
 
@@ -236,11 +237,8 @@ async fn render(
     let draft = publication.is_draft();
     let form = posted.form;
     let page = Edit {
-        picture: PictureInput::cover(publication, files_allowed).resubmitted(
-            engine,
-            &form.picture,
-            form.remove_picture.is_some(),
-        ),
+        picture: PictureInput::cover(publication, files_allowed)
+            .resubmitted(engine, &posted.picture),
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
@@ -332,11 +330,10 @@ pub async fn get(
         note: text(publication.note()),
         add_tag: vec![],
         remove_tag: vec![],
-        picture: String::new(),
-        remove_picture: None,
     };
     let posted = Posted {
         form,
+        picture: PictureForm::default(),
         identifiers: IdentifiersForm::from(publication.identifiers()),
         links: LinksForm::from(publication.links()),
         holdings: HoldingsForm::default(),
@@ -396,11 +393,10 @@ async fn save(
     // The cover is saved after the other Details fields, because the engine refuses a file that is
     // not an image only as it stores the file, and by then the fields that the person typed are
     // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
-    if !form.picture.is_empty() {
-        let Ok(id) = form.picture.parse();
-        publication.set_cover(AssetSource::Staged(id)).await?;
-    } else if form.remove_picture.is_some() {
-        publication.clear_cover().await?;
+    match parsed.picture {
+        PictureEdit::Store(id) => publication.set_cover(AssetSource::Staged(id)).await?,
+        PictureEdit::Clear => publication.clear_cover().await?,
+        PictureEdit::Keep => {}
     }
     // Additions run before removals so that the publication never passes through having no
     // holdings.
