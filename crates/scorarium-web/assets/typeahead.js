@@ -76,7 +76,12 @@ function attachTypeahead(input) {
             // The fragment lists its best match first, so Enter takes it without arrowing down,
             // unless the field opts out because its free text is usually the intended value.
             if (!("noDefaultPick" in input.dataset)) {
-                highlight(entries()[0]);
+                const all = entries();
+                highlight(
+                    picked?.value
+                        ? all.find((entry) => entry.dataset.pick === picked.value)
+                        : all[0],
+                );
             }
         }
     }
