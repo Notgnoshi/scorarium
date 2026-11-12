@@ -8,7 +8,6 @@ use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::MAX_ASSET_SIZE;
 use scorarium_engine::publication::Publication;
-use scorarium_engine::work::Work;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, MakeSpan, OnResponse, TraceLayer};
 use tracing::{Level, Span};
 
@@ -154,14 +153,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 )
                 .route("/stage/{staged}", get(api::stage::get))
                 .route("/stage/{staged}/discard", post(api::stage::discard))
-                .route(
-                    "/library/{id}/work/{work}/contributor/add",
-                    post(api::contributor::add::<Work>),
-                )
-                .route(
-                    "/library/{id}/work/{work}/contributor/remove",
-                    post(api::contributor::remove::<Work>),
-                )
                 .route(
                     "/library/{id}/publication/{publication}/contents/add",
                     post(api::contents::add),

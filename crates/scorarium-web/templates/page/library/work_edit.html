@@ -25,6 +25,10 @@
                         </div>
                     </div>
                     <div class="row mb-3">
+                        <span class="col-sm-2 col-form-label">Contributors</span>
+                        <div class="col-sm-10">{{ contributors }}</div>
+                    </div>
+                    <div class="row mb-3">
                         <span class="col-sm-2 col-form-label">Classification</span>
                         <div class="col-sm-10">{{ self.classification() }}</div>
                     </div>
@@ -66,5 +70,4 @@
             </div>
         </fieldset>
     </form>
-    <div id="contributors">{{ contributors }}</div>
 {% endblock %}

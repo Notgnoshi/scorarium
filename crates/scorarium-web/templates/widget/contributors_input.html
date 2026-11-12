@@ -1,0 +1,47 @@
+{% import "widget/list.html" as list %}
+{% macro entry(key, input) %}
+    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% if let Some(saved) = input.entry.saved %}
+            <input type="hidden" name="contributor[{{ key }}][saved][person]" value="{{ saved.person }}">
+            <input type="hidden" name="contributor[{{ key }}][saved][role]" value="{{ saved.role }}">
+            <div class="w-50 d-flex align-items-center gap-2">
+                <span class="form-control-plaintext w-auto">{{ input.name }}</span>
+                <a class="btn btn-sm btn-link"
+                   href="/library/{{ library }}/person/{{ saved.person }}/edit?back={{ back|urlencode }}"
+                   title="Edit person">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </div>
+        {% else %}
+            <div class="w-50 position-relative"
+                 data-pick-icon="person"
+                 data-existing="bi-person-check"
+                 data-new="bi-person-plus">
+                {{ input.person.as_ref().unwrap() }}
+                <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+            </div>
+        {% endif %}
+        <div class="w-50">{{ input.role }}</div>
+        {% if input.entry.saved.is_some() %}
+            {% call list::removal("contributor", key, input.entry.removed, "Remove contributor", "Keep this contributor") %}
+            {% endcall %}
+        {% else %}
+            {% call list::remove("Remove contributor") %}
+            {% endcall %}
+        {% endif %}
+    </li>
+{% endmacro %}
+<ul class="list-unstyled mb-0" data-list>
+    {% for input in entries %}
+        {% call entry(input.key, input) %}
+        {% endcall %}
+    {% endfor %}
+    <template>
+        {% call entry("__key__", blank) %}
+        {% endcall %}
+    </template>
+    <li>
+        {% call list::add("Add a contributor") %}
+        {% endcall %}
+    </li>
+</ul>
