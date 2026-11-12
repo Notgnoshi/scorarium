@@ -28,7 +28,14 @@
             <button type="button"
                     class="btn btn-outline-secondary"
                     data-browse
-                    {% if disabled %}disabled{% endif %}>Browse</button>
+                    {% if let Some(tooltip) = browse_icon %}title="{{ tooltip }}"{% endif %}
+                    {% if disabled %}disabled{% endif %}>
+                {% if browse_icon.is_some() %}
+                    <i class="bi bi-upload"></i>
+                {% else %}
+                    Browse
+                {% endif %}
+            </button>
             <div class="invalid-feedback" data-file-message>
                 {%- if let Some(refusal) = refusal %}{{ refusal }}{% endif -%}
             </div>

@@ -72,6 +72,76 @@ fieldset.box > legend {
     object-fit: contain;
 }
 
+.picture-input {
+    width: 10rem;
+}
+
+.picture-frame {
+    position: relative;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    cursor: pointer;
+    border: var(--bs-border-width) dashed var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+}
+
+.picture-frame[data-has-picture] {
+    border-style: solid;
+}
+
+.picture-frame:not([data-has-picture]) {
+    height: 14rem;
+}
+
+.picture-frame > .picture {
+    width: 100%;
+}
+
+.picture-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 2.5rem;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+.picture-frame:not([data-has-picture]) > .picture,
+.picture-frame:not([data-has-picture]) > [data-file-clear],
+.picture-frame[data-has-picture] > .picture-placeholder {
+    display: none;
+}
+
+.picture-frame > [data-file-clear] {
+    --bs-btn-bg: var(--bs-body-bg);
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+}
+
+.picture-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: none;
+    font-size: 2rem;
+    transform: translate(-50%, -50%);
+}
+
+.picture-input:has([data-browse]:disabled) .picture-frame {
+    cursor: default;
+}
+
+.picture-input:not(:has([data-browse]:disabled)) .picture-frame:hover > .picture-hint {
+    display: block;
+}
+
+.picture-input:not(:has([data-browse]:disabled)) .picture-frame:hover > :is(.picture, .picture-placeholder) {
+    opacity: 0.4;
+}
+
 /* Give every thumbnail a 5:7 portrait frame so a listing stays uniform even with uneven images. */
 .thumbnail {
     width: 3.5rem;
@@ -131,8 +201,10 @@ fieldset.box > legend {
     position: relative;
 }
 
-html[data-drop-targets] [data-drop-zone]:not(:has([data-url-field]:disabled))::after {
-    content: attr(data-drop-zone);
+/* A zone that contains a frame draws its overlay on the frame. */
+html[data-drop-targets] [data-drop-zone]:not(:has([data-drop-frame], [data-url-field]:disabled))::after,
+html[data-drop-targets] [data-drop-zone]:not(:has([data-url-field]:disabled)) [data-drop-frame]::after {
+    content: attr(data-drop-zone) attr(data-drop-frame);
     position: absolute;
     inset: 0;
     z-index: 10;
@@ -146,7 +218,8 @@ html[data-drop-targets] [data-drop-zone]:not(:has([data-url-field]:disabled))::a
     border-radius: var(--bs-border-radius);
 }
 
-html[data-drop-targets] [data-drop-zone][data-drop-active]::after {
+html[data-drop-targets] [data-drop-zone][data-drop-active]::after,
+html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::after {
     background: rgba(var(--bs-primary-rgb), 0.15);
     border-color: var(--bs-primary);
 }

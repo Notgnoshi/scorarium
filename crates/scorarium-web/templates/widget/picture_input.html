@@ -1,14 +1,18 @@
-<div data-picture-input data-drop-zone="Drop a picture">
-    <div class="position-relative d-inline-block" data-picture>{{ picture }}</div>
+<div class="picture-input" data-picture-input data-drop-zone>
+    <div class="picture-frame"
+         data-picture-frame
+         data-drop-frame="Drop a picture"
+         {% if src.is_some() %}data-has-picture{% endif %}>
+        <img class="picture" {% if let Some(src) = src %}src="{{ src }}"{% endif %} alt="{{ label }}">
+        <div class="picture-placeholder">
+            {{ icon }}
+            <span class="fs-6">{{ label }}</span>
+        </div>
+        <i class="bi bi-upload picture-hint" title="Browse for a picture"></i>
+        <button type="button" class="btn btn-sm btn-outline-secondary" title="Remove the picture" data-file-clear>
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
     <input type="hidden" name="remove_picture" value="1" {% if !remove %}disabled{% endif %}>
-    <div class="mt-2">{{ input }}</div>
-    <button class="btn btn-sm btn-outline-danger mt-2"
-            type="button"
-            title="Remove the picture"
-            data-file-clear
-            {% if picture.is_placeholder() %}hidden{% endif %}>
-        <i class="bi bi-trash"></i> Remove
-    </button>
-    <template data-staged-picture>{{ self.staged_template() }}</template>
-    <template data-placeholder-picture>{{ self.placeholder_template() }}</template>
+    {{ input }}
 </div>

@@ -4,47 +4,44 @@
             <div class="spinner-border" role="status"><span class="visually-hidden">Working</span></div>
         </div>`;
 
-    const showPicture = (root, templateSelector, src) => {
-        const picture = root.querySelector(templateSelector).content.cloneNode(true);
-        if (src) {
-            picture.querySelector("a")?.setAttribute("href", src);
-            picture.querySelector("img").setAttribute("src", src);
-        }
-        root.querySelector("[data-picture]").replaceChildren(picture);
-    };
+    const frameOf = (event) => event.target.closest("[data-picture-input]")?.querySelector("[data-picture-frame]");
+    const removal = (frame) => frame.parentElement.querySelector("input[name=remove_picture]");
 
     document.addEventListener("upload:start", (event) => {
-        const root = event.target.closest("[data-picture-input]");
-        if (!root) {
+        const frame = frameOf(event);
+        if (!frame) {
             return;
         }
-        root.querySelector("[data-spinner]")?.remove();
-        root.querySelector("[data-picture]").insertAdjacentHTML("beforeend", spinner);
+        frame.querySelector("[data-spinner]")?.remove();
+        frame.insertAdjacentHTML("beforeend", spinner);
     });
 
     document.addEventListener("upload:end", (event) => {
-        const root = event.target.closest("[data-picture-input]");
-        if (!root) {
+        const frame = frameOf(event);
+        if (!frame) {
             return;
         }
-        root.querySelector("[data-spinner]")?.remove();
+        frame.querySelector("[data-spinner]")?.remove();
         if (!event.detail.ok) {
             return;
         }
         const { id } = JSON.parse(event.detail.body);
-        root.querySelector("input[name=remove_picture]").disabled = true;
-        showPicture(root, "[data-staged-picture]", `/api/stage/${encodeURIComponent(id)}`);
-        root.querySelector("[data-file-clear]").hidden = false;
+        frame.querySelector("img").src = `/api/stage/${encodeURIComponent(id)}`;
+        frame.dataset.hasPicture = "";
+        removal(frame).disabled = true;
     });
 
     document.addEventListener("click", (event) => {
-        const remove = event.target.closest("[data-picture-input] [data-file-clear]");
-        if (!remove) {
+        const frame = event.target.closest("[data-picture-frame]");
+        if (!frame) {
             return;
         }
-        const root = remove.closest("[data-picture-input]");
-        root.querySelector("input[name=remove_picture]").disabled = false;
-        showPicture(root, "[data-placeholder-picture]");
-        remove.hidden = true;
+        if (event.target.closest("[data-file-clear]")) {
+            delete frame.dataset.hasPicture;
+            frame.querySelector("img").removeAttribute("src");
+            removal(frame).disabled = false;
+        } else {
+            frame.parentElement.querySelector("[data-browse]").click();
+        }
     });
 }

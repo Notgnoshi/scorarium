@@ -27,6 +27,8 @@ pub(crate) struct FileInput {
     /// Why a Save refused the URL text
     pub refusal: Option<String>,
     pub autofocus: bool,
+    /// The tooltip of the browse button, which is then drawn as an icon
+    pub browse_icon: Option<&'static str>,
 }
 
 impl askama::filters::HtmlSafe for FileInput {}

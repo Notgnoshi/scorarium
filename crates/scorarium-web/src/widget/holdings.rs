@@ -152,6 +152,7 @@ impl Holdings {
             url_text: String::new(),
             refusal: None,
             autofocus: false,
+            browse_icon: None,
         }
     }
 }
