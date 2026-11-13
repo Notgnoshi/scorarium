@@ -34,12 +34,13 @@ impl Settings {
 pub fn router(engine: Engine, settings: Settings) -> Router {
     let trace = TraceLayer::new_for_http()
         .make_span_with(|request: &Request| {
-            // The review queue makes periodic requests, which are too spammy to log
-            let level = if request.uri().path() == "/api/review" {
-                Level::TRACE
-            } else {
-                Level::DEBUG
-            };
+            // Suppress spammy logs that receive requests at a higher rate
+            let path = request.uri().path();
+            let spammy = matches!(
+                path,
+                "/api/review" | "/api/search" | "/api/import/candidates"
+            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"));
+            let level = if spammy { Level::TRACE } else { Level::DEBUG };
             DefaultMakeSpan::new().level(level).make_span(request)
         })
         // Otherwise, log the request as normal
