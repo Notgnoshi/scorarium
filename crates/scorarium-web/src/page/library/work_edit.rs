@@ -19,7 +19,9 @@ use crate::redirect::{Back, BackQuery};
 use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
+use crate::widget::contributors_input::{
+    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
@@ -323,7 +325,14 @@ async fn save(
         work.add_link(url).await?;
     }
     posted.links = LinksForm::from(work.links());
-    parsed.contributors.apply(work).await?;
+    // Additions run first so that changing a role never orphans and deletes the person.
+    let mut people = NewPeople::default();
+    for (pick, role) in parsed.contributors.add {
+        people.attach(work, pick, role).await?;
+    }
+    for (person, role) in &parsed.contributors.remove {
+        work.remove_contributor(*person, role).await?;
+    }
     posted.contributors = ContributorsForm::from(work.contributors());
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;

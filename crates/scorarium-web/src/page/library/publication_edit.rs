@@ -22,7 +22,9 @@ use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::Contents;
-use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
+use crate::widget::contributors_input::{
+    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
@@ -377,7 +379,14 @@ async fn save(
         publication.add_link(url).await?;
     }
     posted.links = LinksForm::from(publication.links());
-    parsed.contributors.apply(publication).await?;
+    // Additions run first so that changing a role never orphans and deletes the person.
+    let mut people = NewPeople::default();
+    for (pick, role) in parsed.contributors.add {
+        people.attach(publication, pick, role).await?;
+    }
+    for (person, role) in &parsed.contributors.remove {
+        publication.remove_contributor(*person, role).await?;
+    }
     posted.contributors = ContributorsForm::from(publication.contributors());
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
