@@ -270,7 +270,8 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     display: none;
 }
 
-[data-list-entry]:has(> .btn-check:checked) :is(.form-control, .form-select, .form-control-plaintext) {
+[data-list-entry]:has(> .btn-check:checked),
+[data-list-entry]:has(> .btn-check:checked) :is(.form-control, .form-select, .form-control-plaintext, a:not(.btn)) {
     color: var(--bs-secondary-color);
     text-decoration: line-through;
 }
