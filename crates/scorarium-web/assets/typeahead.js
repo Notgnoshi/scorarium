@@ -42,10 +42,11 @@ function attachTypeahead(input) {
         }
     }
 
+    const validate = () => input.setCustomValidity(unpicked() ? input.dataset.pickRequired : "");
+
     function setPick(id) {
         picked.value = id;
         picked.dispatchEvent(new Event("change", { bubbles: true }));
-        input.setCustomValidity(unpicked() ? input.dataset.pickRequired : "");
     }
 
     async function refresh(text) {
@@ -97,7 +98,6 @@ function attachTypeahead(input) {
     input.addEventListener("input", () => {
         if (picked) {
             setPick("");
-            unflag();
         }
         const text = input.value.trim();
         if (!text) {
@@ -190,13 +190,24 @@ function attachTypeahead(input) {
     menu.addEventListener("pointerdown", (event) => event.preventDefault());
 
     menu.addEventListener("click", (event) => {
-        const entry = event.target.closest("[data-value]");
-        if (entry) {
-            input.value = entry.dataset.value;
+        const suggestion = event.target.closest("[data-value]");
+        if (suggestion) {
+            input.value = suggestion.dataset.value;
             if (picked) {
-                setPick(entry.dataset.pick ?? "");
-                unflag();
+                setPick(suggestion.dataset.pick ?? "");
             }
+            const fields = [];
+            const listEntry = input.closest("[data-list-entry]");
+            for (const { name, value } of suggestion.attributes) {
+                const field =
+                    name.startsWith("data-fill-") &&
+                    listEntry?.querySelector(`[name$="[${name.slice(10)}]"]`);
+                if (field) {
+                    field.value = value;
+                    fields.push(field);
+                }
+            }
+            fields.forEach((field) => field.dispatchEvent(new Event("change", { bubbles: true })));
             input.dispatchEvent(new CustomEvent("typeahead:pick", { bubbles: true }));
             // A search still pending for the earlier text would open the menu again over the form.
             controller?.abort();
@@ -206,6 +217,12 @@ function attachTypeahead(input) {
 
     if (picked) {
         setPick(picked.value);
+        validate();
+        // Added after the first change, which must keep a flag that the server drew.
+        picked.addEventListener("change", () => {
+            validate();
+            unflag();
+        });
     }
 }
 

@@ -39,6 +39,8 @@ struct Entry {
     text: String,
     draft: bool,
     detail: Option<String>,
+    /// The fields of the list entry that a selection fills, with their values
+    fill: Vec<(&'static str, String)>,
 }
 
 impl Entry {
@@ -48,6 +50,7 @@ impl Entry {
             text,
             draft: false,
             detail: None,
+            fill: vec![],
         }
     }
 }
@@ -87,23 +90,34 @@ pub async fn get(
                 text: person.name().to_owned(),
                 draft: person.is_draft(),
                 detail: None,
+                fill: vec![],
             }),
             Suggested::Work { work, .. } => {
                 let contained = ContainedWork::from(&work);
+                let first = contained.first_contributor();
                 let detail = [
                     contained.catalog_number.as_ref().map(CatalogNumber::as_str),
-                    contained
-                        .first_contributor()
-                        .map(|(contributor, _)| contributor.name.as_str()),
+                    first.map(|(contributor, _)| contributor.name.as_str()),
                 ]
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
+                let (person, name, role) = first.map_or_else(Default::default, |(c, role)| {
+                    (c.person.to_string(), c.name.clone(), role.to_string())
+                });
+                let number = contained.catalog_number.as_ref().map(ToString::to_string);
+                let fill = vec![
+                    ("person", person),
+                    ("name", name),
+                    ("role", role),
+                    ("catalog_number", number.unwrap_or_default()),
+                ];
                 Some(Entry {
                     suggestion_id: Some(work.id().to_string()),
                     text: work.title().to_owned(),
                     draft: work.is_draft(),
                     detail: (!detail.is_empty()).then(|| detail.join(", ")),
+                    fill,
                 })
             }
             Suggested::Publisher(name) => Some(Entry::value(name)),

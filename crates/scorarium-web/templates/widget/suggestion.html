@@ -14,6 +14,15 @@
             data-pick="{{ id }}">{{ caller() }}</button>
 {% endmacro %}
 
+{% macro fill(id, text, fields) %}
+    <button type="button"
+            class="dropdown-item text-wrap"
+            role="option"
+            data-value="{{ text }}"
+            data-pick="{{ id }}"
+            {% for (field, value) in fields.iter() %} data-fill-{{ field }}="{{ value }}"{% endfor %}>{{ caller() }}</button>
+{% endmacro %}
+
 {% macro empty() %}
     <span class="dropdown-item-text">No matches</span>
 {% endmacro %}
