@@ -72,13 +72,22 @@
             {% call entry(key, input) %}
             {% endcall %}
         {% endfor %}
+        {% if let Some(sequence) = sequence %}
+            <li class="mb-2 text-body-secondary">{{ sequence }}</li>
+        {% endif %}
         <template>
             {% call entry("__key__", blank) %}
             {% endcall %}
         </template>
-        <li>
+        <li class="d-flex gap-2">
             {% call list::add("Add a work") %}
             {% endcall %}
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    hx-post="/api/library/{{ library }}/publication/{{ publication }}/contents/sequence/dialog"
+                    hx-target="#contents-dialog">
+                <i class="bi bi-123"></i> Add a sequence
+            </button>
         </li>
     </ul>
 </fieldset>

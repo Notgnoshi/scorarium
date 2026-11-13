@@ -21,6 +21,13 @@ document.addEventListener("htmx:after:settle", (event) => {
     }
 });
 
+// An open modal dialog keeps the cursor out of an answer that is drawn elsewhere.
+document.addEventListener("htmx:before:swap", (event) => {
+    if (event.detail.ctx.hx?.retarget) {
+        event.target.closest?.("[data-dialog-slot] dialog")?.remove();
+    }
+});
+
 // Focus the navbar search box on "/", unless the slash is being typed into something editable.
 document.addEventListener("keydown", (event) => {
     if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {

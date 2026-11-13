@@ -190,6 +190,15 @@ fieldset.box > legend {
     padding: 0 1rem 1rem;
 }
 
+/* The suggestions of a field reach past the edge of the dialog. */
+.sequence-dialog {
+    overflow: visible;
+}
+
+.sequence-number {
+    flex: 0 0 4rem;
+}
+
 /* Show every enabled drop zone while a file or link is dragged over the page. */
 [data-file-input]:not([data-state="empty"]) > [data-file-empty],
 [data-file-input]:not([data-state="busy"]) > [data-file-busy],

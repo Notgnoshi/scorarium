@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 
 use askama::Template;
 use scorarium_engine::Engine;
@@ -7,7 +8,7 @@ use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::{Person, PersonId};
-use scorarium_engine::publication::Publication;
+use scorarium_engine::publication::{Publication, PublicationId};
 use scorarium_engine::search::same_name;
 use scorarium_engine::value::{Classification, NonBlank};
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
@@ -17,6 +18,7 @@ use crate::error::Result;
 use crate::forms;
 use crate::page::form_error;
 use crate::page::library::entity::{self, ContainedWork, book_order, is_primary};
+use crate::widget::confirm::count;
 use crate::widget::contributors_input::{NewPeople, PICK, PersonPick};
 use crate::widget::refusals::Refusals;
 use crate::widget::typeahead::Typeahead;
@@ -69,6 +71,34 @@ pub(crate) struct ContentsEdits {
     pub remove: Vec<WorkId>,
 }
 
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct SequenceForm {
+    /// An id, `new`, or blank
+    person: String,
+    name: String,
+    role: String,
+    title: String,
+    prefix: String,
+    from: String,
+    to: String,
+}
+
+pub(crate) struct Sequence {
+    pub added: usize,
+    pub skipped: usize,
+}
+
+impl fmt::Display for Sequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let added = count(self.added, "work");
+        match self.skipped {
+            0 => write!(f, "Added {added}."),
+            skipped => write!(f, "Added {added}, skipped {skipped}."),
+        }
+    }
+}
+
 impl From<&[Work]> for ContentsForm {
     fn from(works: &[Work]) -> Self {
         let mut contained: Vec<ContainedWork> = works.iter().map(Into::into).collect();
@@ -85,16 +115,70 @@ impl From<&[Work]> for ContentsForm {
 }
 
 /// Find the work among `works` that carries `number`, the lowest id breaking ties
-fn matching_work(works: &[Work], number: &CatalogNumber) -> Option<WorkId> {
+fn matching_work<'a>(works: &'a [Work], number: &CatalogNumber) -> Option<&'a Work> {
     works
         .iter()
         .filter(|work| work.catalog_numbers().contains(number))
-        .map(Work::id)
-        .min_by_key(|id| id.get())
+        .min_by_key(|work| work.id().get())
+}
+
+/// Read a person picker, refusing it against `field`, and keep the works of an existing person
+async fn pick_person(
+    engine: &Engine,
+    library: LibraryId,
+    person: &str,
+    name: &str,
+    field: &str,
+    works_of: &mut HashMap<PersonId, Vec<Work>>,
+    refusals: &mut Refusals,
+) -> Result<Option<PersonPick>> {
+    Ok(match person.trim() {
+        "" => {
+            refusals.refuse_field(field, PICK);
+            None
+        }
+        "new" => refusals.parse(field, name).map(PersonPick::New),
+        id => {
+            let person = refusals.check_field(
+                field,
+                entity::in_library::<Person>(engine, library, id, "person").await,
+            );
+            if let Some(person) = &person
+                && let Entry::Vacant(works) = works_of.entry(person.id())
+            {
+                works.insert(person.works().await?);
+            }
+            person.map(|person| PersonPick::Existing(person.id()))
+        }
+    })
 }
 
 fn find<'a>(works: &'a [Work], saved: &str) -> Option<&'a Work> {
     works.iter().find(|work| work.id().to_string() == saved)
+}
+
+/// Join a catalog prefix and a number, directly after a separator and with a space otherwise
+///
+/// "BWV" gives "BWV 846", and "Sz. 107/" gives "Sz. 107/1".
+fn catalog_number(prefix: &str, n: u32) -> String {
+    let prefix = prefix.trim();
+    if prefix.ends_with(['/', '-', ':']) {
+        format!("{prefix}{n}")
+    } else {
+        format!("{prefix} {n}")
+    }
+}
+
+/// Get the id, name, and role of the first person of `work`, blank when it has none
+fn first_person(work: &ContainedWork) -> (String, String, String) {
+    match work.first_contributor() {
+        Some((contributor, role)) => (
+            contributor.person.to_string(),
+            contributor.name.clone(),
+            role.to_string(),
+        ),
+        None => Default::default(),
+    }
 }
 
 impl ContentsForm {
@@ -156,28 +240,16 @@ impl ContentsForm {
             let contributor = if entry.person.trim().is_empty() && entry.name.trim().is_empty() {
                 Some(None)
             } else {
-                let pick = match entry.person.trim() {
-                    "" => {
-                        refusals.refuse_field(&field("name"), PICK);
-                        None
-                    }
-                    "new" => refusals
-                        .parse(&field("name"), &entry.name)
-                        .map(PersonPick::New),
-                    id => {
-                        let person = refusals.check_field(
-                            &field("name"),
-                            entity::in_library::<Person>(engine, library, id, "person").await,
-                        );
-                        if let Some(person) = &person
-                            && let Some(Some(_)) = number
-                            && let Entry::Vacant(works) = works_of.entry(person.id())
-                        {
-                            works.insert(person.works().await?);
-                        }
-                        person.map(|person| PersonPick::Existing(person.id()))
-                    }
-                };
+                let pick = pick_person(
+                    engine,
+                    library,
+                    &entry.person,
+                    &entry.name,
+                    &field("name"),
+                    &mut works_of,
+                    refusals,
+                )
+                .await?;
                 let role = refusals.parse::<Role>(&field("role"), &entry.role);
                 pick.zip(role).map(Some)
             };
@@ -193,7 +265,7 @@ impl ContentsForm {
                 _ => None,
             };
             let pick = match matched {
-                Some(work) => WorkPick::Existing(work),
+                Some(work) => WorkPick::Existing(work.id()),
                 None => WorkPick::New(NewWork {
                     title,
                     catalog_number,
@@ -223,6 +295,161 @@ impl ContentsForm {
                 .any(|pick| matches!(pick, WorkPick::Existing(added) if added == id))
         });
         Ok(ContentsEdits { add, remove })
+    }
+
+    /// Append an entry for each number of `sequence` that the list lacks
+    pub async fn append(
+        &mut self,
+        engine: &Engine,
+        publication: &Publication,
+        sequence: &SequenceForm,
+        refusals: &mut Refusals,
+    ) -> Result<Option<Sequence>> {
+        let library = publication.library();
+        let title = refusals.parse::<NonBlank>("title", &sequence.title);
+        let prefix = refusals.parse::<NonBlank>("prefix", &sequence.prefix);
+        let role = refusals.parse::<Role>("role", &sequence.role);
+        let mut works_of = HashMap::new();
+        let person = pick_person(
+            engine,
+            library,
+            &sequence.person,
+            &sequence.name,
+            "name",
+            &mut works_of,
+            refusals,
+        )
+        .await?;
+        let range = match (
+            sequence.from.trim().parse::<u32>(),
+            sequence.to.trim().parse::<u32>(),
+        ) {
+            (Ok(from), Ok(to)) if from > to => {
+                refusals.refuse_field("numbers", "From is greater than To.");
+                None
+            }
+            (Ok(from), Ok(to)) if to - from >= 200 => {
+                refusals.refuse_field("numbers", "At most 200 works.");
+                None
+            }
+            (Ok(from), Ok(to)) => Some(from..=to),
+            _ => {
+                refusals.refuse_field("numbers", "Not a number.");
+                None
+            }
+        };
+        let (Some(title), Some(prefix), Some(role), Some(person), Some(range)) =
+            (title, prefix, role, person, range)
+        else {
+            return Ok(None);
+        };
+        let works: &[Work] = match &person {
+            PersonPick::Existing(id) => works_of.get(id).map_or(&[], Vec::as_slice),
+            PersonPick::New(_) => &[],
+        };
+        let mut numbers = Vec::new();
+        for n in range {
+            let joined = catalog_number(prefix.as_str(), n);
+            let Some(number) = refusals.parse::<CatalogNumber>("prefix", &joined) else {
+                return Ok(None);
+            };
+            numbers.push((joined, number));
+        }
+
+        let edits = self
+            .clone()
+            .parse(engine, publication, &mut Refusals::default())
+            .await?;
+        let stays: Vec<WorkPick> = publication
+            .works()
+            .await?
+            .iter()
+            .map(Work::id)
+            .filter(|id| !edits.remove.contains(id))
+            .map(WorkPick::Existing)
+            .collect();
+        let mut listed = edits.add;
+        let mut added = 0;
+        let mut skipped = 0;
+        for (joined, number) in numbers {
+            let (pick, entry) = match matching_work(works, &number) {
+                Some(work) => (
+                    WorkPick::Existing(work.id()),
+                    WorkEntry {
+                        work: work.id().to_string(),
+                        title: work.title().to_owned(),
+                        ..WorkEntry::default()
+                    },
+                ),
+                None => (
+                    WorkPick::New(NewWork {
+                        title: title.clone(),
+                        catalog_number: Some(number),
+                        contributor: Some((person.clone(), role.clone())),
+                    }),
+                    WorkEntry {
+                        person: sequence.person.clone(),
+                        name: sequence.name.clone(),
+                        role: sequence.role.clone(),
+                        title: sequence.title.clone(),
+                        catalog_number: joined,
+                        ..WorkEntry::default()
+                    },
+                ),
+            };
+            if stays
+                .iter()
+                .chain(&listed)
+                .any(|other| pick.is_same_work(other))
+            {
+                skipped += 1;
+                continue;
+            }
+            self.works.push(entry);
+            listed.push(pick);
+            added += 1;
+        }
+        if added == 0 {
+            let message = match skipped {
+                1 => "Already listed.".to_owned(),
+                _ => format!("All {skipped} are already listed."),
+            };
+            refusals.refuse_field("numbers", message);
+            return Ok(None);
+        }
+        Ok(Some(Sequence { added, skipped }))
+    }
+
+    /// Pre-fill the dialog from the last entry, or else from the sole composer or author
+    pub async fn prefill(
+        &self,
+        engine: &Engine,
+        publication: &Publication,
+        works: &[Work],
+    ) -> Result<SequenceForm> {
+        let (person, name, role) = match self.works.last() {
+            Some(entry) if entry.saved.is_none() => {
+                let chosen = match entry.chosen_work() {
+                    Some(id) => {
+                        entity::in_library::<Work>(engine, publication.library(), id, "work")
+                            .await
+                            .ok()
+                    }
+                    None => None,
+                };
+                match chosen {
+                    Some(work) => first_person(&ContainedWork::from(&work)),
+                    None => (entry.person.clone(), entry.name.clone(), entry.role.clone()),
+                }
+            }
+            _ => sole_primary(publication, works),
+        };
+        Ok(SequenceForm {
+            person,
+            name,
+            role,
+            ..SequenceForm::default()
+        })
     }
 }
 
@@ -298,10 +525,12 @@ enum EntryInput {
 #[template(path = "widget/contents.html")]
 pub struct Contents {
     library: LibraryId,
+    publication: PublicationId,
     /// The page that the pencil of a work returns to
     back: String,
     entries: Vec<(String, EntryInput)>,
     blank: EntryInput,
+    sequence: Option<Sequence>,
 }
 
 impl askama::filters::HtmlSafe for Contents {}
@@ -384,14 +613,7 @@ impl Contents {
                 Some(id) => match entity::in_library::<Work>(engine, library, id, "work").await {
                     Ok(work) => {
                         let work = ContainedWork::from(&work);
-                        let (person, name, role) = match work.first_contributor() {
-                            Some((contributor, role)) => (
-                                contributor.person.to_string(),
-                                contributor.name.clone(),
-                                role.to_string(),
-                            ),
-                            None => Default::default(),
-                        };
+                        let (person, name, role) = first_person(&work);
                         let chosen = WorkEntry {
                             person,
                             name,
@@ -419,7 +641,7 @@ impl Contents {
             entries.push((key, input));
         }
 
-        let (person, name, role) = prefill(publication, &stored);
+        let (person, name, role) = sole_primary(publication, &stored);
         let mut blank = new_entry(
             library,
             "__key__",
@@ -438,18 +660,30 @@ impl Contents {
         }
         Ok(Contents {
             library,
+            publication: publication.id(),
             back: back.to_owned(),
             entries,
             blank,
+            sequence: None,
         })
+    }
+
+    /// Report `sequence` and put the cursor in the first entry that it added
+    pub fn with_sequence(mut self, sequence: Sequence) -> Contents {
+        let first = self.entries.len() - sequence.added;
+        if let Some((_, EntryInput::New { title, .. })) = self.entries.get_mut(first) {
+            title.attrs.push(("autofocus", String::new()));
+        }
+        self.sequence = Some(sequence);
+        self
     }
 }
 
-/// Pre-fill the sole composer or author across the publication and its works, if there is one
+/// Find the sole composer or author across the publication and its works, if there is one
 ///
 /// Return the person's id, their name, and the role, with the id and name blank and the
 /// classification's conventional role when there is no sole one.
-fn prefill(publication: &Publication, works: &[Work]) -> (String, String, String) {
+fn sole_primary(publication: &Publication, works: &[Work]) -> (String, String, String) {
     let primary: Vec<(PersonId, &str, &str)> = publication
         .contributors()
         .iter()
@@ -468,5 +702,68 @@ fn prefill(publication: &Publication, works: &[Work]) -> (String, String, String
             };
             (String::new(), String::new(), role.to_owned())
         }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "widget/sequence_dialog.html")]
+pub(crate) struct SequenceDialog {
+    /// The route that Add posts to
+    url: String,
+    person: Typeahead,
+    role: Typeahead,
+    form: SequenceForm,
+    refusals: Refusals,
+}
+
+impl SequenceDialog {
+    /// Draw the dialog with the values of `form` and the refusals of an Add
+    pub fn new(
+        publication: &Publication,
+        form: SequenceForm,
+        refusals: Refusals,
+    ) -> SequenceDialog {
+        let library = publication.library();
+        let field = |field: &str, suggests: &str, placeholder: &str, value: &str| Typeahead {
+            id: format!("sequence-{field}"),
+            name: field.to_owned(),
+            url: format!("/api/library/{library}/suggest/{suggests}"),
+            placeholder: placeholder.to_owned(),
+            value: value.to_owned(),
+            picked: None,
+            pick_required: None,
+            refusal: refusals.of(field).map(str::to_owned),
+            attrs: vec![("required", String::new())],
+        };
+        let mut person = Typeahead {
+            picked: Some(("person".to_owned(), form.person.clone())),
+            pick_required: Some(PICK.to_owned()),
+            ..field("name", "person", "Person", &form.name)
+        };
+        if form.person.trim().is_empty() {
+            person.attrs.push(("autofocus", String::new()));
+        }
+        let role = field("role", "role", "Role", &form.role);
+        SequenceDialog {
+            url: format!(
+                "/api/library/{library}/publication/{}/contents/sequence",
+                publication.id()
+            ),
+            person,
+            role,
+            form,
+            refusals,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_number_joins_a_prefix_and_a_number() {
+        assert_eq!(catalog_number("BWV", 846), "BWV 846");
+        assert_eq!(catalog_number("Sz. 107/", 1), "Sz. 107/1");
     }
 }

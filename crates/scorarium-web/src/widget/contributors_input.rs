@@ -61,6 +61,7 @@ pub(crate) struct ContributorsForm {
     contributor: Vec<ContributorEntry>,
 }
 
+#[derive(Clone)]
 pub(crate) enum PersonPick {
     Existing(PersonId),
     New(NonBlank),

@@ -1,3 +1,4 @@
+pub mod contents;
 pub mod import;
 mod query;
 pub mod review;

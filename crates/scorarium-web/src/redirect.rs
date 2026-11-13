@@ -98,6 +98,17 @@ impl<S: Send + Sync> FromRequestParts<S> for CurrentPage {
     }
 }
 
+impl CurrentPage {
+    /// Read the `?back=` and `?next=` that the page carries in its query string
+    pub fn query(&self) -> BackQuery {
+        self.0
+            .as_deref()
+            .and_then(|page| page.split_once('?'))
+            .and_then(|(_, query)| crate::forms::from_bytes(query.as_bytes()).ok())
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

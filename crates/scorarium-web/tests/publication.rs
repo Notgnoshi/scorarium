@@ -208,6 +208,36 @@ async fn edit_refuses_a_duplicate_work_and_writes_nothing() {
 }
 
 #[tokio::test]
+async fn sequence_writes_nothing() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let works = library.works().await.unwrap();
+    let polichinelle = works.iter().find(|w| w.title() == "Polichinelle").unwrap();
+    let rachmaninoff = polichinelle.contributors()[0].person.to_string();
+    let publication = masterpieces(&library).await;
+    let before = publication.works().await.unwrap().len();
+    app.server
+        .post(&format!(
+            "/api/library/{}/publication/{}/contents/sequence",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("person", rachmaninoff.as_str()),
+            ("name", "Sergei Rachmaninoff"),
+            ("role", "composer"),
+            ("title", "Prelude"),
+            ("prefix", "Op. 3 No."),
+            ("from", "1"),
+            ("to", "5"),
+        ])
+        .await
+        .assert_status_ok();
+    assert_eq!(publication.works().await.unwrap().len(), before);
+    assert_eq!(library.works().await.unwrap().len(), works.len());
+}
+
+#[tokio::test]
 async fn edit_removes_a_contributor_while_adding_a_work_by_them() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
