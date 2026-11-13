@@ -15,7 +15,7 @@ use crate::page::library::entity;
 use crate::widget::refusals::Refusals;
 use crate::widget::typeahead::Typeahead;
 
-const PICK: &str = "Pick a person from the list";
+pub(crate) const PICK: &str = "Pick a person from the list";
 
 #[derive(Clone, Deserialize)]
 struct SavedContributor {

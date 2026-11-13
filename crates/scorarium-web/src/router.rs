@@ -153,18 +153,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 )
                 .route("/stage/{staged}", get(api::stage::get))
                 .route("/stage/{staged}/discard", post(api::stage::discard))
-                .route(
-                    "/library/{id}/publication/{publication}/contents/add",
-                    post(api::contents::add),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/contents/add-range",
-                    post(api::contents::add_range),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/contents/remove",
-                    post(api::contents::remove),
-                )
                 .route("/review", get(api::review::get))
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
                 .route("/review/{kind}/{entity}/retry", post(api::review::retry))

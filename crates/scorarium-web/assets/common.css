@@ -259,6 +259,32 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     display: none;
 }
 
+.work-people,
+.work-title {
+    flex: 2 1 0;
+    min-width: 0;
+}
+
+.work-number {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.work-people > * {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.work-people > * > :first-child {
+    flex: 3 1 0;
+    min-width: 0;
+}
+
+.work-people > * > :last-child {
+    flex: 2 1 0;
+    min-width: 0;
+}
+
 #review-queue tbody[data-collapsed] > tr:not(:first-child),
 #review-queue tbody:not([data-collapsed]) [data-when="collapsed"],
 #review-queue tbody[data-collapsed] [data-when="expanded"] {

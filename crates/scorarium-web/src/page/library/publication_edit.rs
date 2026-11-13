@@ -21,7 +21,7 @@ use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
-use crate::widget::contents::Contents;
+use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
 use crate::widget::contributors_input::{
     ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
@@ -57,6 +57,7 @@ struct Posted {
     links: LinksForm,
     contributors: ContributorsForm,
     holdings: HoldingsForm,
+    contents: ContentsForm,
 }
 
 impl Posted {
@@ -68,6 +69,7 @@ impl Posted {
             links: body.read()?,
             contributors: body.read()?,
             holdings: body.read()?,
+            contents: body.read()?,
         })
     }
 }
@@ -289,7 +291,7 @@ async fn render(
             &refusals,
             files_allowed,
         ),
-        contents: Contents::new(publication, &publication.works().await?, here),
+        contents: Contents::of(engine, publication, &posted.contents, &here, &refusals).await?,
         back,
         refusals,
     };
@@ -329,6 +331,7 @@ pub async fn get(
         links: LinksForm::from(publication.links()),
         contributors: ContributorsForm::from(publication.contributors()),
         holdings: HoldingsForm::from(publication.holdings()),
+        contents: ContentsForm::from(publication.works().await?.as_slice()),
     };
     render(
         &engine,
@@ -349,6 +352,7 @@ async fn save(
     posted: &mut Posted,
     parsed: Parsed,
     edits: HoldingEdits,
+    contents: ContentsEdits,
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     publication.set_title(parsed.title).await?;
@@ -379,18 +383,25 @@ async fn save(
         publication.add_link(url).await?;
     }
     posted.links = LinksForm::from(publication.links());
-    // Additions run first so that changing a role never orphans and deletes the person.
+    if let Some(classification) = parsed.classification {
+        publication.set_classification(classification).await?;
+    }
     let mut people = NewPeople::default();
     for (pick, role) in parsed.contributors.add {
         people.attach(publication, pick, role).await?;
     }
+    for work in contents.add {
+        work.add_to(publication, &mut people).await?;
+    }
+    // Removals run last, because a removal deletes a person who is left with nothing.
     for (person, role) in &parsed.contributors.remove {
         publication.remove_contributor(*person, role).await?;
     }
-    posted.contributors = ContributorsForm::from(publication.contributors());
-    if let Some(classification) = parsed.classification {
-        publication.set_classification(classification).await?;
+    for work in contents.remove {
+        publication.remove_work(work).await?;
     }
+    posted.contributors = ContributorsForm::from(publication.contributors());
+    posted.contents = ContentsForm::from(publication.works().await?.as_slice());
     // The cover is saved after the other Details fields, because the engine refuses a file that is
     // not an image only as it stores the file, and by then the fields that the person typed are
     // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
@@ -434,13 +445,17 @@ async fn submit(
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
     let parsed = parse(&engine, library.id(), &mut posted, &mut refusals).await?;
+    let contents = posted
+        .contents
+        .parse(&engine, &publication, &mut refusals)
+        .await?;
     let edits = posted
         .holdings
         .parse(&engine, publication.holdings(), &mut refusals);
     if refusals.is_empty()
         && let Some(parsed) = parsed
     {
-        let saved = match save(&mut publication, &mut posted, parsed, edits).await {
+        let saved = match save(&mut publication, &mut posted, parsed, edits, contents).await {
             Ok(()) if commit => publication.commit().await,
             saved => saved,
         };
