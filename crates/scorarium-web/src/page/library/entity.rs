@@ -93,6 +93,12 @@ impl ContainedWork {
             .find(|c| c.roles.iter().any(is_primary))
             .map(|c| c.sort_name.to_lowercase())
     }
+
+    /// Get the first person in the order of the publication page, with their first role
+    pub fn first_contributor(&self) -> Option<(&Contributor, &Role)> {
+        let contributor = self.contributors.first()?;
+        Some((contributor, contributor.roles.first()?))
+    }
 }
 
 impl From<&Work> for ContainedWork {

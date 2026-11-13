@@ -2,13 +2,15 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::Entity;
 use scorarium_engine::person::PersonId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
+use scorarium_engine::work::CatalogNumber;
 
 use crate::api::{Query, SUGGESTION_LIMIT};
 use crate::auth::ApiSession;
 use crate::error::Result;
+use crate::page::library::entity::ContainedWork;
 use crate::page::library::view;
 
 /// Map a route's field name to the field it suggests values for
@@ -82,9 +84,12 @@ pub async fn get(
                 detail: None,
             }),
             Suggested::Work { work, .. } => {
+                let contained = ContainedWork::from(&work);
                 let detail = [
-                    work.catalog_numbers().first().map(|n| n.as_str()),
-                    work.contributors().first().map(|c| c.name.as_str()),
+                    contained.catalog_number.as_ref().map(CatalogNumber::as_str),
+                    contained
+                        .first_contributor()
+                        .map(|(contributor, _)| contributor.name.as_str()),
                 ]
                 .into_iter()
                 .flatten()
