@@ -71,6 +71,7 @@ impl PictureInput {
             input: FileInput {
                 url: "/api/stage".to_owned(),
                 accept: Some("image/*"),
+                multiple: false,
                 hint: "Paste a URL",
                 disabled: !files_allowed,
                 staged_name: "picture".to_owned(),

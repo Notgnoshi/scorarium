@@ -227,6 +227,7 @@ fn file_input(key: &str, files_allowed: bool) -> FileInput {
     FileInput {
         url: "/api/stage".to_owned(),
         accept: None,
+        multiple: true,
         hint: "Paste a file or URL",
         disabled: !files_allowed,
         staged_name: format!("holding[{key}][staged]"),
