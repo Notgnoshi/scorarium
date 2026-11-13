@@ -22,7 +22,8 @@ use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors_input::{
     ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
@@ -71,6 +72,7 @@ struct Edit {
     library: LibraryId,
     id: WorkId,
     heading: EditHeading,
+    actions: EditActions,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
@@ -196,6 +198,9 @@ async fn render(
         base: Base::new(header, work.title(), parents),
         heading: EditHeading {
             title: work.title().to_owned(),
+            draft,
+        },
+        actions: EditActions {
             mode: if draft {
                 EditMode::Draft
             } else {

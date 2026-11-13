@@ -20,7 +20,8 @@ use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
@@ -84,6 +85,7 @@ struct Edit {
     library: LibraryId,
     id: PersonId,
     heading: EditHeading,
+    actions: EditActions,
     name: String,
     sort_name: String,
     links: LinksInput,
@@ -117,6 +119,9 @@ async fn render(
         base: Base::new(header, person.name(), parents),
         heading: EditHeading {
             title: person.name().to_owned(),
+            draft,
+        },
+        actions: EditActions {
             mode: if draft {
                 EditMode::Draft
             } else {

@@ -25,7 +25,8 @@ use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
 use crate::widget::contributors_input::{
     ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
@@ -82,6 +83,7 @@ struct Edit {
     library: LibraryId,
     id: PublicationId,
     heading: EditHeading,
+    actions: EditActions,
     form: Form,
     identifiers: IdentifiersInput,
     tags: TagsInput,
@@ -224,6 +226,9 @@ async fn render(
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
+            draft,
+        },
+        actions: EditActions {
             mode: if draft {
                 EditMode::Import {
                     finish: format!(
