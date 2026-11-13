@@ -38,4 +38,24 @@
             entry.remove();
         }
     });
+
+    document.addEventListener("keydown", (event) => {
+        const entry = event.target.closest?.("[data-list-continue]");
+        if (event.key !== "Tab" || event.shiftKey || !entry) {
+            return;
+        }
+        const list = entry.closest("[data-list]");
+        const fields = entry.querySelectorAll(
+            ":is(input:not([type=hidden], [type=checkbox]), select, textarea):enabled",
+        );
+        const required = entry.querySelector(`[name$="[${entry.dataset.listContinue}]"]`);
+        if (
+            entry === [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1) &&
+            event.target === fields[fields.length - 1] &&
+            required.value.trim() !== ""
+        ) {
+            event.preventDefault();
+            append(list);
+        }
+    });
 }
