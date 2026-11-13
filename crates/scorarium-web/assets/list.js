@@ -3,12 +3,24 @@
 
     const append = (list) => {
         const template = list.querySelector(":scope > template");
+        const above = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
         appended += 1;
         const blank = template.innerHTML.replaceAll("__key__", `new${appended}`);
         template.insertAdjacentHTML("beforebegin", blank);
         const entry = template.previousElementSibling;
+        const repeated = [];
+        entry.querySelectorAll("[data-list-repeat] input").forEach((field) => {
+            const source = above?.querySelector(`[name$="${field.name.match(/\[\w+\]$/)[0]}"]`);
+            if (source) {
+                field.value = source.value;
+                repeated.push(field);
+            }
+        });
+        repeated.forEach((field) => field.dispatchEvent(new Event("change", { bubbles: true })));
+        const marked = [...entry.querySelectorAll("[autofocus]")];
         const field =
-            entry.querySelector("[autofocus]") ??
+            marked.find((field) => field.value === "") ??
+            marked[0] ??
             entry.querySelector("input:not([type=hidden]), select, textarea");
         field.focus();
     };
