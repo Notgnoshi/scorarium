@@ -677,6 +677,13 @@ impl Contents {
         self.sequence = Some(sequence);
         self
     }
+
+    /// Check whether the entry at `n` belongs to the newest sequence
+    fn undoable(&self, n: usize) -> bool {
+        self.sequence
+            .as_ref()
+            .is_some_and(|sequence| n >= self.entries.len() - sequence.added)
+    }
 }
 
 /// Find the sole composer or author across the publication and its works, if there is one

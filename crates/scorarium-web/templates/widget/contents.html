@@ -1,5 +1,5 @@
 {% import "widget/list.html" as list %}
-{% macro entry(key, input) %}
+{% macro entry(key, input, undoable) %}
     {% match input %}
     {% when EntryInput::Saved with { work, removed } %}
     <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
@@ -31,7 +31,10 @@
         {% endcall %}
     </li>
     {% when EntryInput::New with { person, role, title, catalog_number, refusal, locked } %}
-    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry data-list-continue="title">
+    <li class="d-flex align-items-start gap-2 mb-2"
+        data-list-entry
+        data-list-continue="title"
+        {% if undoable %}data-list-undoable{% endif %}>
         <div class="work-people" data-lockable data-list-repeat>
             <div>
                 <div class="position-relative"
@@ -69,14 +72,19 @@
     <legend>Contents</legend>
     <ul class="list-unstyled mb-0" data-list>
         {% for (key, input) in entries %}
-            {% call entry(key, input) %}
+            {% call entry(key, input, self.undoable(*loop.index0)) %}
             {% endcall %}
         {% endfor %}
         {% if let Some(sequence) = sequence %}
-            <li class="mb-2 text-body-secondary">{{ sequence }}</li>
+            <li class="d-flex align-items-center gap-2 mb-2 text-body-secondary" data-list-undoable>
+                {{ sequence }}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-list-undo>
+                    <i class="bi bi-arrow-counterclockwise"></i> Undo
+                </button>
+            </li>
         {% endif %}
         <template>
-            {% call entry("__key__", blank) %}
+            {% call entry("__key__", blank, false) %}
             {% endcall %}
         </template>
         <li class="d-flex gap-2">

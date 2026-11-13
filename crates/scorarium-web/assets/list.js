@@ -1,6 +1,18 @@
 {
     let appended = 0;
 
+    const marked = (list) => [...list.querySelectorAll(":scope > [data-list-undoable]")];
+
+    const endOffer = (list) => {
+        for (const element of marked(list)) {
+            if (element.matches("[data-list-entry]")) {
+                element.removeAttribute("data-list-undoable");
+            } else {
+                element.remove();
+            }
+        }
+    };
+
     const append = (list) => {
         const template = list.querySelector(":scope > template");
         const above = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
@@ -31,8 +43,21 @@
             append(add.closest("[data-list]"));
             return;
         }
+        const undo = event.target.closest("[data-list-undo]");
+        if (undo) {
+            const list = undo.closest("[data-list]");
+            for (const element of marked(list)) {
+                element.dispatchEvent(new CustomEvent("list:remove", { bubbles: true }));
+                element.remove();
+            }
+            list.querySelector("[data-list-add]").focus();
+            return;
+        }
         const entry = event.target.closest("[data-list-remove]")?.closest("[data-list-entry]");
         if (entry) {
+            if (entry.matches("[data-list-undoable]")) {
+                endOffer(entry.closest("[data-list]"));
+            }
             entry.closest("[data-list]").querySelector("[data-list-add]").focus();
             entry.dispatchEvent(new CustomEvent("list:remove", { bubbles: true }));
             entry.remove();
@@ -56,6 +81,13 @@
         ) {
             event.preventDefault();
             append(list);
+        }
+    });
+
+    document.addEventListener("input", (event) => {
+        const entry = event.target.closest?.("[data-list-undoable]");
+        if (entry) {
+            endOffer(entry.closest("[data-list]"));
         }
     });
 }
