@@ -45,9 +45,7 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
-    add_tag: Vec<String>,
-    #[serde(default)]
-    remove_tag: Vec<String>,
+    tag: Vec<String>,
 }
 
 struct Posted {
@@ -97,8 +95,7 @@ struct Parsed {
     year: Option<Year>,
     stars: Option<Stars>,
     identifiers: Edits<Identifier, Identifier>,
-    add_tags: Vec<Tag>,
-    remove_tags: Vec<Tag>,
+    tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
     contributors: ContributorEdits,
     picture: PictureEdit,
@@ -125,14 +122,10 @@ async fn parse(
         .stars
         .and_then(|stars| refusals.check(Stars::try_from(stars)));
     let identifiers = posted.identifiers.parse(refusals);
-    let add_tags = form
-        .add_tag
+    let tags = form
+        .tag
         .iter()
-        .filter_map(|tag| refusals.check(tag.parse()))
-        .collect();
-    let remove_tags = form
-        .remove_tag
-        .iter()
+        .filter(|tag| !tag.trim().is_empty())
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
     let links = posted.links.parse(refusals);
@@ -146,8 +139,7 @@ async fn parse(
         year,
         stars,
         identifiers,
-        add_tags,
-        remove_tags,
+        tags,
         links,
         contributors,
         picture,
@@ -218,6 +210,7 @@ async fn render(
     ];
     let draft = publication.is_draft();
     let form = posted.form;
+    let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
@@ -277,7 +270,7 @@ async fn render(
         identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
         tags: TagsInput {
             library: library.id(),
-            tags: publication.tags().to_vec(),
+            tags,
         },
         links: LinksInput::new(&posted.links, publication.links(), &refusals),
         contributors: ContributorsInput::new(
@@ -325,8 +318,7 @@ pub async fn get(
             .unwrap_or_default(),
         stars: publication.stars().map(|stars| stars.get()),
         note: text(publication.note()),
-        add_tag: vec![],
-        remove_tag: vec![],
+        tag: publication.tags().iter().map(ToString::to_string).collect(),
     };
     let posted = Posted {
         form,
@@ -370,10 +362,12 @@ async fn save(
         publication.add_identifier(identifier).await?;
     }
     posted.identifiers = IdentifiersForm::from(publication.identifiers());
-    for tag in &parsed.remove_tags {
-        publication.remove_tag(tag).await?;
+    for tag in publication.tags().to_vec() {
+        if !parsed.tags.contains(&tag) {
+            publication.remove_tag(&tag).await?;
+        }
     }
-    for tag in parsed.add_tags {
+    for tag in parsed.tags {
         publication.add_tag(tag).await?;
     }
     for link in parsed.links.remove {

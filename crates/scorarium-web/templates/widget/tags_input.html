@@ -1,26 +1,22 @@
+{% macro chip(tag) %}
+    <span class="badge text-bg-secondary d-inline-flex align-items-center gap-1" data-value="{{ tag }}">
+        <span data-label>{{ tag }}</span>
+        <input type="hidden" name="tag" value="{{ tag }}">
+        <button type="button" class="btn btn-link btn-sm p-0 text-reset" data-remove title="Remove tag">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </span>
+{% endmacro %}
 <div class="form-control tag-chips d-flex flex-wrap align-items-center gap-1" data-tags-input>
     <span data-entries>
         {% for tag in tags %}
-            <span class="badge text-bg-secondary d-inline-flex align-items-center gap-1" data-value="{{ tag }}">
-                {{ tag }}
-                <button type="button"
-                        class="btn btn-link btn-sm p-0 text-reset"
-                        data-remove
-                        data-key="{{ tag }}"
-                        title="Remove tag">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </span>
+            {% call chip(tag) %}
+            {% endcall %}
         {% endfor %}
     </span>
     <template>
-        <span class="badge text-bg-secondary d-inline-flex align-items-center gap-1">
-            <span data-label></span>
-            <input type="hidden" name="add_tag">
-            <button type="button" class="btn btn-link btn-sm p-0 text-reset" data-remove title="Remove tag">
-                <i class="bi bi-x-lg"></i>
-            </button>
-        </span>
+        {% call chip("") %}
+        {% endcall %}
     </template>
     {{ self.typeahead() }}
 </div>

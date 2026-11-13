@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::person::Person;
+use scorarium_engine::value::Tag;
 use scorarium_engine::work::{CatalogNumber, Work};
 use scorarium_test::TestApp;
 
@@ -284,4 +285,32 @@ async fn save_refuses_a_contributor_with_no_selected_person() {
         .assert_status(StatusCode::BAD_REQUEST);
     let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
     assert_eq!(after.contributors(), work.contributors());
+}
+
+#[tokio::test]
+async fn edit_saves_the_posted_set_of_tags() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut work = library
+        .works()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|work| work.tags().is_empty())
+        .unwrap();
+    work.add_tag("old".parse().unwrap()).await.unwrap();
+    work.add_tag("kept".parse().unwrap()).await.unwrap();
+    let form = save(&work, &[("tag", "kept"), ("tag", "new"), ("tag", "")]);
+    app.server
+        .post(&format!(
+            "/library/{}/work/{}/edit",
+            library.id(),
+            work.id()
+        ))
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let after = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    let tags: Vec<&str> = after.tags().iter().map(Tag::as_str).collect();
+    assert_eq!(tags, ["kept", "new"]);
 }
