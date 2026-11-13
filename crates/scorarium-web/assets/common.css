@@ -276,6 +276,15 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     text-decoration: line-through;
 }
 
+[data-lockable] .form-control:disabled {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+[data-lockable] .form-control:disabled::placeholder {
+    color: transparent;
+}
+
 [data-list-entry] > .btn-check:focus-visible + .btn + .btn {
     border-color: var(--bs-btn-hover-border-color);
     box-shadow: var(--bs-btn-focus-box-shadow);
