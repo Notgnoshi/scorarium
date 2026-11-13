@@ -68,12 +68,17 @@ pub async fn get(
 ) -> Result<Html<String>> {
     let library = view::load(&engine, &library).await?;
     let person = query.person.as_deref().and_then(|id| id.parse().ok());
+    let new_person = query.person.as_deref() == Some("new");
     let field = field(&name, person).ok_or(scorarium_engine::Error::NotFound)?;
     let query = query.q.as_deref().unwrap_or_default().trim();
     if query.is_empty() {
         return Ok(Html(String::new()));
     }
-    let suggestions = library.suggest(field, query, SUGGESTION_LIMIT).await?;
+    let suggestions = if matches!(field, SuggestField::Work { .. }) && new_person {
+        vec![]
+    } else {
+        library.suggest(field, query, SUGGESTION_LIMIT).await?
+    };
     let entries = suggestions
         .into_iter()
         .filter_map(|suggestion| match suggestion.item {

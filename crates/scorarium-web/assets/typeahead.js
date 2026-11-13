@@ -56,7 +56,7 @@ function attachTypeahead(input) {
         const sibling = input.dataset.typeaheadWith;
         const value = sibling && input.form?.elements[sibling]?.value;
         if (value) {
-            params.set(sibling, value);
+            params.set(sibling.match(/\[(\w+)\]$/)?.[1] ?? sibling, value);
         }
         let html;
         try {
