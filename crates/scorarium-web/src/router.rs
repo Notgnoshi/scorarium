@@ -7,8 +7,6 @@ use axum::routing::{get, post};
 use axum::{Extension, Router, middleware};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::MAX_ASSET_SIZE;
-use scorarium_engine::publication::Publication;
-use scorarium_engine::work::Work;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, MakeSpan, OnResponse, TraceLayer};
 use tracing::{Level, Span};
 
@@ -36,12 +34,13 @@ impl Settings {
 pub fn router(engine: Engine, settings: Settings) -> Router {
     let trace = TraceLayer::new_for_http()
         .make_span_with(|request: &Request| {
-            // The review queue makes periodic requests, which are too spammy to log
-            let level = if request.uri().path() == "/api/review" {
-                Level::TRACE
-            } else {
-                Level::DEBUG
-            };
+            // Suppress spammy logs that receive requests at a higher rate
+            let path = request.uri().path();
+            let spammy = matches!(
+                path,
+                "/api/review" | "/api/search" | "/api/import/candidates"
+            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"));
+            let level = if spammy { Level::TRACE } else { Level::DEBUG };
             DefaultMakeSpan::new().level(level).make_span(request)
         })
         // Otherwise, log the request as normal
@@ -155,14 +154,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route("/stage/{staged}", get(api::stage::get))
                 .route("/stage/{staged}/discard", post(api::stage::discard))
                 .route(
-                    "/library/{id}/work/{work}/contributor/add",
-                    post(api::contributor::add::<Work>),
-                )
-                .route(
-                    "/library/{id}/work/{work}/contributor/remove",
-                    post(api::contributor::remove::<Work>),
-                )
-                .route(
                     "/library/{id}/publication/{publication}/contents/add",
                     post(api::contents::add),
                 )
@@ -173,14 +164,6 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route(
                     "/library/{id}/publication/{publication}/contents/remove",
                     post(api::contents::remove),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/contributor/add",
-                    post(api::contributor::add::<Publication>),
-                )
-                .route(
-                    "/library/{id}/publication/{publication}/contributor/remove",
-                    post(api::contributor::remove::<Publication>),
                 )
                 .route("/review", get(api::review::get))
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))

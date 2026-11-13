@@ -3,7 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::value::{Classification, NonBlank, Stars, Tag};
@@ -19,7 +19,7 @@ use crate::redirect::{Back, BackQuery};
 use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::contributors::Contributors;
+use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
 use crate::widget::edit_heading::{EditHeading, EditMode};
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
@@ -49,6 +49,7 @@ struct Posted {
     form: Form,
     catalog_numbers: CatalogNumbersForm,
     links: LinksForm,
+    contributors: ContributorsForm,
 }
 
 impl Posted {
@@ -57,6 +58,7 @@ impl Posted {
             form: body.read()?,
             catalog_numbers: body.read()?,
             links: body.read()?,
+            contributors: body.read()?,
         })
     }
 }
@@ -73,7 +75,7 @@ struct Edit {
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
-    contributors: Contributors,
+    contributors: ContributorsInput,
     back: Back,
     refusals: Refusals,
 }
@@ -86,9 +88,16 @@ struct Parsed {
     add_tags: Vec<Tag>,
     remove_tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
+    contributors: ContributorEdits,
 }
 
-fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
+async fn parse(
+    engine: &Engine,
+    library: LibraryId,
+    posted: &mut Posted,
+    refusals: &mut Refusals,
+) -> Result<Option<Parsed>> {
+    let contributors = posted.contributors.parse(engine, library, refusals).await?;
     let form = &posted.form;
     let title = refusals.parse("title", &form.title);
     let classification = form
@@ -111,17 +120,18 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         .collect();
     let links = posted.links.parse(refusals);
     if !refusals.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(Parsed {
-        title: title?,
+    Ok(title.map(|title| Parsed {
+        title,
         classification,
         stars,
         catalog_numbers,
         add_tags,
         remove_tags,
         links,
-    })
+        contributors,
+    }))
 }
 
 impl Edit {
@@ -151,6 +161,7 @@ impl Edit {
             value: value.to_owned(),
             picked: None,
             pick_required: None,
+            refusal: None,
             attrs: vec![],
         }
     }
@@ -231,7 +242,13 @@ async fn render(
             tags: work.tags().to_vec(),
         },
         links: LinksInput::new(&posted.links, work.links(), &refusals),
-        contributors: Contributors::new(work, None, here),
+        contributors: ContributorsInput::new(
+            &posted.contributors,
+            work.contributors(),
+            library.id(),
+            &here,
+            &refusals,
+        ),
         back,
         refusals,
     };
@@ -263,6 +280,7 @@ pub async fn get(
         form,
         catalog_numbers: CatalogNumbersForm::from(work.catalog_numbers()),
         links: LinksForm::from(work.links()),
+        contributors: ContributorsForm::from(work.contributors()),
     };
     let back = Back::new(
         query,
@@ -306,6 +324,8 @@ async fn save(
         work.add_link(url).await?;
     }
     posted.links = LinksForm::from(work.links());
+    parsed.contributors.apply(work).await?;
+    posted.contributors = ContributorsForm::from(work.contributors());
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
@@ -331,7 +351,7 @@ pub async fn post(
         format!("/library/{}/work/{}", library.id(), work.id()),
     );
     let mut refusals = Refusals::default();
-    if let Some(parsed) = parse(&posted, &mut refusals) {
+    if let Some(parsed) = parse(&engine, library.id(), &mut posted, &mut refusals).await? {
         match save(&mut work, &mut posted, parsed).await {
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());

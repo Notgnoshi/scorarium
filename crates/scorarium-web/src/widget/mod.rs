@@ -5,7 +5,7 @@ pub mod catalog_numbers_input;
 pub mod classification_input;
 pub mod confirm;
 pub mod contents;
-pub mod contributors;
+pub mod contributors_input;
 pub mod edit_heading;
 pub mod file_input;
 pub mod header;

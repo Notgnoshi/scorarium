@@ -10,8 +10,7 @@
                    id="catalog_number-{{ key }}-value"
                    name="catalog_number[{{ key }}][value]"
                    value="{{ input.entry.value }}"
-                   aria-label="Catalog number"
-                   {% if input.autofocus %}autofocus{% endif %}>
+                   aria-label="Catalog number">
             {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
         </div>
         {% if input.unrecognized %}
@@ -26,7 +25,7 @@
         {% endif %}
     </li>
 {% endmacro %}
-<ul class="list-unstyled mb-0" data-list data-list-enter>
+<ul class="list-unstyled mb-0" data-list>
     {% for input in entries %}
         {% call entry(loop.index0, input) %}
         {% endcall %}

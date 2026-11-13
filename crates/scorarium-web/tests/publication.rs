@@ -7,7 +7,7 @@ use scorarium_engine::value::Year;
 use scorarium_test::TestApp;
 
 #[tokio::test]
-async fn edit_applies_scalars_and_identifiers_in_one_save() {
+async fn edit_applies_scalars_and_lists_in_one_save() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
     let publication = library.publications().await.unwrap().pop().unwrap();
@@ -24,6 +24,9 @@ async fn edit_applies_scalars_and_identifiers_in_one_save() {
             ("note", ""),
             ("identifier[new1][kind]", "isbn"),
             ("identifier[new1][value]", "9780793525041"),
+            ("contributor[new1][person]", "new"),
+            ("contributor[new1][name]", "Created"),
+            ("contributor[new1][role]", "editor"),
         ])
         .await
         .assert_status(StatusCode::SEE_OTHER);
@@ -35,6 +38,12 @@ async fn edit_applies_scalars_and_identifiers_in_one_save() {
     assert_eq!(after.year().map(Year::get), Some(1999));
     let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-7935-2504-1").unwrap();
     assert!(after.identifiers().contains(&isbn));
+    assert!(
+        after
+            .contributors()
+            .iter()
+            .any(|c| c.name == "Created" && c.role.as_str() == "editor")
+    );
 }
 
 #[tokio::test]

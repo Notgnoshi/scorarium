@@ -23,6 +23,7 @@ impl TagsInput {
             value: String::new(),
             picked: None,
             pick_required: None,
+            refusal: None,
             // The pattern mirrors the engine's tag rule, so the browser refuses a tag that would
             // fail the whole Save. Uppercase passes because the engine lowercases it.
             attrs: vec![

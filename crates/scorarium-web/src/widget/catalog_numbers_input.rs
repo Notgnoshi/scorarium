@@ -70,7 +70,6 @@ struct EntryInput {
     entry: CatalogNumberEntry,
     unrecognized: bool,
     refusal: Option<String>,
-    autofocus: bool,
 }
 
 #[derive(Template)]
@@ -102,7 +101,6 @@ impl CatalogNumbersInput {
                         .iter()
                         .any(|number| number.as_str() == value && !number.is_recognized()),
                     refusal: refusals.of(&field).map(str::to_owned),
-                    autofocus: refusals.first() == Some(field.as_str()),
                 }
             })
             .collect();

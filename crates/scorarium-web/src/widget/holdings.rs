@@ -218,6 +218,7 @@ fn location_input(library: LibraryId, key: &str, location: &str) -> Typeahead {
         value: location.to_owned(),
         picked: None,
         pick_required: None,
+        refusal: None,
         attrs: vec![("aria-label", "Location".to_owned())],
     }
 }
@@ -234,7 +235,6 @@ fn file_input(key: &str, files_allowed: bool) -> FileInput {
         url_name: format!("holding[{key}][url]"),
         url_text: String::new(),
         refusal: None,
-        autofocus: false,
         browse_icon: None,
     }
 }
@@ -324,7 +324,6 @@ impl Holdings {
                             staged: engine.staged(&id).filter(|_| !entry.staged.is_empty()),
                             url_text: entry.url.clone(),
                             refusal: refusals.of(&field).map(str::to_owned),
-                            autofocus: refusals.first() == Some(field.as_str()),
                             ..file_input(&key, files_allowed)
                         }),
                     }

@@ -32,11 +32,20 @@ pub struct Typeahead {
     /// The current text
     pub value: String,
     /// The hidden input that stores the picked entity's id: its field name and initial value
-    pub picked: Option<(&'static str, String)>,
+    pub picked: Option<(String, String)>,
     /// The validation error message to display when a pick is *required* (to disallow free text entry)
     pub pick_required: Option<String>,
+    /// The reason that a Save refused the field
+    pub refusal: Option<String>,
     /// Any extra attributes to add to the `<input>`
     pub attrs: Vec<(&'static str, String)>,
+}
+
+impl Typeahead {
+    /// Get the message beneath the field: the refusal, or else the demand for a selection
+    fn feedback(&self) -> Option<&str> {
+        self.refusal.as_deref().or(self.pick_required.as_deref())
+    }
 }
 
 impl askama::filters::HtmlSafe for Typeahead {}

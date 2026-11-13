@@ -119,7 +119,7 @@ impl IdentifiersInput {
                 EntryInput {
                     entry: entry.clone(),
                     refusal: refusals.of(&field).map(str::to_owned),
-                    autofocus: refusals.first() == Some(field.as_str()),
+                    autofocus: false,
                 }
             })
             .collect();

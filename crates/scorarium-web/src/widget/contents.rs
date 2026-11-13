@@ -112,8 +112,9 @@ impl Contents {
             url: format!("/api/library/{}/suggest/person", self.library),
             placeholder: "Person".to_owned(),
             value: name.to_owned(),
-            picked: Some(("person", person.to_owned())),
+            picked: Some(("person".to_owned(), person.to_owned())),
             pick_required: Some("Pick a person from the list".to_owned()),
+            refusal: None,
             attrs: if required {
                 vec![("required", String::new())]
             } else {
@@ -130,8 +131,9 @@ impl Contents {
             url: format!("/api/library/{}/suggest/work", self.library),
             placeholder: "Work".to_owned(),
             value: self.add.title.clone(),
-            picked: Some(("work", self.add.work.clone())),
+            picked: Some(("work".to_owned(), self.add.work.clone())),
             pick_required: None,
+            refusal: None,
             attrs: vec![
                 ("data-typeahead-with", "person".to_owned()),
                 // A typed title is more often a new work than an existing one.
@@ -151,6 +153,7 @@ impl Contents {
             value: value.to_owned(),
             picked: None,
             pick_required: None,
+            refusal: None,
             attrs: vec![("required", String::new())],
         }
     }

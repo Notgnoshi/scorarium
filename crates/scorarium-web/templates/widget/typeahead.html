@@ -1,5 +1,5 @@
 <div class="dropdown">
-    <input class="form-control"
+    <input class="form-control{% if refusal.is_some() %} is-invalid{% endif %}"
            type="search"
            id="{{ id }}"
            name="{{ name }}"
@@ -17,4 +17,5 @@
         <input type="hidden" name="{{ picked_name }}" value="{{ picked_value }}">
     {% endif %}
     <div class="dropdown-menu w-100" id="{{ id }}-menu" role="listbox" data-bs-popper="static"></div>
+    {% if let Some(message) = self.feedback() %}<div class="invalid-feedback">{{ message }}</div>{% endif %}
 </div>

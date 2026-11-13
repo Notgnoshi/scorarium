@@ -79,7 +79,6 @@ impl PictureInput {
                 url_name: "picture_url".to_owned(),
                 url_text: String::new(),
                 refusal: None,
-                autofocus: false,
                 browse_icon: Some("Browse for a picture"),
             },
         }
@@ -94,7 +93,6 @@ impl PictureInput {
     ) -> PictureInput {
         self.input.url_text.clone_from(&form.picture_url);
         self.input.refusal = refusals.of("picture_url").map(str::to_owned);
-        self.input.autofocus = refusals.first() == Some("picture_url");
         let Ok(id) = form.picture.parse::<StagedId>();
         let staged = engine.staged(&id).filter(|_| !form.picture.is_empty());
         if staged.is_some() {

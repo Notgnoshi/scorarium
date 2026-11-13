@@ -7,11 +7,7 @@
 | `/api/library/{id}/publication/{publication}/contents/add-range` | POST   | Add a numbered range of works    |
 | `/api/library/{id}/publication/{publication}/contents/add`       | POST   | Add a work to a publication      |
 | `/api/library/{id}/publication/{publication}/contents/remove`    | POST   | Remove a work from a publication |
-| `/api/library/{id}/publication/{publication}/contributor/add`    | POST   | Add a publication contributor    |
-| `/api/library/{id}/publication/{publication}/contributor/remove` | POST   | Remove a publication contributor |
 | `/api/library/{id}/suggest/{field}`                              | GET    | Field value suggestions          |
-| `/api/library/{id}/work/{work}/contributor/add`                  | POST   | Add a work contributor           |
-| `/api/library/{id}/work/{work}/contributor/remove`               | POST   | Remove a work contributor        |
 | `/api/review/{kind}/{entity}/cancel`                             | POST   | Cancel enrichment                |
 | `/api/review/{kind}/{entity}/discard`                            | POST   | Confirm, then discard            |
 | `/api/review/{kind}/{entity}/retry`                              | POST   | Retry enrichment                 |
