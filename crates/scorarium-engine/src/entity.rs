@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
-use scorarium_client::Source;
+pub use scorarium_client::Source;
 
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};

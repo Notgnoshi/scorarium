@@ -348,12 +348,10 @@ impl Work {
         entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
-    #[expect(dead_code)]
-    pub(crate) async fn propose(
-        &self,
-        source: Source,
-        value: Proposal,
-    ) -> Result<Option<ProposalId>> {
+    /// Propose an edit from `source`, or return `None` if it is already held or proposed
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
         let (field, text, person) = match &value {
             Proposal::Title(title) => ("title", title.parse::<NonBlank>()?.to_string(), None),
@@ -443,8 +441,7 @@ impl Work {
     /// Create a draft person and propose that they contributed to the work
     ///
     /// Returns [Error::NotFound] if the work has been deleted.
-    #[cfg_attr(not(test), expect(dead_code))]
-    pub(crate) async fn propose_new_contributor(
+    pub async fn propose_new_contributor(
         &self,
         source: Source,
         name: &str,

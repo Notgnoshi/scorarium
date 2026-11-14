@@ -398,11 +398,10 @@ impl Publication {
         entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
-    pub(crate) async fn propose(
-        &self,
-        source: Source,
-        value: Proposal,
-    ) -> Result<Option<ProposalId>> {
+    /// Propose an edit from `source`, or return `None` if it is already held or proposed
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let (mut work, mut person) = (None, None);
         let (field, text) = match &value {
             Proposal::Title(title) => ("title", Some(title.parse::<NonBlank>()?.to_string())),
@@ -506,8 +505,7 @@ impl Publication {
     /// Create a draft work and propose that the publication contains it
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    #[cfg_attr(not(test), expect(dead_code))]
-    pub(crate) async fn propose_new_work(&self, source: Source, title: &str) -> Result<Work> {
+    pub async fn propose_new_work(&self, source: Source, title: &str) -> Result<Work> {
         let title = title.parse::<NonBlank>()?;
         let mut tx = self.engine.begin_write().await?;
         Publication::fetch(&self.engine, &mut tx, self.id)
@@ -549,7 +547,7 @@ impl Publication {
     /// Create a draft person and propose that they contributed to the publication
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
-    pub(crate) async fn propose_new_contributor(
+    pub async fn propose_new_contributor(
         &self,
         source: Source,
         name: &str,

@@ -373,11 +373,10 @@ impl Person {
         Ok(())
     }
 
-    pub(crate) async fn propose(
-        &self,
-        source: Source,
-        value: Proposal,
-    ) -> Result<Option<ProposalId>> {
+    /// Propose an edit from `source`, or return `None` if it is already held or proposed
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let (field, text) = match &value {
             Proposal::Name(name) => ("name", name.parse::<NonBlank>()?.to_string()),
             Proposal::Link(url) => ("link", url.to_string()),
