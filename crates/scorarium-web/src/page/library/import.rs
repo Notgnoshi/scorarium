@@ -29,6 +29,8 @@ pub(crate) struct Form {
     text: String,
     #[serde(default)]
     record: String,
+    #[serde(default)]
+    subtitle: String,
     more: Option<String>,
 }
 
@@ -48,6 +50,7 @@ struct Import {
     library: LibraryId,
     text: Typeahead,
     record: Option<HttpUrl>,
+    subtitle: String,
     more: bool,
     holdings: Holdings,
     queue: ReviewQueue,
@@ -100,6 +103,7 @@ async fn render(
             attrs,
         },
         record,
+        subtitle: form.subtitle,
         more: form.more.is_some(),
         holdings,
         queue,
@@ -145,9 +149,9 @@ pub async fn get(
 
 /// Seed the draft with the picked candidate if there is one, and otherwise read the typed text as
 /// an identifier if it is one, and as a title if not
-fn seed(text: &str, record: Option<ExternalRecord>) -> ImportSeed {
+fn seed(text: &str, subtitle: &str, record: Option<ExternalRecord>) -> ImportSeed {
     if let Some(record) = record {
-        return ImportSeed::title(text).record(record);
+        return ImportSeed::title(text).record(record).subtitle(subtitle);
     }
     let identifier = [IdentifierKind::Ismn, IdentifierKind::Isbn]
         .into_iter()
@@ -162,13 +166,16 @@ fn seed(text: &str, record: Option<ExternalRecord>) -> ImportSeed {
 async fn import(
     library: &Library,
     text: &str,
+    subtitle: &str,
     record: Option<ExternalRecord>,
     holdings: &[AddedHolding],
 ) -> scorarium_engine::Result<String> {
     let (first, rest) = holdings
         .split_first()
         .expect("A parsed form with no refusal adds a holding");
-    let mut draft = library.import(seed(text, record), first.as_new()).await?;
+    let mut draft = library
+        .import(seed(text, subtitle, record), first.as_new())
+        .await?;
     // The draft exists by now, so a failure to add a later holding is logged and not shown. The
     // edit page can add the holding again.
     for holding in rest {
@@ -199,7 +206,7 @@ pub async fn post(
     let mut refusals = Refusals::default();
     let edits = holdings.parse(&engine, &[], &mut refusals);
     if refusals.is_empty() {
-        match import(&library, &form.text, record, &edits.add).await {
+        match import(&library, &form.text, &form.subtitle, record, &edits.add).await {
             Ok(edit) => {
                 // The next import keeps the physical holdings but not the files, because a file
                 // belongs to one publication.

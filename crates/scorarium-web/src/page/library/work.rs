@@ -30,6 +30,7 @@ struct Work {
     id: WorkId,
     draft: bool,
     title: String,
+    subtitle: Option<String>,
     catalog_numbers: Vec<CatalogNumber>,
     key: Option<String>,
     time_signature: Option<String>,
@@ -80,6 +81,7 @@ struct Publication {
     id: PublicationId,
     draft: bool,
     title: String,
+    subtitle: Option<String>,
     contributors: Vec<entity::Contributor>,
     year: Option<Year>,
 }
@@ -117,6 +119,7 @@ impl From<&scorarium_engine::publication::Publication> for Publication {
             id: publication.id(),
             draft: publication.is_draft(),
             title: publication.title().unwrap_or("Untitled").to_owned(),
+            subtitle: publication.subtitle().map(ToOwned::to_owned),
             contributors: group_contributors(publication.contributors()),
             year: publication.year(),
         }
@@ -161,6 +164,7 @@ pub async fn get(
         id: work.id(),
         draft: work.is_draft(),
         title: work.title().to_owned(),
+        subtitle: work.subtitle().map(ToOwned::to_owned),
         catalog_numbers: work.catalog_numbers().to_vec(),
         key: work.key().map(ToOwned::to_owned),
         time_signature: work.time_signature().map(ToOwned::to_owned),

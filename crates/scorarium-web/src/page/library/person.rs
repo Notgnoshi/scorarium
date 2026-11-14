@@ -74,6 +74,7 @@ struct Publication {
     id: PublicationId,
     draft: bool,
     title: String,
+    subtitle: Option<String>,
     roles: Vec<Role>,
     year: Option<Year>,
     works: Vec<Work>,
@@ -84,6 +85,7 @@ struct Work {
     id: WorkId,
     draft: bool,
     title: String,
+    subtitle: Option<String>,
     roles: Vec<Role>,
     catalog_number: Option<CatalogNumber>,
 }
@@ -94,6 +96,7 @@ impl Publication {
             id: publication.id(),
             draft: publication.is_draft(),
             title: publication.title().unwrap_or("Untitled").to_owned(),
+            subtitle: publication.subtitle().map(ToOwned::to_owned),
             roles,
             year: publication.year(),
             works: Vec::new(),
@@ -107,6 +110,7 @@ impl Work {
             id: work.id(),
             draft: work.is_draft(),
             title: work.title().to_owned(),
+            subtitle: work.subtitle().map(ToOwned::to_owned),
             roles: roles_of(person, work.contributors()),
             catalog_number: work.catalog_numbers().first().cloned(),
         }
@@ -250,6 +254,7 @@ mod tests {
             id: id.parse().unwrap(),
             draft: false,
             title: title.into(),
+            subtitle: None,
             roles,
             year: None,
             works: vec![],
@@ -258,6 +263,7 @@ mod tests {
             id: "1".parse().unwrap(),
             draft: false,
             title: "Nocturne".into(),
+            subtitle: None,
             roles: vec![role("composer")],
             catalog_number: Some("Op. 9/2".parse().unwrap()),
         };

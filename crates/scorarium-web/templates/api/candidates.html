@@ -1,6 +1,6 @@
 {% import "widget/suggestion.html" as suggestion %}
 {% for candidate in candidates %}
-    {% call suggestion::pick(candidate.record, candidate.title) %}
+    {% call suggestion::fill(candidate.record, candidate.title, [("subtitle", candidate.subtitle.clone().unwrap_or_default())]) %}
         {{ candidate }}
     {% endcall %}
 {% endfor %}

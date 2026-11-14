@@ -80,6 +80,7 @@ pub(crate) struct ContainedWork {
     pub id: WorkId,
     pub draft: bool,
     pub title: String,
+    pub subtitle: Option<String>,
     /// The work's first catalog number, which is its most confidently recognized one
     pub catalog_number: Option<CatalogNumber>,
     pub contributors: Vec<Contributor>,
@@ -107,6 +108,7 @@ impl From<&Work> for ContainedWork {
             id: work.id(),
             draft: work.is_draft(),
             title: work.title().to_owned(),
+            subtitle: work.subtitle().map(ToOwned::to_owned),
             catalog_number: work.catalog_numbers().first().cloned(),
             contributors: group_contributors(work.contributors()),
         }

@@ -1,6 +1,7 @@
 {
     const field = document.getElementById("text");
     const record = field?.form?.elements.record;
+    const subtitle = field?.form?.elements.subtitle;
     const summary = document.getElementById("candidate-summary");
     const content = document.getElementById("candidate-content");
     const link = document.getElementById("candidate-link");
@@ -14,6 +15,7 @@
             if (!pick) {
                 return;
             }
+            subtitle.value = pick.dataset.fillSubtitle ?? "";
             // The suggestion's content was escaped by the server, so cloning it is safe.
             content.replaceChildren(
                 ...[...pick.childNodes].map((node) => node.cloneNode(true)),
@@ -24,6 +26,7 @@
 
         field.addEventListener("input", () => {
             summary.hidden = true;
+            subtitle.value = "";
             content.replaceChildren();
         });
     }

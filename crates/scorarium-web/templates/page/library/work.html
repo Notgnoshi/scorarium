@@ -16,6 +16,7 @@
                        title="Edit work"><i class="bi bi-pencil"></i> Edit</a>
                 {% endif %}
             </h1>
+            {% if let Some(subtitle) = subtitle %}<p class="lead text-body-secondary">{{ subtitle }}</p>{% endif %}
             {% if !contributors.is_empty() %}
                 <p class="text-body-secondary">
                     {% for contributor in contributors %}
@@ -121,6 +122,9 @@
                         <td>
                             <a href="/library/{{ library }}/publication/{{ publication.id }}">{{ publication.title }}</a>
                             {% if publication.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            {% if let Some(subtitle) = publication.subtitle %}
+                                <div class="small text-body-secondary">{{ subtitle }}</div>
+                            {% endif %}
                         </td>
                         <td>
                             {% for contributor in publication.contributors %}
