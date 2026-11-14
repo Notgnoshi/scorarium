@@ -25,6 +25,7 @@ async fn edit_applies_scalars_and_lists_in_one_save() {
         ))
         .form(&[
             ("title", "Renamed"),
+            ("subtitle", ""),
             ("publisher", ""),
             ("year", "1999"),
             ("note", ""),
@@ -73,6 +74,7 @@ async fn edit_changes_the_kind_of_an_identifier_and_removes_another() {
         ))
         .form(&[
             ("title", "Renamed"),
+            ("subtitle", ""),
             ("publisher", ""),
             ("year", ""),
             ("note", ""),
@@ -125,6 +127,7 @@ async fn edit_creates_links_and_removes_works_in_one_save() {
         ))
         .form(&[
             ("title", "Rachmaninoff masterpieces for solo piano"),
+            ("subtitle", ""),
             ("publisher", ""),
             ("year", ""),
             ("note", ""),
@@ -187,6 +190,7 @@ async fn edit_refuses_a_duplicate_work_and_writes_nothing() {
         ))
         .form(&[
             ("title", "Renamed"),
+            ("subtitle", ""),
             ("publisher", ""),
             ("year", ""),
             ("note", ""),
@@ -231,6 +235,7 @@ async fn sequence_writes_nothing() {
             ("name", "Sergei Rachmaninoff"),
             ("role", "composer"),
             ("title", "Prelude"),
+            ("subtitle", ""),
             ("prefix", "Op. 3 No."),
             ("from", "1"),
             ("to", "5"),
@@ -260,6 +265,7 @@ async fn edit_removes_a_contributor_while_adding_a_work_by_them() {
         ))
         .form(&[
             ("title", "Rachmaninoff masterpieces for solo piano"),
+            ("subtitle", ""),
             ("publisher", ""),
             ("year", ""),
             ("note", ""),
@@ -301,6 +307,7 @@ async fn edit_adds_holdings_before_removing_the_only_one() {
     );
     let form = [
         ("title", publication.title().unwrap()),
+        ("subtitle", ""),
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
@@ -343,6 +350,7 @@ async fn edit_refuses_to_remove_every_holding() {
     );
     let form = [
         ("title", "Renamed"),
+        ("subtitle", ""),
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
@@ -392,6 +400,7 @@ async fn commit_saves_the_form_and_then_commits() {
     let form = |title| {
         [
             ("title".to_owned(), title),
+            ("subtitle".to_owned(), ""),
             ("publisher".to_owned(), ""),
             ("year".to_owned(), ""),
             ("note".to_owned(), ""),
@@ -434,6 +443,7 @@ async fn edit_clears_the_location_of_the_only_holding() {
     );
     let form = [
         ("title", publication.title().unwrap()),
+        ("subtitle", ""),
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
@@ -468,6 +478,7 @@ async fn edit_refuses_a_file_field_that_holds_text() {
     );
     let form = [
         ("title", "Renamed"),
+        ("subtitle", ""),
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
@@ -501,6 +512,7 @@ async fn edit_ignores_a_holding_that_the_library_no_longer_has() {
     let gone = (only.get() + 1000).to_string();
     let form = [
         ("title", publication.title().unwrap()),
+        ("subtitle", ""),
         ("publisher", ""),
         ("year", ""),
         ("note", ""),
@@ -544,6 +556,7 @@ async fn edit_adds_an_entry_made_from_a_proposal() {
 
     let form = [
         ("title".to_owned(), "Renamed"),
+        ("subtitle".to_owned(), ""),
         ("publisher".to_owned(), ""),
         ("year".to_owned(), ""),
         ("note".to_owned(), ""),
@@ -589,6 +602,7 @@ async fn edit_keeps_a_proposed_person_that_was_accepted() {
 
     let form = [
         ("title".to_owned(), publication.title().unwrap()),
+        ("subtitle".to_owned(), ""),
         ("publisher".to_owned(), ""),
         ("year".to_owned(), ""),
         ("note".to_owned(), ""),
@@ -639,6 +653,7 @@ async fn edit_keeps_a_proposed_work_that_was_accepted() {
 
     let form = [
         ("title".to_owned(), publication.title().unwrap()),
+        ("subtitle".to_owned(), ""),
         ("publisher".to_owned(), ""),
         ("year".to_owned(), ""),
         ("note".to_owned(), ""),

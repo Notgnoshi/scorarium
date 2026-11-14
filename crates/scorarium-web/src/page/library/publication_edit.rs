@@ -44,6 +44,7 @@ use crate::widget::value_candidates::ValueCandidates;
 #[derive(Deserialize)]
 pub(crate) struct Form {
     title: String,
+    subtitle: String,
     classification: Option<String>,
     publisher: String,
     /// Blank for none; a string because a cleared number input posts an empty value
@@ -85,6 +86,7 @@ impl Posted {
 #[template(path = "api/publication_candidates.html")]
 pub(crate) struct Candidates {
     title: ValueCandidates,
+    subtitle: ValueCandidates,
     publisher: ValueCandidates,
     year: ValueCandidates,
     identifiers: IdentifierCandidates,
@@ -106,6 +108,13 @@ impl Candidates {
                 "title",
                 proposal::pick(&candidates, |value| match value {
                     publication::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            subtitle: ValueCandidates::new(
+                "subtitle",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Subtitle(subtitle) => Some(subtitle.clone()),
                     _ => None,
                 }),
             ),
@@ -171,6 +180,7 @@ struct Edit {
     actions: EditActions,
     form: Form,
     title_candidates: ValueCandidates,
+    subtitle_candidates: ValueCandidates,
     publisher_candidates: ValueCandidates,
     year_candidates: ValueCandidates,
     identifiers: IdentifiersInput,
@@ -307,6 +317,7 @@ async fn render(
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
     let Candidates {
         title: title_candidates,
+        subtitle: subtitle_candidates,
         publisher: publisher_candidates,
         year: year_candidates,
         identifiers: identifier_candidates,
@@ -386,6 +397,7 @@ async fn render(
         id: publication.id(),
         form,
         title_candidates,
+        subtitle_candidates,
         publisher_candidates,
         year_candidates,
         identifiers: IdentifiersInput::new(&posted.identifiers, &refusals, identifier_candidates),
@@ -445,6 +457,7 @@ pub async fn get(
     let text = |value: Option<&str>| value.unwrap_or_default().to_owned();
     let form = Form {
         title: text(publication.title()),
+        subtitle: text(publication.subtitle()),
         classification: publication.classification().map(|c| c.to_string()),
         publisher: text(publication.publisher()),
         year: publication
@@ -488,6 +501,7 @@ async fn save(
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     publication.set_title(parsed.title).await?;
+    publication.set_subtitle(Some(&form.subtitle)).await?;
     publication.set_publisher(Some(&form.publisher)).await?;
     publication.set_year(parsed.year).await?;
     publication.set_stars(parsed.stars).await?;
