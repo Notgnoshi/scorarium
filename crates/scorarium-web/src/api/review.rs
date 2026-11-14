@@ -71,35 +71,37 @@ pub async fn get(
 
 pub async fn cancel(
     _session: ApiSession,
-    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
-    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
-    let (size, library) = query.resolve()?;
     if let Some(entity) = load(&engine, &kind, &entity).await?
         && let Some(enrichment) = enrichment_of(&entity)
     {
         enrichment.cancel();
     }
-    queue(&engine, size, library, opener.as_deref()).await
+    Ok(changed())
 }
 
 pub async fn retry(
     _session: ApiSession,
-    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
-    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
-    let (size, library) = query.resolve()?;
     match load(&engine, &kind, &entity).await? {
         Some(AnyEntity::Publication(publication)) => publication.enrich().await.map(drop)?,
         Some(AnyEntity::Work(work)) => work.enrich().await.map(drop)?,
         Some(AnyEntity::Person(person)) => person.enrich().await.map(drop)?,
         None => {}
     }
-    queue(&engine, size, library, opener.as_deref()).await
+    Ok(changed())
+}
+
+fn changed() -> Response {
+    (
+        StatusCode::NO_CONTENT,
+        [("HX-Trigger", "enrichment:change")],
+    )
+        .into_response()
 }
 
 /// Ask before discarding an entry, then discard it
