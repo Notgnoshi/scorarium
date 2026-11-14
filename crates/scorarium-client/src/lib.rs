@@ -75,6 +75,15 @@ pub enum Source {
     OpenLibrary,
 }
 
+impl Source {
+    /// Get the display name
+    pub fn name(self) -> &'static str {
+        match self {
+            Source::OpenLibrary => "Open Library",
+        }
+    }
+}
+
 impl fmt::Display for Source {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let text = match self {
@@ -135,7 +144,7 @@ impl Client {
         let cache = Arc::new(Cache::new(log.clone()));
         Client {
             open_library: RateLimitedClient::spawn(
-                "Open Library",
+                Source::OpenLibrary.name(),
                 transport.clone(),
                 open_library::limits(&user_agent),
                 cache.clone(),
