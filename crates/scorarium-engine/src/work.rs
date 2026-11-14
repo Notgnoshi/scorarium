@@ -103,7 +103,7 @@ impl FromStr for Field {
 }
 
 /// A proposed edit to a [Work]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
     Key(String),
@@ -134,6 +134,15 @@ pub struct Work {
     links: Vec<Link>,
     contributors: Vec<Contributor>,
 }
+
+/// Compare by id, so a stale copy equals a fresh one.
+impl PartialEq for Work {
+    fn eq(&self, other: &Work) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Work {}
 
 /// A POD type to serialize a work from the database into
 struct WorkRow {

@@ -129,7 +129,7 @@ impl FromStr for Field {
 }
 
 /// A proposed edit to a [Publication]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
     Publisher(String),
