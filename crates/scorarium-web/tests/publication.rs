@@ -1,9 +1,11 @@
 use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{Contributed, Entity, ProposalId, Source};
 use scorarium_engine::holding::{HoldingKind, NewHolding};
 use scorarium_engine::library::Library;
-use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed, Publication};
+use scorarium_engine::publication::{
+    Identifier, IdentifierKind, ImportSeed, Proposal, Publication,
+};
 use scorarium_engine::value::Year;
 use scorarium_engine::work::{CatalogNumber, Work};
 use scorarium_test::TestApp;
@@ -378,12 +380,24 @@ async fn commit_saves_the_form_and_then_commits() {
             .unwrap()
             .unwrap()
     };
+    let propose = async |title: &str| {
+        let proposal = Proposal::Title(title.into());
+        draft
+            .propose(Source::OpenLibrary, proposal)
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    let rejected = propose("Gymnopedies I").await;
+    let pending = propose("Gymnopedies II").await;
     let form = |title| {
         [
-            ("title", title),
-            ("publisher", ""),
-            ("year", ""),
-            ("note", ""),
+            ("title".to_owned(), title),
+            ("publisher".to_owned(), ""),
+            ("year".to_owned(), ""),
+            ("note".to_owned(), ""),
+            (format!("proposal[{rejected}]"), "rejected"),
+            (format!("proposal[{pending}]"), "pending"),
         ]
     };
 
@@ -398,6 +412,9 @@ async fn commit_saves_the_form_and_then_commits() {
     let after = load().await;
     assert!(!after.is_draft());
     assert_eq!(after.title(), Some("Renamed"));
+    let proposals = after.proposals().await.unwrap();
+    let ids: Vec<ProposalId> = proposals.iter().map(|proposal| proposal.id).collect();
+    assert_eq!(ids, [pending]);
 }
 
 #[tokio::test]

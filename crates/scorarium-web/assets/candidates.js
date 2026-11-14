@@ -40,7 +40,12 @@
                     setState(sibling, "rejected");
                 }
             }
-            filled[0]?.focus();
+            const input = filled[0];
+            if (input?.matches("[data-typeahead]")) {
+                // Suggestions would cover the other candidates and could replace the accepted value.
+                input.dataset.typeaheadQuiet = "";
+            }
+            input?.focus();
         } else if (state === "rejected") {
             visibleButton(item)?.focus();
         } else {

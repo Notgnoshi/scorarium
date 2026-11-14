@@ -163,9 +163,10 @@ function attachTypeahead(input) {
         }
         input.select();
         const text = input.value.trim();
-        if (text) {
+        if (text && !("typeaheadQuiet" in input.dataset)) {
             refresh(text);
         }
+        delete input.dataset.typeaheadQuiet;
     });
 
     input.addEventListener("mousedown", () => {

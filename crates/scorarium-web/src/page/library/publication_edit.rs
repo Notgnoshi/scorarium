@@ -8,7 +8,7 @@ use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::publication::{Identifier, Publication, PublicationId};
+use scorarium_engine::publication::{self, Identifier, Publication, PublicationId};
 use scorarium_engine::value::{Classification, NonBlank, Stars, Tag, Year};
 use serde::Deserialize;
 
@@ -18,6 +18,7 @@ use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
@@ -37,6 +38,7 @@ use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
+use crate::widget::value_candidates::ValueCandidates;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -59,6 +61,7 @@ struct Posted {
     contributors: ContributorsForm,
     holdings: HoldingsForm,
     contents: ContentsForm,
+    states: ProposalStates,
 }
 
 impl Posted {
@@ -71,6 +74,7 @@ impl Posted {
             contributors: body.read()?,
             holdings: body.read()?,
             contents: body.read()?,
+            states: body.read()?,
         })
     }
 }
@@ -85,6 +89,9 @@ struct Edit {
     heading: EditHeading,
     actions: EditActions,
     form: Form,
+    title_candidates: ValueCandidates,
+    publisher_candidates: ValueCandidates,
+    year_candidates: ValueCandidates,
     identifiers: IdentifiersInput,
     tags: TagsInput,
     links: LinksInput,
@@ -217,6 +224,28 @@ async fn render(
     let draft = publication.is_draft();
     let form = posted.form;
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
+    let candidates = proposal::candidates(publication.proposals().await?, &posted.states);
+    let title_candidates = ValueCandidates::new(
+        "title",
+        proposal::pick(&candidates, |value| match value {
+            publication::Proposal::Title(title) => Some(title.clone()),
+            _ => None,
+        }),
+    );
+    let publisher_candidates = ValueCandidates::new(
+        "publisher",
+        proposal::pick(&candidates, |value| match value {
+            publication::Proposal::Publisher(publisher) => Some(publisher.clone()),
+            _ => None,
+        }),
+    );
+    let year_candidates = ValueCandidates::new(
+        "year",
+        proposal::pick(&candidates, |value| match value {
+            publication::Proposal::Year(year) => Some(year.to_string()),
+            _ => None,
+        }),
+    );
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
@@ -276,6 +305,9 @@ async fn render(
         library: library.id(),
         id: publication.id(),
         form,
+        title_candidates,
+        publisher_candidates,
+        year_candidates,
         identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
         tags: TagsInput {
             library: library.id(),
@@ -337,6 +369,7 @@ pub async fn get(
         contributors: ContributorsForm::from(publication.contributors()),
         holdings: HoldingsForm::from(publication.holdings()),
         contents: ContentsForm::from(publication.works().await?.as_slice()),
+        states: ProposalStates::default(),
     };
     render(
         &engine,
@@ -428,6 +461,7 @@ async fn save(
     for id in edits.remove {
         publication.remove_holding(id).await?;
     }
+    posted.states.apply(publication).await?;
     Ok(())
 }
 
