@@ -56,6 +56,7 @@ impl FromStr for PublicationId {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportSeed {
     title: Option<String>,
+    subtitle: Option<String>,
     identifier: Option<Identifier>,
     record: Option<ExternalRecord>,
 }
@@ -65,6 +66,7 @@ impl ImportSeed {
     pub fn title(title: impl Into<String>) -> ImportSeed {
         ImportSeed {
             title: Some(title.into()),
+            subtitle: None,
             identifier: None,
             record: None,
         }
@@ -74,8 +76,17 @@ impl ImportSeed {
     pub fn identifier(identifier: Identifier) -> ImportSeed {
         ImportSeed {
             title: None,
+            subtitle: None,
             identifier: Some(identifier),
             record: None,
+        }
+    }
+
+    /// Add a subtitle, treating a blank subtitle as none
+    pub fn subtitle(self, subtitle: impl Into<String>) -> ImportSeed {
+        ImportSeed {
+            subtitle: Some(subtitle.into()),
+            ..self
         }
     }
 
@@ -1820,12 +1831,14 @@ pub(crate) async fn import(
 ) -> Result<Publication> {
     let ImportSeed {
         title,
+        subtitle,
         identifier,
         record,
     } = seed;
     let title = title
         .map(|title| title.parse::<NonBlank>().map(|title| title.to_string()))
         .transpose()?;
+    let subtitle = clean_text(subtitle.as_deref());
     let link = match record {
         Some(record) => Some((
             record.url(EntityKind::Publication).ok_or_else(|| {
@@ -1842,9 +1855,10 @@ pub(crate) async fn import(
     let mut tx = engine.begin_write().await?;
     let library = library.get();
     let id = sqlx::query_scalar!(
-        "INSERT INTO publication (library_id, title, draft) VALUES (?, ?, 1) RETURNING id AS \"id!\"",
+        "INSERT INTO publication (library_id, title, subtitle, draft) VALUES (?, ?, ?, 1) RETURNING id AS \"id!\"",
         library,
-        title
+        title,
+        subtitle
     )
     .fetch_one(&mut *tx)
     .await?;

@@ -49,11 +49,8 @@ pub(crate) async fn edition(
         return Ok(());
     };
 
-    let title = match &edition.subtitle {
-        Some(subtitle) => format!("{}: {subtitle}", edition.title),
-        None => edition.title.clone(),
-    };
-    let mut proposals = vec![Proposal::Title(title)];
+    let mut proposals = vec![Proposal::Title(edition.title.clone())];
+    proposals.extend(edition.subtitle.clone().map(Proposal::Subtitle));
     proposals.extend(
         edition
             .publishers
