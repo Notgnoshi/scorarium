@@ -211,6 +211,16 @@ mod tests {
         // On equal score the person leads the items credited to them
         let hits = engine.search("rachmaninoff", true, 10).await.unwrap().hits;
         assert!(matches!(hits[0].entity, AnyEntity::Person(_)));
+
+        let hits = engine
+            .search("speed of thought", true, 10)
+            .await
+            .unwrap()
+            .hits;
+        let Some(AnyEntity::Publication(publication)) = hits.first().map(|hit| &hit.entity) else {
+            panic!("expected a publication first, got {hits:?}");
+        };
+        assert_eq!(publication.title(), Some("Practical Vim"));
     }
 
     #[tokio::test]

@@ -71,6 +71,7 @@ pub enum ImportSeed {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
     Title,
+    Subtitle,
     Publisher,
     Year,
     Stars,
@@ -89,6 +90,7 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Field::Title => "title",
+            Field::Subtitle => "subtitle",
             Field::Publisher => "publisher",
             Field::Year => "year",
             Field::Stars => "stars",
@@ -111,6 +113,7 @@ impl FromStr for Field {
     fn from_str(text: &str) -> Result<Field> {
         Ok(match text {
             "title" => Field::Title,
+            "subtitle" => Field::Subtitle,
             "publisher" => Field::Publisher,
             "year" => Field::Year,
             "stars" => Field::Stars,
@@ -150,6 +153,7 @@ pub struct Publication {
     created_at: Timestamp,
     last_modified_at: Timestamp,
     title: Option<String>,
+    subtitle: Option<String>,
     publisher: Option<String>,
     year: Option<Year>,
     stars: Option<Stars>,
@@ -168,6 +172,7 @@ struct PublicationRow {
     id: i64,
     library_id: i64,
     title: Option<String>,
+    subtitle: Option<String>,
     publisher: Option<String>,
     year: Option<u16>,
     stars: Option<u8>,
@@ -188,6 +193,10 @@ impl Publication {
     /// Only a draft publication is allowed to be missing a title
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
+    }
+
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
     }
 
     pub fn publisher(&self) -> Option<&str> {
@@ -320,6 +329,7 @@ impl Publication {
             created_at: row.created_at,
             last_modified_at: row.last_modified_at,
             title: row.title,
+            subtitle: row.subtitle,
             publisher: row.publisher,
             year: row.year.map(Year::try_from).transpose()?,
             stars: row.stars.map(Stars::try_from).transpose()?,
@@ -341,7 +351,7 @@ impl Publication {
     ) -> Result<Option<Publication>> {
         let row = sqlx::query_as!(
             PublicationRow,
-            r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+            r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                       note, kind, cover, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
@@ -604,6 +614,30 @@ impl Publication {
         .await?;
         self.commit_update(tx, Field::Title).await?;
         self.title = Some(title.to_string());
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the subtitle, treating a blank subtitle as none
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_subtitle(&mut self, subtitle: Option<&str>) -> Result<()> {
+        let subtitle = clean_text(subtitle);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.subtitle.as_deref() == subtitle {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET subtitle = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            subtitle,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Subtitle).await?;
+        self.subtitle = subtitle.map(str::to_string);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1830,7 +1864,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let library = library.get();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+        r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                   note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1855,7 +1889,7 @@ pub(crate) async fn candidates(
     let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
-                  coalesce(p.title, '') || ' '
+                  coalesce(p.title, '') || ' ' || coalesce(p.subtitle, '') || ' '
                   || coalesce((SELECT group_concat(person.name, ' ')
                                FROM publication_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.publication_id = p.id), '') || ' '
@@ -1890,7 +1924,8 @@ pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publ
     let work = work.get();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.subtitle,
+                  publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
                   publication.note, publication.kind, publication.cover,
                   publication.draft AS "draft: bool",
@@ -1920,7 +1955,7 @@ pub(crate) async fn with_contributor(
     // A person can contribute in several roles, so a join would repeat the publication
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+        r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                   note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1949,7 +1984,8 @@ pub(crate) async fn tagged(
     let tag = tag.as_str();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.subtitle,
+                  publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
                   publication.note, publication.kind, publication.cover,
                   publication.draft AS "draft: bool",

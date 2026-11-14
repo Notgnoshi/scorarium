@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT publication.id, publication.library_id, publication.title, publication.publisher,\n                  publication.year AS \"year: u16\", publication.stars AS \"stars: u8\",\n                  publication.note, publication.kind, publication.cover,\n                  publication.draft AS \"draft: bool\",\n                  publication.created_at AS \"created_at: Timestamp\",\n                  publication.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication JOIN tag ON tag.publication_id = publication.id\n           WHERE tag.library_id = ? AND tag.tag = ?\n           ORDER BY publication.id",
+  "query": "SELECT publication.id, publication.library_id, publication.title, publication.subtitle,\n                  publication.publisher,\n                  publication.year AS \"year: u16\", publication.stars AS \"stars: u8\",\n                  publication.note, publication.kind, publication.cover,\n                  publication.draft AS \"draft: bool\",\n                  publication.created_at AS \"created_at: Timestamp\",\n                  publication.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication JOIN tag ON tag.publication_id = publication.id\n           WHERE tag.library_id = ? AND tag.tag = ?\n           ORDER BY publication.id",
   "describe": {
     "columns": [
       {
@@ -37,8 +37,19 @@
         }
       },
       {
-        "name": "publisher",
+        "name": "subtitle",
         "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "publication",
+            "name": "subtitle"
+          }
+        }
+      },
+      {
+        "name": "publisher",
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +60,7 @@
       },
       {
         "name": "year: u16",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -60,7 +71,7 @@
       },
       {
         "name": "stars: u8",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -71,7 +82,7 @@
       },
       {
         "name": "note",
-        "ordinal": 6,
+        "ordinal": 7,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "kind",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "cover",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "draft: bool",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -149,10 +160,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "5c0aaf11258456754c5e3eefb8424d5fd40fed05ab2a805fecae25e99945b0ed"
+  "hash": "51fc47138e0bdec55d86443961203798c1d37dca0496408afb5cf7f7fe195e81"
 }

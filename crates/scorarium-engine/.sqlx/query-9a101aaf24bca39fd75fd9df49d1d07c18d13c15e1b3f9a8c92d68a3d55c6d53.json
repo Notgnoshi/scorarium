@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT work.id, work.library_id, work.title, work.key, work.time_signature,\n                  work.instrumentation, work.stars AS \"stars: u8\", work.note, work.kind,\n                  work.draft AS \"draft: bool\",\n                  work.created_at AS \"created_at: Timestamp\",\n                  work.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM work JOIN tag ON tag.work_id = work.id\n           WHERE tag.library_id = ? AND tag.tag = ?\n           ORDER BY work.id",
+  "query": "SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,\n                  work.instrumentation, work.stars AS \"stars: u8\", work.note, work.kind,\n                  work.draft AS \"draft: bool\",\n                  work.created_at AS \"created_at: Timestamp\",\n                  work.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM work JOIN publication_work ON publication_work.work_id = work.id\n           WHERE publication_work.publication_id = ?\n           ORDER BY work.id",
   "describe": {
     "columns": [
       {
@@ -37,8 +37,19 @@
         }
       },
       {
-        "name": "key",
+        "name": "subtitle",
         "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "subtitle"
+          }
+        }
+      },
+      {
+        "name": "key",
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +60,7 @@
       },
       {
         "name": "time_signature",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +71,7 @@
       },
       {
         "name": "instrumentation",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,7 +82,7 @@
       },
       {
         "name": "stars: u8",
-        "ordinal": 6,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "note",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "kind",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "draft: bool",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -137,7 +148,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
@@ -149,10 +160,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "85b636adb94f765ad51f2a79b19887b2acc297b61866b89f8355eb2412ab1c1e"
+  "hash": "9a101aaf24bca39fd75fd9df49d1d07c18d13c15e1b3f9a8c92d68a3d55c6d53"
 }

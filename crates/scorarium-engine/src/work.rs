@@ -51,6 +51,7 @@ impl FromStr for WorkId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
     Title,
+    Subtitle,
     Key,
     TimeSignature,
     Instrumentation,
@@ -67,6 +68,7 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Field::Title => "title",
+            Field::Subtitle => "subtitle",
             Field::Key => "key",
             Field::TimeSignature => "time_signature",
             Field::Instrumentation => "instrumentation",
@@ -87,6 +89,7 @@ impl FromStr for Field {
     fn from_str(text: &str) -> Result<Field> {
         Ok(match text {
             "title" => Field::Title,
+            "subtitle" => Field::Subtitle,
             "key" => Field::Key,
             "time_signature" => Field::TimeSignature,
             "instrumentation" => Field::Instrumentation,
@@ -123,6 +126,7 @@ pub struct Work {
     created_at: Timestamp,
     last_modified_at: Timestamp,
     title: String,
+    subtitle: Option<String>,
     key: Option<String>,
     time_signature: Option<String>,
     instrumentation: Option<String>,
@@ -149,6 +153,7 @@ struct WorkRow {
     id: i64,
     library_id: i64,
     title: String,
+    subtitle: Option<String>,
     key: Option<String>,
     time_signature: Option<String>,
     instrumentation: Option<String>,
@@ -168,6 +173,10 @@ impl Work {
 
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
     }
 
     pub fn key(&self) -> Option<&str> {
@@ -261,6 +270,7 @@ impl Work {
             created_at: row.created_at,
             last_modified_at: row.last_modified_at,
             title: row.title,
+            subtitle: row.subtitle,
             key: row.key,
             time_signature: row.time_signature,
             instrumentation: row.instrumentation,
@@ -281,7 +291,7 @@ impl Work {
     ) -> Result<Option<Work>> {
         let row = sqlx::query_as!(
             WorkRow,
-            r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+            r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                       stars AS "stars: u8", note, kind, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
@@ -476,6 +486,30 @@ impl Work {
         .commit()
         .await?;
         Ok(person)
+    }
+
+    /// Set or clear the subtitle, treating a blank subtitle as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_subtitle(&mut self, subtitle: Option<&str>) -> Result<()> {
+        let subtitle = clean_text(subtitle);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.subtitle.as_deref() == subtitle {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET subtitle = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            subtitle,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Subtitle).await?;
+        self.subtitle = subtitle.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
     }
 
     /// Set or clear the key, treating a blank key as none
@@ -1395,7 +1429,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let library = library.get();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+        r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                   stars AS "stars: u8", note, kind, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1421,7 +1455,7 @@ pub(crate) async fn candidates(
     let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT w.id AS "id!", w.title AS name,
-                  w.title || ' '
+                  w.title || ' ' || coalesce(w.subtitle, '') || ' '
                   || coalesce((SELECT group_concat(person.name, ' ')
                                FROM work_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.work_id = w.id), '') || ' '
@@ -1515,7 +1549,7 @@ pub(crate) async fn in_publication(
     let publication = publication.get();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+        r#"SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,
                   work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
                   work.draft AS "draft: bool",
                   work.created_at AS "created_at: Timestamp",
@@ -1541,7 +1575,7 @@ pub(crate) async fn with_contributor(engine: &Engine, person: PersonId) -> Resul
     // A person can contribute in several roles, so a join would repeat the work
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+        r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                   stars AS "stars: u8", note, kind, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1566,7 +1600,7 @@ pub(crate) async fn tagged(engine: &Engine, library: LibraryId, tag: &Tag) -> Re
     let tag = tag.as_str();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+        r#"SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,
                   work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
                   work.draft AS "draft: bool",
                   work.created_at AS "created_at: Timestamp",

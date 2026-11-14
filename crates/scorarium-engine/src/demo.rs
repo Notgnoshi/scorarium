@@ -20,6 +20,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_identifier(Identifier::new(Isbn, "978-1-68050-127-8")?)
         .await?;
     practical_vim
+        .set_subtitle(Some("Edit Text at the Speed of Thought"))
+        .await?;
+    practical_vim
         .set_publisher(Some("Pragmatic Bookshelf"))
         .await?;
     practical_vim.set_year(Some(Year::try_from(2015)?)).await?;
@@ -93,6 +96,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         writing
             .add_contributor(ambrose_bierce.id(), "author".parse()?)
             .await?;
+        if title == "In the Midst of Life" {
+            writing
+                .set_subtitle(Some("Tales of Soldiers and Civilians"))
+                .await?;
+        }
         if title == "The Devil's Dictionary" {
             writing
                 .add_link("https://www.gutenberg.org/ebooks/972".parse()?)
