@@ -24,3 +24,4 @@ pub mod stars;
 pub mod stars_input;
 pub mod tags_input;
 pub mod typeahead;
+pub mod value_candidates;

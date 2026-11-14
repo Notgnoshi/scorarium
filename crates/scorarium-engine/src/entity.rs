@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
-use scorarium_client::Source;
+pub use scorarium_client::Source;
 
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
@@ -143,7 +143,7 @@ pub trait Entity: Sized {
     type Id: Copy + Eq + Hash + fmt::Display + FromStr;
     /// An enum covering the fields that can be updated on an entity
     type Field: Copy + Eq + fmt::Display + FromStr;
-    type Proposal: Clone + fmt::Debug;
+    type Proposal: Clone + fmt::Debug + PartialEq;
 
     /// The kind of this entity
     const KIND: EntityKind;

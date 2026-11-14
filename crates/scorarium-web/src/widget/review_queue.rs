@@ -226,7 +226,6 @@ impl ReviewEntry {
             enrichment: EnrichmentCell::new(
                 item.entity.id(),
                 item.enrichment.as_ref().map(Enrichment::status),
-                query,
             ),
             proposals: item.proposals,
             queued_at: item.queued_at,
@@ -319,8 +318,6 @@ pub(crate) struct EnrichmentCell {
     /// The count beside the icon, such as "2 of 5"
     text: String,
     action: Option<Action>,
-    /// The query string that keeps the queue's order across the cell's routes
-    query: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -346,17 +343,12 @@ impl Action {
 }
 
 impl EnrichmentCell {
-    pub fn new(
-        entity: AnyEntityId,
-        status: Option<EnrichmentStatus>,
-        query: &str,
-    ) -> EnrichmentCell {
+    pub fn new(entity: AnyEntityId, status: Option<EnrichmentStatus>) -> EnrichmentCell {
         let blank = EnrichmentCell {
             entity,
             state: None,
             text: String::new(),
             action: None,
-            query: query.to_owned(),
         };
         let Some(status) = status else {
             return blank;
@@ -604,7 +596,7 @@ mod tests {
             (status(5, 0, 0, false), "5 of 5", None),
             (status(0, 0, 0, false), "", None),
         ] {
-            let cell = EnrichmentCell::new(entity, Some(status), "");
+            let cell = EnrichmentCell::new(entity, Some(status));
             assert_eq!(
                 (cell.text.as_str(), cell.action),
                 (text, action),

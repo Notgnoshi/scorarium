@@ -12,6 +12,16 @@ the focus on user impact** rather than the mechanics of the change.
 
 <!-- Please add new changelog entries here -->
 
+# Scorarium - 0.2.0-rc1 - (2026-11-14)
+
+This release polished the edit pages, focusing on improving the UX for list-type fields such that
+it's easier to add and dismiss them, as well as moving all fields into a single form (contributors
+and works used to apply their changes immediately).
+
+This release also adds a PoC UI for reviewing, accepting, and rejecting metadata enrichment
+proposals. The edit pages update live to show proposals as they arive from external sources, and the
+user can accept or discard them.
+
 # Scorarium - 0.2.0-rc0 - (2026-11-10)
 
 This release marks the end of a significant refactor intended to reduce some of the friction found

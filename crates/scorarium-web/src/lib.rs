@@ -6,6 +6,7 @@ mod forms;
 mod hit;
 mod icon;
 mod page;
+mod proposal;
 mod redirect;
 mod router;
 mod serve;

@@ -1,0 +1,11 @@
+{% import "widget/proposal.html" as proposal %}
+<ul class="candidates small mt-1 mb-0" data-candidates="{{ field }}">
+    {% for (candidate, fills) in candidates %}
+        <li data-candidate="{{ candidate.state }}"
+            {% for (field, value) in fills %} data-fill-{{ field }}="{{ value }}"{% endfor %}>
+            <span class="text-break">{{ candidate.value }}</span>
+            {% call proposal::controls(candidate) %}
+            {% endcall %}
+        </li>
+    {% endfor %}
+</ul>

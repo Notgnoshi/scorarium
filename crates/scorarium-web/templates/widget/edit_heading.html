@@ -1,4 +1,25 @@
-<h1>
-    {{ title }}
-    {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-</h1>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    {# Browsers treat the first submit button on a form as the default. This form is complex enough
+    that I don't want Enter doing a submit. So add a hidden input to capture and suppress Enter.
+    It precedes the Enrich button, which would otherwise be the default. #}
+    <button type="submit" form="edit" disabled hidden></button>
+    <h1>
+        {{ title }}
+        {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+    </h1>
+    <div class="d-flex align-items-center gap-2">
+        {% if let Some(enrichment) = enrichment %}
+            <div class="text-nowrap" data-enrichment>{{ enrichment }}</div>
+        {% endif %}
+        {% if let Some(enrich) = enrich %}
+            <button class="btn btn-sm btn-outline-secondary"
+                    type="submit"
+                    form="edit"
+                    formaction="{{ enrich }}"
+                    title="Save changes and look up metadata"
+                    data-enrich>
+                <i class="bi bi-cloud-download"></i> Enrich
+            </button>
+        {% endif %}
+    </div>
+</div>

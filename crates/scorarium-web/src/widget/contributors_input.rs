@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::forms;
 use crate::page::form_error;
 use crate::page::library::entity;
+use crate::proposal::{self, Candidate};
 use crate::widget::refusals::Refusals;
 use crate::widget::typeahead::Typeahead;
 
@@ -33,6 +34,7 @@ struct ContributorEntry {
     /// The text of the picker
     name: String,
     role: String,
+    proposal: Vec<String>,
 }
 
 impl ContributorEntry {
@@ -203,6 +205,31 @@ impl NewPeople {
     }
 }
 
+#[derive(Template)]
+#[template(path = "widget/contributor_candidates.html")]
+pub(crate) struct ContributorCandidates {
+    candidates: Vec<Candidate<(Person, Role)>>,
+    library: LibraryId,
+    back: String,
+}
+
+impl ContributorCandidates {
+    /// Draw `candidates`, whose pencils return to `back`
+    pub fn new(
+        candidates: Vec<Candidate<(Person, Role)>>,
+        library: LibraryId,
+        back: &str,
+    ) -> ContributorCandidates {
+        ContributorCandidates {
+            candidates,
+            library,
+            back: back.to_owned(),
+        }
+    }
+}
+
+impl askama::filters::HtmlSafe for ContributorCandidates {}
+
 struct EntryInput {
     key: String,
     entry: ContributorEntry,
@@ -211,6 +238,9 @@ struct EntryInput {
     /// The picker of an entry that is not saved
     person: Option<Typeahead>,
     role: Typeahead,
+    sources: Option<String>,
+    /// The draft person that the entry's proposal created
+    draft: Option<PersonId>,
 }
 
 impl EntryInput {
@@ -220,6 +250,7 @@ impl EntryInput {
         name: String,
         library: LibraryId,
         refusals: &Refusals,
+        candidates: &[Candidate<(Person, Role)>],
     ) -> EntryInput {
         let field = |field: &str| {
             let name = format!("contributor[{key}][{field}]");
@@ -249,12 +280,18 @@ impl EntryInput {
             value: entry.role.clone(),
             ..field("role")
         };
+        let holder = proposal::holder(candidates, &entry.proposal);
         EntryInput {
             key,
             entry,
             name,
             person,
             role,
+            sources: holder.map(Candidate::sources),
+            draft: holder
+                .map(|c| &c.value.0)
+                .filter(|person| person.is_draft())
+                .map(Person::id),
         }
     }
 }
@@ -267,6 +304,7 @@ pub struct ContributorsInput {
     library: LibraryId,
     /// The page that the pencil of a person returns to
     back: String,
+    candidates: ContributorCandidates,
 }
 
 impl askama::filters::HtmlSafe for ContributorsInput {}
@@ -279,6 +317,7 @@ impl ContributorsInput {
         library: LibraryId,
         back: &str,
         refusals: &Refusals,
+        candidates: ContributorCandidates,
     ) -> ContributorsInput {
         let entries = form
             .contributor
@@ -299,6 +338,7 @@ impl ContributorsInput {
                     name,
                     library,
                     refusals,
+                    &candidates.candidates,
                 ))
             })
             .collect();
@@ -310,9 +350,11 @@ impl ContributorsInput {
                 String::new(),
                 library,
                 refusals,
+                &[],
             ),
             library,
             back: back.to_owned(),
+            candidates,
         }
     }
 }

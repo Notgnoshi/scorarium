@@ -3,11 +3,11 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::value::{Classification, NonBlank, Stars, Tag};
-use scorarium_engine::work::{CatalogNumber, Work, WorkId};
+use scorarium_engine::work::{self, CatalogNumber, Work, WorkId};
 use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
@@ -15,23 +15,28 @@ use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, BackQuery};
-use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
+use crate::widget::catalog_numbers_input::{
+    CatalogNumberCandidates, CatalogNumbersForm, CatalogNumbersInput,
+};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors_input::{
-    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+    ContributorCandidates, ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture::Picture;
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
+use crate::widget::value_candidates::ValueCandidates;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -51,6 +56,7 @@ struct Posted {
     catalog_numbers: CatalogNumbersForm,
     links: LinksForm,
     contributors: ContributorsForm,
+    states: ProposalStates,
 }
 
 impl Posted {
@@ -60,6 +66,78 @@ impl Posted {
             catalog_numbers: body.read()?,
             links: body.read()?,
             contributors: body.read()?,
+            states: body.read()?,
+        })
+    }
+}
+
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/work_candidates.html")]
+pub(crate) struct Candidates {
+    title: ValueCandidates,
+    key: ValueCandidates,
+    time_signature: ValueCandidates,
+    instrumentation: ValueCandidates,
+    catalog_numbers: CatalogNumberCandidates,
+    links: LinkCandidates,
+    contributors: ContributorCandidates,
+}
+
+impl Candidates {
+    pub async fn of(work: &Work, states: &ProposalStates, back: &str) -> Result<Candidates> {
+        let candidates = proposal::candidates(work.proposals().await?, states);
+        Ok(Candidates {
+            title: ValueCandidates::new(
+                "title",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            key: ValueCandidates::new(
+                "key",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Key(key) => Some(key.clone()),
+                    _ => None,
+                }),
+            ),
+            time_signature: ValueCandidates::new(
+                "time_signature",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::TimeSignature(time_signature) => Some(time_signature.clone()),
+                    _ => None,
+                }),
+            ),
+            instrumentation: ValueCandidates::new(
+                "instrumentation",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Instrumentation(instrumentation) => {
+                        Some(instrumentation.clone())
+                    }
+                    _ => None,
+                }),
+            ),
+            catalog_numbers: CatalogNumberCandidates::new(proposal::pick(&candidates, |value| {
+                match value {
+                    work::Proposal::CatalogNumber(number) => Some(number.clone()),
+                    _ => None,
+                }
+            })),
+            links: LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+                work::Proposal::Link(url) => Some(url.clone()),
+                _ => None,
+            })),
+            contributors: ContributorCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Contributor { person, role } => {
+                        Some((person.clone(), role.clone()))
+                    }
+                    _ => None,
+                }),
+                work.library(),
+                back,
+            ),
         })
     }
 }
@@ -74,6 +152,10 @@ struct Edit {
     heading: EditHeading,
     actions: EditActions,
     form: Form,
+    title_candidates: ValueCandidates,
+    key_candidates: ValueCandidates,
+    time_signature_candidates: ValueCandidates,
+    instrumentation_candidates: ValueCandidates,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
     links: LinksInput,
@@ -193,12 +275,31 @@ async fn render(
         .iter()
         .filter_map(|tag| tag.parse().ok())
         .collect();
+    let Candidates {
+        title: title_candidates,
+        key: key_candidates,
+        time_signature: time_signature_candidates,
+        instrumentation: instrumentation_candidates,
+        catalog_numbers: catalog_number_candidates,
+        links: link_candidates,
+        contributors: contributor_candidates,
+    } = Candidates::of(work, &posted.states, &here).await?;
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
         heading: EditHeading {
             title: work.title().to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Work(work.id()),
+                work.enrichment().map(|e| e.status()),
+            )),
+            enrich: Some(format!(
+                "/library/{}/work/{}/enrich{}",
+                library.id(),
+                work.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -207,6 +308,7 @@ async fn render(
                 EditMode::Committed
             },
             cancel: back.path().to_owned(),
+            reject_remaining: Some(posted.states.rejects_remaining()),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -240,19 +342,25 @@ async fn render(
             &posted.catalog_numbers,
             work.catalog_numbers(),
             &refusals,
+            catalog_number_candidates,
         ),
         form: posted.form,
+        title_candidates,
+        key_candidates,
+        time_signature_candidates,
+        instrumentation_candidates,
         tags: TagsInput {
             library: library.id(),
             tags,
         },
-        links: LinksInput::new(&posted.links, work.links(), &refusals),
+        links: LinksInput::new(&posted.links, work.links(), &refusals, link_candidates),
         contributors: ContributorsInput::new(
             &posted.contributors,
             work.contributors(),
             library.id(),
             &here,
             &refusals,
+            contributor_candidates,
         ),
         back,
         refusals,
@@ -285,6 +393,7 @@ pub async fn get(
         catalog_numbers: CatalogNumbersForm::from(work.catalog_numbers()),
         links: LinksForm::from(work.links()),
         contributors: ContributorsForm::from(work.contributors()),
+        states: ProposalStates::default(),
     };
     let back = Back::new(
         query,
@@ -342,6 +451,7 @@ async fn save(
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;
     }
+    posted.states.apply(work).await?;
     Ok(())
 }
 
@@ -352,9 +462,31 @@ pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
     header: Header,
-    Path((library, work)): Path<(String, String)>,
+    Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     body: FormBody,
+) -> Result<Response> {
+    submit(engine, header, path, query, body, false).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, header, path, query, body, true).await
+}
+
+async fn submit(
+    engine: Engine,
+    header: Header,
+    (library, work): (String, String),
+    query: BackQuery,
+    body: FormBody,
+    enrich: bool,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -366,6 +498,16 @@ pub async fn post(
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&engine, library.id(), &mut posted, &mut refusals).await? {
         match save(&mut work, &mut posted, parsed).await {
+            Ok(()) if enrich => {
+                work.enrich().await?;
+                let edit = format!(
+                    "/library/{}/work/{}/edit{}",
+                    library.id(),
+                    work.id(),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }

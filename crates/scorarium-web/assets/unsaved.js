@@ -1,5 +1,11 @@
 {
-    const serialize = (form) => new URLSearchParams(new FormData(form)).toString();
+    // A pending proposal is not an edit, and polling adds them.
+    const serialize = (form) => {
+        const fields = [...new FormData(form)].filter(
+            ([name, value]) => !(name.startsWith("proposal[") && value === "pending"),
+        );
+        return new URLSearchParams(fields).toString();
+    };
 
     // The snapshot is taken after every widget script has set up its fields.
     const snapshots = new Map();

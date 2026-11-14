@@ -489,46 +489,4 @@ mod tests {
 
         assert!(publication.enrichment().is_none());
     }
-
-    #[tokio::test]
-    async fn committing_a_draft_rejects_its_proposals() {
-        let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), crate::test::options())
-            .await
-            .unwrap();
-        let library = engine
-            .create_library("Books".parse().unwrap(), false)
-            .await
-            .unwrap();
-        let mut publication = library
-            .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
-                NewHolding::Physical { location: None },
-            )
-            .await
-            .unwrap();
-        publication
-            .propose(Source::OpenLibrary, Proposal::Publisher("Apress".into()))
-            .await
-            .unwrap();
-        let draft_person = publication
-            .propose_new_contributor(Source::OpenLibrary, "Pen Name", &"author".parse().unwrap())
-            .await
-            .unwrap();
-
-        publication.commit().await.unwrap();
-
-        assert!(publication.enrichment().is_none());
-        assert!(publication.proposals().await.unwrap().is_empty());
-        assert!(engine.review_queue().await.unwrap().is_empty());
-        assert!(
-            Person::load(&engine, draft_person.id())
-                .await
-                .unwrap()
-                .is_none()
-        );
-    }
 }

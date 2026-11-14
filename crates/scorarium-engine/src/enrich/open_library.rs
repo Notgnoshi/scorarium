@@ -389,7 +389,7 @@ mod tests {
         }
     }
 
-    /// Render a proposal as "<field> <value>", since Proposal cannot derive PartialEq
+    /// Render a proposal as "<field> <value>"
     fn describe(proposal: &entity::Proposal<Publication>) -> String {
         match &proposal.value {
             Proposal::Title(title) => format!("title {title}"),

@@ -80,7 +80,7 @@ impl FromStr for Field {
 }
 
 /// A proposed edit to a [Person]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Name(String),
     Link(HttpUrl),
@@ -100,6 +100,15 @@ pub struct Person {
     profile: Option<PathBuf>,
     links: Vec<Link>,
 }
+
+/// Compare by id, so a stale copy equals a fresh one.
+impl PartialEq for Person {
+    fn eq(&self, other: &Person) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Person {}
 
 /// A POD type to serialize a person from the database into
 struct PersonRow {
@@ -364,11 +373,10 @@ impl Person {
         Ok(())
     }
 
-    pub(crate) async fn propose(
-        &self,
-        source: Source,
-        value: Proposal,
-    ) -> Result<Option<ProposalId>> {
+    /// Propose an edit from `source`, or return `None` if it is already held or proposed
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let (field, text) = match &value {
             Proposal::Name(name) => ("name", name.parse::<NonBlank>()?.to_string()),
             Proposal::Link(url) => ("link", url.to_string()),

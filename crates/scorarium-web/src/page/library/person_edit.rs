@@ -5,28 +5,31 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{AnyEntityId, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::person::{self, Person, PersonId, derive_sort_name};
 use scorarium_engine::value::NonBlank;
 use serde::Deserialize;
 
-use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::proposal::ProposalStates;
 use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
+use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
+use crate::widget::value_candidates::ValueCandidates;
+use crate::{Settings, proposal};
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -38,6 +41,7 @@ struct Posted {
     form: Form,
     picture: PictureForm,
     links: LinksForm,
+    states: ProposalStates,
 }
 
 impl Posted {
@@ -46,6 +50,7 @@ impl Posted {
             form: body.read()?,
             picture: body.read()?,
             links: body.read()?,
+            states: body.read()?,
         })
     }
 }
@@ -77,6 +82,44 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
     })
 }
 
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/person_candidates.html")]
+pub(crate) struct Candidates {
+    name: ValueCandidates,
+    links: LinkCandidates,
+    pictures: PictureCandidates,
+}
+
+impl Candidates {
+    pub async fn of(person: &Person, states: &ProposalStates) -> Result<Candidates> {
+        let candidates = proposal::candidates(person.proposals().await?, states);
+        let names = proposal::pick(&candidates, |value| match value {
+            person::Proposal::Name(name) => Some(name.clone()),
+            _ => None,
+        });
+        let name = ValueCandidates::new("name", names).also_filling("sort_name", |name| {
+            name.parse::<NonBlank>().map_or_else(
+                |_| String::new(),
+                |name| derive_sort_name(&name).to_string(),
+            )
+        });
+        let links = LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+            person::Proposal::Link(url) => Some(url.clone()),
+            _ => None,
+        }));
+        let pictures = PictureCandidates::new(proposal::pick(&candidates, |value| match value {
+            person::Proposal::Profile(url) => Some(url.clone()),
+            _ => None,
+        }));
+        Ok(Candidates {
+            name,
+            links,
+            pictures,
+        })
+    }
+}
+
 #[derive(Template)]
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
@@ -87,6 +130,7 @@ struct Edit {
     heading: EditHeading,
     actions: EditActions,
     name: String,
+    name_candidates: ValueCandidates,
     sort_name: String,
     links: LinksInput,
     back: Back,
@@ -110,8 +154,13 @@ async fn render(
     ];
     let draft = person.is_draft();
     let form = posted.form;
+    let Candidates {
+        name: name_candidates,
+        links: link_candidates,
+        pictures,
+    } = Candidates::of(person, &posted.states).await?;
     let page = Edit {
-        picture: PictureInput::profile(person, files_allowed).resubmitted(
+        picture: PictureInput::profile(person, files_allowed, pictures).resubmitted(
             engine,
             &posted.picture,
             &refusals,
@@ -120,6 +169,16 @@ async fn render(
         heading: EditHeading {
             title: person.name().to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Person(person.id()),
+                person.enrichment().map(|e| e.status()),
+            )),
+            enrich: Some(format!(
+                "/library/{}/person/{}/enrich{}",
+                library.id(),
+                person.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -128,6 +187,7 @@ async fn render(
                 EditMode::Committed
             },
             cancel: back.path().to_owned(),
+            reject_remaining: Some(posted.states.rejects_remaining()),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -159,8 +219,9 @@ async fn render(
         library: library.id(),
         id: person.id(),
         name: form.name,
+        name_candidates,
         sort_name: form.sort_name,
-        links: LinksInput::new(&posted.links, person.links(), &refusals),
+        links: LinksInput::new(&posted.links, person.links(), &refusals, link_candidates),
         back,
         refusals,
     };
@@ -190,6 +251,7 @@ pub async fn get(
         form,
         picture: PictureForm::default(),
         links: LinksForm::from(person.links()),
+        states: ProposalStates::default(),
     };
     let back = Back::new(
         query,
@@ -230,6 +292,7 @@ async fn save(
         PictureEdit::Clear => person.clear_profile().await?,
         PictureEdit::Keep => {}
     }
+    posted.states.apply(person).await?;
     Ok(())
 }
 
@@ -241,9 +304,33 @@ pub async fn post(
     State(engine): State<Engine>,
     Extension(settings): Extension<Settings>,
     header: Header,
-    Path((library, person)): Path<(String, String)>,
+    Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, query, body, false).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, query, body, true).await
+}
+
+async fn submit(
+    engine: Engine,
+    settings: Settings,
+    header: Header,
+    (library, person): (String, String),
+    query: BackQuery,
+    body: FormBody,
+    enrich: bool,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -256,6 +343,16 @@ pub async fn post(
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&posted, &mut refusals) {
         match save(&mut person, &mut posted, parsed).await {
+            Ok(()) if enrich => {
+                person.enrich().await?;
+                let edit = format!(
+                    "/library/{}/person/{}/edit{}",
+                    library.id(),
+                    person.id(),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }

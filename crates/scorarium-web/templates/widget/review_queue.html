@@ -2,7 +2,7 @@
 <div id="review-queue"
      data-size="{% if let Size::Short = size %}short{% else %}full{% endif %}"
      hx-get="/api/review?{{ query }}"
-     hx-trigger="every 5s"
+     hx-trigger="every 5s, enrichment:change"
      hx-swap="outerMorph"
      hx-status:5xx="swap:none">
     <div id="review-queue-dialog" data-dialog-slot hx-morph-skip></div>

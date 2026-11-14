@@ -4,6 +4,7 @@
     {{ refusals }}
     <form id="edit"
           data-unsaved="unsaved"
+          data-candidates-url="/api/review/publication/{{ id }}/proposals"
           {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
           action="/library/{{ library }}/publication/{{ id }}/edit{{ back.query() }}">
@@ -22,6 +23,7 @@
                                    value="{{ form.title }}"
                                    required>
                             {% if let Some(reason) = refusals.of("title") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ title_candidates }}
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -34,7 +36,10 @@
                     </div>
                     <div class="row mb-3">
                         <label class="col-sm-2 col-form-label" for="publisher">Publisher</label>
-                        <div class="col-sm-10">{{ self.typeahead("publisher", form.publisher) }}</div>
+                        <div class="col-sm-10">
+                            {{ self.typeahead("publisher", form.publisher) }}
+                            {{ publisher_candidates }}
+                        </div>
                     </div>
                     <div class="row mb-3">
                         <label class="col-sm-2 col-form-label" for="year">Year</label>
@@ -47,6 +52,7 @@
                                    name="year"
                                    value="{{ form.year }}">
                             {% if let Some(reason) = refusals.of("year") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ year_candidates }}
                         </div>
                     </div>
                 </div>

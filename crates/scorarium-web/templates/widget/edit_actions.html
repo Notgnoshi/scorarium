@@ -1,7 +1,4 @@
 <div class="sticky-bottom bg-body border-top d-flex flex-wrap gap-2 py-2 mt-3">
-    {# Browsers treat the first submit button on a form as the default. This form is complex enough
-    that I don't want Enter doing a submit. So add a hidden input to capture and suppress Enter #}
-    <button type="submit" form="edit" disabled hidden></button>
     <button class="btn btn-outline-danger me-auto"
             type="button"
             data-dialog="{{ delete.id }}"
@@ -9,6 +6,18 @@
         <i class="bi bi-trash"></i>
         {% if let EditMode::Committed = mode %}Delete{% else %}Discard draft{% endif %}
     </button>
+    {% if let Some(checked) = reject_remaining %}
+        <div class="form-check align-self-center" data-reject-remaining hidden>
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="reject_remaining"
+                   name="reject_remaining"
+                   value="1"
+                   form="edit"
+                   {% if *checked %}checked{% endif %}>
+            <label class="form-check-label" for="reject_remaining"></label>
+        </div>
+    {% endif %}
     <a class="btn btn-outline-secondary" href="{{ cancel }}" data-cancel>Cancel</a>
     {% match mode %}
     {% when EditMode::Import { finish } %}

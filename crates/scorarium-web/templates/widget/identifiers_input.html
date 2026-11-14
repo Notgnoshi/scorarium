@@ -1,11 +1,14 @@
 {% import "widget/list.html" as list %}
 {% macro entry(key, input) %}
     <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% for id in input.entry.proposal %}
+            <input type="hidden" name="identifier[{{ key }}][proposal]" value="{{ id }}">
+        {% endfor %}
         {% if let Some(saved) = input.entry.saved %}
             <input type="hidden" name="identifier[{{ key }}][saved][kind]" value="{{ saved.kind }}">
             <input type="hidden" name="identifier[{{ key }}][saved][value]" value="{{ saved.value }}">
         {% endif %}
-        <select class="form-select w-auto"
+        <select class="form-select identifier-kind"
                 id="identifier-{{ key }}-kind"
                 name="identifier[{{ key }}][kind]"
                 aria-label="Kind of identifier">
@@ -26,6 +29,9 @@
                    {% if input.autofocus %}autofocus{% endif %}>
             {% if let Some(reason) = input.refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
         </div>
+        {% if let Some(sources) = input.sources %}
+            <span class="small text-body-secondary text-nowrap align-self-center" data-sources>{{ sources }}</span>
+        {% endif %}
         {% if input.entry.saved.is_some() %}
             {% call list::removal("identifier", key, input.entry.removed, "Remove identifier", "Keep this identifier") %}
             {% endcall %}
@@ -35,16 +41,18 @@
         {% endif %}
     </li>
 {% endmacro %}
-<ul class="list-unstyled mb-0" data-list>
+<ul class="list-unstyled mb-0" data-list data-candidates="identifier">
     {% for input in entries %}
-        {% call entry(loop.index0, input) %}
+        {% let key = loop.index0 %}
+        {% call entry(key, input) %}
         {% endcall %}
     {% endfor %}
     <template>
         {% call entry("__key__", blank) %}
         {% endcall %}
     </template>
-    <li>
+    {{ candidates }}
+    <li data-candidates-end>
         {% call list::add("Add an identifier") %}
         {% endcall %}
     </li>

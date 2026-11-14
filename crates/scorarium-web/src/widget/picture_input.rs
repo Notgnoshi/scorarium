@@ -1,11 +1,13 @@
 use askama::Template;
 use scorarium_engine::Engine;
 use scorarium_engine::asset::StagedId;
+use scorarium_engine::link::HttpUrl;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
 use serde::Deserialize;
 
 use crate::icon::Icon;
+use crate::proposal::Candidate;
 use crate::widget::file_input::FileInput;
 use crate::widget::picture::Picture;
 use crate::widget::refusals::Refusals;
@@ -42,6 +44,20 @@ impl PictureForm {
 }
 
 #[derive(Template)]
+#[template(path = "widget/picture_candidates.html")]
+pub(crate) struct PictureCandidates {
+    candidates: Vec<Candidate<HttpUrl>>,
+}
+
+impl PictureCandidates {
+    pub fn new(candidates: Vec<Candidate<HttpUrl>>) -> PictureCandidates {
+        PictureCandidates { candidates }
+    }
+}
+
+impl askama::filters::HtmlSafe for PictureCandidates {}
+
+#[derive(Template)]
 #[template(path = "widget/picture_input.html")]
 pub(crate) struct PictureInput {
     src: Option<String>,
@@ -49,20 +65,44 @@ pub(crate) struct PictureInput {
     label: &'static str,
     remove: bool,
     input: FileInput,
+    candidates: PictureCandidates,
 }
 
 impl askama::filters::HtmlSafe for PictureInput {}
 
 impl PictureInput {
-    pub fn profile(person: &Person, files_allowed: bool) -> PictureInput {
-        PictureInput::new(Picture::from(person), "Profile picture", files_allowed)
+    pub fn profile(
+        person: &Person,
+        files_allowed: bool,
+        candidates: PictureCandidates,
+    ) -> PictureInput {
+        PictureInput::new(
+            Picture::from(person),
+            "Profile picture",
+            files_allowed,
+            candidates,
+        )
     }
 
-    pub fn cover(publication: &Publication, files_allowed: bool) -> PictureInput {
-        PictureInput::new(Picture::from(publication), "Cover", files_allowed)
+    pub fn cover(
+        publication: &Publication,
+        files_allowed: bool,
+        candidates: PictureCandidates,
+    ) -> PictureInput {
+        PictureInput::new(
+            Picture::from(publication),
+            "Cover",
+            files_allowed,
+            candidates,
+        )
     }
 
-    fn new(picture: Picture, label: &'static str, files_allowed: bool) -> PictureInput {
+    fn new(
+        picture: Picture,
+        label: &'static str,
+        files_allowed: bool,
+        candidates: PictureCandidates,
+    ) -> PictureInput {
         PictureInput {
             src: picture.src().map(str::to_owned),
             icon: picture.icon(),
@@ -82,6 +122,7 @@ impl PictureInput {
                 refusal: None,
                 browse_icon: Some("Browse for a picture"),
             },
+            candidates,
         }
     }
 

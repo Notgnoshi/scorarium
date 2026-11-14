@@ -1,0 +1,13 @@
+{% import "widget/proposal.html" as proposal %}
+{% for candidate in candidates %}
+    <li class="d-flex align-items-start gap-2 mb-2"
+        data-candidate="{{ candidate.state }}"
+        data-fill-url="{{ candidate.value }}">
+        {{ crate::icon::Icon::Link }}
+        <span class="candidate-text text-break flex-grow-1">
+            <a href="{{ candidate.value }}" target="_blank" rel="noopener">{{ candidate.value }}</a>
+        </span>
+        {% call proposal::controls(candidate) %}
+        {% endcall %}
+    </li>
+{% endfor %}

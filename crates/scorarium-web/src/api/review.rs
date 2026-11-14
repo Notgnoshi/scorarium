@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::enrich::Enrichment;
-use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::entity::{AnyEntity, AnyEntityId, Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
@@ -14,9 +14,11 @@ use serde::Deserialize;
 
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
+use crate::page::library::{person_edit, publication_edit, work_edit};
+use crate::proposal::ProposalStates;
 use crate::redirect::CurrentPage;
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::review_queue::{ReviewQueue, Size, Sort};
+use crate::widget::review_queue::{EnrichmentCell, ReviewQueue, Size, Sort};
 
 #[derive(Default, Deserialize)]
 pub(crate) struct ReviewQuery {
@@ -71,35 +73,83 @@ pub async fn get(
 
 pub async fn cancel(
     _session: ApiSession,
-    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
-    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
-    let (size, library) = query.resolve()?;
     if let Some(entity) = load(&engine, &kind, &entity).await?
         && let Some(enrichment) = enrichment_of(&entity)
     {
         enrichment.cancel();
     }
-    queue(&engine, size, library, opener.as_deref()).await
+    Ok(changed())
 }
 
 pub async fn retry(
     _session: ApiSession,
-    CurrentPage(opener): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
-    Query(query): Query<ReviewQuery>,
 ) -> Result<Response> {
-    let (size, library) = query.resolve()?;
     match load(&engine, &kind, &entity).await? {
         Some(AnyEntity::Publication(publication)) => publication.enrich().await.map(drop)?,
         Some(AnyEntity::Work(work)) => work.enrich().await.map(drop)?,
         Some(AnyEntity::Person(person)) => person.enrich().await.map(drop)?,
         None => {}
     }
-    queue(&engine, size, library, opener.as_deref()).await
+    Ok(changed())
+}
+
+pub async fn proposals(
+    _session: ApiSession,
+    CurrentPage(page): CurrentPage,
+    State(engine): State<Engine>,
+    Path((kind, entity)): Path<(String, String)>,
+) -> Result<Response> {
+    let states = ProposalStates::default();
+    let back = page.as_deref().unwrap_or("");
+    let (id, status, candidates) = match load(&engine, &kind, &entity).await? {
+        Some(AnyEntity::Publication(publication)) => (
+            AnyEntityId::Publication(publication.id()),
+            publication.enrichment(),
+            publication_edit::Candidates::of(&publication, &states, back)
+                .await?
+                .render()?,
+        ),
+        Some(AnyEntity::Work(work)) => (
+            AnyEntityId::Work(work.id()),
+            work.enrichment(),
+            work_edit::Candidates::of(&work, &states, back)
+                .await?
+                .render()?,
+        ),
+        Some(AnyEntity::Person(person)) => (
+            AnyEntityId::Person(person.id()),
+            person.enrichment(),
+            person_edit::Candidates::of(&person, &states)
+                .await?
+                .render()?,
+        ),
+        None => return Err(scorarium_engine::Error::NotFound.into()),
+    };
+    let answer = ProposalsAnswer {
+        enrichment: EnrichmentCell::new(id, status.map(|e| e.status())),
+        candidates,
+    };
+    Ok(Html(answer.render()?).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "api/proposals.html")]
+struct ProposalsAnswer {
+    enrichment: EnrichmentCell,
+    candidates: String,
+}
+
+fn changed() -> Response {
+    (
+        StatusCode::NO_CONTENT,
+        [("HX-Trigger", "enrichment:change")],
+    )
+        .into_response()
 }
 
 /// Ask before discarding an entry, then discard it

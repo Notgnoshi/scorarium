@@ -5,10 +5,10 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::publication::{Identifier, Publication, PublicationId};
+use scorarium_engine::publication::{self, Identifier, Publication, PublicationId};
 use scorarium_engine::value::{Classification, NonBlank, Stars, Tag, Year};
 use serde::Deserialize;
 
@@ -18,25 +18,28 @@ use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
-use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
+use crate::widget::contents::{Contents, ContentsCandidates, ContentsEdits, ContentsForm};
 use crate::widget::contributors_input::{
-    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+    ContributorCandidates, ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
-use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::identifiers_input::{IdentifierCandidates, IdentifiersForm, IdentifiersInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
+use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
+use crate::widget::value_candidates::ValueCandidates;
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -59,6 +62,7 @@ struct Posted {
     contributors: ContributorsForm,
     holdings: HoldingsForm,
     contents: ContentsForm,
+    states: ProposalStates,
 }
 
 impl Posted {
@@ -71,6 +75,87 @@ impl Posted {
             contributors: body.read()?,
             holdings: body.read()?,
             contents: body.read()?,
+            states: body.read()?,
+        })
+    }
+}
+
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/publication_candidates.html")]
+pub(crate) struct Candidates {
+    title: ValueCandidates,
+    publisher: ValueCandidates,
+    year: ValueCandidates,
+    identifiers: IdentifierCandidates,
+    links: LinkCandidates,
+    contributors: ContributorCandidates,
+    contents: ContentsCandidates,
+    pictures: PictureCandidates,
+}
+
+impl Candidates {
+    pub async fn of(
+        publication: &Publication,
+        states: &ProposalStates,
+        back: &str,
+    ) -> Result<Candidates> {
+        let candidates = proposal::candidates(publication.proposals().await?, states);
+        Ok(Candidates {
+            title: ValueCandidates::new(
+                "title",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            publisher: ValueCandidates::new(
+                "publisher",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Publisher(publisher) => Some(publisher.clone()),
+                    _ => None,
+                }),
+            ),
+            year: ValueCandidates::new(
+                "year",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Year(year) => Some(year.to_string()),
+                    _ => None,
+                }),
+            ),
+            identifiers: IdentifierCandidates::new(proposal::pick(
+                &candidates,
+                |value| match value {
+                    publication::Proposal::Identifier(identifier) => Some(identifier.clone()),
+                    _ => None,
+                },
+            )),
+            links: LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+                publication::Proposal::Link(url) => Some(url.clone()),
+                _ => None,
+            })),
+            contributors: ContributorCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Contributor { person, role } => {
+                        Some((person.clone(), role.clone()))
+                    }
+                    _ => None,
+                }),
+                publication.library(),
+                back,
+            ),
+            contents: ContentsCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Contents(work) => Some(work.clone()),
+                    _ => None,
+                }),
+                publication.library(),
+                back,
+            ),
+            pictures: PictureCandidates::new(proposal::pick(&candidates, |value| match value {
+                publication::Proposal::Cover(url) => Some(url.clone()),
+                _ => None,
+            })),
         })
     }
 }
@@ -85,6 +170,9 @@ struct Edit {
     heading: EditHeading,
     actions: EditActions,
     form: Form,
+    title_candidates: ValueCandidates,
+    publisher_candidates: ValueCandidates,
+    year_candidates: ValueCandidates,
     identifiers: IdentifiersInput,
     tags: TagsInput,
     links: LinksInput,
@@ -217,8 +305,18 @@ async fn render(
     let draft = publication.is_draft();
     let form = posted.form;
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
+    let Candidates {
+        title: title_candidates,
+        publisher: publisher_candidates,
+        year: year_candidates,
+        identifiers: identifier_candidates,
+        links: link_candidates,
+        contributors: contributor_candidates,
+        contents: contents_candidates,
+        pictures,
+    } = Candidates::of(publication, &posted.states, &here).await?;
     let page = Edit {
-        picture: PictureInput::cover(publication, files_allowed).resubmitted(
+        picture: PictureInput::cover(publication, files_allowed, pictures).resubmitted(
             engine,
             &posted.picture,
             &refusals,
@@ -227,6 +325,16 @@ async fn render(
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Publication(publication.id()),
+                publication.enrichment().map(|e| e.status()),
+            )),
+            enrich: Some(format!(
+                "/library/{}/publication/{}/enrich{}",
+                library.id(),
+                publication.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -242,6 +350,7 @@ async fn render(
                 EditMode::Committed
             },
             cancel: back.path().to_owned(),
+            reject_remaining: Some(posted.states.rejects_remaining()),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {
@@ -276,18 +385,27 @@ async fn render(
         library: library.id(),
         id: publication.id(),
         form,
-        identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
+        title_candidates,
+        publisher_candidates,
+        year_candidates,
+        identifiers: IdentifiersInput::new(&posted.identifiers, &refusals, identifier_candidates),
         tags: TagsInput {
             library: library.id(),
             tags,
         },
-        links: LinksInput::new(&posted.links, publication.links(), &refusals),
+        links: LinksInput::new(
+            &posted.links,
+            publication.links(),
+            &refusals,
+            link_candidates,
+        ),
         contributors: ContributorsInput::new(
             &posted.contributors,
             publication.contributors(),
             library.id(),
             &here,
             &refusals,
+            contributor_candidates,
         ),
         holdings: Holdings::of(
             engine,
@@ -296,7 +414,15 @@ async fn render(
             &refusals,
             files_allowed,
         ),
-        contents: Contents::of(engine, publication, &posted.contents, &here, &refusals).await?,
+        contents: Contents::of(
+            engine,
+            publication,
+            &posted.contents,
+            &here,
+            &refusals,
+            contents_candidates,
+        )
+        .await?,
         back,
         refusals,
     };
@@ -337,6 +463,7 @@ pub async fn get(
         contributors: ContributorsForm::from(publication.contributors()),
         holdings: HoldingsForm::from(publication.holdings()),
         contents: ContentsForm::from(publication.works().await?.as_slice()),
+        states: ProposalStates::default(),
     };
     render(
         &engine,
@@ -428,12 +555,20 @@ async fn save(
     for id in edits.remove {
         publication.remove_holding(id).await?;
     }
+    posted.states.apply(publication).await?;
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+enum Then {
+    Return,
+    Commit,
+    Enrich,
+}
+
+/// Save the form, commit the draft or start enrichment if asked, and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit.
+/// A refusal from either step is shown in the form. A refused save blocks the commit and the
+/// enrichment.
 async fn submit(
     engine: Engine,
     settings: Settings,
@@ -441,7 +576,7 @@ async fn submit(
     (library, publication): (String, String),
     body: FormBody,
     query: BackQuery,
-    commit: bool,
+    then: Then,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -461,10 +596,19 @@ async fn submit(
         && let Some(parsed) = parsed
     {
         let saved = match save(&mut publication, &mut posted, parsed, edits, contents).await {
-            Ok(()) if commit => publication.commit().await,
+            Ok(()) if matches!(then, Then::Commit) => publication.commit().await,
             saved => saved,
         };
         match saved {
+            Ok(()) if matches!(then, Then::Enrich) => {
+                publication.enrich().await?;
+                let edit = format!(
+                    "{}/edit{}",
+                    publication_path(&library, &publication),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -496,7 +640,19 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, body, query, false).await
+    submit(engine, settings, header, path, body, query, Then::Return).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, body, query, Then::Enrich).await
 }
 
 pub async fn commit(
@@ -508,7 +664,7 @@ pub async fn commit(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, body, query, true).await
+    submit(engine, settings, header, path, body, query, Then::Commit).await
 }
 
 pub async fn delete(

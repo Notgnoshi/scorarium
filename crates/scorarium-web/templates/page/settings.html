@@ -7,6 +7,11 @@
         {% if password %}<a class="list-group-item list-group-item-action"
                             href="/settings/password">Change password</a>{% endif %}
     </div>
+    {% if demo %}
+        <form class="mb-3" method="post" action="/settings/demo/reset">
+            <button class="btn btn-outline-danger" type="submit">Reset demo data</button>
+        </form>
+    {% endif %}
     <form method="post" action="/logout">
         <button class="btn btn-outline-secondary" type="submit">Log out</button>
     </form>

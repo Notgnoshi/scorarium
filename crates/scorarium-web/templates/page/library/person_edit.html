@@ -4,6 +4,7 @@
     {{ refusals }}
     <form id="edit"
           data-unsaved="unsaved"
+          data-candidates-url="/api/review/person/{{ id }}/proposals"
           {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
           action="/library/{{ library }}/person/{{ id }}/edit{{ back.query() }}">
@@ -22,6 +23,7 @@
                                    value="{{ name }}"
                                    required>
                             {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ name_candidates }}
                         </div>
                     </div>
                     <div class="row mb-3">

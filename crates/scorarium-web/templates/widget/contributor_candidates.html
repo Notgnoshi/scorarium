@@ -1,0 +1,28 @@
+{% import "widget/proposal.html" as proposal %}
+{% for candidate in candidates %}
+    <li class="d-flex align-items-start gap-2 mb-2"
+        data-candidate="{{ candidate.state }}"
+        data-fill-person="{{ candidate.value.0.id() }}"
+        data-fill-name="{{ candidate.value.0.name() }}"
+        data-fill-role="{{ candidate.value.1 }}"
+        {% if candidate.value.0.is_draft() %}data-pick-draft-person="{{ candidate.value.0.id() }}"{% endif %}>
+        <div class="w-50 d-flex align-items-center gap-2">
+            <span class="candidate-text">{{ candidate.value.0.name() }}</span>
+            {% if candidate.value.0.is_draft() %}
+                <i class="bi bi-person-plus" title="New person"></i>
+            {% else %}
+                <i class="bi bi-person-check" title="Existing person"></i>
+            {% endif %}
+            <a class="btn btn-sm btn-link"
+               href="/library/{{ library }}/person/{{ candidate.value.0.id() }}/edit?back={{ back|urlencode }}"
+               title="Edit person">
+                <i class="bi bi-pencil"></i>
+            </a>
+        </div>
+        <div class="w-50">
+            <span class="candidate-text">{{ candidate.value.1 }}</span>
+        </div>
+        {% call proposal::controls(candidate) %}
+        {% endcall %}
+    </li>
+{% endfor %}

@@ -57,7 +57,7 @@ async fn library_show_rejects_an_ambiguous_reference() {
          id          \t2\n\
          name        \tSheet music\n\
          visibility  \tpublic\n\
-         publications\t4\n"
+         publications\t5\n"
     );
 
     let (out, result) = run(&engine, "library 2 show\n").await;
@@ -156,7 +156,7 @@ async fn publication_show_resolves_by_title() {
     assert_eq!(
         out,
         "field         \tid\tvalue\n\
-         --------------\t--\t-------------------------------------------------\n\
+         --------------\t--\t------------------------------------------------------------------------------\n\
          id            \t2 \t\n\
          title         \t  \tPro Git\n\
          publisher     \t  \tApress\n\
@@ -167,9 +167,14 @@ async fn publication_show_resolves_by_title() {
          identifier    \t  \tplate-number P 123\n\
          contributor   \t  \tScott Chacon (author)\n\
          holding       \t2 \tphysical\n\
-         holding       \t8 \tphysical: Shelf 3\n\
+         holding       \t9 \tphysical: Shelf 3\n\
          link          \t3 \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
-         link          \t4 \thttps://git-scm.com/book/en/v2\n"
+         link          \t4 \thttps://git-scm.com/book/en/v2\n\
+         proposal      \t11\ttitle: Pro Git, Second Edition (openlibrary)\n\
+         proposal      \t12\ttitle: Pro Git: Everything You Need to Know About Git (openlibrary)\n\
+         proposal      \t13\tidentifier: isbn 978-1-4302-1833-3 (openlibrary)\n\
+         proposal      \t14\tcover: https://covers.openlibrary.org/b/isbn/9781484200773-M.jpg (openlibrary)\n\
+         proposal      \t15\tcover: https://covers.openlibrary.org/b/isbn/9781430218333-M.jpg (openlibrary)\n"
     );
 }
 
@@ -212,12 +217,13 @@ async fn person_list_shows_everyone_credited() {
     result.unwrap();
     assert_eq!(
         out,
-        "id\tname          \tsort-name\n\
-         --\t--------------\t---------------\n\
-         4 \tAmbrose Bierce\tBierce, Ambrose\n\
-         2 \tScott Chacon  \tChacon, Scott\n\
-         1 \tDrew Neil     \tNeil, Drew\n\
-         3 \tBen Straub    \tStraub, Ben\n"
+        "id\tname           \tsort-name\n\
+         --\t---------------\t----------------\n\
+         4 \tAmbrose Bierce \tBierce, Ambrose\n\
+         2 \tScott Chacon   \tChacon, Scott\n\
+         15\tClifton Fadiman\tFadiman, Clifton\n\
+         1 \tDrew Neil      \tNeil, Drew\n\
+         3 \tBen Straub     \tStraub, Ben\n"
     );
 
     let (out, result) = run(&engine, "library books person list --role composer\n").await;
@@ -299,16 +305,28 @@ async fn search_prints_the_same_columns_for_every_kind() {
     );
 }
 
-/// Filter the age from the review queue output
-fn without_age(out: &str) -> String {
-    out.lines()
+/// Filter the age from the review queue output, and sort its entities by kind and id
+///
+/// The queue orders entities by the second they were queued, which varies between runs.
+fn sorted_without_age(out: &str) -> String {
+    let mut lines: Vec<&str> = out
+        .lines()
         .map(|line| {
             line.rsplit_once('\t')
                 .map_or(line, |(rest, _)| rest)
                 .trim_end()
         })
-        .map(|line| format!("{line}\n"))
-        .collect()
+        .collect();
+    lines[2..].sort_by_key(|line| {
+        let mut fields = line.split('\t').skip(1).map(str::trim);
+        let kind = fields.next().unwrap();
+        let kind = ["publication", "work", "person"]
+            .iter()
+            .position(|k| *k == kind);
+        let id: u32 = fields.next().unwrap().parse().unwrap();
+        (kind, id)
+    });
+    lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
 #[tokio::test]
@@ -319,13 +337,13 @@ async fn import_commit_review_discard() {
         "library books select\n\
          import 'Scorarium handbook' --location Desk\n\
          import 978-0-486-99999-9\n\
-         publication 8 add work 'Chapter 1'\n\
-         publication 8 add contributor 'Grace Hopper' author\n\
-         publication 8 add contributor 'Ada Lovelace' editor\n",
+         publication 9 add work 'Chapter 1'\n\
+         publication 9 add contributor 'Grace Hopper' author\n\
+         publication 9 add contributor 'Ada Lovelace' editor\n",
     )
     .await;
     result.unwrap();
-    assert_eq!(out, "8\n9\n");
+    assert_eq!(out, "9\n10\n");
 
     let (_, result) = run(&engine, "library books import '  '\n").await;
     assert_eq!(
@@ -336,78 +354,108 @@ async fn import_commit_review_discard() {
     let (out, result) = run(&engine, "review\n").await;
     result.unwrap();
     assert_eq!(
-        without_age(&out),
-        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
-         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \tScorarium handbook\tdraft\tcompleted 0/0\n\
-         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
-         Books  \twork       \t11\tChapter 1         \tdraft\n\
-         Books  \tperson     \t13\tGrace Hopper      \tdraft\n\
-         Books  \tperson     \t14\tAda Lovelace      \tdraft\n"
+        sorted_without_age(&out),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Books      \tpublication\t9 \tScorarium handbook                      \tdraft\tcompleted 0/0\n\
+         Books      \tpublication\t10\t                                        \tdraft\tcompleted 1/1\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \twork       \t14\tChapter 1                               \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n\
+         Books      \tperson     \t16\tGrace Hopper                            \tdraft\n\
+         Books      \tperson     \t17\tAda Lovelace                            \tdraft\n"
+    );
+
+    let (out, result) = run(&engine, "library books publication 10 show\n").await;
+    result.unwrap();
+    assert_eq!(
+        out,
+        "field     \tid\tvalue\n\
+         ----------\t--\t----------------------\n\
+         id        \t10\t\n\
+         draft     \t  \t\n\
+         title     \t  \t\n\
+         identifier\t  \tisbn 978-0-486-99999-9\n\
+         holding   \t10\tphysical\n\
+         enrichment\t  \tcompleted 1/1\n"
+    );
+
+    let (out, result) = run(
+        &engine,
+        "library books work 14 commit\n\
+         library books person 17 discard-changes\n\
+         review\n",
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        sorted_without_age(&out),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Books      \tpublication\t9 \tScorarium handbook                      \tdraft\tcompleted 0/0\n\
+         Books      \tpublication\t10\t                                        \tdraft\tcompleted 1/1\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n\
+         Books      \tperson     \t16\tGrace Hopper                            \tdraft\n"
     );
 
     let (out, result) = run(&engine, "library books publication 9 show\n").await;
     result.unwrap();
     assert_eq!(
         out,
-        "field     \tid\tvalue\n\
-         ----------\t--\t----------------------\n\
-         id        \t9 \t\n\
-         draft     \t  \t\n\
-         title     \t  \t\n\
-         identifier\t  \tisbn 978-0-486-99999-9\n\
-         holding   \t9 \tphysical\n\
-         enrichment\t  \tcompleted 1/1\n"
-    );
-
-    let (out, result) = run(
-        &engine,
-        "library books work 11 commit\n\
-         library books person 14 discard-changes\n\
-         review\n",
-    )
-    .await;
-    result.unwrap();
-    assert_eq!(
-        without_age(&out),
-        "library\tkind       \tid\ttitle             \tdraft\tenrichment   \tproposals\n\
-         -------\t-----------\t--\t------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \tScorarium handbook\tdraft\tcompleted 0/0\n\
-         Books  \tpublication\t9 \t                  \tdraft\tcompleted 1/1\n\
-         Books  \tperson     \t13\tGrace Hopper      \tdraft\n"
-    );
-
-    let (out, result) = run(&engine, "library books publication 8 show\n").await;
-    result.unwrap();
-    assert_eq!(
-        out,
         "field      \tid\tvalue\n\
          -----------\t--\t---------------------\n\
-         id         \t8 \t\n\
+         id         \t9 \t\n\
          draft      \t  \t\n\
          title      \t  \tScorarium handbook\n\
          contributor\t  \tGrace Hopper (author)\n\
-         holding    \t8 \tphysical: Desk\n\
-         work       \t11\tChapter 1\n\
+         holding    \t9 \tphysical: Desk\n\
+         work       \t14\tChapter 1\n\
          enrichment \t  \tcompleted 0/0\n"
     );
 
     let (out, result) = run(
         &engine,
         "library books publication 'scorarium handbook' commit\n\
-         library books publication 8 commit\n\
+         library books publication 9 commit\n\
          review\n",
     )
     .await;
     result.unwrap();
     assert_eq!(
-        without_age(&out),
-        "library\tkind       \tid\ttitle\tdraft\tenrichment   \tproposals\n\
-         -------\t-----------\t--\t-----\t-----\t-------------\t---------\n\
-         Books  \tpublication\t9 \t     \tdraft\tcompleted 1/1\n"
+        sorted_without_age(&out),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Books      \tpublication\t10\t                                        \tdraft\tcompleted 1/1\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
     );
 
-    let (_, result) = run(&engine, "library books publication 9 commit\n").await;
+    let (_, result) = run(&engine, "library books publication 10 commit\n").await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
         "line 1: A publication needs a title before it can be committed."
@@ -415,22 +463,36 @@ async fn import_commit_review_discard() {
 
     let (out, result) = run(
         &engine,
-        "library books publication 9 discard-changes\nreview\n",
+        "library books publication 10 discard-changes\nreview\n",
     )
     .await;
     result.unwrap();
-    assert_eq!(out, "");
+    assert_eq!(
+        sorted_without_age(&out),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
+    );
+
+    let (_, result) = run(&engine, "library books publication 10 discard-changes\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: no publication '10'"
+    );
 
     let (_, result) = run(&engine, "library books publication 9 discard-changes\n").await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
-        "line 1: no publication '9'"
-    );
-
-    let (_, result) = run(&engine, "library books publication 8 discard-changes\n").await;
-    assert_eq!(
-        format!("{:#}", result.unwrap_err()),
-        "line 1: publication '8' is not in the review queue"
+        "line 1: publication '9' is not in the review queue"
     );
 }
 
@@ -470,15 +532,16 @@ async fn add_work_links_by_id_or_creates() {
             "{album} add work Polichinelle --new\n\
              {album} add work 6\n\
              library 'sheet music' work 6 show\n\
-             library 'sheet music' work 11 show\n\
+             library 'sheet music' work 14 show\n\
              review\n"
         ),
     )
     .await;
     result.unwrap();
-    // The album is committed, so the new work is too and the review queue stays empty
+    // The album is committed, so the new work is too and stays out of the review queue
+    let (shows, queue) = out.split_at(out.find("library ").unwrap());
     assert_eq!(
-        out,
+        shows,
         "field          \tid\tvalue\n\
          ---------------\t--\t----------------------------------------\n\
          id             \t6 \t\n\
@@ -492,28 +555,43 @@ async fn add_work_links_by_id_or_creates() {
          publication    \t5 \tRachmaninoff masterpieces for solo piano\n\
          field         \tid\tvalue\n\
          --------------\t--\t-------------------\n\
-         id            \t11\t\n\
+         id            \t14\t\n\
          title         \t  \tPolichinelle\n\
          classification\t  \tmusic\n\
          publication   \t4 \tRussian piano album\n"
+    );
+    assert_eq!(
+        sorted_without_age(queue),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
     );
 
     // A seed that fails ISBN validation is a title, not an error
     let (out, result) = run(
         &engine,
-        "library books import 978-0-13-468599-2\nlibrary books publication 8 show\n",
+        "library books import 978-0-13-468599-2\nlibrary books publication 9 show\n",
     )
     .await;
     result.unwrap();
     assert_eq!(
         out,
-        "8\n\
+        "9\n\
          field     \tid\tvalue\n\
          ----------\t--\t-----------------\n\
-         id        \t8 \t\n\
+         id        \t9 \t\n\
          draft     \t  \t\n\
          title     \t  \t978-0-13-468599-2\n\
-         holding   \t8 \tphysical\n\
+         holding   \t9 \tphysical\n\
          enrichment\t  \tcompleted 0/0\n"
     );
 }
@@ -527,44 +605,54 @@ async fn isbn_import_review() {
          import 978-0-486-25392-3\n\
          wait\n\
          review\n\
-         publication 8 show\n",
+         publication 9 show\n",
     )
     .await;
     result.unwrap();
     let (id, tables) = out.split_once('\n').unwrap();
-    assert_eq!(id, "8");
+    assert_eq!(id, "9");
 
     let (listing, show) = tables.split_once("field").unwrap();
     assert_eq!(
-        without_age(listing),
-        "library\tkind       \tid\ttitle               \tdraft\tenrichment   \tproposals\n\
-         -------\t-----------\t--\t--------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \t                    \tdraft\tcompleted 2/2\t5\n\
-         Books  \tperson     \t13\tLudwig van Beethoven\tdraft\t             \t9\n"
+        sorted_without_age(listing),
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Books      \tpublication\t9 \t                                        \tdraft\tcompleted 2/2\t5\n\
+         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n\
+         Books      \tperson     \t16\tLudwig van Beethoven                    \tdraft\t             \t9\n"
     );
     assert_eq!(
         format!("field{show}"),
         "field         \tid\tvalue\n\
          --------------\t--\t-------------------------------------------------------------------------\n\
-         id            \t8 \t\n\
+         id            \t9 \t\n\
          draft         \t  \t\n\
          title         \t  \t\n\
          classification\t  \tmusic\n\
          identifier    \t  \tisbn 978-0-486-25392-3\n\
-         holding       \t8 \tphysical\n\
+         holding       \t9 \tphysical\n\
          enrichment    \t  \tcompleted 2/2\n\
-         proposal      \t1 \ttitle: Bagatelles, Rondos and Other Shorter Works for Piano (openlibrary)\n\
-         proposal      \t2 \tpublisher: Dover Publications (openlibrary)\n\
-         proposal      \t3 \tyear: 1987 (openlibrary)\n\
-         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
-         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+         proposal      \t17\ttitle: Bagatelles, Rondos and Other Shorter Works for Piano (openlibrary)\n\
+         proposal      \t18\tpublisher: Dover Publications (openlibrary)\n\
+         proposal      \t19\tyear: 1987 (openlibrary)\n\
+         proposal      \t20\tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t21\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
     );
 
     let (out, result) = run(
         &engine,
-        "library books publication 8 accept 1 2\n\
-         library books publication 8 reject 3\n\
-         library books publication 8 show\n",
+        "library books publication 9 accept 17 18\n\
+         library books publication 9 reject 19\n\
+         library books publication 9 show\n",
     )
     .await;
     result.unwrap();
@@ -572,29 +660,29 @@ async fn isbn_import_review() {
         out,
         "field         \tid\tvalue\n\
          --------------\t--\t------------------------------------------------------------\n\
-         id            \t8 \t\n\
+         id            \t9 \t\n\
          draft         \t  \t\n\
          title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
          publisher     \t  \tDover Publications\n\
          classification\t  \tmusic\n\
          identifier    \t  \tisbn 978-0-486-25392-3\n\
-         holding       \t8 \tphysical\n\
+         holding       \t9 \tphysical\n\
          enrichment    \t  \tcompleted 2/2\n\
-         proposal      \t4 \tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
-         proposal      \t5 \tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+         proposal      \t20\tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
+         proposal      \t21\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
     );
 
-    let (_, result) = run(&engine, "library books publication 8 accept 3\n").await;
+    let (_, result) = run(&engine, "library books publication 9 accept 19\n").await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
-        "line 1: no proposal '3'"
+        "line 1: no proposal '19'"
     );
 
     let (out, result) = run(
         &engine,
-        "library books publication 8 reject-all\n\
-         library books publication 8 reject-all\n\
-         library books publication 8 show\n",
+        "library books publication 9 reject-all\n\
+         library books publication 9 reject-all\n\
+         library books publication 9 show\n",
     )
     .await;
     result.unwrap();
@@ -602,22 +690,32 @@ async fn isbn_import_review() {
         out,
         "field         \tid\tvalue\n\
          --------------\t--\t----------------------------------------------------\n\
-         id            \t8 \t\n\
+         id            \t9 \t\n\
          draft         \t  \t\n\
          title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
          publisher     \t  \tDover Publications\n\
          classification\t  \tmusic\n\
          identifier    \t  \tisbn 978-0-486-25392-3\n\
-         holding       \t8 \tphysical\n\
+         holding       \t9 \tphysical\n\
          enrichment    \t  \tcompleted 2/2\n"
     );
 
     let (out, result) = run(&engine, "review\n").await;
     result.unwrap();
     assert_eq!(
-        without_age(&out),
-        "library\tkind       \tid\ttitle                                               \tdraft\tenrichment   \tproposals\n\
-         -------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
-         Books  \tpublication\t8 \tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n"
+        sorted_without_age(&out),
+        "library    \tkind       \tid\ttitle                                               \tdraft\tenrichment   \tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                             \t     \t             \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce            \t     \t             \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\tcompleted 0/0\t10\n\
+         Books      \tpublication\t9 \tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n\
+         Sheet music\twork       \t11\tElegie                                              \tdraft\t             \t4\n\
+         Sheet music\twork       \t12\tMelodie                                             \tdraft\t             \t1\n\
+         Sheet music\twork       \t13\tSerenade                                            \tdraft\n\
+         Sheet music\tperson     \t12\tErik Satie                                          \t     \t             \t2\n\
+         Sheet music\tperson     \t13\tMurray Baylor                                       \tdraft\n\
+         Sheet music\tperson     \t14\tSergei Rachmaninov                                  \tdraft\n\
+         Books      \tperson     \t15\tClifton Fadiman                                     \tdraft\n"
     );
 }

@@ -11,6 +11,8 @@ pub(crate) struct EditActions {
     pub cancel: String,
     /// The confirmation dialog opened by destructive actions
     pub delete: Confirm,
+    /// Whether the checkbox is checked, or `None` for a page with no proposals
+    pub reject_remaining: Option<bool>,
 }
 
 /// What an edit page is editing, which decides the buttons of its action bar

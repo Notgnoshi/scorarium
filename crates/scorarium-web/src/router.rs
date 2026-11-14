@@ -39,7 +39,8 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             let spammy = matches!(
                 path,
                 "/api/review" | "/api/search" | "/api/import/candidates"
-            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"));
+            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"))
+                || (path.starts_with("/api/review/") && path.ends_with("/proposals"));
             let level = if spammy { Level::TRACE } else { Level::DEBUG };
             DefaultMakeSpan::new().level(level).make_span(request)
         })
@@ -71,6 +72,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             post(page::library::publication_edit::commit),
         )
         .route(
+            "/library/{id}/publication/{publication}/enrich",
+            post(page::library::publication_edit::enrich),
+        )
+        .route(
             "/library/{id}/publication/{publication}/delete",
             post(page::library::publication_edit::delete),
         )
@@ -88,6 +93,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::work_edit::get).post(page::library::work_edit::post),
         )
         .route(
+            "/library/{id}/work/{work}/enrich",
+            post(page::library::work_edit::enrich),
+        )
+        .route(
             "/library/{id}/work/{work}/delete",
             post(page::library::work_edit::delete),
         )
@@ -102,6 +111,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route(
             "/library/{id}/person/{person}/edit",
             get(page::library::person_edit::get).post(page::library::person_edit::post),
+        )
+        .route(
+            "/library/{id}/person/{person}/enrich",
+            post(page::library::person_edit::enrich),
         )
         .route(
             "/library/{id}/person/{person}/delete",
@@ -132,6 +145,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             "/settings/password",
             get(page::password::get).post(page::password::post),
         )
+        .route("/settings/demo/reset", post(page::settings::reset_demo))
         .route("/settings/audit", get(page::audit::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
@@ -164,6 +178,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route("/review", get(api::review::get))
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
                 .route("/review/{kind}/{entity}/retry", post(api::review::retry))
+                .route(
+                    "/review/{kind}/{entity}/proposals",
+                    get(api::review::proposals),
+                )
                 .route(
                     "/review/{kind}/{entity}/discard",
                     post(api::review::discard),

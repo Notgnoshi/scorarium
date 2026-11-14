@@ -1,0 +1,26 @@
+{% macro controls(candidate) %}
+    <span class="text-body-secondary text-nowrap" data-sources>{{ candidate.sources() }}</span>
+    <span class="d-flex align-items-start gap-1">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary py-0"
+                data-proposal-state="accepted"
+                title="Accept this proposal">
+            <i class="bi bi-check-lg"></i>
+        </button>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary py-0"
+                data-proposal-state="rejected"
+                title="Reject this proposal">
+            <i class="bi bi-x-lg"></i>
+        </button>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary py-0"
+                data-proposal-state="pending"
+                title="Undo">
+            <i class="bi bi-arrow-counterclockwise"></i>
+        </button>
+    </span>
+    {% for (id, _) in candidate.proposals %}
+        <input type="hidden" name="proposal[{{ id }}]" value="{{ candidate.state }}">
+    {% endfor %}
+{% endmacro %}

@@ -142,6 +142,31 @@ fieldset.box > legend {
     opacity: 0.4;
 }
 
+.picture-candidates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0;
+    list-style: none;
+    font-size: 0.875rem;
+}
+
+.picture-candidates:not(:has(> li)) {
+    display: none;
+}
+
+.picture-candidates > [data-candidate="rejected"] img {
+    opacity: 0.4;
+}
+
+.picture-candidates > [data-candidate="rejected"] [data-sources] {
+    text-decoration: line-through;
+}
+
+.picture-input:has([data-browse]:disabled) [data-proposal-state="accepted"] {
+    display: none;
+}
+
 /* Give every thumbnail a 5:7 portrait frame so a listing stays uniform even with uneven images. */
 .thumbnail {
     width: 3.5rem;
@@ -323,4 +348,70 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
 [data-list-entry] > .btn-check:focus-visible + .btn + .btn {
     border-color: var(--bs-btn-hover-border-color);
     box-shadow: var(--bs-btn-focus-box-shadow);
+}
+
+:root {
+    /* Where the text of a .form-control starts, so a candidate sits under an input's text. */
+    --input-inset: calc(0.75rem + var(--bs-border-width));
+}
+
+.candidates {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    column-gap: 1rem;
+    padding-left: var(--input-inset);
+}
+
+.candidates:not(:has(> li)) {
+    display: none;
+}
+
+.candidates > li {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+}
+
+.candidates > li > :first-child {
+    padding-left: 1em;
+    text-indent: -1em;
+}
+
+.candidate-text {
+    /* The box of .form-control, so the text sits where an input's text would. */
+    padding: 0.375rem 0 0.375rem var(--input-inset);
+    line-height: 1.5;
+}
+
+.identifier-kind {
+    flex: none;
+    width: 10rem;
+}
+
+[data-candidate="accepted"] {
+    /* A list's candidates are .d-flex, whose display is !important. */
+    display: none !important;
+}
+
+[data-candidate="rejected"] .candidate-text {
+    text-decoration: line-through;
+}
+
+[data-list] > [data-candidate="rejected"] [data-proposal-state="accepted"] {
+    display: none;
+}
+
+.candidates > [data-candidate="rejected"] > :first-child {
+    text-decoration: line-through;
+}
+
+[data-candidate="pending"] [data-proposal-state="pending"],
+[data-candidate="rejected"] [data-proposal-state="rejected"],
+:is(.candidates, .picture-candidates):not(:has([data-candidate="accepted"])) [data-candidate="rejected"] [data-proposal-state="accepted"],
+:is(.candidates, .picture-candidates):has([data-candidate="accepted"]) [data-candidate="rejected"] [data-proposal-state="pending"] {
+    display: none;
+}
+
+:has(> [data-enrichment] form) > [data-enrich] {
+    display: none;
 }
