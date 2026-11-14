@@ -9,7 +9,7 @@ use scorarium_engine::entity::{AnyEntityId, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{self, Person, PersonId, derive_sort_name};
-use scorarium_engine::value::NonBlank;
+use scorarium_engine::value::{NonBlank, Year};
 use serde::Deserialize;
 
 use crate::auth::{Session, Viewer};
@@ -35,6 +35,8 @@ use crate::{Settings, proposal};
 pub(crate) struct Form {
     name: String,
     sort_name: String,
+    birth_year: String,
+    death_year: String,
 }
 
 struct Posted {
@@ -58,6 +60,8 @@ impl Posted {
 struct Parsed {
     name: NonBlank,
     sort_name: NonBlank,
+    birth_year: Option<Year>,
+    death_year: Option<Year>,
     links: Edits<LinkId, HttpUrl>,
     picture: PictureEdit,
 }
@@ -69,6 +73,14 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
         "" => name.as_ref().map(derive_sort_name),
         sort_name => refusals.check(sort_name.parse()),
     };
+    let birth_year = match form.birth_year.trim() {
+        "" => None,
+        year => refusals.parse::<Year>("birth_year", year),
+    };
+    let death_year = match form.death_year.trim() {
+        "" => None,
+        year => refusals.parse::<Year>("death_year", year),
+    };
     let links = posted.links.parse(refusals);
     let picture = posted.picture.parse(refusals);
     if !refusals.is_empty() {
@@ -77,6 +89,8 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
     Some(Parsed {
         name: name?,
         sort_name: sort_name?,
+        birth_year,
+        death_year,
         links,
         picture: picture?,
     })
@@ -87,6 +101,8 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
 #[template(path = "api/person_candidates.html")]
 pub(crate) struct Candidates {
     name: ValueCandidates,
+    birth_year: ValueCandidates,
+    death_year: ValueCandidates,
     links: LinkCandidates,
     pictures: PictureCandidates,
 }
@@ -104,6 +120,20 @@ impl Candidates {
                 |name| derive_sort_name(&name).to_string(),
             )
         });
+        let birth_year = ValueCandidates::new(
+            "birth_year",
+            proposal::pick(&candidates, |value| match value {
+                person::Proposal::BirthYear(year) => Some(year.to_string()),
+                _ => None,
+            }),
+        );
+        let death_year = ValueCandidates::new(
+            "death_year",
+            proposal::pick(&candidates, |value| match value {
+                person::Proposal::DeathYear(year) => Some(year.to_string()),
+                _ => None,
+            }),
+        );
         let links = LinkCandidates::new(proposal::pick(&candidates, |value| match value {
             person::Proposal::Link(url) => Some(url.clone()),
             _ => None,
@@ -114,6 +144,8 @@ impl Candidates {
         }));
         Ok(Candidates {
             name,
+            birth_year,
+            death_year,
             links,
             pictures,
         })
@@ -132,6 +164,10 @@ struct Edit {
     name: String,
     name_candidates: ValueCandidates,
     sort_name: String,
+    birth_year: String,
+    birth_year_candidates: ValueCandidates,
+    death_year: String,
+    death_year_candidates: ValueCandidates,
     links: LinksInput,
     back: Back,
     refusals: Refusals,
@@ -156,6 +192,8 @@ async fn render(
     let form = posted.form;
     let Candidates {
         name: name_candidates,
+        birth_year: birth_year_candidates,
+        death_year: death_year_candidates,
         links: link_candidates,
         pictures,
     } = Candidates::of(person, &posted.states).await?;
@@ -221,6 +259,10 @@ async fn render(
         name: form.name,
         name_candidates,
         sort_name: form.sort_name,
+        birth_year: form.birth_year,
+        birth_year_candidates,
+        death_year: form.death_year,
+        death_year_candidates,
         links: LinksInput::new(&posted.links, person.links(), &refusals, link_candidates),
         back,
         refusals,
@@ -246,6 +288,14 @@ pub async fn get(
     let form = Form {
         name: person.name().to_owned(),
         sort_name: person.sort_name().to_owned(),
+        birth_year: person
+            .birth_year()
+            .map(|year| year.to_string())
+            .unwrap_or_default(),
+        death_year: person
+            .death_year()
+            .map(|year| year.to_string())
+            .unwrap_or_default(),
     };
     let posted = Posted {
         form,
@@ -277,6 +327,8 @@ async fn save(
     parsed: Parsed,
 ) -> scorarium_engine::Result<()> {
     person.rename(parsed.name, parsed.sort_name).await?;
+    person.set_birth_year(parsed.birth_year).await?;
+    person.set_death_year(parsed.death_year).await?;
     // Removals run first so that removing a link and adding it back leaves it present.
     for link in parsed.links.remove {
         person.remove_link(link).await?;

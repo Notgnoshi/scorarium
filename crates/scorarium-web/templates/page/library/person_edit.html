@@ -38,6 +38,34 @@
                         </div>
                     </div>
                     <div class="row mb-3">
+                        <label class="col-sm-2 col-form-label" for="birth_year">Birth year</label>
+                        <div class="col-sm-10">
+                            <input class="form-control{% if refusals.of("birth_year").is_some() %} is-invalid{% endif %}"
+                                   type="number"
+                                   min="1"
+                                   max="9999"
+                                   id="birth_year"
+                                   name="birth_year"
+                                   value="{{ birth_year }}">
+                            {% if let Some(reason) = refusals.of("birth_year") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ birth_year_candidates }}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <label class="col-sm-2 col-form-label" for="death_year">Death year</label>
+                        <div class="col-sm-10">
+                            <input class="form-control{% if refusals.of("death_year").is_some() %} is-invalid{% endif %}"
+                                   type="number"
+                                   min="1"
+                                   max="9999"
+                                   id="death_year"
+                                   name="death_year"
+                                   value="{{ death_year }}">
+                            {% if let Some(reason) = refusals.of("death_year") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ death_year_candidates }}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
                         <span class="col-sm-2 col-form-label">Links</span>
                         <div class="col-sm-10">{{ links }}</div>
                     </div>
