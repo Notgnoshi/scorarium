@@ -180,22 +180,50 @@
         countRemaining();
     };
 
+    let shown = null;
+
+    const showEnrichment = (answer) => {
+        const fresh = answer.querySelector("[data-enrichment]");
+        const cell = document.querySelector("[data-enrichment]");
+        if (!fresh || !cell || fresh.innerHTML === shown) {
+            return;
+        }
+        shown = fresh.innerHTML;
+        cell.innerHTML = shown;
+        htmx.process(cell);
+    };
+
+    let timer;
+    let polling = false;
+    let again = false;
+
     const poll = async () => {
+        clearTimeout(timer);
+        if (polling) {
+            again = true;
+            return;
+        }
+        polling = true;
         try {
             const response = await fetch(edit.dataset.candidatesUrl, {
                 headers: { "HX-Current-URL": location.href },
             });
             if (response.ok) {
-                merge(new DOMParser().parseFromString(await response.text(), "text/html"));
+                const answer = new DOMParser().parseFromString(await response.text(), "text/html");
+                showEnrichment(answer);
+                merge(answer);
             }
         } catch {
             // A failed poll is retried by the next one.
         }
-        setTimeout(poll, 5000);
+        polling = false;
+        timer = setTimeout(poll, again ? 0 : 5000);
+        again = false;
     };
 
     if (edit) {
-        setTimeout(poll, 5000);
+        timer = setTimeout(poll, 5000);
+        document.addEventListener("enrichment:change", poll);
     }
 
     // A redrawn list draws its Accept all button hidden.

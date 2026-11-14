@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::publication::{self, Identifier, Publication, PublicationId};
@@ -35,6 +35,7 @@ use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -324,6 +325,10 @@ async fn render(
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Publication(publication.id()),
+                publication.enrichment().map(|e| e.status()),
+            )),
         },
         actions: EditActions {
             mode: if draft {

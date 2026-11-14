@@ -71,6 +71,7 @@ fn render(
         heading: EditHeading {
             title: library.name().to_owned(),
             draft: false,
+            enrichment: None,
         },
         actions: EditActions {
             mode: EditMode::Committed,

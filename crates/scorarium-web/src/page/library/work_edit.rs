@@ -3,7 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::value::{Classification, NonBlank, Stars, Tag};
@@ -32,6 +32,7 @@ use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture::Picture;
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
 use crate::widget::typeahead::Typeahead;
@@ -289,6 +290,10 @@ async fn render(
         heading: EditHeading {
             title: work.title().to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Work(work.id()),
+                work.enrichment().map(|e| e.status()),
+            )),
         },
         actions: EditActions {
             mode: if draft {

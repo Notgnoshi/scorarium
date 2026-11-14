@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::enrich::Enrichment;
-use scorarium_engine::entity::{AnyEntity, Entity, EntityKind};
+use scorarium_engine::entity::{AnyEntity, AnyEntityId, Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
@@ -18,7 +18,7 @@ use crate::page::library::{person_edit, publication_edit, work_edit};
 use crate::proposal::ProposalStates;
 use crate::redirect::CurrentPage;
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::review_queue::{ReviewQueue, Size, Sort};
+use crate::widget::review_queue::{EnrichmentCell, ReviewQueue, Size, Sort};
 
 #[derive(Default, Deserialize)]
 pub(crate) struct ReviewQuery {
@@ -106,21 +106,42 @@ pub async fn proposals(
 ) -> Result<Response> {
     let states = ProposalStates::default();
     let back = page.as_deref().unwrap_or("");
-    let html = match load(&engine, &kind, &entity).await? {
-        Some(AnyEntity::Publication(publication)) => {
+    let (id, status, candidates) = match load(&engine, &kind, &entity).await? {
+        Some(AnyEntity::Publication(publication)) => (
+            AnyEntityId::Publication(publication.id()),
+            publication.enrichment(),
             publication_edit::Candidates::of(&publication, &states, back)
                 .await?
-                .render()?
-        }
-        Some(AnyEntity::Work(work)) => work_edit::Candidates::of(&work, &states, back)
-            .await?
-            .render()?,
-        Some(AnyEntity::Person(person)) => person_edit::Candidates::of(&person, &states)
-            .await?
-            .render()?,
+                .render()?,
+        ),
+        Some(AnyEntity::Work(work)) => (
+            AnyEntityId::Work(work.id()),
+            work.enrichment(),
+            work_edit::Candidates::of(&work, &states, back)
+                .await?
+                .render()?,
+        ),
+        Some(AnyEntity::Person(person)) => (
+            AnyEntityId::Person(person.id()),
+            person.enrichment(),
+            person_edit::Candidates::of(&person, &states)
+                .await?
+                .render()?,
+        ),
         None => return Err(scorarium_engine::Error::NotFound.into()),
     };
-    Ok(Html(html).into_response())
+    let answer = ProposalsAnswer {
+        enrichment: EnrichmentCell::new(id, status.map(|e| e.status())),
+        candidates,
+    };
+    Ok(Html(answer.render()?).into_response())
+}
+
+#[derive(Template)]
+#[template(path = "api/proposals.html")]
+struct ProposalsAnswer {
+    enrichment: EnrichmentCell,
+    candidates: String,
 }
 
 fn changed() -> Response {

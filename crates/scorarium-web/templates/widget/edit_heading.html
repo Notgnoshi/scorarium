@@ -1,4 +1,9 @@
-<h1>
-    {{ title }}
-    {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-</h1>
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <h1>
+        {{ title }}
+        {% if draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+    </h1>
+    {% if let Some(enrichment) = enrichment %}
+        <div class="text-nowrap" data-enrichment>{{ enrichment }}</div>
+    {% endif %}
+</div>

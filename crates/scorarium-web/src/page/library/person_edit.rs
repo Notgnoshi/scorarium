@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::Entity;
+use scorarium_engine::entity::{AnyEntityId, Entity};
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
 use scorarium_engine::person::{self, Person, PersonId, derive_sort_name};
@@ -27,6 +27,7 @@ use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
+use crate::widget::review_queue::EnrichmentCell;
 use crate::widget::value_candidates::ValueCandidates;
 use crate::{Settings, proposal};
 
@@ -168,6 +169,10 @@ async fn render(
         heading: EditHeading {
             title: person.name().to_owned(),
             draft,
+            enrichment: Some(EnrichmentCell::new(
+                AnyEntityId::Person(person.id()),
+                person.enrichment().map(|e| e.status()),
+            )),
         },
         actions: EditActions {
             mode: if draft {
