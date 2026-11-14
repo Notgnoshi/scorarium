@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, name, sort_name, profile, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person WHERE library_id = ? ORDER BY id",
+  "query": "SELECT id, library_id, name, sort_name,\n                          birth_year AS \"birth_year: u16\", death_year AS \"death_year: u16\",\n                          profile, draft AS \"draft: bool\",\n                          created_at AS \"created_at: Timestamp\",\n                          last_modified_at AS \"last_modified_at: Timestamp\"\n                   FROM person\n                   WHERE library_id = ?\n                     AND (EXISTS (SELECT 1 FROM publication_contributor\n                                  WHERE person_id = person.id AND role = ?)\n                          OR EXISTS (SELECT 1 FROM work_contributor\n                                     WHERE person_id = person.id AND role = ?))\n                   ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,30 @@
         }
       },
       {
-        "name": "profile",
+        "name": "birth_year: u16",
         "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "birth_year"
+          }
+        }
+      },
+      {
+        "name": "death_year: u16",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "death_year"
+          }
+        }
+      },
+      {
+        "name": "profile",
+        "ordinal": 6,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +82,7 @@
       },
       {
         "name": "draft: bool",
-        "ordinal": 5,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -71,7 +93,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 6,
+        "ordinal": 8,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,7 +104,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 7,
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -93,7 +115,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       false,
@@ -101,10 +123,12 @@
       false,
       false,
       true,
+      true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "022d40b56aa1f72da6f5fdabc01433b2450f621b7182caddb12522226a01f46e"
+  "hash": "ae2ee034414b095bd8377856a478f99598187799ab5b8a89e782641a81666a97"
 }

@@ -18,7 +18,7 @@ use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::search::same_name;
 use crate::suggest::{Candidate, CandidateScope};
-use crate::value::NonBlank;
+use crate::value::{NonBlank, Year};
 use crate::work::{self, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -52,6 +52,8 @@ impl FromStr for PersonId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
     Name,
+    BirthYear,
+    DeathYear,
     Links,
     Profile,
 }
@@ -60,6 +62,8 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Field::Name => "name",
+            Field::BirthYear => "birth_year",
+            Field::DeathYear => "death_year",
             Field::Links => "links",
             Field::Profile => "profile",
         })
@@ -72,6 +76,8 @@ impl FromStr for Field {
     fn from_str(text: &str) -> Result<Field> {
         Ok(match text {
             "name" => Field::Name,
+            "birth_year" => Field::BirthYear,
+            "death_year" => Field::DeathYear,
             "links" => Field::Links,
             "profile" => Field::Profile,
             other => return Err(eyre::eyre!("unknown person field {other:?}").into()),
@@ -97,6 +103,8 @@ pub struct Person {
     last_modified_at: Timestamp,
     name: String,
     sort_name: String,
+    birth_year: Option<Year>,
+    death_year: Option<Year>,
     profile: Option<PathBuf>,
     links: Vec<Link>,
 }
@@ -116,6 +124,8 @@ struct PersonRow {
     library_id: i64,
     name: String,
     sort_name: String,
+    birth_year: Option<u16>,
+    death_year: Option<u16>,
     profile: Option<String>,
     draft: bool,
     created_at: Timestamp,
@@ -134,6 +144,14 @@ impl Person {
 
     pub fn sort_name(&self) -> &str {
         &self.sort_name
+    }
+
+    pub fn birth_year(&self) -> Option<Year> {
+        self.birth_year
+    }
+
+    pub fn death_year(&self) -> Option<Year> {
+        self.death_year
     }
 
     /// List the person's links in the order they were added
@@ -169,6 +187,8 @@ impl Person {
             last_modified_at: row.last_modified_at,
             name: row.name,
             sort_name: row.sort_name,
+            birth_year: row.birth_year.map(Year::try_from).transpose()?,
+            death_year: row.death_year.map(Year::try_from).transpose()?,
             profile: row.profile.map(|profile| engine.data_dir().join(profile)),
             links,
         })
@@ -181,7 +201,9 @@ impl Person {
     ) -> Result<Option<Person>> {
         let row = sqlx::query_as!(
             PersonRow,
-            r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
+            r#"SELECT id, library_id, name, sort_name,
+                      birth_year AS "birth_year: u16", death_year AS "death_year: u16",
+                      profile, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
                FROM person WHERE id = ?"#,
@@ -240,6 +262,54 @@ impl Person {
         self.commit_update(tx, Field::Name).await?;
         self.name = name.to_string();
         self.sort_name = sort_name.to_string();
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the year of birth
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn set_birth_year(&mut self, year: Option<Year>) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.birth_year == year {
+            return Ok(());
+        }
+        let value = year.map(Year::get);
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET birth_year = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            value,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::BirthYear).await?;
+        self.birth_year = year;
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the year of death
+    ///
+    /// Returns [Error::NotFound] if the person has been deleted.
+    pub async fn set_death_year(&mut self, year: Option<Year>) -> Result<()> {
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.death_year == year {
+            return Ok(());
+        }
+        let value = year.map(Year::get);
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE person SET death_year = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            value,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::DeathYear).await?;
+        self.death_year = year;
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -736,7 +806,9 @@ pub(crate) async fn in_library(
         Some(role) => {
             sqlx::query_as!(
                 PersonRow,
-                r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
+                r#"SELECT id, library_id, name, sort_name,
+                          birth_year AS "birth_year: u16", death_year AS "death_year: u16",
+                          profile, draft AS "draft: bool",
                           created_at AS "created_at: Timestamp",
                           last_modified_at AS "last_modified_at: Timestamp"
                    FROM person
@@ -756,7 +828,9 @@ pub(crate) async fn in_library(
         None => {
             sqlx::query_as!(
                 PersonRow,
-                r#"SELECT id, library_id, name, sort_name, profile, draft AS "draft: bool",
+                r#"SELECT id, library_id, name, sort_name,
+                          birth_year AS "birth_year: u16", death_year AS "death_year: u16",
+                          profile, draft AS "draft: bool",
                           created_at AS "created_at: Timestamp",
                           last_modified_at AS "last_modified_at: Timestamp"
                    FROM person WHERE library_id = ? ORDER BY id"#,
@@ -779,6 +853,8 @@ pub struct PersonSummary {
     pub id: PersonId,
     pub name: String,
     pub sort_name: String,
+    pub birth_year: Option<Year>,
+    pub death_year: Option<Year>,
     /// The absolute path of the profile image just like [Person::profile]
     pub profile: Option<PathBuf>,
     pub roles: Vec<Role>,
@@ -796,7 +872,9 @@ pub(crate) async fn summarize(
     let mut conn = engine.begin_read().await?;
     let library = library.get();
     let role_rows = sqlx::query!(
-        r#"SELECT person.id, person.name, person.sort_name, person.profile, held.role AS "role!"
+        r#"SELECT person.id, person.name, person.sort_name,
+                  person.birth_year AS "birth_year: u16", person.death_year AS "death_year: u16",
+                  person.profile, held.role AS "role!"
            FROM person
            JOIN (
                SELECT pc.person_id, pc.role, publication.draft
@@ -860,6 +938,8 @@ pub(crate) async fn summarize(
                     id: PersonId::new(row.id),
                     name: row.name,
                     sort_name: row.sort_name,
+                    birth_year: row.birth_year.map(Year::try_from).transpose()?,
+                    death_year: row.death_year.map(Year::try_from).transpose()?,
                     profile: row.profile.map(|profile| engine.data_dir().join(profile)),
                     roles: vec![held],
                     publications,

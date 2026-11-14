@@ -173,6 +173,8 @@ mod tests {
             id: "1".parse().unwrap(),
             name: String::new(),
             sort_name: String::new(),
+            birth_year: None,
+            death_year: None,
             profile: None,
             roles: Vec::new(),
             publications: 0,

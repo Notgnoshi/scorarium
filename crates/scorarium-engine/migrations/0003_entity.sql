@@ -58,6 +58,8 @@ CREATE TABLE person (
     library_id INTEGER NOT NULL REFERENCES library(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     sort_name TEXT NOT NULL,
+    birth_year INTEGER,
+    death_year INTEGER,
     profile TEXT,
     draft INTEGER NOT NULL DEFAULT 0 CHECK (draft IN (0, 1)),
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
