@@ -5,7 +5,9 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
 
-use crate::command::{PersonAdd, PersonCommand, PersonRemove, PersonSet, reject, require};
+use crate::command::{
+    PersonAdd, PersonClear, PersonCommand, PersonRemove, PersonSet, reject, require,
+};
 use crate::library::write_table;
 use crate::reference::Target;
 use crate::{audit, enrichment, reference, review, search};
@@ -39,6 +41,15 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
         row("name", String::new(), person.name().to_string()),
         row("sort-name", String::new(), person.sort_name().to_string()),
     ];
+    let years = [
+        ("birth-year", person.birth_year()),
+        ("death-year", person.death_year()),
+    ];
+    for (label, year) in years {
+        if let Some(year) = year {
+            rows.push(row(label, String::new(), year.to_string()));
+        }
+    }
     for link in person.links() {
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
@@ -189,6 +200,16 @@ pub(crate) async fn run(
                 PersonSet::SortName { sort_name } => {
                     person.rename(person.name().parse()?, sort_name).await?
                 }
+                PersonSet::BirthYear { year } => person.set_birth_year(Some(year)).await?,
+                PersonSet::DeathYear { year } => person.set_death_year(Some(year)).await?,
+            }
+            Ok(())
+        }
+        PersonCommand::Clear { field } => {
+            let mut person = resolve(library, require(subject, "person")?).await?;
+            match field {
+                PersonClear::BirthYear => person.set_birth_year(None).await?,
+                PersonClear::DeathYear => person.set_death_year(None).await?,
             }
             Ok(())
         }

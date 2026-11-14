@@ -571,6 +571,12 @@ pub(crate) enum PersonCommand {
         #[command(subcommand)]
         field: PersonSet,
     },
+    /// Clear an optional person field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: PersonClear,
+    },
     /// Add a value to a person
     #[command(subcommand_value_name = "field")]
     Add {
@@ -619,6 +625,24 @@ pub(crate) enum PersonSet {
         #[arg(value_name = "sort-name")]
         sort_name: NonBlank,
     },
+    /// The year of birth
+    BirthYear {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+    /// The year of death
+    DeathYear {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonClear {
+    /// The year of birth
+    BirthYear,
+    /// The year of death
+    DeathYear,
 }
 
 #[derive(Debug, Subcommand)]

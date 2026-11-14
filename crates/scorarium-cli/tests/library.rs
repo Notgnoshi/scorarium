@@ -248,6 +248,8 @@ async fn person_show_lists_each_credit_once() {
          id         \t10\t\n\
          name       \t  \tSergei Rachmaninoff\n\
          sort-name  \t  \tRachmaninov, Sergei\n\
+         birth-year \t  \t1873\n\
+         death-year \t  \t1943\n\
          link       \t4 \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
          link       \t5 \thttps://en.wikipedia.org/wiki/Sergei_Rachmaninoff\n\
          publication\t5 \tRachmaninoff masterpieces for solo piano (composer)\n\
