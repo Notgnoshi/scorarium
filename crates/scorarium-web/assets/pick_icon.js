@@ -12,7 +12,8 @@ document.addEventListener("change", (event) => {
     // Typed text without a pick is a new item where a pick is not required.
     const typedNew = text?.value.trim() && !("pickRequired" in text.dataset);
     icon.classList.remove(container.dataset.existing, container.dataset.new, "d-none");
-    if (picked.value === "new" || (!picked.value && typedNew)) {
+    const draft = picked.value === container.dataset.pickDraft;
+    if (picked.value === "new" || draft || (!picked.value && typedNew)) {
         icon.classList.add(container.dataset.new);
         icon.title = `New ${noun}`;
     } else if (picked.value) {

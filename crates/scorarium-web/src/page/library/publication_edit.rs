@@ -24,7 +24,7 @@ use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
 use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
 use crate::widget::contributors_input::{
-    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+    ContributorCandidates, ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
@@ -88,10 +88,15 @@ pub(crate) struct Candidates {
     year: ValueCandidates,
     identifiers: IdentifierCandidates,
     links: LinkCandidates,
+    contributors: ContributorCandidates,
 }
 
 impl Candidates {
-    pub async fn of(publication: &Publication, states: &ProposalStates) -> Result<Candidates> {
+    pub async fn of(
+        publication: &Publication,
+        states: &ProposalStates,
+        back: &str,
+    ) -> Result<Candidates> {
         let candidates = proposal::candidates(publication.proposals().await?, states);
         Ok(Candidates {
             title: ValueCandidates::new(
@@ -126,6 +131,16 @@ impl Candidates {
                 publication::Proposal::Link(url) => Some(url.clone()),
                 _ => None,
             })),
+            contributors: ContributorCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Contributor { person, role } => {
+                        Some((person.clone(), role.clone()))
+                    }
+                    _ => None,
+                }),
+                publication.library(),
+                back,
+            ),
         })
     }
 }
@@ -281,7 +296,8 @@ async fn render(
         year: year_candidates,
         identifiers: identifier_candidates,
         links: link_candidates,
-    } = Candidates::of(publication, &posted.states).await?;
+        contributors: contributor_candidates,
+    } = Candidates::of(publication, &posted.states, &here).await?;
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
@@ -362,6 +378,7 @@ async fn render(
             library.id(),
             &here,
             &refusals,
+            contributor_candidates,
         ),
         holdings: Holdings::of(
             engine,

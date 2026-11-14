@@ -100,17 +100,21 @@ pub async fn retry(
 
 pub async fn proposals(
     _session: ApiSession,
+    CurrentPage(page): CurrentPage,
     State(engine): State<Engine>,
     Path((kind, entity)): Path<(String, String)>,
 ) -> Result<Response> {
     let states = ProposalStates::default();
+    let back = page.as_deref().unwrap_or("");
     let html = match load(&engine, &kind, &entity).await? {
         Some(AnyEntity::Publication(publication)) => {
-            publication_edit::Candidates::of(&publication, &states)
+            publication_edit::Candidates::of(&publication, &states, back)
                 .await?
                 .render()?
         }
-        Some(AnyEntity::Work(work)) => work_edit::Candidates::of(&work, &states).await?.render()?,
+        Some(AnyEntity::Work(work)) => work_edit::Candidates::of(&work, &states, back)
+            .await?
+            .render()?,
         Some(AnyEntity::Person(person)) => person_edit::Candidates::of(&person, &states)
             .await?
             .render()?,

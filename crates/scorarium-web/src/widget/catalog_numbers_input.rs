@@ -121,7 +121,8 @@ impl CatalogNumbersInput {
                         .iter()
                         .any(|number| number.as_str() == value && !number.is_recognized()),
                     refusal: refusals.of(&field).map(str::to_owned),
-                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
+                    sources: proposal::holder(&candidates.candidates, &entry.proposal)
+                        .map(Candidate::sources),
                 }
             })
             .collect();

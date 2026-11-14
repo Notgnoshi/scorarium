@@ -26,6 +26,15 @@
         list.querySelector("[data-list-add]").click();
         const entry = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
         for (const attribute of item.attributes) {
+            if (attribute.name.startsWith("data-pick-draft-")) {
+                const noun = attribute.name.slice("data-pick-draft-".length);
+                const icon = entry.querySelector(`[data-pick-icon="${CSS.escape(noun)}"]`);
+                if (icon) {
+                    icon.dataset.pickDraft = attribute.value;
+                }
+            }
+        }
+        for (const attribute of item.attributes) {
             if (!attribute.name.startsWith("data-fill-")) {
                 continue;
             }
@@ -133,7 +142,9 @@
 
     const poll = async () => {
         try {
-            const response = await fetch(edit.dataset.candidatesUrl);
+            const response = await fetch(edit.dataset.candidatesUrl, {
+                headers: { "HX-Current-URL": location.href },
+            });
             if (response.ok) {
                 merge(new DOMParser().parseFromString(await response.text(), "text/html"));
             }

@@ -1,8 +1,10 @@
 use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
+use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::{Contributed, Entity, ProposalId, Source};
 use scorarium_engine::holding::{HoldingKind, NewHolding};
 use scorarium_engine::library::Library;
+use scorarium_engine::person::Person;
 use scorarium_engine::publication::{
     Identifier, IdentifierKind, ImportSeed, Proposal, Publication,
 };
@@ -567,5 +569,56 @@ async fn edit_adds_an_entry_made_from_a_proposal() {
         .unwrap()
         .unwrap();
     assert!(after.identifiers().contains(&identifier));
+    assert_eq!(ids().await, expected);
+}
+
+#[tokio::test]
+async fn edit_keeps_a_proposed_person_that_was_accepted() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = masterpieces(&library).await;
+    let ids = async || -> Vec<ProposalId> {
+        let proposals = publication.proposals().await.unwrap();
+        proposals.iter().map(|proposal| proposal.id).collect()
+    };
+    let expected = ids().await;
+    let editor: Role = "editor".parse().unwrap();
+    let person = publication
+        .propose_new_contributor(Source::OpenLibrary, "Vladimir Ashkenazy", &editor)
+        .await
+        .unwrap();
+    let proposal = ids().await.pop().unwrap().to_string();
+    let person_id = person.id().to_string();
+
+    let form = [
+        ("title".to_owned(), publication.title().unwrap()),
+        ("publisher".to_owned(), ""),
+        ("year".to_owned(), ""),
+        ("note".to_owned(), ""),
+        ("contributor[new1][person]".to_owned(), person_id.as_str()),
+        ("contributor[new1][name]".to_owned(), "Vladimir Ashkenazy"),
+        ("contributor[new1][role]".to_owned(), "editor"),
+        ("contributor[new1][proposal]".to_owned(), proposal.as_str()),
+        (format!("proposal[{proposal}]"), "accepted"),
+    ];
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let response = app.server.post(&edit).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    let person = Person::load(&app.engine, person.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!person.is_draft());
+    let after = masterpieces(&library).await;
+    let added = after
+        .contributors()
+        .iter()
+        .any(|c| c.person == person.id() && c.role == editor);
+    assert!(added);
     assert_eq!(ids().await, expected);
 }

@@ -143,7 +143,8 @@ impl IdentifiersInput {
                     entry: entry.clone(),
                     refusal: refusals.of(&field).map(str::to_owned),
                     autofocus: false,
-                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
+                    sources: proposal::holder(&candidates.candidates, &entry.proposal)
+                        .map(Candidate::sources),
                 }
             })
             .collect();

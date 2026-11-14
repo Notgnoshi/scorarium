@@ -127,13 +127,15 @@ pub(crate) fn pick<V, T>(
         .collect()
 }
 
-/// Join the sources of the candidate that holds the first of `ids`
-pub(crate) fn sources<V>(candidates: &[Candidate<V>], ids: &[String]) -> Option<String> {
+/// Find the candidate that holds the first of `ids`
+pub(crate) fn holder<'a, V>(
+    candidates: &'a [Candidate<V>],
+    ids: &[String],
+) -> Option<&'a Candidate<V>> {
     let first = ids.first()?;
     candidates
         .iter()
         .find(|c| c.proposals.iter().any(|(id, _)| id.to_string() == *first))
-        .map(Candidate::sources)
 }
 
 #[cfg(test)]

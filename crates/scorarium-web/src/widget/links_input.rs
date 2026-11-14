@@ -129,7 +129,8 @@ impl LinksInput {
                         .find(|link| link.url.to_string() == url)
                         .map_or(Icon::Link, Icon::link),
                     refusal: refusals.of(&field).map(str::to_owned),
-                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
+                    sources: proposal::holder(&candidates.candidates, &entry.proposal)
+                        .map(Candidate::sources),
                 }
             })
             .collect();

@@ -23,7 +23,7 @@ use crate::widget::catalog_numbers_input::{
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors_input::{
-    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+    ContributorCandidates, ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
@@ -80,10 +80,11 @@ pub(crate) struct Candidates {
     instrumentation: ValueCandidates,
     catalog_numbers: CatalogNumberCandidates,
     links: LinkCandidates,
+    contributors: ContributorCandidates,
 }
 
 impl Candidates {
-    pub async fn of(work: &Work, states: &ProposalStates) -> Result<Candidates> {
+    pub async fn of(work: &Work, states: &ProposalStates, back: &str) -> Result<Candidates> {
         let candidates = proposal::candidates(work.proposals().await?, states);
         Ok(Candidates {
             title: ValueCandidates::new(
@@ -126,6 +127,16 @@ impl Candidates {
                 work::Proposal::Link(url) => Some(url.clone()),
                 _ => None,
             })),
+            contributors: ContributorCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Contributor { person, role } => {
+                        Some((person.clone(), role.clone()))
+                    }
+                    _ => None,
+                }),
+                work.library(),
+                back,
+            ),
         })
     }
 }
@@ -270,7 +281,8 @@ async fn render(
         instrumentation: instrumentation_candidates,
         catalog_numbers: catalog_number_candidates,
         links: link_candidates,
-    } = Candidates::of(work, &posted.states).await?;
+        contributors: contributor_candidates,
+    } = Candidates::of(work, &posted.states, &here).await?;
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
@@ -337,6 +349,7 @@ async fn render(
             library.id(),
             &here,
             &refusals,
+            contributor_candidates,
         ),
         back,
         refusals,
