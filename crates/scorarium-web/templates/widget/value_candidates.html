@@ -1,9 +1,33 @@
 {% if !candidates.is_empty() %}
     <ul class="candidates small mt-1 mb-0">
-        {% for candidate in candidates %}
-            <li>
+        {% for (candidate, fills) in candidates %}
+            <li data-candidate="{{ candidate.state }}"
+                {% for (field, value) in fills %} data-fill-{{ field }}="{{ value }}"{% endfor %}>
                 <span class="text-break">{{ candidate.value }}</span>
                 <span class="text-body-secondary text-nowrap">{{ candidate.sources() }}</span>
+                <span class="d-flex align-items-start gap-1">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary py-0"
+                            data-proposal-state="accepted"
+                            title="Accept this proposal">
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary py-0"
+                            data-proposal-state="rejected"
+                            title="Reject this proposal">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary py-0"
+                            data-proposal-state="pending"
+                            title="Undo">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                </span>
+                {% for (id, _) in candidate.proposals %}
+                    <input type="hidden" name="proposal[{{ id }}]" value="{{ candidate.state }}">
+                {% endfor %}
             </li>
         {% endfor %}
     </ul>

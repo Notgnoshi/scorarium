@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
-use scorarium_engine::entity::Entity;
-use scorarium_engine::person::Person;
+use scorarium_engine::entity::{Entity, ProposalId, Source};
+use scorarium_engine::person::{Person, Proposal};
 use scorarium_test::TestApp;
 
 #[tokio::test]
@@ -126,4 +126,39 @@ async fn unfetched_picture_text_refuses_the_form() {
         .unwrap()
         .unwrap();
     assert_eq!(saved.name(), person.name());
+}
+
+#[tokio::test]
+async fn save_deletes_the_proposals_that_were_accepted_or_rejected() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let ids = async || -> Vec<ProposalId> {
+        let proposals = person.proposals().await.unwrap();
+        proposals.iter().map(|proposal| proposal.id).collect()
+    };
+    let propose = async |name: &str| {
+        let proposal = Proposal::Name(name.into());
+        let id = person.propose(Source::OpenLibrary, proposal).await;
+        id.unwrap().unwrap()
+    };
+    let mut expected = ids().await;
+    let accepted = propose("A. Satie").await;
+    let rejected = propose("B. Satie").await;
+    let pending = propose("C. Satie").await;
+    expected.push(pending);
+
+    let form = [
+        ("name".to_owned(), "A. Satie"),
+        ("sort_name".to_owned(), ""),
+        (format!("proposal[{accepted}]"), "accepted"),
+        (format!("proposal[{rejected}]"), "rejected"),
+        (format!("proposal[{pending}]"), "pending"),
+        ("proposal[999999]".to_owned(), "rejected"),
+    ];
+    let edit = format!("/library/{}/person/{}/edit", library.id(), person.id());
+    let response = app.server.post(&edit).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(ids().await, expected);
 }

@@ -1,10 +1,69 @@
+use std::collections::HashMap;
+use std::fmt;
+
+use scorarium_engine::Error;
 use scorarium_engine::entity::{self, Entity, ProposalId, Source};
+use serde::Deserialize;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ProposalState {
+    #[default]
+    Pending,
+    Accepted,
+    Rejected,
+}
+
+impl fmt::Display for ProposalState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ProposalState::Pending => "pending",
+            ProposalState::Accepted => "accepted",
+            ProposalState::Rejected => "rejected",
+        })
+    }
+}
+
+/// The posted `proposal[<id>]` fields
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct ProposalStates {
+    proposal: HashMap<String, ProposalState>,
+}
+
+impl ProposalStates {
+    /// Delete each accepted or rejected proposal of `entity`
+    pub async fn apply<E: Entity>(&self, entity: &mut E) -> scorarium_engine::Result<()> {
+        for (id, state) in &self.proposal {
+            let Ok(id) = id.parse::<ProposalId>() else {
+                continue;
+            };
+            if *state == ProposalState::Pending {
+                continue;
+            }
+            match entity.reject(id).await {
+                // Another session may have deleted the proposal first.
+                Ok(()) | Err(Error::NotFound) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    fn get(&self, id: ProposalId) -> ProposalState {
+        self.proposal
+            .get(&id.to_string())
+            .copied()
+            .unwrap_or_default()
+    }
+}
 
 /// All proposals suggesting a given value
 pub(crate) struct Candidate<V> {
     pub value: V,
     /// The id and source of each proposal, oldest first
     pub proposals: Vec<(ProposalId, Source)>,
+    pub state: ProposalState,
 }
 
 impl<V> Candidate<V> {
@@ -15,17 +74,26 @@ impl<V> Candidate<V> {
     }
 }
 
+/// Group equal values, each in the state that `states` posted for it
 pub(crate) fn candidates<E: Entity>(
     proposals: Vec<entity::Proposal<E>>,
+    states: &ProposalStates,
 ) -> Vec<Candidate<E::Proposal>> {
     let mut grouped: Vec<Candidate<E::Proposal>> = Vec::new();
     for proposal in proposals {
         let entry = (proposal.id, proposal.source);
+        let state = states.get(proposal.id);
         match grouped.iter_mut().find(|c| c.value == proposal.value) {
-            Some(candidate) => candidate.proposals.push(entry),
+            Some(candidate) => {
+                candidate.proposals.push(entry);
+                if candidate.state == ProposalState::Pending {
+                    candidate.state = state;
+                }
+            }
             None => grouped.push(Candidate {
                 value: proposal.value,
                 proposals: vec![entry],
+                state,
             }),
         }
     }
@@ -43,6 +111,7 @@ pub(crate) fn pick<V, T>(
             Some(Candidate {
                 value: value(&c.value)?,
                 proposals: c.proposals.clone(),
+                state: c.state,
             })
         })
         .collect()
@@ -62,11 +131,14 @@ mod tests {
             created_at: chrono::Utc::now(),
             value: person::Proposal::Name(name.to_owned()),
         };
-        let grouped = candidates(vec![
-            proposal("1", "Erik Satie"),
-            proposal("2", "Eric Satie"),
-            proposal("3", "Erik Satie"),
-        ]);
+        let grouped = candidates(
+            vec![
+                proposal("1", "Erik Satie"),
+                proposal("2", "Eric Satie"),
+                proposal("3", "Erik Satie"),
+            ],
+            &ProposalStates::default(),
+        );
         let ids = |candidate: &Candidate<person::Proposal>| -> Vec<i64> {
             candidate.proposals.iter().map(|(id, _)| id.get()).collect()
         };

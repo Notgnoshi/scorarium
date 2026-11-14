@@ -17,6 +17,7 @@ use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
+use crate::proposal::ProposalStates;
 use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_actions::{EditActions, EditMode};
@@ -39,6 +40,7 @@ struct Posted {
     form: Form,
     picture: PictureForm,
     links: LinksForm,
+    states: ProposalStates,
 }
 
 impl Posted {
@@ -47,6 +49,7 @@ impl Posted {
             form: body.read()?,
             picture: body.read()?,
             links: body.read()?,
+            states: body.read()?,
         })
     }
 }
@@ -112,12 +115,17 @@ async fn render(
     ];
     let draft = person.is_draft();
     let form = posted.form;
-    let candidates = proposal::candidates(person.proposals().await?);
+    let candidates = proposal::candidates(person.proposals().await?, &posted.states);
     let names = proposal::pick(&candidates, |value| match value {
         person::Proposal::Name(name) => Some(name.clone()),
         _ => None,
     });
-    let name_candidates = ValueCandidates::new(names);
+    let name_candidates = ValueCandidates::new("name", names).also_filling("sort_name", |name| {
+        name.parse::<NonBlank>().map_or_else(
+            |_| String::new(),
+            |name| derive_sort_name(&name).to_string(),
+        )
+    });
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
             engine,
@@ -199,6 +207,7 @@ pub async fn get(
         form,
         picture: PictureForm::default(),
         links: LinksForm::from(person.links()),
+        states: ProposalStates::default(),
     };
     let back = Back::new(
         query,
@@ -239,6 +248,7 @@ async fn save(
         PictureEdit::Clear => person.clear_profile().await?,
         PictureEdit::Keep => {}
     }
+    posted.states.apply(person).await?;
     Ok(())
 }
 

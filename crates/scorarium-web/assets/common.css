@@ -332,7 +332,7 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
 
 .candidates {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     column-gap: 1rem;
     padding-left: var(--input-inset);
 }
@@ -346,4 +346,19 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
 .candidates > li > :first-child {
     padding-left: 1em;
     text-indent: -1em;
+}
+
+.candidates > [data-candidate="accepted"] {
+    display: none;
+}
+
+.candidates > [data-candidate="rejected"] > :first-child {
+    text-decoration: line-through;
+}
+
+[data-candidate="pending"] [data-proposal-state="pending"],
+[data-candidate="rejected"] [data-proposal-state="rejected"],
+.candidates:not(:has([data-candidate="accepted"])) [data-candidate="rejected"] [data-proposal-state="accepted"],
+.candidates:has([data-candidate="accepted"]) [data-candidate="rejected"] [data-proposal-state="pending"] {
+    display: none;
 }
