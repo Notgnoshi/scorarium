@@ -10,6 +10,8 @@ pub(crate) struct EditHeading {
     pub draft: bool,
     /// The entity's own enrichment task, or `None` for a page with no entity
     pub enrichment: Option<EnrichmentCell>,
+    /// The route that saves the form and starts enrichment, or `None` for a page with no entity
+    pub enrich: Option<String>,
 }
 
 impl askama::filters::HtmlSafe for EditHeading {}

@@ -294,6 +294,12 @@ async fn render(
                 AnyEntityId::Work(work.id()),
                 work.enrichment().map(|e| e.status()),
             )),
+            enrich: Some(format!(
+                "/library/{}/work/{}/enrich{}",
+                library.id(),
+                work.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -456,9 +462,31 @@ pub async fn post(
     _session: Session,
     State(engine): State<Engine>,
     header: Header,
-    Path((library, work)): Path<(String, String)>,
+    Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     body: FormBody,
+) -> Result<Response> {
+    submit(engine, header, path, query, body, false).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, header, path, query, body, true).await
+}
+
+async fn submit(
+    engine: Engine,
+    header: Header,
+    (library, work): (String, String),
+    query: BackQuery,
+    body: FormBody,
+    enrich: bool,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -470,6 +498,16 @@ pub async fn post(
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&engine, library.id(), &mut posted, &mut refusals).await? {
         match save(&mut work, &mut posted, parsed).await {
+            Ok(()) if enrich => {
+                work.enrich().await?;
+                let edit = format!(
+                    "/library/{}/work/{}/edit{}",
+                    library.id(),
+                    work.id(),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }

@@ -196,3 +196,33 @@ async fn reject_remaining_rejects_only_the_posted_proposals() {
     response.assert_status(StatusCode::SEE_OTHER);
     assert_eq!(ids().await, expected);
 }
+
+#[tokio::test]
+async fn enrich_saves_the_form_and_then_starts_enrichment() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let edit = format!("/library/{}/person/{}/edit", library.id(), person.id());
+    let enrich = format!("/library/{}/person/{}/enrich", library.id(), person.id());
+
+    app.server
+        .post(&enrich)
+        .form(&[("name", " "), ("sort_name", "")])
+        .await;
+    assert!(person.enrichment().is_none());
+
+    let response = app
+        .server
+        .post(&enrich)
+        .form(&[("name", "Erik Satie"), ("sort_name", "")])
+        .await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    response.assert_header("location", edit);
+    assert!(person.enrichment().is_some());
+    let person = Person::load(&app.engine, person.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(person.name(), "Erik Satie");
+}

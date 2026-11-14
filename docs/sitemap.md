@@ -27,6 +27,7 @@
 | `/library/{id}/person/{person}/delete`                                 | POST   | Delete a person               |
 | `/library/{id}/person/{person}/edit`                                   | GET    | Edit or delete a person       |
 | `/library/{id}/person/{person}/edit`                                   | POST   | Save a person                 |
+| `/library/{id}/person/{person}/enrich`                                 | POST   | Save and enrich a person      |
 | `/library/{id}/person/{person}/profile`                                | GET    | Profile picture               |
 | `/library/{id}/person/{person}`                                        | GET    | Person details                |
 | `/library/{id}/publication/{publication}/commit`                       | POST   | Save and commit a publication |
@@ -34,6 +35,7 @@
 | `/library/{id}/publication/{publication}/delete`                       | POST   | Delete a publication          |
 | `/library/{id}/publication/{publication}/edit`                         | GET    | Edit or delete a publication  |
 | `/library/{id}/publication/{publication}/edit`                         | POST   | Save a publication            |
+| `/library/{id}/publication/{publication}/enrich`                       | POST   | Save and enrich a publication |
 | `/library/{id}/publication/{publication}/holding/{holding}`            | GET    | Digital holding file          |
 | `/library/{id}/publication/{publication}`                              | GET    | Publication details           |
 | `/library/{id}/tag/{tag}`                                              | GET    | Entries with one tag          |
@@ -41,6 +43,7 @@
 | `/library/{id}/work/{work}/delete`                                     | POST   | Delete a work                 |
 | `/library/{id}/work/{work}/edit`                                       | GET    | Edit or delete a work         |
 | `/library/{id}/work/{work}/edit`                                       | POST   | Save a work                   |
+| `/library/{id}/work/{work}/enrich`                                     | POST   | Save and enrich a work        |
 | `/library/{id}/work/{work}`                                            | GET    | Work details                  |
 | `/library/{id}`                                                        | GET    | Library contents              |
 | `/library`                                                             | POST   | Create a library              |

@@ -72,6 +72,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             post(page::library::publication_edit::commit),
         )
         .route(
+            "/library/{id}/publication/{publication}/enrich",
+            post(page::library::publication_edit::enrich),
+        )
+        .route(
             "/library/{id}/publication/{publication}/delete",
             post(page::library::publication_edit::delete),
         )
@@ -89,6 +93,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             get(page::library::work_edit::get).post(page::library::work_edit::post),
         )
         .route(
+            "/library/{id}/work/{work}/enrich",
+            post(page::library::work_edit::enrich),
+        )
+        .route(
             "/library/{id}/work/{work}/delete",
             post(page::library::work_edit::delete),
         )
@@ -103,6 +111,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route(
             "/library/{id}/person/{person}/edit",
             get(page::library::person_edit::get).post(page::library::person_edit::post),
+        )
+        .route(
+            "/library/{id}/person/{person}/enrich",
+            post(page::library::person_edit::enrich),
         )
         .route(
             "/library/{id}/person/{person}/delete",

@@ -329,6 +329,12 @@ async fn render(
                 AnyEntityId::Publication(publication.id()),
                 publication.enrichment().map(|e| e.status()),
             )),
+            enrich: Some(format!(
+                "/library/{}/publication/{}/enrich{}",
+                library.id(),
+                publication.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -553,9 +559,16 @@ async fn save(
     Ok(())
 }
 
-/// Save the form, commit the draft if asked, and answer
+enum Then {
+    Return,
+    Commit,
+    Enrich,
+}
+
+/// Save the form, commit the draft or start enrichment if asked, and answer
 ///
-/// A refusal from either step is shown in the form. A refused save blocks the commit.
+/// A refusal from either step is shown in the form. A refused save blocks the commit and the
+/// enrichment.
 async fn submit(
     engine: Engine,
     settings: Settings,
@@ -563,7 +576,7 @@ async fn submit(
     (library, publication): (String, String),
     body: FormBody,
     query: BackQuery,
-    commit: bool,
+    then: Then,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -583,10 +596,19 @@ async fn submit(
         && let Some(parsed) = parsed
     {
         let saved = match save(&mut publication, &mut posted, parsed, edits, contents).await {
-            Ok(()) if commit => publication.commit().await,
+            Ok(()) if matches!(then, Then::Commit) => publication.commit().await,
             saved => saved,
         };
         match saved {
+            Ok(()) if matches!(then, Then::Enrich) => {
+                publication.enrich().await?;
+                let edit = format!(
+                    "{}/edit{}",
+                    publication_path(&library, &publication),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
@@ -618,7 +640,19 @@ pub async fn post(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, body, query, false).await
+    submit(engine, settings, header, path, body, query, Then::Return).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, body, query, Then::Enrich).await
 }
 
 pub async fn commit(
@@ -630,7 +664,7 @@ pub async fn commit(
     Query(query): Query<BackQuery>,
     body: FormBody,
 ) -> Result<Response> {
-    submit(engine, settings, header, path, body, query, true).await
+    submit(engine, settings, header, path, body, query, Then::Commit).await
 }
 
 pub async fn delete(

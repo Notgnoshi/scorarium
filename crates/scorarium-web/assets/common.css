@@ -411,3 +411,7 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
 :is(.candidates, .picture-candidates):has([data-candidate="accepted"]) [data-candidate="rejected"] [data-proposal-state="pending"] {
     display: none;
 }
+
+:has(> [data-enrichment] form) > [data-enrich] {
+    display: none;
+}

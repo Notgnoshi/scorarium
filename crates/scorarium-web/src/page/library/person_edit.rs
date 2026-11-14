@@ -173,6 +173,12 @@ async fn render(
                 AnyEntityId::Person(person.id()),
                 person.enrichment().map(|e| e.status()),
             )),
+            enrich: Some(format!(
+                "/library/{}/person/{}/enrich{}",
+                library.id(),
+                person.id(),
+                back.query()
+            )),
         },
         actions: EditActions {
             mode: if draft {
@@ -298,9 +304,33 @@ pub async fn post(
     State(engine): State<Engine>,
     Extension(settings): Extension<Settings>,
     header: Header,
-    Path((library, person)): Path<(String, String)>,
+    Path(path): Path<(String, String)>,
     Query(query): Query<BackQuery>,
     body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, query, body, false).await
+}
+
+pub async fn enrich(
+    _session: Session,
+    State(engine): State<Engine>,
+    Extension(settings): Extension<Settings>,
+    header: Header,
+    Path(path): Path<(String, String)>,
+    Query(query): Query<BackQuery>,
+    body: FormBody,
+) -> Result<Response> {
+    submit(engine, settings, header, path, query, body, true).await
+}
+
+async fn submit(
+    engine: Engine,
+    settings: Settings,
+    header: Header,
+    (library, person): (String, String),
+    query: BackQuery,
+    body: FormBody,
+    enrich: bool,
 ) -> Result<Response> {
     let mut posted = Posted::read(&body)?;
     let library = view::load(&engine, &library).await?;
@@ -313,6 +343,16 @@ pub async fn post(
     let mut refusals = Refusals::default();
     if let Some(parsed) = parse(&posted, &mut refusals) {
         match save(&mut person, &mut posted, parsed).await {
+            Ok(()) if enrich => {
+                person.enrich().await?;
+                let edit = format!(
+                    "/library/{}/person/{}/edit{}",
+                    library.id(),
+                    person.id(),
+                    back.query()
+                );
+                return Ok(Redirect::to(&edit).into_response());
+            }
             Ok(()) => {
                 return Ok(Redirect::to(back.path_after_save()).into_response());
             }
