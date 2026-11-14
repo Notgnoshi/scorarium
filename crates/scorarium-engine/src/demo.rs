@@ -1,12 +1,13 @@
-use crate::entity::{Contributed, Entity};
+use crate::contributor::Role;
+use crate::entity::{Contributed, Entity, Source};
 use crate::holding::NewHolding;
 use crate::library::Library;
-use crate::person::PersonId;
+use crate::person::{self, PersonId};
 use crate::publication::IdentifierKind::{Isbn, PlateNumber, PublisherNumber};
-use crate::publication::{Identifier, ImportSeed, Publication};
+use crate::publication::{self, Identifier, ImportSeed, Publication};
 use crate::value::Classification::{self, Music, Prose};
 use crate::value::{Stars, Year};
-use crate::work::Work;
+use crate::work::{self, Work};
 use crate::{Engine, Error, Result};
 
 /// Populate a demo database intended to exercise several different aspects of Scorarium's data model
@@ -257,11 +258,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .await?;
     let satie = gymnopedies
         .create_contributor("Erik Satie".parse()?, "composer".parse()?)
-        .await?
-        .id();
+        .await?;
     for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
         let title = format!("Gymnopedie No. {number}");
-        let mut gymnopedie = piano_piece(&mut gymnopedies, satie, &title, key, Some("3/4")).await?;
+        let mut gymnopedie =
+            piano_piece(&mut gymnopedies, satie.id(), &title, key, Some("3/4")).await?;
         if number == 1 {
             gymnopedie.set_stars(Some(Stars::try_from(5)?)).await?;
             gymnopedie.add_tag("memorized".parse()?).await?;
@@ -275,6 +276,130 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             publication.commit().await?;
         }
     }
+
+    let fantaisie = create(&sheet_music, "Morceaux de fantaisie", None, Music).await?;
+    let composer: Role = "composer".parse()?;
+    let editor: Role = "editor".parse()?;
+    let source = Source::OpenLibrary;
+    fantaisie
+        .propose(
+            source,
+            publication::Proposal::Title("Morceaux de fantaisie, Op. 3".into()),
+        )
+        .await?;
+    fantaisie
+        .propose(
+            source,
+            publication::Proposal::Publisher("Alfred Music".into()),
+        )
+        .await?;
+    fantaisie
+        .propose(source, publication::Proposal::Year(Year::try_from(1985)?))
+        .await?;
+    fantaisie
+        .propose(
+            source,
+            publication::Proposal::Contributor {
+                person: rachmaninoff.clone(),
+                role: composer.clone(),
+            },
+        )
+        .await?;
+    let baylor = fantaisie
+        .propose_new_contributor(source, "Murray Baylor", &editor)
+        .await?;
+    fantaisie
+        .propose(source, publication::Proposal::Contents(prelude.clone()))
+        .await?;
+    fantaisie
+        .propose(
+            source,
+            publication::Proposal::Contents(polichinelle.clone()),
+        )
+        .await?;
+    let elegie = fantaisie.propose_new_work(source, "Elegie").await?;
+    let melodie = fantaisie.propose_new_work(source, "Melodie").await?;
+    fantaisie.propose_new_work(source, "Serenade").await?;
+    elegie
+        .propose(source, work::Proposal::Key("E-flat minor".into()))
+        .await?;
+    elegie
+        .propose(
+            source,
+            work::Proposal::CatalogNumber("Op. 3 No. 1".parse()?),
+        )
+        .await?;
+    elegie
+        .propose(
+            source,
+            work::Proposal::Contributor {
+                person: rachmaninoff.clone(),
+                role: composer.clone(),
+            },
+        )
+        .await?;
+    elegie
+        .propose(
+            source,
+            work::Proposal::Contributor {
+                person: baylor,
+                role: editor,
+            },
+        )
+        .await?;
+    melodie
+        .propose_new_contributor(source, "Sergei Rachmaninov", &composer)
+        .await?;
+
+    pro_git
+        .propose(
+            source,
+            publication::Proposal::Title("Pro Git, Second Edition".into()),
+        )
+        .await?;
+    pro_git
+        .propose(
+            source,
+            publication::Proposal::Title("Pro Git: Everything You Need to Know About Git".into()),
+        )
+        .await?;
+    pro_git
+        .propose(
+            source,
+            publication::Proposal::Identifier(Identifier::new(Isbn, "978-1-4302-1833-3")?),
+        )
+        .await?;
+    pro_git
+        .propose(
+            source,
+            publication::Proposal::Cover(
+                "https://covers.openlibrary.org/b/isbn/9781484200773-M.jpg".parse()?,
+            ),
+        )
+        .await?;
+    pro_git
+        .propose(
+            source,
+            publication::Proposal::Cover(
+                "https://covers.openlibrary.org/b/isbn/9781430218333-M.jpg".parse()?,
+            ),
+        )
+        .await?;
+    bierce
+        .propose_new_contributor(source, "Clifton Fadiman", &"introduction".parse()?)
+        .await?;
+    satie
+        .propose(
+            source,
+            person::Proposal::Name("Erik Alfred Leslie Satie".into()),
+        )
+        .await?;
+    satie
+        .propose(
+            source,
+            person::Proposal::Link("https://en.wikipedia.org/wiki/Erik_Satie".parse()?),
+        )
+        .await?;
 
     Ok(())
 }
