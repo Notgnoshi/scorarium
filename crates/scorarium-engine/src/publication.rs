@@ -2748,7 +2748,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn committing_a_draft_drops_its_proposals() {
+    async fn committing_a_draft_keeps_its_proposals() {
         let dir = tempfile::tempdir().unwrap();
         let engine = Engine::open(dir.path(), crate::test::options())
             .await
@@ -2767,10 +2767,12 @@ mod tests {
             )
             .await
             .unwrap();
-        publication.commit().await.unwrap();
-
         let mut work = publication
-            .propose_new_work(Source::OpenLibrary, "Prelude")
+            .create_work("Prelude".parse().unwrap())
+            .await
+            .unwrap();
+        publication
+            .propose(Source::OpenLibrary, Proposal::Title("24 Preludes".into()))
             .await
             .unwrap();
         let person = work
@@ -2781,14 +2783,15 @@ mod tests {
             )
             .await
             .unwrap();
-        let id = publication.proposals().await.unwrap()[0].id;
 
-        publication.accept(id).await.unwrap();
+        publication.commit().await.unwrap();
 
+        assert_eq!(publication.proposals().await.unwrap().len(), 1);
         work.reload().await.unwrap();
         assert!(!work.is_draft());
-        assert!(work.proposals().await.unwrap().is_empty());
-        assert!(Person::load(&engine, person.id()).await.unwrap().is_none());
+        assert_eq!(work.proposals().await.unwrap().len(), 1);
+        let person = Person::load(&engine, person.id()).await.unwrap().unwrap();
+        assert!(person.is_draft());
     }
 
     #[tokio::test]
