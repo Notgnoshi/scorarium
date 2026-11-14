@@ -1,14 +1,38 @@
 {
     let appended = 0;
 
+    const marked = (list) => [...list.querySelectorAll(":scope > [data-list-undoable]")];
+
+    const endOffer = (list) => {
+        for (const element of marked(list)) {
+            if (element.matches("[data-list-entry]")) {
+                element.removeAttribute("data-list-undoable");
+            } else {
+                element.remove();
+            }
+        }
+    };
+
     const append = (list) => {
         const template = list.querySelector(":scope > template");
+        const above = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
         appended += 1;
         const blank = template.innerHTML.replaceAll("__key__", `new${appended}`);
         template.insertAdjacentHTML("beforebegin", blank);
         const entry = template.previousElementSibling;
+        const repeated = [];
+        entry.querySelectorAll("[data-list-repeat] input").forEach((field) => {
+            const source = above?.querySelector(`[name$="${field.name.match(/\[\w+\]$/)[0]}"]`);
+            if (source) {
+                field.value = source.value;
+                repeated.push(field);
+            }
+        });
+        repeated.forEach((field) => field.dispatchEvent(new Event("change", { bubbles: true })));
+        const marked = [...entry.querySelectorAll("[autofocus]")];
         const field =
-            entry.querySelector("[autofocus]") ??
+            marked.find((field) => field.value === "") ??
+            marked[0] ??
             entry.querySelector("input:not([type=hidden]), select, textarea");
         field.focus();
     };
@@ -19,11 +43,51 @@
             append(add.closest("[data-list]"));
             return;
         }
+        const undo = event.target.closest("[data-list-undo]");
+        if (undo) {
+            const list = undo.closest("[data-list]");
+            for (const element of marked(list)) {
+                element.dispatchEvent(new CustomEvent("list:remove", { bubbles: true }));
+                element.remove();
+            }
+            list.querySelector("[data-list-add]").focus();
+            return;
+        }
         const entry = event.target.closest("[data-list-remove]")?.closest("[data-list-entry]");
         if (entry) {
+            if (entry.matches("[data-list-undoable]")) {
+                endOffer(entry.closest("[data-list]"));
+            }
             entry.closest("[data-list]").querySelector("[data-list-add]").focus();
             entry.dispatchEvent(new CustomEvent("list:remove", { bubbles: true }));
             entry.remove();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        const entry = event.target.closest?.("[data-list-continue]");
+        if (event.key !== "Tab" || event.shiftKey || !entry) {
+            return;
+        }
+        const list = entry.closest("[data-list]");
+        const fields = entry.querySelectorAll(
+            ":is(input:not([type=hidden], [type=checkbox]), select, textarea):enabled",
+        );
+        const required = entry.querySelector(`[name$="[${entry.dataset.listContinue}]"]`);
+        if (
+            entry === [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1) &&
+            event.target === fields[fields.length - 1] &&
+            required.value.trim() !== ""
+        ) {
+            event.preventDefault();
+            append(list);
+        }
+    });
+
+    document.addEventListener("input", (event) => {
+        const entry = event.target.closest?.("[data-list-undoable]");
+        if (entry) {
+            endOffer(entry.closest("[data-list]"));
         }
     });
 }

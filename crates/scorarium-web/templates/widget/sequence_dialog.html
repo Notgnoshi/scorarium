@@ -1,0 +1,71 @@
+<dialog class="confirm sequence-dialog">
+    <div class="confirm-header">
+        <h5 class="mb-0">Add a sequence of works</h5>
+    </div>
+    <form class="confirm-body"
+          id="sequence"
+          hx-post="{{ url }}"
+          hx-target="#contents-dialog"
+          hx-include="#contents">
+        <div class="d-flex gap-2 mb-3">
+            <div class="flex-fill">
+                <label class="form-label" for="sequence-name">Person</label>
+                <div class="position-relative"
+                     data-pick-icon="person"
+                     data-existing="bi-person-check"
+                     data-new="bi-person-plus">
+                    {{ person }}
+                    <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+                </div>
+            </div>
+            <div class="flex-fill">
+                <label class="form-label" for="sequence-role">Role</label>
+                {{ role }}
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="sequence-title">Title</label>
+            <input class="form-control{% if refusals.of("title").is_some() %} is-invalid{% endif %}"
+                   id="sequence-title"
+                   name="title"
+                   value="{{ form.title }}"
+                   required
+                   {% if !form.person.trim().is_empty() %}autofocus{% endif %}>
+            {% if let Some(reason) = refusals.of("title") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+        </div>
+        <div>
+            <label class="form-label" for="sequence-prefix">Numbers</label>
+            <div class="d-flex align-items-center gap-2">
+                <input class="form-control{% if refusals.of("prefix").is_some() %} is-invalid{% endif %}"
+                       id="sequence-prefix"
+                       name="prefix"
+                       value="{{ form.prefix }}"
+                       placeholder="Op. 28 No."
+                       required>
+                <span>from</span>
+                <input class="form-control sequence-number{% if refusals.of("numbers").is_some() %} is-invalid{% endif %}"
+                       name="from"
+                       value="{{ form.from }}"
+                       inputmode="numeric"
+                       aria-label="From"
+                       required>
+                <span>to</span>
+                <input class="form-control sequence-number{% if refusals.of("numbers").is_some() %} is-invalid{% endif %}"
+                       name="to"
+                       value="{{ form.to }}"
+                       inputmode="numeric"
+                       aria-label="To"
+                       required>
+            </div>
+            {% if let Some(reason) = refusals.of("prefix").or(refusals.of("numbers")) %}
+                <div class="invalid-feedback d-block">{{ reason }}</div>
+            {% endif %}
+        </div>
+    </form>
+    <div class="confirm-footer">
+        <form method="dialog">
+            <button class="btn btn-outline-secondary" type="submit">Cancel</button>
+        </form>
+        <button class="btn btn-primary" type="submit" form="sequence">Add</button>
+    </div>
+</dialog>

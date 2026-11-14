@@ -18,7 +18,10 @@ use askama::Template;
 /// 2. `value(text)` renders a button carrying a `data-value` that inputs `text` into the form
 /// 3. `pick(id, text)` renders a button that, like `value()`, inputs `text`, but also records `id`
 ///    in the hidden input listed by [Typeahead::picked]
-/// 4. `empty()` renders `No matches`
+/// 4. `fill(id, text, fields)` renders a button that, like `pick()`, records `id`, and also writes
+///    each `(field, value)` of `fields` into the field of the same list entry whose name ends in
+///    `[field]`
+/// 5. `empty()` renders `No matches`
 #[derive(Debug, Template)]
 #[template(path = "widget/typeahead.html")]
 pub struct Typeahead {

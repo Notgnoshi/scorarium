@@ -15,7 +15,7 @@ use crate::page::library::entity;
 use crate::widget::refusals::Refusals;
 use crate::widget::typeahead::Typeahead;
 
-const PICK: &str = "Pick a person from the list";
+pub(crate) const PICK: &str = "Pick a person from the list";
 
 #[derive(Clone, Deserialize)]
 struct SavedContributor {
@@ -61,6 +61,7 @@ pub(crate) struct ContributorsForm {
     contributor: Vec<ContributorEntry>,
 }
 
+#[derive(Clone)]
 pub(crate) enum PersonPick {
     Existing(PersonId),
     New(NonBlank),
@@ -167,35 +168,38 @@ fn person_id(id: &str) -> scorarium_engine::Result<PersonId> {
         .map_err(|_| scorarium_engine::Error::InvalidValue(format!("Unknown person '{id}'.")))
 }
 
-impl ContributorEdits {
-    /// Add before removing, so that changing a role never orphans and deletes the person
-    pub async fn apply<E: Contributed>(self, entity: &mut E) -> scorarium_engine::Result<()> {
-        let mut created: Vec<(String, PersonId)> = vec![];
-        for (pick, role) in self.add {
-            let person = match pick {
-                PersonPick::Existing(person) => person,
-                PersonPick::New(name) => {
-                    let known = created
-                        .iter()
-                        .find(|(spelling, _)| same_name(spelling, name.as_str()))
-                        .map(|(_, person)| *person);
-                    match known {
-                        Some(person) => person,
-                        None => {
-                            let spelling = name.as_str().to_owned();
-                            let person = entity.create_contributor(name, role).await?.id();
-                            created.push((spelling, person));
-                            continue;
-                        }
+/// The people that a Save created, by the spelling that created them
+#[derive(Default)]
+pub(crate) struct NewPeople(Vec<(String, PersonId)>);
+
+impl NewPeople {
+    /// Add `pick` to `entity` in `role`, creating each new name once
+    pub async fn attach<E: Contributed>(
+        &mut self,
+        entity: &mut E,
+        pick: PersonPick,
+        role: Role,
+    ) -> scorarium_engine::Result<()> {
+        let person = match pick {
+            PersonPick::Existing(person) => person,
+            PersonPick::New(name) => {
+                let known = self
+                    .0
+                    .iter()
+                    .find(|(spelling, _)| same_name(spelling, name.as_str()))
+                    .map(|(_, person)| *person);
+                match known {
+                    Some(person) => person,
+                    None => {
+                        let spelling = name.as_str().to_owned();
+                        let person = entity.create_contributor(name, role).await?.id();
+                        self.0.push((spelling, person));
+                        return Ok(());
                     }
                 }
-            };
-            entity.add_contributor(person, role).await?;
-        }
-        for (person, role) in &self.remove {
-            entity.remove_contributor(*person, role).await?;
-        }
-        Ok(())
+            }
+        };
+        entity.add_contributor(person, role).await
     }
 }
 

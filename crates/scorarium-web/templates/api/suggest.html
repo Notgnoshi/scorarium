@@ -1,7 +1,7 @@
 {% import "widget/suggestion.html" as suggestion %}
 {% for entry in entries %}
     {% if let Some(id) = entry.suggestion_id %}
-        {% call suggestion::pick(id, entry.text) %}
+        {% call suggestion::fill(id, entry.text, entry.fill) %}
             {{ entry.text }}
             {% if entry.draft %}<span class="badge small text-bg-secondary">Draft</span>{% endif %}
             {% if let Some(detail) = entry.detail %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}

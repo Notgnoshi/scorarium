@@ -2,13 +2,15 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::Entity;
 use scorarium_engine::person::PersonId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
+use scorarium_engine::work::CatalogNumber;
 
 use crate::api::{Query, SUGGESTION_LIMIT};
 use crate::auth::ApiSession;
 use crate::error::Result;
+use crate::page::library::entity::ContainedWork;
 use crate::page::library::view;
 
 /// Map a route's field name to the field it suggests values for
@@ -37,6 +39,8 @@ struct Entry {
     text: String,
     draft: bool,
     detail: Option<String>,
+    /// The fields of the list entry that a selection fills, with their values
+    fill: Vec<(&'static str, String)>,
 }
 
 impl Entry {
@@ -46,6 +50,7 @@ impl Entry {
             text,
             draft: false,
             detail: None,
+            fill: vec![],
         }
     }
 }
@@ -66,12 +71,17 @@ pub async fn get(
 ) -> Result<Html<String>> {
     let library = view::load(&engine, &library).await?;
     let person = query.person.as_deref().and_then(|id| id.parse().ok());
+    let new_person = query.person.as_deref() == Some("new");
     let field = field(&name, person).ok_or(scorarium_engine::Error::NotFound)?;
     let query = query.q.as_deref().unwrap_or_default().trim();
     if query.is_empty() {
         return Ok(Html(String::new()));
     }
-    let suggestions = library.suggest(field, query, SUGGESTION_LIMIT).await?;
+    let suggestions = if matches!(field, SuggestField::Work { .. }) && new_person {
+        vec![]
+    } else {
+        library.suggest(field, query, SUGGESTION_LIMIT).await?
+    };
     let entries = suggestions
         .into_iter()
         .filter_map(|suggestion| match suggestion.item {
@@ -80,20 +90,34 @@ pub async fn get(
                 text: person.name().to_owned(),
                 draft: person.is_draft(),
                 detail: None,
+                fill: vec![],
             }),
             Suggested::Work { work, .. } => {
+                let contained = ContainedWork::from(&work);
+                let first = contained.first_contributor();
                 let detail = [
-                    work.catalog_numbers().first().map(|n| n.as_str()),
-                    work.contributors().first().map(|c| c.name.as_str()),
+                    contained.catalog_number.as_ref().map(CatalogNumber::as_str),
+                    first.map(|(contributor, _)| contributor.name.as_str()),
                 ]
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
+                let (person, name, role) = first.map_or_else(Default::default, |(c, role)| {
+                    (c.person.to_string(), c.name.clone(), role.to_string())
+                });
+                let number = contained.catalog_number.as_ref().map(ToString::to_string);
+                let fill = vec![
+                    ("person", person),
+                    ("name", name),
+                    ("role", role),
+                    ("catalog_number", number.unwrap_or_default()),
+                ];
                 Some(Entry {
                     suggestion_id: Some(work.id().to_string()),
                     text: work.title().to_owned(),
                     draft: work.is_draft(),
                     detail: (!detail.is_empty()).then(|| detail.join(", ")),
+                    fill,
                 })
             }
             Suggested::Publisher(name) => Some(Entry::value(name)),

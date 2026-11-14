@@ -29,14 +29,6 @@ function attachTagsInput(container) {
     container.addEventListener("click", (event) => {
         const remove = event.target.closest("[data-remove]");
         if (remove) {
-            const key = remove.dataset.key;
-            if (key !== undefined) {
-                const removal = document.createElement("input");
-                removal.type = "hidden";
-                removal.name = "remove_tag";
-                removal.value = key;
-                container.append(removal);
-            }
             [...entries.children].find((entry) => entry.contains(remove)).remove();
         } else {
             input.focus();

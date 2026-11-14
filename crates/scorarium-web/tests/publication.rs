@@ -2,8 +2,10 @@ use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::holding::{HoldingKind, NewHolding};
+use scorarium_engine::library::Library;
 use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed, Publication};
 use scorarium_engine::value::Year;
+use scorarium_engine::work::{CatalogNumber, Work};
 use scorarium_test::TestApp;
 
 #[tokio::test]
@@ -90,79 +92,190 @@ async fn edit_changes_the_kind_of_an_identifier_and_removes_another() {
     assert_eq!(after.identifiers(), [plate]);
 }
 
-#[tokio::test]
-async fn adding_a_title_with_a_known_catalog_number_links_the_existing_work() {
-    let app = TestApp::demo().await;
-    let library = app.engine.libraries().await.unwrap().pop().unwrap();
-    let works = library.works().await.unwrap();
-    let etude = works.iter().find(|w| w.title() == "Etude-Tableau").unwrap();
-    let rachmaninoff = etude.contributors()[0].person;
-    let masterpieces = library
+/// Find the demo publication that stores the Prelude and Polichinelle
+async fn masterpieces(library: &Library) -> Publication {
+    library
         .publications()
         .await
         .unwrap()
         .into_iter()
         .find(|p| p.title() == Some("Rachmaninoff masterpieces for solo piano"))
-        .unwrap();
-    app.server
-        .post(&format!(
-            "/api/library/{}/publication/{}/contents/add",
-            library.id(),
-            masterpieces.id()
-        ))
-        .form(&[
-            ("name", "Sergei Rachmaninoff"),
-            ("person", &rachmaninoff.to_string()),
-            ("title", "Etude in A minor"),
-            ("work", ""),
-            ("catalog_number", "Op.39/2"),
-            ("role", "composer"),
-        ])
-        .await
-        .assert_status_ok();
-    let contents = masterpieces.works().await.unwrap();
-    assert!(contents.iter().any(|w| w.id() == etude.id()));
-    assert_eq!(library.works().await.unwrap().len(), works.len());
+        .unwrap()
 }
 
 #[tokio::test]
-async fn range_add_creates_links_and_is_idempotent() {
+async fn edit_creates_links_and_removes_works_in_one_save() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let works = library.works().await.unwrap();
+    let find = |title: &str| works.iter().find(|w| w.title() == title).unwrap();
+    let rachmaninoff = find("Polichinelle").contributors()[0].person.to_string();
+    let prelude = find("Prelude in C-sharp minor").id().to_string();
+    let isle = find("The Isle of the Dead").id().to_string();
+    let publication = masterpieces(&library).await;
+    app.server
+        .post(&format!(
+            "/library/{}/publication/{}/edit",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("title", "Rachmaninoff masterpieces for solo piano"),
+            ("publisher", ""),
+            ("year", ""),
+            ("note", ""),
+            ("works[0][saved]", prelude.as_str()),
+            ("works[0][removed]", "true"),
+            ("works[new1][work]", isle.as_str()),
+            ("works[new1][title]", "The Isle of the Dead"),
+            ("works[new2][person]", rachmaninoff.as_str()),
+            ("works[new2][name]", "Sergei Rachmaninoff"),
+            ("works[new2][role]", "composer"),
+            ("works[new2][title]", "Etude in A minor"),
+            ("works[new2][catalog_number]", "Op. 39 No. 2"),
+            ("works[new3][person]", "new"),
+            ("works[new3][name]", "Nikolai Medtner"),
+            ("works[new3][role]", "composer"),
+            ("works[new3][title]", "Fairy Tale"),
+            ("works[new3][catalog_number]", "Op. 20 No. 1"),
+        ])
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let contents = publication.works().await.unwrap();
+    let mut titles: Vec<&str> = contents.iter().map(Work::title).collect();
+    titles.sort();
+    assert_eq!(
+        titles,
+        [
+            "Etude-Tableau",
+            "Fairy Tale",
+            "Polichinelle",
+            "The Isle of the Dead"
+        ]
+    );
+    assert_eq!(library.works().await.unwrap().len(), works.len() + 1);
+    let created = contents.iter().find(|w| w.title() == "Fairy Tale").unwrap();
+    let number: CatalogNumber = "Op. 20 No. 1".parse().unwrap();
+    assert_eq!(created.catalog_numbers(), [number]);
+    let [composer] = created.contributors() else {
+        panic!("expected exactly one contributor");
+    };
+    assert_eq!(
+        (composer.name.as_str(), composer.role.as_str()),
+        ("Nikolai Medtner", "composer")
+    );
+}
+
+#[tokio::test]
+async fn edit_refuses_a_duplicate_work_and_writes_nothing() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
     let works = library.works().await.unwrap();
     let polichinelle = works.iter().find(|w| w.title() == "Polichinelle").unwrap();
     let rachmaninoff = polichinelle.contributors()[0].person.to_string();
-    let album = library
-        .publications()
+    let publication = masterpieces(&library).await;
+    let before = publication.works().await.unwrap().len();
+    app.server
+        .post(&format!(
+            "/library/{}/publication/{}/edit",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("title", "Renamed"),
+            ("publisher", ""),
+            ("year", ""),
+            ("note", ""),
+            ("works[new1][person]", "new"),
+            ("works[new1][name]", "Nikolai Medtner"),
+            ("works[new1][role]", "composer"),
+            ("works[new1][title]", "Fairy Tale"),
+            ("works[new2][person]", rachmaninoff.as_str()),
+            ("works[new2][name]", "Sergei Rachmaninoff"),
+            ("works[new2][role]", "composer"),
+            ("works[new2][title]", "Punchinello"),
+            ("works[new2][catalog_number]", "Op. 3 No. 4"),
+        ])
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    let after = Publication::load(&app.engine, publication.id())
         .await
         .unwrap()
-        .into_iter()
-        .find(|p| p.title() == Some("Russian piano album"))
         .unwrap();
-    let before = album.works().await.unwrap().len();
-    let url = format!(
-        "/api/library/{}/publication/{}/contents/add-range",
-        library.id(),
-        album.id()
-    );
-    let form = [
-        ("name", "Sergei Rachmaninoff"),
-        ("person", rachmaninoff.as_str()),
-        ("title", "Prelude"),
-        ("prefix", "Op. 3 No."),
-        ("from", "1"),
-        ("to", "5"),
-        ("role", "composer"),
-    ];
-    app.server.post(&url).form(&form).await.assert_status_ok();
-    let contents = album.works().await.unwrap();
-    assert_eq!(contents.len(), before + 4);
-    assert!(contents.iter().any(|w| w.id() == polichinelle.id()));
-    assert_eq!(library.works().await.unwrap().len(), works.len() + 3);
+    assert_eq!(after.title(), publication.title());
+    assert_eq!(after.works().await.unwrap().len(), before);
+    assert_eq!(library.works().await.unwrap().len(), works.len());
+}
 
-    app.server.post(&url).form(&form).await.assert_status_ok();
-    assert_eq!(album.works().await.unwrap().len(), before + 4);
-    assert_eq!(library.works().await.unwrap().len(), works.len() + 3);
+#[tokio::test]
+async fn sequence_writes_nothing() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let works = library.works().await.unwrap();
+    let polichinelle = works.iter().find(|w| w.title() == "Polichinelle").unwrap();
+    let rachmaninoff = polichinelle.contributors()[0].person.to_string();
+    let publication = masterpieces(&library).await;
+    let before = publication.works().await.unwrap().len();
+    app.server
+        .post(&format!(
+            "/api/library/{}/publication/{}/contents/sequence",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("person", rachmaninoff.as_str()),
+            ("name", "Sergei Rachmaninoff"),
+            ("role", "composer"),
+            ("title", "Prelude"),
+            ("prefix", "Op. 3 No."),
+            ("from", "1"),
+            ("to", "5"),
+        ])
+        .await
+        .assert_status_ok();
+    assert_eq!(publication.works().await.unwrap().len(), before);
+    assert_eq!(library.works().await.unwrap().len(), works.len());
+}
+
+#[tokio::test]
+async fn edit_removes_a_contributor_while_adding_a_work_by_them() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut publication = masterpieces(&library).await;
+    let editor = publication
+        .create_contributor("Lone Editor".parse().unwrap(), "editor".parse().unwrap())
+        .await
+        .unwrap()
+        .id();
+    let id = editor.to_string();
+    app.server
+        .post(&format!(
+            "/library/{}/publication/{}/edit",
+            library.id(),
+            publication.id()
+        ))
+        .form(&[
+            ("title", "Rachmaninoff masterpieces for solo piano"),
+            ("publisher", ""),
+            ("year", ""),
+            ("note", ""),
+            ("contributor[0][saved][person]", id.as_str()),
+            ("contributor[0][saved][role]", "editor"),
+            ("contributor[0][removed]", "true"),
+            ("contributor[0][role]", "editor"),
+            ("works[new1][person]", id.as_str()),
+            ("works[new1][name]", "Lone Editor"),
+            ("works[new1][role]", "arranger"),
+            ("works[new1][title]", "Transcription"),
+        ])
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    let contents = publication.works().await.unwrap();
+    let created = contents
+        .iter()
+        .find(|w| w.title() == "Transcription")
+        .unwrap();
+    assert_eq!(created.contributors()[0].person, editor);
 }
 
 #[tokio::test]

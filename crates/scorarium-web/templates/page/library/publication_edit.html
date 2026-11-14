@@ -74,7 +74,9 @@
                 </div>
             </div>
         </fieldset>
+        <div id="contents">{{ contents }}</div>
         {{ holdings }}
     </form>
-    <div id="contents">{{ contents }}</div>
+    {{ actions }}
+    <div id="contents-dialog" data-dialog-slot></div>
 {% endblock %}

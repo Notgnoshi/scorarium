@@ -1,139 +1,101 @@
-<fieldset class="box">
-    <legend>Contents</legend>
-    {% if let Some(error) = error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-    {% if !works.is_empty() %}
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    {% if numbered %}<th>Catalog No.</th>{% endif %}
-                    <th>Contributors</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for work in works %}
-                    <tr>
-                        <td>
-                            <a href="/library/{{ library }}/work/{{ work.id }}">{{ work.title }}</a>
-                            {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
-                            {% if marks.created.contains(work.id) %}
-                                <i class="bi bi-plus-circle" title="Created by this add"></i>
-                            {% elif marks.linked.contains(work.id) %}
-                                <i class="bi bi-node-plus" title="Linked to an existing work"></i>
-                            {% endif %}
-                        </td>
-                        {% if numbered %}
-                            <td>{% if let Some(number) = work.catalog_number %}{{ number }}{% endif %}</td>
-                        {% endif %}
-                        <td>
-                            {% for contributor in work.contributors %}
-                                {%- if !loop.first %}, {% endif -%}
-                                {{ contributor.name }}
-                            {%- endfor %}
-                        </td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-link"
-                               href="/library/{{ library }}/work/{{ work.id }}/edit?back={{ back|urlencode }}"
-                               title="Edit work">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <form class="d-inline" hx-post="{{ self.api() }}/contents/remove" hx-target="#contents">
-                                <input type="hidden" name="work" value="{{ work.id }}">
-                                <button class="btn btn-sm btn-link" title="Remove from publication">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% endif %}
-    <form class="row g-2"
-          hx-post="{{ self.api() }}/contents/add"
-          hx-target="#contents"
-          hx-disable="find button"
-          data-contents-add>
-        <div class="col position-relative"
-             data-pick-icon="person"
-             data-existing="bi-person-check"
-             data-new="bi-person-plus"
-             data-new-work-only>
-            {{ self.person("contents-name", add.name, add.person, false) }}
-            <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+{% import "widget/list.html" as list %}
+{% macro entry(key, input, undoable) %}
+    {% match input %}
+    {% when EntryInput::Saved with { work, removed } %}
+    <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        <input type="hidden" name="works[{{ key }}][saved]" value="{{ work.id }}">
+        <div class="work-people">
+            {% for contributor in work.contributors %}
+                <div>
+                    <span class="form-control-plaintext">{{ contributor.name }}</span>
+                    <span class="form-control-plaintext">
+                        {%- for role in contributor.roles %}{% if !loop.first %}, {% endif %}{{ role }}{% endfor -%}
+                    </span>
+                </div>
+            {% endfor %}
         </div>
-        <div class="col position-relative"
+        <div class="work-title d-flex align-items-center gap-2">
+            <span class="form-control-plaintext w-auto">{{ work.title }}</span>
+            <a class="btn btn-sm btn-link"
+               href="/library/{{ library }}/work/{{ work.id }}/edit?back={{ back|urlencode }}"
+               title="Edit work">
+                <i class="bi bi-pencil"></i>
+            </a>
+        </div>
+        <div class="work-number">
+            <span class="form-control-plaintext">
+                {%- if let Some(number) = work.catalog_number %}{{ number }}{% endif -%}
+            </span>
+        </div>
+        {% call list::removal("works", key, *removed, "Remove work", "Keep this work") %}
+        {% endcall %}
+    </li>
+    {% when EntryInput::New with { person, role, title, catalog_number, refusal, locked } %}
+    <li class="d-flex align-items-start gap-2 mb-2"
+        data-list-entry
+        data-list-continue="title"
+        {% if undoable %}data-list-undoable{% endif %}>
+        <div class="work-people" data-lockable data-list-repeat>
+            <div>
+                <div class="position-relative"
+                     data-pick-icon="person"
+                     data-existing="bi-person-check"
+                     data-new="bi-person-plus">
+                    {{ person }}
+                    <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
+                </div>
+                <div>{{ role }}</div>
+            </div>
+        </div>
+        <div class="work-title position-relative"
+             data-locks-fields
              data-pick-icon="work"
              data-existing="bi-file-earmark-check"
              data-new="bi-file-earmark-plus">
-            {{ self.work() }}
+            {{ title }}
             <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
         </div>
-        <div class="col">
-            <input class="form-control"
-                   name="catalog_number"
-                   value="{{ add.catalog_number }}"
+        <div class="work-number" data-lockable>
+            <input class="form-control{% if refusal.is_some() %} is-invalid{% endif %}"
+                   name="works[{{ key }}][catalog_number]"
+                   value="{{ catalog_number }}"
                    placeholder="Catalog No."
-                   data-new-work-only>
+                   {% if *locked %}disabled{% endif %}>
+            {% if let Some(reason) = refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
         </div>
-        <div class="col" data-new-work-only>{{ self.role("contents-role", add.role) }}</div>
-        <div class="col-auto">
-            <button class="btn btn-outline-secondary" title="Add work">
-                <i class="bi bi-plus-lg"></i> Add
+        {% call list::remove("Remove work") %}
+        {% endcall %}
+    </li>
+{% endmatch %}
+{% endmacro %}
+<fieldset class="box">
+    <legend>Contents</legend>
+    <ul class="list-unstyled mb-0" data-list>
+        {% for (key, input) in entries %}
+            {% call entry(key, input, self.undoable(*loop.index0)) %}
+            {% endcall %}
+        {% endfor %}
+        {% if let Some(sequence) = sequence %}
+            <li class="d-flex align-items-center gap-2 mb-2 text-body-secondary" data-list-undoable>
+                {{ sequence }}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-list-undo>
+                    <i class="bi bi-arrow-counterclockwise"></i> Undo
+                </button>
+            </li>
+        {% endif %}
+        <template>
+            {% call entry("__key__", blank, false) %}
+            {% endcall %}
+        </template>
+        <li class="d-flex gap-2">
+            {% call list::add("Add a work") %}
+            {% endcall %}
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    hx-post="/api/library/{{ library }}/publication/{{ publication }}/contents/sequence/dialog"
+                    hx-target="#contents-dialog">
+                <i class="bi bi-123"></i> Add a sequence
             </button>
-        </div>
-    </form>
-    <button type="button"
-            class="btn btn-link btn-sm"
-            data-bs-toggle="collapse"
-            data-bs-target="#contents-range"
-            aria-controls="contents-range"
-            aria-expanded="{% if range_open %}true{% else %}false{% endif %}"
-            title="Add a numbered range">
-        <i class="bi bi-list-ol"></i> Add range
-    </button>
-    <form class="collapse{% if range_open %} show{% endif %} row g-2 mt-1"
-          id="contents-range"
-          hx-post="{{ self.api() }}/contents/add-range"
-          hx-target="#contents"
-          hx-disable="find button">
-        <div class="col position-relative"
-             data-pick-icon="person"
-             data-existing="bi-person-check"
-             data-new="bi-person-plus">
-            {{ self.person("range-name", range.name, range.person, true) }}
-            <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
-        </div>
-        <div class="col">
-            <input class="form-control" name="title" value="{{ range.title }}" placeholder="Title" required>
-        </div>
-        <div class="col">
-            <input class="form-control" name="prefix" value="{{ range.prefix }}" placeholder="Op. 28 No." required>
-        </div>
-        <div class="col">
-            <input class="form-control"
-                   type="number"
-                   min="1"
-                   name="from"
-                   value="{{ range.from }}"
-                   placeholder="From"
-                   required>
-        </div>
-        <div class="col">
-            <input class="form-control"
-                   type="number"
-                   min="1"
-                   name="to"
-                   value="{{ range.to }}"
-                   placeholder="To"
-                   required>
-        </div>
-        <div class="col">{{ self.role("range-role", range.role) }}</div>
-        <div class="col-auto">
-            <button class="btn btn-outline-secondary" title="Add works">
-                <i class="bi bi-plus-lg"></i> Add
-            </button>
-        </div>
-    </form>
+        </li>
+    </ul>
 </fieldset>

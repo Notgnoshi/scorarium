@@ -19,8 +19,11 @@ use crate::redirect::{Back, BackQuery};
 use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::contributors_input::{
+    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
@@ -40,9 +43,7 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
-    add_tag: Vec<String>,
-    #[serde(default)]
-    remove_tag: Vec<String>,
+    tag: Vec<String>,
 }
 
 struct Posted {
@@ -71,6 +72,7 @@ struct Edit {
     library: LibraryId,
     id: WorkId,
     heading: EditHeading,
+    actions: EditActions,
     form: Form,
     catalog_numbers: CatalogNumbersInput,
     tags: TagsInput,
@@ -85,8 +87,7 @@ struct Parsed {
     classification: Option<Classification>,
     stars: Option<Stars>,
     catalog_numbers: Edits<CatalogNumber, CatalogNumber>,
-    add_tags: Vec<Tag>,
-    remove_tags: Vec<Tag>,
+    tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
     contributors: ContributorEdits,
 }
@@ -108,14 +109,10 @@ async fn parse(
         .stars
         .and_then(|stars| refusals.check(Stars::try_from(stars)));
     let catalog_numbers = posted.catalog_numbers.parse(refusals);
-    let add_tags = form
-        .add_tag
+    let tags = form
+        .tag
         .iter()
-        .filter_map(|tag| refusals.check(tag.parse()))
-        .collect();
-    let remove_tags = form
-        .remove_tag
-        .iter()
+        .filter(|tag| !tag.trim().is_empty())
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
     let links = posted.links.parse(refusals);
@@ -127,8 +124,7 @@ async fn parse(
         classification,
         stars,
         catalog_numbers,
-        add_tags,
-        remove_tags,
+        tags,
         links,
         contributors,
     }))
@@ -191,11 +187,20 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = work.is_draft();
+    let tags = posted
+        .form
+        .tag
+        .iter()
+        .filter_map(|tag| tag.parse().ok())
+        .collect();
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),
         heading: EditHeading {
             title: work.title().to_owned(),
+            draft,
+        },
+        actions: EditActions {
             mode: if draft {
                 EditMode::Draft
             } else {
@@ -239,7 +244,7 @@ async fn render(
         form: posted.form,
         tags: TagsInput {
             library: library.id(),
-            tags: work.tags().to_vec(),
+            tags,
         },
         links: LinksInput::new(&posted.links, work.links(), &refusals),
         contributors: ContributorsInput::new(
@@ -273,8 +278,7 @@ pub async fn get(
         instrumentation: text(work.instrumentation()),
         stars: work.stars().map(|stars| stars.get()),
         note: text(work.note()),
-        add_tag: vec![],
-        remove_tag: vec![],
+        tag: work.tags().iter().map(ToString::to_string).collect(),
     };
     let posted = Posted {
         form,
@@ -311,10 +315,12 @@ async fn save(
         work.add_catalog_number(number).await?;
     }
     posted.catalog_numbers = CatalogNumbersForm::from(work.catalog_numbers());
-    for tag in &parsed.remove_tags {
-        work.remove_tag(tag).await?;
+    for tag in work.tags().to_vec() {
+        if !parsed.tags.contains(&tag) {
+            work.remove_tag(&tag).await?;
+        }
     }
-    for tag in parsed.add_tags {
+    for tag in parsed.tags {
         work.add_tag(tag).await?;
     }
     for link in parsed.links.remove {
@@ -324,7 +330,14 @@ async fn save(
         work.add_link(url).await?;
     }
     posted.links = LinksForm::from(work.links());
-    parsed.contributors.apply(work).await?;
+    // Additions run first so that changing a role never orphans and deletes the person.
+    let mut people = NewPeople::default();
+    for (pick, role) in parsed.contributors.add {
+        people.attach(work, pick, role).await?;
+    }
+    for (person, role) in &parsed.contributors.remove {
+        work.remove_contributor(*person, role).await?;
+    }
     posted.contributors = ContributorsForm::from(work.contributors());
     if let Some(classification) = parsed.classification {
         work.set_classification(classification).await?;

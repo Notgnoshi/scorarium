@@ -9,6 +9,8 @@ pub(crate) struct FileInput {
     pub url: String,
     /// The file types that the chooser offers, as an `accept` attribute
     pub accept: Option<&'static str>,
+    /// Whether the chooser takes several files
+    pub multiple: bool,
     /// The hint in the empty field
     pub hint: &'static str,
     /// Whether files uploads are disabled

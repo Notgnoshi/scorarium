@@ -4,11 +4,12 @@ use scorarium_engine::value::Tag;
 
 use crate::widget::typeahead::Typeahead;
 
-/// An editable set of tags that posts `add_tag` and `remove_tag` for each change
+/// An editable set of tags that posts each one as `tag`
 #[derive(Debug, Template)]
 #[template(path = "widget/tags_input.html")]
 pub struct TagsInput {
     pub library: LibraryId,
+    /// The tags to draw; either stored ones from the database, or the posted ones after a refused submission
     pub tags: Vec<Tag>,
 }
 

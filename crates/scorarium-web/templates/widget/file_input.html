@@ -2,7 +2,10 @@
      data-url="{{ url }}"
      data-max-size="{{ scorarium_engine::asset::MAX_ASSET_SIZE }}"
      data-state="{% if staged.is_some() %}staged{% else %}empty{% endif %}">
-    <input type="file" class="d-none" {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}>
+    <input type="file"
+           class="d-none"
+           {% if let Some(accept) = accept %}accept="{{ accept }}"{% endif %}
+           {% if multiple %}multiple{% endif %}>
     <input type="hidden"
            name="{{ staged_name }}"
            value="{% if let Some(staged) = staged %}{{ staged.id }}{% endif %}"

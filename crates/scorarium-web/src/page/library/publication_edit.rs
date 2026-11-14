@@ -21,9 +21,12 @@ use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
-use crate::widget::contents::Contents;
-use crate::widget::contributors_input::{ContributorEdits, ContributorsForm, ContributorsInput};
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
+use crate::widget::contributors_input::{
+    ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
+};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
@@ -45,9 +48,7 @@ pub(crate) struct Form {
     stars: Option<u8>,
     note: String,
     #[serde(default)]
-    add_tag: Vec<String>,
-    #[serde(default)]
-    remove_tag: Vec<String>,
+    tag: Vec<String>,
 }
 
 struct Posted {
@@ -57,6 +58,7 @@ struct Posted {
     links: LinksForm,
     contributors: ContributorsForm,
     holdings: HoldingsForm,
+    contents: ContentsForm,
 }
 
 impl Posted {
@@ -68,6 +70,7 @@ impl Posted {
             links: body.read()?,
             contributors: body.read()?,
             holdings: body.read()?,
+            contents: body.read()?,
         })
     }
 }
@@ -80,6 +83,7 @@ struct Edit {
     library: LibraryId,
     id: PublicationId,
     heading: EditHeading,
+    actions: EditActions,
     form: Form,
     identifiers: IdentifiersInput,
     tags: TagsInput,
@@ -97,8 +101,7 @@ struct Parsed {
     year: Option<Year>,
     stars: Option<Stars>,
     identifiers: Edits<Identifier, Identifier>,
-    add_tags: Vec<Tag>,
-    remove_tags: Vec<Tag>,
+    tags: Vec<Tag>,
     links: Edits<LinkId, HttpUrl>,
     contributors: ContributorEdits,
     picture: PictureEdit,
@@ -125,14 +128,10 @@ async fn parse(
         .stars
         .and_then(|stars| refusals.check(Stars::try_from(stars)));
     let identifiers = posted.identifiers.parse(refusals);
-    let add_tags = form
-        .add_tag
+    let tags = form
+        .tag
         .iter()
-        .filter_map(|tag| refusals.check(tag.parse()))
-        .collect();
-    let remove_tags = form
-        .remove_tag
-        .iter()
+        .filter(|tag| !tag.trim().is_empty())
         .filter_map(|tag| refusals.check(tag.parse()))
         .collect();
     let links = posted.links.parse(refusals);
@@ -146,8 +145,7 @@ async fn parse(
         year,
         stars,
         identifiers,
-        add_tags,
-        remove_tags,
+        tags,
         links,
         contributors,
         picture,
@@ -218,6 +216,7 @@ async fn render(
     ];
     let draft = publication.is_draft();
     let form = posted.form;
+    let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,
@@ -227,6 +226,9 @@ async fn render(
         base: Base::new(header, publication.title().unwrap_or("Untitled"), parents),
         heading: EditHeading {
             title: publication.title().unwrap_or("Untitled").to_owned(),
+            draft,
+        },
+        actions: EditActions {
             mode: if draft {
                 EditMode::Import {
                     finish: format!(
@@ -277,7 +279,7 @@ async fn render(
         identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
         tags: TagsInput {
             library: library.id(),
-            tags: publication.tags().to_vec(),
+            tags,
         },
         links: LinksInput::new(&posted.links, publication.links(), &refusals),
         contributors: ContributorsInput::new(
@@ -294,7 +296,7 @@ async fn render(
             &refusals,
             files_allowed,
         ),
-        contents: Contents::new(publication, &publication.works().await?, here),
+        contents: Contents::of(engine, publication, &posted.contents, &here, &refusals).await?,
         back,
         refusals,
     };
@@ -325,8 +327,7 @@ pub async fn get(
             .unwrap_or_default(),
         stars: publication.stars().map(|stars| stars.get()),
         note: text(publication.note()),
-        add_tag: vec![],
-        remove_tag: vec![],
+        tag: publication.tags().iter().map(ToString::to_string).collect(),
     };
     let posted = Posted {
         form,
@@ -335,6 +336,7 @@ pub async fn get(
         links: LinksForm::from(publication.links()),
         contributors: ContributorsForm::from(publication.contributors()),
         holdings: HoldingsForm::from(publication.holdings()),
+        contents: ContentsForm::from(publication.works().await?.as_slice()),
     };
     render(
         &engine,
@@ -355,6 +357,7 @@ async fn save(
     posted: &mut Posted,
     parsed: Parsed,
     edits: HoldingEdits,
+    contents: ContentsEdits,
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     publication.set_title(parsed.title).await?;
@@ -370,10 +373,12 @@ async fn save(
         publication.add_identifier(identifier).await?;
     }
     posted.identifiers = IdentifiersForm::from(publication.identifiers());
-    for tag in &parsed.remove_tags {
-        publication.remove_tag(tag).await?;
+    for tag in publication.tags().to_vec() {
+        if !parsed.tags.contains(&tag) {
+            publication.remove_tag(&tag).await?;
+        }
     }
-    for tag in parsed.add_tags {
+    for tag in parsed.tags {
         publication.add_tag(tag).await?;
     }
     for link in parsed.links.remove {
@@ -383,11 +388,25 @@ async fn save(
         publication.add_link(url).await?;
     }
     posted.links = LinksForm::from(publication.links());
-    parsed.contributors.apply(publication).await?;
-    posted.contributors = ContributorsForm::from(publication.contributors());
     if let Some(classification) = parsed.classification {
         publication.set_classification(classification).await?;
     }
+    let mut people = NewPeople::default();
+    for (pick, role) in parsed.contributors.add {
+        people.attach(publication, pick, role).await?;
+    }
+    for work in contents.add {
+        work.add_to(publication, &mut people).await?;
+    }
+    // Removals run last, because a removal deletes a person who is left with nothing.
+    for (person, role) in &parsed.contributors.remove {
+        publication.remove_contributor(*person, role).await?;
+    }
+    for work in contents.remove {
+        publication.remove_work(work).await?;
+    }
+    posted.contributors = ContributorsForm::from(publication.contributors());
+    posted.contents = ContentsForm::from(publication.works().await?.as_slice());
     // The cover is saved after the other Details fields, because the engine refuses a file that is
     // not an image only as it stores the file, and by then the fields that the person typed are
     // already saved. It is saved before the holdings, so that a refused cover leaves them unsaved.
@@ -431,13 +450,17 @@ async fn submit(
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
     let parsed = parse(&engine, library.id(), &mut posted, &mut refusals).await?;
+    let contents = posted
+        .contents
+        .parse(&engine, &publication, &mut refusals)
+        .await?;
     let edits = posted
         .holdings
         .parse(&engine, publication.holdings(), &mut refusals);
     if refusals.is_empty()
         && let Some(parsed) = parsed
     {
-        let saved = match save(&mut publication, &mut posted, parsed, edits).await {
+        let saved = match save(&mut publication, &mut posted, parsed, edits, contents).await {
             Ok(()) if commit => publication.commit().await,
             saved => saved,
         };

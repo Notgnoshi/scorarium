@@ -12,7 +12,8 @@ use crate::error::Result;
 use crate::page::{Base, Crumb, form_error};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::confirm::{Confirm, count};
-use crate::widget::edit_heading::{EditHeading, EditMode};
+use crate::widget::edit_actions::{EditActions, EditMode};
+use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::refusals::Refusals;
 
@@ -37,6 +38,7 @@ struct Edit {
     name: String,
     private: bool,
     heading: EditHeading,
+    actions: EditActions,
     back: Back,
     refusals: Refusals,
 }
@@ -68,6 +70,9 @@ fn render(
         private,
         heading: EditHeading {
             title: library.name().to_owned(),
+            draft: false,
+        },
+        actions: EditActions {
             mode: EditMode::Committed,
             cancel: back.path().to_owned(),
             delete: Confirm {
