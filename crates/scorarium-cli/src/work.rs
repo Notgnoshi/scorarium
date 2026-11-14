@@ -80,6 +80,7 @@ fn proposal(value: &scorarium_engine::work::Proposal) -> (&'static str, String) 
 
     match value {
         Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Subtitle(subtitle) => ("subtitle", subtitle.clone()),
         Proposal::Key(key) => ("key", key.clone()),
         Proposal::TimeSignature(signature) => ("time-signature", signature.clone()),
         Proposal::Instrumentation(instrumentation) => ("instrumentation", instrumentation.clone()),

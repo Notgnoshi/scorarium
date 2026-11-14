@@ -368,7 +368,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     pro_git
         .propose(
             source,
-            publication::Proposal::Title("Pro Git: Everything You Need to Know About Git".into()),
+            publication::Proposal::Subtitle("Everything You Need to Know About Git".into()),
         )
         .await?;
     pro_git

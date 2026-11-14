@@ -180,6 +180,7 @@ fn proposal(value: &scorarium_engine::publication::Proposal) -> (&'static str, S
 
     match value {
         Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Subtitle(subtitle) => ("subtitle", subtitle.clone()),
         Proposal::Publisher(publisher) => ("publisher", publisher.clone()),
         Proposal::Year(year) => ("year", year.to_string()),
         Proposal::Identifier(identifier) => (

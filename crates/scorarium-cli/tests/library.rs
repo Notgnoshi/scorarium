@@ -171,7 +171,7 @@ async fn publication_show_resolves_by_title() {
          link          \t3 \thttps://openlibrary.org/books/OL26372169M/Pro_Git\n\
          link          \t4 \thttps://git-scm.com/book/en/v2\n\
          proposal      \t11\ttitle: Pro Git, Second Edition (openlibrary)\n\
-         proposal      \t12\ttitle: Pro Git: Everything You Need to Know About Git (openlibrary)\n\
+         proposal      \t12\tsubtitle: Everything You Need to Know About Git (openlibrary)\n\
          proposal      \t13\tidentifier: isbn 978-1-4302-1833-3 (openlibrary)\n\
          proposal      \t14\tcover: https://covers.openlibrary.org/b/isbn/9781484200773-M.jpg (openlibrary)\n\
          proposal      \t15\tcover: https://covers.openlibrary.org/b/isbn/9781430218333-M.jpg (openlibrary)\n"

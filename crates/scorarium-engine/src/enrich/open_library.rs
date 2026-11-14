@@ -393,6 +393,7 @@ mod tests {
     fn describe(proposal: &entity::Proposal<Publication>) -> String {
         match &proposal.value {
             Proposal::Title(title) => format!("title {title}"),
+            Proposal::Subtitle(subtitle) => format!("subtitle {subtitle}"),
             Proposal::Publisher(publisher) => format!("publisher {publisher}"),
             Proposal::Year(year) => format!("year {year}"),
             Proposal::Identifier(identifier) => format!("identifier {identifier}"),

@@ -135,6 +135,7 @@ impl FromStr for Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
+    Subtitle(String),
     Publisher(String),
     Year(Year),
     Identifier(Identifier),
@@ -415,6 +416,11 @@ impl Publication {
         let (mut work, mut person) = (None, None);
         let (field, text) = match &value {
             Proposal::Title(title) => ("title", Some(title.parse::<NonBlank>()?.to_string())),
+            Proposal::Subtitle(subtitle) => {
+                let subtitle = clean_text(Some(subtitle))
+                    .ok_or_else(|| Error::InvalidValue("A subtitle cannot be blank.".into()))?;
+                ("subtitle", Some(subtitle.to_string()))
+            }
             Proposal::Publisher(publisher) => {
                 let publisher = clean_text(Some(publisher))
                     .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
@@ -445,6 +451,7 @@ impl Publication {
             .ok_or(Error::NotFound)?;
         let has = match &value {
             Proposal::Title(_) => current.title.as_deref() == text.as_deref(),
+            Proposal::Subtitle(_) => current.subtitle.as_deref() == text.as_deref(),
             Proposal::Publisher(_) => current.publisher.as_deref() == text.as_deref(),
             Proposal::Year(year) => current.year == Some(*year),
             Proposal::Identifier(identifier) => current.identifiers.contains(identifier),
@@ -1613,6 +1620,7 @@ impl Entity for Publication {
         drop(conn);
         match proposal.value {
             Proposal::Title(title) => self.set_title(title.parse()?).await?,
+            Proposal::Subtitle(subtitle) => self.set_subtitle(Some(&subtitle)).await?,
             Proposal::Publisher(publisher) => self.set_publisher(Some(&publisher)).await?,
             Proposal::Year(year) => self.set_year(Some(year)).await?,
             Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
@@ -2067,6 +2075,7 @@ async fn from_row(
 ) -> Result<entity::Proposal<Publication>> {
     let proposed = match row.field.as_str() {
         "title" => Proposal::Title(stored_value(row.proposed_value, row.id)?),
+        "subtitle" => Proposal::Subtitle(stored_value(row.proposed_value, row.id)?),
         "publisher" => Proposal::Publisher(stored_value(row.proposed_value, row.id)?),
         "year" => Proposal::Year(stored_value(row.proposed_value, row.id)?.parse()?),
         "identifier" => {

@@ -5,7 +5,7 @@ CREATE TABLE publication_proposal (
     work_id INTEGER,
     person_id INTEGER,
     field TEXT NOT NULL CHECK (
-        field IN ('title', 'publisher', 'year', 'identifier', 'contributor', 'contents', 'link', 'cover')
+        field IN ('title', 'subtitle', 'publisher', 'year', 'identifier', 'contributor', 'contents', 'link', 'cover')
     ),
     source TEXT NOT NULL,
     proposed_value TEXT CHECK (proposed_value <> ''),
@@ -33,7 +33,7 @@ CREATE TABLE work_proposal (
     work_id INTEGER NOT NULL,
     person_id INTEGER,
     field TEXT NOT NULL CHECK (
-        field IN ('title', 'key', 'time_signature', 'instrumentation', 'catalog_number', 'contributor', 'link')
+        field IN ('title', 'subtitle', 'key', 'time_signature', 'instrumentation', 'catalog_number', 'contributor', 'link')
     ),
     source TEXT NOT NULL,
     proposed_value TEXT NOT NULL CHECK (proposed_value <> ''),

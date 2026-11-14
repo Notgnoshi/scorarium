@@ -109,6 +109,7 @@ impl FromStr for Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
+    Subtitle(String),
     Key(String),
     TimeSignature(String),
     Instrumentation(String),
@@ -365,6 +366,13 @@ impl Work {
         let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
         let (field, text, person) = match &value {
             Proposal::Title(title) => ("title", title.parse::<NonBlank>()?.to_string(), None),
+            Proposal::Subtitle(subtitle) => (
+                "subtitle",
+                clean_text(Some(subtitle))
+                    .ok_or_else(|| blank("A subtitle"))?
+                    .to_string(),
+                None,
+            ),
             Proposal::Key(key) => (
                 "key",
                 clean_text(Some(key))
@@ -398,6 +406,7 @@ impl Work {
             .ok_or(Error::NotFound)?;
         let has = match &value {
             Proposal::Title(_) => current.title == text,
+            Proposal::Subtitle(_) => current.subtitle.as_deref() == Some(&text),
             Proposal::Key(_) => current.key.as_deref() == Some(&text),
             Proposal::TimeSignature(_) => current.time_signature.as_deref() == Some(&text),
             Proposal::Instrumentation(_) => current.instrumentation.as_deref() == Some(&text),
@@ -1078,6 +1087,7 @@ impl Entity for Work {
         drop(conn);
         match proposal.value {
             Proposal::Title(title) => self.set_title(title.parse()?).await?,
+            Proposal::Subtitle(subtitle) => self.set_subtitle(Some(&subtitle)).await?,
             Proposal::Key(key) => self.set_key(Some(&key)).await?,
             Proposal::TimeSignature(time_signature) => {
                 self.set_time_signature(Some(&time_signature)).await?
@@ -1292,6 +1302,7 @@ async fn from_row(
 ) -> Result<entity::Proposal<Work>> {
     let value = match row.field.as_str() {
         "title" => Proposal::Title(row.proposed_value),
+        "subtitle" => Proposal::Subtitle(row.proposed_value),
         "key" => Proposal::Key(row.proposed_value),
         "time_signature" => Proposal::TimeSignature(row.proposed_value),
         "instrumentation" => Proposal::Instrumentation(row.proposed_value),
