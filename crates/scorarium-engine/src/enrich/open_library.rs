@@ -300,17 +300,22 @@ pub(crate) async fn author(
             links.push(ExternalRecord::new(kind, id));
         }
     }
-    for link in links {
+    let mut proposals: Vec<person::Proposal> = links
+        .iter()
+        .filter_map(|link| link.url(EntityKind::Person))
+        .map(person::Proposal::Link)
+        .collect();
+    if let Some(year) = record.birth_date.as_deref().and_then(year) {
+        proposals.push(person::Proposal::BirthYear(year));
+    }
+    if let Some(year) = record.death_date.as_deref().and_then(year) {
+        proposals.push(person::Proposal::DeathYear(year));
+    }
+    for proposal in proposals {
         if queue.is_cancelled() {
             return Ok(());
         }
-        let Some(url) = link.url(EntityKind::Person) else {
-            continue;
-        };
-        match person
-            .propose(Source::OpenLibrary, person::Proposal::Link(url))
-            .await
-        {
+        match person.propose(Source::OpenLibrary, proposal).await {
             Ok(_) => {}
             Err(Error::InvalidValue(reason)) => {
                 tracing::error!("Open Library author {olid} invalid: {reason}")
@@ -329,9 +334,8 @@ fn best_match(matches: Vec<Person>) -> Option<Person> {
 }
 
 /// The first run of exactly four ASCII digits in a free-text date
-pub(crate) fn year(publish_date: &str) -> Option<Year> {
-    publish_date
-        .split(|c: char| !c.is_ascii_digit())
+pub(crate) fn year(date: &str) -> Option<Year> {
+    date.split(|c: char| !c.is_ascii_digit())
         .find(|run| run.len() == 4)
         .and_then(|run| run.parse().ok())
 }
@@ -403,15 +407,14 @@ mod tests {
         }
     }
 
-    /// Render a person link proposal as its URL
-    fn link_of(proposal: &entity::Proposal<Person>) -> String {
+    /// Render a person proposal as its URL or its year
+    fn fact_of(proposal: &entity::Proposal<Person>) -> String {
         match &proposal.value {
             person::Proposal::Link(url) => url.to_string(),
-            person::Proposal::Name(_)
-            | person::Proposal::BirthYear(_)
-            | person::Proposal::DeathYear(_)
-            | person::Proposal::Profile(_) => {
-                panic!("expected a link proposal")
+            person::Proposal::BirthYear(year) => format!("born {year}"),
+            person::Proposal::DeathYear(year) => format!("died {year}"),
+            person::Proposal::Name(_) | person::Proposal::Profile(_) => {
+                panic!("expected a link or a year proposal")
             }
         }
     }
@@ -512,15 +515,15 @@ mod tests {
             panic!("expected a contributor proposal");
         };
         assert!(person.is_draft());
-        let links: Vec<String> = person
+        let facts: Vec<String> = person
             .proposals()
             .await
             .unwrap()
             .iter()
-            .map(link_of)
+            .map(fact_of)
             .collect();
         assert_eq!(
-            links,
+            facts,
             [
                 "https://openlibrary.org/authors/OL127077A",
                 "https://www.wikidata.org/wiki/Q255",
@@ -531,6 +534,8 @@ mod tests {
                 "https://www.librarything.com/author/beethovenludwigvan",
                 "https://www.gutenberg.org/ebooks/author/75",
                 "https://librivox.org/author/4437",
+                "born 1770",
+                "died 1827",
             ]
         );
     }

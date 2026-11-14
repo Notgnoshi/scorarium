@@ -634,7 +634,7 @@ async fn isbn_import_review() {
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n\
-         Books      \tperson     \t18\tLudwig van Beethoven                    \tdraft\t             \t9\n"
+         Books      \tperson     \t18\tLudwig van Beethoven                    \tdraft\t             \t11\n"
     );
     assert_eq!(
         format!("field{show}"),
