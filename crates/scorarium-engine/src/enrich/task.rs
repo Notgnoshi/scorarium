@@ -220,6 +220,14 @@ impl Engine {
         }
     }
 
+    /// Stop every enrichment task and forget them all
+    pub(crate) fn forget_all_enrichments(&self) {
+        let tasks: Vec<_> = self.enrichments().drain().map(|(_, task)| task).collect();
+        for task in tasks {
+            task.cancel();
+        }
+    }
+
     /// Forget the enrichment task of `root` if it finished without failures
     pub(crate) fn forget_completed_enrichment(&self, root: AnyEntityId) {
         let mut enrichments = self.enrichments();

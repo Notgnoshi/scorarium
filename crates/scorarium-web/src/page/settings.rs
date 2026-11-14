@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::extract::State;
-use axum::response::Html;
+use axum::response::{Html, Redirect};
 use scorarium_engine::Engine;
 use scorarium_engine::auth::PasswordState;
 use serde::Deserialize;
@@ -22,6 +22,7 @@ struct Settings {
     base: Base,
     changed: bool,
     password: bool,
+    demo: bool,
 }
 
 pub async fn get(
@@ -33,7 +34,13 @@ pub async fn get(
     let page = Settings {
         base: Base::new(header, "Settings", vec![Crumb::new("Libraries", "/")]),
         changed: query.changed.unwrap_or(false),
+        demo: engine.is_demo(),
         password: engine.password_state().await? != PasswordState::NotNeeded,
     };
     Ok(Html(page.render()?))
+}
+
+pub async fn reset_demo(State(engine): State<Engine>, _session: Session) -> Result<Redirect> {
+    engine.reset_demo().await?;
+    Ok(Redirect::to("/"))
 }

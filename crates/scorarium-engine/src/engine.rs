@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::time::Duration;
 
 use scorarium_client::{Client, UserAgent};
@@ -69,7 +69,7 @@ pub struct Engine {
 #[derive(Debug)]
 struct EngineInner {
     data_dir: PathBuf,
-    pool: SqlitePool,
+    pool: RwLock<SqlitePool>,
     client: Client,
     downloads: reqwest::Client,
     enrichments: Mutex<HashMap<AnyEntityId, Arc<Task>>>,
@@ -127,36 +127,12 @@ impl Engine {
         temp_dir: Option<tempfile::TempDir>,
         demo: bool,
     ) -> Result<Engine> {
-        let path = data_dir.join("scorarium.db");
-        let migrate = migrate_on_startup || !path.exists();
-        let options = SqliteConnectOptions::new()
-            .filename(path)
-            .create_if_missing(true)
-            .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .busy_timeout(Duration::from_secs(5))
-            .log_statements(log::LevelFilter::Trace)
-            .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
-        let pool = SqlitePool::connect_with(options).await?;
-        check_schema_version(&pool, migrate).await?;
-        if migrate {
-            MIGRATOR.run(&pool).await.map_err(eyre::Report::new)?;
-        }
-        let staging = data_dir.join("staging");
-        // don't want the CLI to remove the staging dir out from under a running server, so only
-        // remove it if we're also doing data migration.
-        if migrate {
-            match std::fs::remove_dir_all(&staging) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
-                _ => {}
-            }
-        }
-        std::fs::create_dir_all(&staging)?;
+        let pool = open_database(data_dir, migrate_on_startup).await?;
         Ok(Engine {
             inner: Arc::new(EngineInner {
                 // Asset paths handed to callers must not depend on the working directory.
                 data_dir: std::path::absolute(data_dir)?,
-                pool,
+                pool: RwLock::new(pool),
                 client,
                 downloads,
                 enrichments: Mutex::default(),
@@ -221,15 +197,76 @@ impl Engine {
     pub(crate) async fn begin_read(&self) -> Result<PoolConnection<Sqlite>> {
         // read-only is by convention. It's possible to enforce, but that'd require per-transaction
         // pragmas, or multiple pools.
-        Ok(self.inner.pool.acquire().await?)
+        Ok(self.pool().acquire().await?)
     }
 
     /// Begin a write transaction that must record an audit event before it can be committed
     pub(crate) async fn begin_write(&self) -> Result<Audited<'static>> {
         Ok(Audited::new(
-            self.inner.pool.begin_with("BEGIN IMMEDIATE").await?,
+            self.pool().begin_with("BEGIN IMMEDIATE").await?,
         ))
     }
+
+    /// Clone the current pool so that the lock is never held across an await
+    fn pool(&self) -> SqlitePool {
+        self.inner.pool.read().expect("pool lock poisoned").clone()
+    }
+
+    /// Replace the database and its files with the demo libraries
+    ///
+    /// Returns [Error::NotFound] if this is not the demo engine.
+    pub async fn reset_demo(&self) -> Result<()> {
+        if !self.is_demo() {
+            return Err(Error::NotFound);
+        }
+        self.forget_all_enrichments();
+        self.staged_files().clear();
+
+        self.pool().close().await;
+        for entry in std::fs::read_dir(self.data_dir())? {
+            let path = entry?.path();
+            if path.is_dir() {
+                std::fs::remove_dir_all(path)?;
+            } else {
+                std::fs::remove_file(path)?;
+            }
+        }
+        let pool = open_database(self.data_dir(), true).await?;
+        *self.inner.pool.write().expect("pool lock poisoned") = pool;
+
+        crate::demo::populate(self)
+            .with_subscriber(NoSubscriber::new())
+            .await
+    }
+}
+
+async fn open_database(data_dir: &Path, migrate_on_startup: bool) -> Result<SqlitePool> {
+    let path = data_dir.join("scorarium.db");
+    let migrate = migrate_on_startup || !path.exists();
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5))
+        .log_statements(log::LevelFilter::Trace)
+        .log_slow_statements(log::LevelFilter::Warn, Duration::from_millis(100));
+    let pool = SqlitePool::connect_with(options).await?;
+    check_schema_version(&pool, migrate).await?;
+    if migrate {
+        MIGRATOR.run(&pool).await.map_err(eyre::Report::new)?;
+    }
+    let staging = data_dir.join("staging");
+    // don't want the CLI to remove the staging dir out from under a running server, so only
+    // remove it if we're also doing data migration.
+    if migrate {
+        match std::fs::remove_dir_all(&staging) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+    }
+    std::fs::create_dir_all(&staging)?;
+    Ok(pool)
 }
 
 async fn check_schema_version(pool: &SqlitePool, migrate: bool) -> Result<()> {
