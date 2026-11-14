@@ -51,7 +51,7 @@ CREATE TABLE person_proposal (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     library_id INTEGER NOT NULL,
     person_id INTEGER NOT NULL,
-    field TEXT NOT NULL CHECK (field IN ('name', 'link', 'profile')),
+    field TEXT NOT NULL CHECK (field IN ('name', 'birth_year', 'death_year', 'link', 'profile')),
     source TEXT NOT NULL,
     proposed_value TEXT NOT NULL CHECK (proposed_value <> ''),
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),

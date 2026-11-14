@@ -89,6 +89,8 @@ impl FromStr for Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Name(String),
+    BirthYear(Year),
+    DeathYear(Year),
     Link(HttpUrl),
     Profile(HttpUrl),
 }
@@ -449,6 +451,8 @@ impl Person {
     pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let (field, text) = match &value {
             Proposal::Name(name) => ("name", name.parse::<NonBlank>()?.to_string()),
+            Proposal::BirthYear(year) => ("birth_year", year.to_string()),
+            Proposal::DeathYear(year) => ("death_year", year.to_string()),
             Proposal::Link(url) => ("link", url.to_string()),
             Proposal::Profile(url) => ("profile", url.to_string()),
         };
@@ -458,6 +462,8 @@ impl Person {
             .ok_or(Error::NotFound)?;
         let has = match &value {
             Proposal::Name(_) => current.name == text,
+            Proposal::BirthYear(year) => current.birth_year() == Some(*year),
+            Proposal::DeathYear(year) => current.death_year() == Some(*year),
             Proposal::Link(url) => {
                 let record = ExternalRecord::recognize(EntityKind::Person, url);
                 current.links.iter().any(|link| {
@@ -573,6 +579,8 @@ impl Entity for Person {
                 let sort_name = derive_sort_name(&name);
                 self.rename(name, sort_name).await?
             }
+            Proposal::BirthYear(year) => self.set_birth_year(Some(year)).await?,
+            Proposal::DeathYear(year) => self.set_death_year(Some(year)).await?,
             Proposal::Link(url) => self.add_link(url).await?,
             Proposal::Profile(url) => self.set_profile(AssetSource::Url(url)).await?,
         }
@@ -739,6 +747,8 @@ struct ProposalRow {
 fn from_row(row: ProposalRow) -> Result<entity::Proposal<Person>> {
     let value = match row.field.as_str() {
         "name" => Proposal::Name(row.proposed_value),
+        "birth_year" => Proposal::BirthYear(row.proposed_value.parse()?),
+        "death_year" => Proposal::DeathYear(row.proposed_value.parse()?),
         "link" => Proposal::Link(row.proposed_value.parse()?),
         "profile" => Proposal::Profile(row.proposed_value.parse()?),
         other => return Err(eyre::eyre!("unknown person proposal field {other:?}").into()),

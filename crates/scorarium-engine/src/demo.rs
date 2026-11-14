@@ -415,6 +415,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             person::Proposal::Link("https://en.wikipedia.org/wiki/Erik_Satie".parse()?),
         )
         .await?;
+    ambrose_bierce
+        .propose(source, person::Proposal::DeathYear(Year::try_from(1914)?))
+        .await?;
 
     let mut waltzes = create(&sheet_music, "Viennese waltzes and marches", None, Music).await?;
     for (title, birth, death) in [

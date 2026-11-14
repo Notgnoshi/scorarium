@@ -407,7 +407,10 @@ mod tests {
     fn link_of(proposal: &entity::Proposal<Person>) -> String {
         match &proposal.value {
             person::Proposal::Link(url) => url.to_string(),
-            person::Proposal::Name(_) | person::Proposal::Profile(_) => {
+            person::Proposal::Name(_)
+            | person::Proposal::BirthYear(_)
+            | person::Proposal::DeathYear(_)
+            | person::Proposal::Profile(_) => {
                 panic!("expected a link proposal")
             }
         }

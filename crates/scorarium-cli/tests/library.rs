@@ -366,6 +366,7 @@ async fn import_commit_review_discard() {
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
          Books      \twork       \t16\tChapter 1                               \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -408,6 +409,7 @@ async fn import_commit_review_discard() {
          Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -449,6 +451,7 @@ async fn import_commit_review_discard() {
          Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -477,6 +480,7 @@ async fn import_commit_review_discard() {
          Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -570,6 +574,7 @@ async fn add_work_links_by_id_or_creates() {
          Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -624,6 +629,7 @@ async fn isbn_import_review() {
          Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
@@ -713,6 +719,7 @@ async fn isbn_import_review() {
          Sheet music\twork       \t11\tElegie                                              \tdraft\t             \t4\n\
          Sheet music\twork       \t12\tMelodie                                             \tdraft\t             \t1\n\
          Sheet music\twork       \t13\tSerenade                                            \tdraft\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                                      \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                                          \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                                       \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                                  \tdraft\n\
