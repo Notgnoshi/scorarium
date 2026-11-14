@@ -8,11 +8,10 @@ use scorarium_engine::asset::AssetSource;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::{HttpUrl, LinkId};
-use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::person::{self, Person, PersonId, derive_sort_name};
 use scorarium_engine::value::NonBlank;
 use serde::Deserialize;
 
-use crate::Settings;
 use crate::auth::{Session, Viewer};
 use crate::error::Result;
 use crate::forms::FormBody;
@@ -27,6 +26,8 @@ use crate::widget::links_input::{LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
+use crate::widget::value_candidates::ValueCandidates;
+use crate::{Settings, proposal};
 
 #[derive(Deserialize)]
 pub(crate) struct Form {
@@ -87,6 +88,7 @@ struct Edit {
     heading: EditHeading,
     actions: EditActions,
     name: String,
+    name_candidates: ValueCandidates,
     sort_name: String,
     links: LinksInput,
     back: Back,
@@ -110,6 +112,12 @@ async fn render(
     ];
     let draft = person.is_draft();
     let form = posted.form;
+    let candidates = proposal::candidates(person.proposals().await?);
+    let names = proposal::pick(&candidates, |value| match value {
+        person::Proposal::Name(name) => Some(name.clone()),
+        _ => None,
+    });
+    let name_candidates = ValueCandidates::new(names);
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
             engine,
@@ -159,6 +167,7 @@ async fn render(
         library: library.id(),
         id: person.id(),
         name: form.name,
+        name_candidates,
         sort_name: form.sort_name,
         links: LinksInput::new(&posted.links, person.links(), &refusals),
         back,

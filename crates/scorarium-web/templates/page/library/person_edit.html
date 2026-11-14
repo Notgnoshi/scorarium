@@ -22,6 +22,7 @@
                                    value="{{ name }}"
                                    required>
                             {% if let Some(reason) = refusals.of("name") %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
+                            {{ name_candidates }}
                         </div>
                     </div>
                     <div class="row mb-3">

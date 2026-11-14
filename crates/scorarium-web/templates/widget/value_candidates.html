@@ -1,0 +1,10 @@
+{% if !candidates.is_empty() %}
+    <ul class="candidates small mt-1 mb-0">
+        {% for candidate in candidates %}
+            <li>
+                <span class="text-break">{{ candidate.value }}</span>
+                <span class="text-body-secondary text-nowrap">{{ candidate.sources() }}</span>
+            </li>
+        {% endfor %}
+    </ul>
+{% endif %}
