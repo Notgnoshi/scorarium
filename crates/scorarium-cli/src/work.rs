@@ -18,6 +18,7 @@ pub(crate) async fn show(work: Work, out: &mut impl Write) -> eyre::Result<()> {
         row("title", String::new(), work.title().to_string()),
     ];
     let optional = [
+        ("subtitle", work.subtitle().map(str::to_string)),
         ("key", work.key().map(str::to_string)),
         ("time-signature", work.time_signature().map(str::to_string)),
         (
@@ -171,6 +172,7 @@ pub(crate) async fn run(
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {
                 WorkSet::Title { title } => work.set_title(title).await?,
+                WorkSet::Subtitle { subtitle } => work.set_subtitle(Some(&subtitle)).await?,
                 WorkSet::Key { key } => work.set_key(Some(&key)).await?,
                 WorkSet::TimeSignature { time_signature } => {
                     work.set_time_signature(Some(&time_signature)).await?
@@ -189,6 +191,7 @@ pub(crate) async fn run(
         WorkCommand::Clear { field } => {
             let mut work = resolve(library, require(subject, "work")?).await?;
             match field {
+                WorkClear::Subtitle => work.set_subtitle(None).await?,
                 WorkClear::Key => work.set_key(None).await?,
                 WorkClear::TimeSignature => work.set_time_signature(None).await?,
                 WorkClear::Instrumentation => work.set_instrumentation(None).await?,
