@@ -527,3 +527,45 @@ async fn edit_ignores_a_holding_that_the_library_no_longer_has() {
         }]
     );
 }
+
+#[tokio::test]
+async fn edit_adds_an_entry_made_from_a_proposal() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let ids = async || -> Vec<ProposalId> {
+        let proposals = publication.proposals().await.unwrap();
+        proposals.iter().map(|proposal| proposal.id).collect()
+    };
+    let expected = ids().await;
+    let identifier = Identifier::new(IdentifierKind::Isbn, "9780793525041").unwrap();
+    let proposal = Proposal::Identifier(identifier.clone());
+    let id = publication.propose(Source::OpenLibrary, proposal).await;
+    let id = id.unwrap().unwrap().to_string();
+
+    let form = [
+        ("title".to_owned(), "Renamed"),
+        ("publisher".to_owned(), ""),
+        ("year".to_owned(), ""),
+        ("note".to_owned(), ""),
+        ("identifier[new1][kind]".to_owned(), "isbn"),
+        ("identifier[new1][value]".to_owned(), "9780793525041"),
+        ("identifier[new1][proposal]".to_owned(), id.as_str()),
+        ("identifier[new1][proposal]".to_owned(), "999999"),
+        (format!("proposal[{id}]"), "accepted"),
+    ];
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let response = app.server.post(&edit).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(after.identifiers().contains(&identifier));
+    assert_eq!(ids().await, expected);
+}

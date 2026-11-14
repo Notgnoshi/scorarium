@@ -3,6 +3,7 @@ use scorarium_engine::work::CatalogNumber;
 use serde::Deserialize;
 
 use crate::forms;
+use crate::proposal::{self, Candidate};
 use crate::widget::list::Edits;
 use crate::widget::refusals::Refusals;
 
@@ -17,6 +18,7 @@ struct CatalogNumberEntry {
     saved: Option<CatalogNumberFields>,
     removed: bool,
     value: String,
+    proposal: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -59,17 +61,33 @@ impl From<&[CatalogNumber]> for CatalogNumbersForm {
                 }),
                 removed: false,
                 value: number.as_str().to_owned(),
+                proposal: vec![],
             })
             .collect();
         CatalogNumbersForm { catalog_number }
     }
 }
 
+#[derive(Template)]
+#[template(path = "widget/catalog_number_candidates.html")]
+pub(crate) struct CatalogNumberCandidates {
+    candidates: Vec<Candidate<CatalogNumber>>,
+}
+
+impl CatalogNumberCandidates {
+    pub fn new(candidates: Vec<Candidate<CatalogNumber>>) -> CatalogNumberCandidates {
+        CatalogNumberCandidates { candidates }
+    }
+}
+
+impl askama::filters::HtmlSafe for CatalogNumberCandidates {}
+
 #[derive(Default)]
 struct EntryInput {
     entry: CatalogNumberEntry,
     unrecognized: bool,
     refusal: Option<String>,
+    sources: Option<String>,
 }
 
 #[derive(Template)]
@@ -77,6 +95,7 @@ struct EntryInput {
 pub struct CatalogNumbersInput {
     entries: Vec<EntryInput>,
     blank: EntryInput,
+    candidates: CatalogNumberCandidates,
 }
 
 impl askama::filters::HtmlSafe for CatalogNumbersInput {}
@@ -87,6 +106,7 @@ impl CatalogNumbersInput {
         form: &CatalogNumbersForm,
         numbers: &[CatalogNumber],
         refusals: &Refusals,
+        candidates: CatalogNumberCandidates,
     ) -> CatalogNumbersInput {
         let entries = form
             .catalog_number
@@ -101,12 +121,14 @@ impl CatalogNumbersInput {
                         .iter()
                         .any(|number| number.as_str() == value && !number.is_recognized()),
                     refusal: refusals.of(&field).map(str::to_owned),
+                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
                 }
             })
             .collect();
         CatalogNumbersInput {
             entries,
             blank: EntryInput::default(),
+            candidates,
         }
     }
 }

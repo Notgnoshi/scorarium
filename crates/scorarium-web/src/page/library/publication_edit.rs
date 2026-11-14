@@ -30,8 +30,8 @@ use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
-use crate::widget::identifiers_input::{IdentifiersForm, IdentifiersInput};
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::identifiers_input::{IdentifierCandidates, IdentifiersForm, IdentifiersInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
@@ -86,6 +86,8 @@ pub(crate) struct Candidates {
     title: ValueCandidates,
     publisher: ValueCandidates,
     year: ValueCandidates,
+    identifiers: IdentifierCandidates,
+    links: LinkCandidates,
 }
 
 impl Candidates {
@@ -113,6 +115,17 @@ impl Candidates {
                     _ => None,
                 }),
             ),
+            identifiers: IdentifierCandidates::new(proposal::pick(
+                &candidates,
+                |value| match value {
+                    publication::Proposal::Identifier(identifier) => Some(identifier.clone()),
+                    _ => None,
+                },
+            )),
+            links: LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+                publication::Proposal::Link(url) => Some(url.clone()),
+                _ => None,
+            })),
         })
     }
 }
@@ -266,6 +279,8 @@ async fn render(
         title: title_candidates,
         publisher: publisher_candidates,
         year: year_candidates,
+        identifiers: identifier_candidates,
+        links: link_candidates,
     } = Candidates::of(publication, &posted.states).await?;
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
@@ -330,12 +345,17 @@ async fn render(
         title_candidates,
         publisher_candidates,
         year_candidates,
-        identifiers: IdentifiersInput::new(&posted.identifiers, &refusals),
+        identifiers: IdentifiersInput::new(&posted.identifiers, &refusals, identifier_candidates),
         tags: TagsInput {
             library: library.id(),
             tags,
         },
-        links: LinksInput::new(&posted.links, publication.links(), &refusals),
+        links: LinksInput::new(
+            &posted.links,
+            publication.links(),
+            &refusals,
+            link_candidates,
+        ),
         contributors: ContributorsInput::new(
             &posted.contributors,
             publication.contributors(),

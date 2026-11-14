@@ -3,6 +3,7 @@ use scorarium_engine::publication::{Identifier, IdentifierKind};
 use serde::Deserialize;
 
 use crate::forms;
+use crate::proposal::{self, Candidate};
 use crate::widget::list::Edits;
 use crate::widget::refusals::Refusals;
 
@@ -19,6 +20,7 @@ struct IdentifierEntry {
     removed: bool,
     kind: String,
     value: String,
+    proposal: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -76,6 +78,7 @@ impl From<&[Identifier]> for IdentifiersForm {
                 removed: false,
                 kind: identifier.kind().to_string(),
                 value: identifier.as_str().to_owned(),
+                proposal: vec![],
             })
             .collect();
         IdentifiersForm { identifier }
@@ -92,10 +95,25 @@ pub(crate) fn kind_label(kind: IdentifierKind) -> Option<&'static str> {
     }
 }
 
+#[derive(Template)]
+#[template(path = "widget/identifier_candidates.html")]
+pub(crate) struct IdentifierCandidates {
+    candidates: Vec<Candidate<Identifier>>,
+}
+
+impl IdentifierCandidates {
+    pub fn new(candidates: Vec<Candidate<Identifier>>) -> IdentifierCandidates {
+        IdentifierCandidates { candidates }
+    }
+}
+
+impl askama::filters::HtmlSafe for IdentifierCandidates {}
+
 struct EntryInput {
     entry: IdentifierEntry,
     refusal: Option<String>,
     autofocus: bool,
+    sources: Option<String>,
 }
 
 #[derive(Template)]
@@ -103,13 +121,18 @@ struct EntryInput {
 pub struct IdentifiersInput {
     entries: Vec<EntryInput>,
     blank: EntryInput,
+    candidates: IdentifierCandidates,
 }
 
 impl askama::filters::HtmlSafe for IdentifiersInput {}
 
 impl IdentifiersInput {
     /// Draw the entries of `form` beside the refusals of a Save
-    pub fn new(form: &IdentifiersForm, refusals: &Refusals) -> IdentifiersInput {
+    pub fn new(
+        form: &IdentifiersForm,
+        refusals: &Refusals,
+        candidates: IdentifierCandidates,
+    ) -> IdentifiersInput {
         let entries = form
             .identifier
             .iter()
@@ -120,6 +143,7 @@ impl IdentifiersInput {
                     entry: entry.clone(),
                     refusal: refusals.of(&field).map(str::to_owned),
                     autofocus: false,
+                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
                 }
             })
             .collect();
@@ -132,7 +156,9 @@ impl IdentifiersInput {
                 },
                 refusal: None,
                 autofocus: true,
+                sources: None,
             },
+            candidates,
         }
     }
 }

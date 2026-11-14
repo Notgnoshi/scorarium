@@ -22,6 +22,33 @@
         return filled;
     };
 
+    const acceptInto = (list, item) => {
+        list.querySelector("[data-list-add]").click();
+        const entry = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
+        for (const attribute of item.attributes) {
+            if (!attribute.name.startsWith("data-fill-")) {
+                continue;
+            }
+            const field = attribute.name.slice("data-fill-".length);
+            const input = entry.querySelector(`[name$="[${field}]"]`);
+            if (input) {
+                input.value = attribute.value;
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }
+        const sources = item.querySelector("[data-sources]").cloneNode(true);
+        sources.classList.add("small", "align-self-center");
+        entry.querySelector("[data-list-remove]").before(sources);
+        const prefix = entry.querySelector("[name]").name.match(/^\w+\[[^\]]+\]/)[0];
+        for (const proposal of inputs(item)) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = `${prefix}[proposal]`;
+            input.value = proposal.name.slice("proposal[".length, -1);
+            entry.append(input);
+        }
+    };
+
     const visibleButton = (item) =>
         [...item.querySelectorAll("[data-proposal-state]")].find((button) => button.offsetParent !== null);
 
@@ -47,7 +74,10 @@
         }
         const state = button.dataset.proposalState;
         setState(item, state);
-        if (state === "accepted") {
+        const list = item.closest("[data-list]");
+        if (state === "accepted" && list) {
+            acceptInto(list, item);
+        } else if (state === "accepted") {
             const filled = fill(item);
             for (const sibling of item.parentElement.children) {
                 if (sibling !== item && sibling.dataset.candidate !== "accepted") {
@@ -78,7 +108,13 @@
             const missing = proposals.filter((input) => !onPage.has(input.name));
             if (!held) {
                 const name = candidate.closest("[data-candidates]").dataset.candidates;
-                edit.querySelector(`[data-candidates="${CSS.escape(name)}"]`)?.append(candidate);
+                const list = edit.querySelector(`[data-candidates="${CSS.escape(name)}"]`);
+                const end = list?.querySelector(":scope > [data-candidates-end]");
+                if (end) {
+                    end.before(candidate);
+                } else {
+                    list?.append(candidate);
+                }
                 continue;
             }
             if (missing.length === 0) {

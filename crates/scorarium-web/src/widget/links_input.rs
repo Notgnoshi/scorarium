@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::forms;
 use crate::icon::Icon;
+use crate::proposal::{self, Candidate};
 use crate::widget::list::Edits;
 use crate::widget::refusals::Refusals;
 
@@ -19,6 +20,7 @@ struct LinkEntry {
     saved: Option<SavedLink>,
     removed: bool,
     url: String,
+    proposal: Vec<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -62,6 +64,7 @@ impl From<&[Link]> for LinksForm {
                 }),
                 removed: false,
                 url: link.url.to_string(),
+                proposal: vec![],
             })
             .collect();
         LinksForm { link }
@@ -73,10 +76,25 @@ fn parse_link_id(id: &str) -> scorarium_engine::Result<LinkId> {
         .map_err(|_| scorarium_engine::Error::InvalidValue(format!("Unknown link '{id}'.")))
 }
 
+#[derive(Template)]
+#[template(path = "widget/link_candidates.html")]
+pub(crate) struct LinkCandidates {
+    candidates: Vec<Candidate<HttpUrl>>,
+}
+
+impl LinkCandidates {
+    pub fn new(candidates: Vec<Candidate<HttpUrl>>) -> LinkCandidates {
+        LinkCandidates { candidates }
+    }
+}
+
+impl askama::filters::HtmlSafe for LinkCandidates {}
+
 struct EntryInput {
     entry: LinkEntry,
     icon: Icon,
     refusal: Option<String>,
+    sources: Option<String>,
 }
 
 #[derive(Template)]
@@ -84,13 +102,19 @@ struct EntryInput {
 pub struct LinksInput {
     entries: Vec<EntryInput>,
     blank: EntryInput,
+    candidates: LinkCandidates,
 }
 
 impl askama::filters::HtmlSafe for LinksInput {}
 
 impl LinksInput {
     /// Draw the entries of `form` beside the stored `links` and the refusals of a Save
-    pub fn new(form: &LinksForm, links: &[Link], refusals: &Refusals) -> LinksInput {
+    pub fn new(
+        form: &LinksForm,
+        links: &[Link],
+        refusals: &Refusals,
+        candidates: LinkCandidates,
+    ) -> LinksInput {
         let entries = form
             .link
             .iter()
@@ -105,6 +129,7 @@ impl LinksInput {
                         .find(|link| link.url.to_string() == url)
                         .map_or(Icon::Link, Icon::link),
                     refusal: refusals.of(&field).map(str::to_owned),
+                    sources: proposal::sources(&candidates.candidates, &entry.proposal),
                 }
             })
             .collect();
@@ -114,7 +139,9 @@ impl LinksInput {
                 entry: LinkEntry::default(),
                 icon: Icon::Link,
                 refusal: None,
+                sources: None,
             },
+            candidates,
         }
     }
 }

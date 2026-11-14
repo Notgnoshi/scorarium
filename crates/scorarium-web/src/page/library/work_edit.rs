@@ -17,7 +17,9 @@ use crate::page::library::{entity, view};
 use crate::page::{Base, Crumb, form_error};
 use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, BackQuery};
-use crate::widget::catalog_numbers_input::{CatalogNumbersForm, CatalogNumbersInput};
+use crate::widget::catalog_numbers_input::{
+    CatalogNumberCandidates, CatalogNumbersForm, CatalogNumbersInput,
+};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::contributors_input::{
@@ -26,7 +28,7 @@ use crate::widget::contributors_input::{
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture::Picture;
 use crate::widget::refusals::Refusals;
@@ -76,6 +78,8 @@ pub(crate) struct Candidates {
     key: ValueCandidates,
     time_signature: ValueCandidates,
     instrumentation: ValueCandidates,
+    catalog_numbers: CatalogNumberCandidates,
+    links: LinkCandidates,
 }
 
 impl Candidates {
@@ -112,6 +116,16 @@ impl Candidates {
                     _ => None,
                 }),
             ),
+            catalog_numbers: CatalogNumberCandidates::new(proposal::pick(&candidates, |value| {
+                match value {
+                    work::Proposal::CatalogNumber(number) => Some(number.clone()),
+                    _ => None,
+                }
+            })),
+            links: LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+                work::Proposal::Link(url) => Some(url.clone()),
+                _ => None,
+            })),
         })
     }
 }
@@ -254,6 +268,8 @@ async fn render(
         key: key_candidates,
         time_signature: time_signature_candidates,
         instrumentation: instrumentation_candidates,
+        catalog_numbers: catalog_number_candidates,
+        links: link_candidates,
     } = Candidates::of(work, &posted.states).await?;
     let page = Edit {
         picture: Picture::from(work),
@@ -303,6 +319,7 @@ async fn render(
             &posted.catalog_numbers,
             work.catalog_numbers(),
             &refusals,
+            catalog_number_candidates,
         ),
         form: posted.form,
         title_candidates,
@@ -313,7 +330,7 @@ async fn render(
             library: library.id(),
             tags,
         },
-        links: LinksInput::new(&posted.links, work.links(), &refusals),
+        links: LinksInput::new(&posted.links, work.links(), &refusals, link_candidates),
         contributors: ContributorsInput::new(
             &posted.contributors,
             work.contributors(),

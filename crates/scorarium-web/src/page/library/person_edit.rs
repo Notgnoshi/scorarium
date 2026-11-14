@@ -23,7 +23,7 @@ use crate::widget::confirm::{Confirm, count};
 use crate::widget::edit_actions::{EditActions, EditMode};
 use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
-use crate::widget::links_input::{LinksForm, LinksInput};
+use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
 use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
@@ -86,6 +86,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
 #[template(path = "api/person_candidates.html")]
 pub(crate) struct Candidates {
     name: ValueCandidates,
+    links: LinkCandidates,
 }
 
 impl Candidates {
@@ -101,7 +102,11 @@ impl Candidates {
                 |name| derive_sort_name(&name).to_string(),
             )
         });
-        Ok(Candidates { name })
+        let links = LinkCandidates::new(proposal::pick(&candidates, |value| match value {
+            person::Proposal::Link(url) => Some(url.clone()),
+            _ => None,
+        }));
+        Ok(Candidates { name, links })
     }
 }
 
@@ -141,6 +146,7 @@ async fn render(
     let form = posted.form;
     let Candidates {
         name: name_candidates,
+        links: link_candidates,
     } = Candidates::of(person, &posted.states).await?;
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
@@ -194,7 +200,7 @@ async fn render(
         name: form.name,
         name_candidates,
         sort_name: form.sort_name,
-        links: LinksInput::new(&posted.links, person.links(), &refusals),
+        links: LinksInput::new(&posted.links, person.links(), &refusals, link_candidates),
         back,
         refusals,
     };

@@ -1,6 +1,9 @@
 {% import "widget/list.html" as list %}
 {% macro entry(key, input) %}
     <li class="d-flex align-items-start gap-2 mb-2" data-list-entry>
+        {% for id in input.entry.proposal %}
+            <input type="hidden" name="catalog_number[{{ key }}][proposal]" value="{{ id }}">
+        {% endfor %}
         {% if let Some(saved) = input.entry.saved %}
             <input type="hidden" name="catalog_number[{{ key }}][saved][value]" value="{{ saved.value }}">
         {% endif %}
@@ -16,6 +19,9 @@
         {% if input.unrecognized %}
             <i class="bi bi-question-circle" title="Unrecognized catalog numbering"></i>
         {% endif %}
+        {% if let Some(sources) = input.sources %}
+            <span class="small text-body-secondary text-nowrap align-self-center" data-sources>{{ sources }}</span>
+        {% endif %}
         {% if input.entry.saved.is_some() %}
             {% call list::removal("catalog_number", key, input.entry.removed, "Remove catalog number", "Keep this catalog number") %}
             {% endcall %}
@@ -25,16 +31,18 @@
         {% endif %}
     </li>
 {% endmacro %}
-<ul class="list-unstyled mb-0" data-list>
+<ul class="list-unstyled mb-0" data-list data-candidates="catalog_number">
     {% for input in entries %}
-        {% call entry(loop.index0, input) %}
+        {% let key = loop.index0 %}
+        {% call entry(key, input) %}
         {% endcall %}
     {% endfor %}
     <template>
         {% call entry("__key__", blank) %}
         {% endcall %}
     </template>
-    <li>
+    {{ candidates }}
+    <li data-candidates-end>
         {% call list::add("Add a catalog number") %}
         {% endcall %}
     </li>

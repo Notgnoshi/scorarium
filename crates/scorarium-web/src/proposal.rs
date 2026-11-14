@@ -127,6 +127,15 @@ pub(crate) fn pick<V, T>(
         .collect()
 }
 
+/// Join the sources of the candidate that holds the first of `ids`
+pub(crate) fn sources<V>(candidates: &[Candidate<V>], ids: &[String]) -> Option<String> {
+    let first = ids.first()?;
+    candidates
+        .iter()
+        .find(|c| c.proposals.iter().any(|(id, _)| id.to_string() == *first))
+        .map(Candidate::sources)
+}
+
 #[cfg(test)]
 mod tests {
     use scorarium_engine::person::{self, Person};
