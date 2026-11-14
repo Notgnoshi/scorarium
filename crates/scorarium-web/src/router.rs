@@ -39,7 +39,8 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             let spammy = matches!(
                 path,
                 "/api/review" | "/api/search" | "/api/import/candidates"
-            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"));
+            ) || (path.starts_with("/api/library/") && path.contains("/suggest/"))
+                || (path.starts_with("/api/review/") && path.ends_with("/proposals"));
             let level = if spammy { Level::TRACE } else { Level::DEBUG };
             DefaultMakeSpan::new().level(level).make_span(request)
         })
@@ -165,6 +166,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                 .route("/review", get(api::review::get))
                 .route("/review/{kind}/{entity}/cancel", post(api::review::cancel))
                 .route("/review/{kind}/{entity}/retry", post(api::review::retry))
+                .route(
+                    "/review/{kind}/{entity}/proposals",
+                    get(api::review::proposals),
+                )
                 .route(
                     "/review/{kind}/{entity}/discard",
                     post(api::review::discard),

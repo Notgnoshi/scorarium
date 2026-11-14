@@ -4,6 +4,7 @@
     {{ refusals }}
     <form id="edit"
           data-unsaved="unsaved"
+          data-candidates-url="/api/review/publication/{{ id }}/proposals"
           {% if !refusals.is_empty() %}data-unsaved-refused{% endif %}
           method="post"
           action="/library/{{ library }}/publication/{{ id }}/edit{{ back.query() }}">

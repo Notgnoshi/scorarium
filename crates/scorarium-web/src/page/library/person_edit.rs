@@ -81,6 +81,30 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
     })
 }
 
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/person_candidates.html")]
+pub(crate) struct Candidates {
+    name: ValueCandidates,
+}
+
+impl Candidates {
+    pub async fn of(person: &Person, states: &ProposalStates) -> Result<Candidates> {
+        let candidates = proposal::candidates(person.proposals().await?, states);
+        let names = proposal::pick(&candidates, |value| match value {
+            person::Proposal::Name(name) => Some(name.clone()),
+            _ => None,
+        });
+        let name = ValueCandidates::new("name", names).also_filling("sort_name", |name| {
+            name.parse::<NonBlank>().map_or_else(
+                |_| String::new(),
+                |name| derive_sort_name(&name).to_string(),
+            )
+        });
+        Ok(Candidates { name })
+    }
+}
+
 #[derive(Template)]
 #[template(path = "page/library/person_edit.html")]
 struct Edit {
@@ -115,17 +139,9 @@ async fn render(
     ];
     let draft = person.is_draft();
     let form = posted.form;
-    let candidates = proposal::candidates(person.proposals().await?, &posted.states);
-    let names = proposal::pick(&candidates, |value| match value {
-        person::Proposal::Name(name) => Some(name.clone()),
-        _ => None,
-    });
-    let name_candidates = ValueCandidates::new("name", names).also_filling("sort_name", |name| {
-        name.parse::<NonBlank>().map_or_else(
-            |_| String::new(),
-            |name| derive_sort_name(&name).to_string(),
-        )
-    });
+    let Candidates {
+        name: name_candidates,
+    } = Candidates::of(person, &posted.states).await?;
     let page = Edit {
         picture: PictureInput::profile(person, files_allowed).resubmitted(
             engine,

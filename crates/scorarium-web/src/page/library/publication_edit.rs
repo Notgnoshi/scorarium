@@ -79,6 +79,44 @@ impl Posted {
     }
 }
 
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/publication_candidates.html")]
+pub(crate) struct Candidates {
+    title: ValueCandidates,
+    publisher: ValueCandidates,
+    year: ValueCandidates,
+}
+
+impl Candidates {
+    pub async fn of(publication: &Publication, states: &ProposalStates) -> Result<Candidates> {
+        let candidates = proposal::candidates(publication.proposals().await?, states);
+        Ok(Candidates {
+            title: ValueCandidates::new(
+                "title",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            publisher: ValueCandidates::new(
+                "publisher",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Publisher(publisher) => Some(publisher.clone()),
+                    _ => None,
+                }),
+            ),
+            year: ValueCandidates::new(
+                "year",
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Year(year) => Some(year.to_string()),
+                    _ => None,
+                }),
+            ),
+        })
+    }
+}
+
 #[derive(Template)]
 #[template(path = "page/library/publication_edit.html")]
 struct Edit {
@@ -224,28 +262,11 @@ async fn render(
     let draft = publication.is_draft();
     let form = posted.form;
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
-    let candidates = proposal::candidates(publication.proposals().await?, &posted.states);
-    let title_candidates = ValueCandidates::new(
-        "title",
-        proposal::pick(&candidates, |value| match value {
-            publication::Proposal::Title(title) => Some(title.clone()),
-            _ => None,
-        }),
-    );
-    let publisher_candidates = ValueCandidates::new(
-        "publisher",
-        proposal::pick(&candidates, |value| match value {
-            publication::Proposal::Publisher(publisher) => Some(publisher.clone()),
-            _ => None,
-        }),
-    );
-    let year_candidates = ValueCandidates::new(
-        "year",
-        proposal::pick(&candidates, |value| match value {
-            publication::Proposal::Year(year) => Some(year.to_string()),
-            _ => None,
-        }),
-    );
+    let Candidates {
+        title: title_candidates,
+        publisher: publisher_candidates,
+        year: year_candidates,
+    } = Candidates::of(publication, &posted.states).await?;
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
             engine,

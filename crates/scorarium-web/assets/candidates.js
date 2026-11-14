@@ -68,5 +68,48 @@
         countRemaining();
     });
 
+    const edit = document.querySelector("form#edit[data-candidates-url]");
+
+    const merge = (answer) => {
+        const onPage = new Map([...inputs(edit)].map((input) => [input.name, input]));
+        for (const candidate of answer.querySelectorAll("[data-candidate]")) {
+            const proposals = [...inputs(candidate)];
+            const held = proposals.find((input) => onPage.has(input.name));
+            const missing = proposals.filter((input) => !onPage.has(input.name));
+            if (!held) {
+                const name = candidate.closest("[data-candidates]").dataset.candidates;
+                edit.querySelector(`[data-candidates="${CSS.escape(name)}"]`)?.append(candidate);
+                continue;
+            }
+            if (missing.length === 0) {
+                continue;
+            }
+            const item = onPage.get(held.name).closest("[data-candidate]");
+            for (const input of missing) {
+                input.value = item.dataset.candidate;
+                item.append(input);
+            }
+            item.querySelector("[data-sources]").textContent =
+                candidate.querySelector("[data-sources]").textContent;
+        }
+        countRemaining();
+    };
+
+    const poll = async () => {
+        try {
+            const response = await fetch(edit.dataset.candidatesUrl);
+            if (response.ok) {
+                merge(new DOMParser().parseFromString(await response.text(), "text/html"));
+            }
+        } catch {
+            // A failed poll is retried by the next one.
+        }
+        setTimeout(poll, 5000);
+    };
+
+    if (edit) {
+        setTimeout(poll, 5000);
+    }
+
     countRemaining();
 }

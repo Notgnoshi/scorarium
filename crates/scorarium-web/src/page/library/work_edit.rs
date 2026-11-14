@@ -68,6 +68,54 @@ impl Posted {
     }
 }
 
+/// The candidates that the edit page draws
+#[derive(Template)]
+#[template(path = "api/work_candidates.html")]
+pub(crate) struct Candidates {
+    title: ValueCandidates,
+    key: ValueCandidates,
+    time_signature: ValueCandidates,
+    instrumentation: ValueCandidates,
+}
+
+impl Candidates {
+    pub async fn of(work: &Work, states: &ProposalStates) -> Result<Candidates> {
+        let candidates = proposal::candidates(work.proposals().await?, states);
+        Ok(Candidates {
+            title: ValueCandidates::new(
+                "title",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            key: ValueCandidates::new(
+                "key",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Key(key) => Some(key.clone()),
+                    _ => None,
+                }),
+            ),
+            time_signature: ValueCandidates::new(
+                "time_signature",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::TimeSignature(time_signature) => Some(time_signature.clone()),
+                    _ => None,
+                }),
+            ),
+            instrumentation: ValueCandidates::new(
+                "instrumentation",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Instrumentation(instrumentation) => {
+                        Some(instrumentation.clone())
+                    }
+                    _ => None,
+                }),
+            ),
+        })
+    }
+}
+
 #[derive(Template)]
 #[template(path = "page/library/work_edit.html")]
 struct Edit {
@@ -201,35 +249,12 @@ async fn render(
         .iter()
         .filter_map(|tag| tag.parse().ok())
         .collect();
-    let candidates = proposal::candidates(work.proposals().await?, &posted.states);
-    let title_candidates = ValueCandidates::new(
-        "title",
-        proposal::pick(&candidates, |value| match value {
-            work::Proposal::Title(title) => Some(title.clone()),
-            _ => None,
-        }),
-    );
-    let key_candidates = ValueCandidates::new(
-        "key",
-        proposal::pick(&candidates, |value| match value {
-            work::Proposal::Key(key) => Some(key.clone()),
-            _ => None,
-        }),
-    );
-    let time_signature_candidates = ValueCandidates::new(
-        "time_signature",
-        proposal::pick(&candidates, |value| match value {
-            work::Proposal::TimeSignature(time_signature) => Some(time_signature.clone()),
-            _ => None,
-        }),
-    );
-    let instrumentation_candidates = ValueCandidates::new(
-        "instrumentation",
-        proposal::pick(&candidates, |value| match value {
-            work::Proposal::Instrumentation(instrumentation) => Some(instrumentation.clone()),
-            _ => None,
-        }),
-    );
+    let Candidates {
+        title: title_candidates,
+        key: key_candidates,
+        time_signature: time_signature_candidates,
+        instrumentation: instrumentation_candidates,
+    } = Candidates::of(work, &posted.states).await?;
     let page = Edit {
         picture: Picture::from(work),
         base: Base::new(header, work.title(), parents),

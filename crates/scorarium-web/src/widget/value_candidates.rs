@@ -9,6 +9,7 @@ type Fills = Vec<(&'static str, String)>;
 #[derive(Template)]
 #[template(path = "widget/value_candidates.html")]
 pub(crate) struct ValueCandidates {
+    field: &'static str,
     candidates: Vec<(Candidate<String>, Fills)>,
 }
 
@@ -22,7 +23,7 @@ impl ValueCandidates {
                 (candidate, fills)
             })
             .collect();
-        ValueCandidates { candidates }
+        ValueCandidates { field, candidates }
     }
 
     /// Write what `value` derives from a candidate's text to `field` as well

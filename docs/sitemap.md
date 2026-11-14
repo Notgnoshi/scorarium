@@ -9,6 +9,7 @@
 | `/api/library/{id}/suggest/{field}`                                    | GET    | Field value suggestions       |
 | `/api/review/{kind}/{entity}/cancel`                                   | POST   | Cancel enrichment             |
 | `/api/review/{kind}/{entity}/discard`                                  | POST   | Confirm, then discard         |
+| `/api/review/{kind}/{entity}/proposals`                                | GET    | Candidates of an entity       |
 | `/api/review/{kind}/{entity}/retry`                                    | POST   | Retry enrichment              |
 | `/api/review`                                                          | GET    | Review queue widget           |
 | `/api/search`                                                          | GET    | Search suggestions            |

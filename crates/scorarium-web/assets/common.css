@@ -337,6 +337,10 @@ html[data-drop-targets] [data-drop-zone][data-drop-active] [data-drop-frame]::af
     padding-left: var(--input-inset);
 }
 
+.candidates:not(:has(> li)) {
+    display: none;
+}
+
 .candidates > li {
     display: grid;
     grid-template-columns: subgrid;

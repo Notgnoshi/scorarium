@@ -14,6 +14,8 @@ use serde::Deserialize;
 
 use crate::auth::ApiSession;
 use crate::error::{Error, Result};
+use crate::page::library::{person_edit, publication_edit, work_edit};
+use crate::proposal::ProposalStates;
 use crate::redirect::CurrentPage;
 use crate::widget::confirm::{Confirm, count};
 use crate::widget::review_queue::{ReviewQueue, Size, Sort};
@@ -94,6 +96,27 @@ pub async fn retry(
         None => {}
     }
     Ok(changed())
+}
+
+pub async fn proposals(
+    _session: ApiSession,
+    State(engine): State<Engine>,
+    Path((kind, entity)): Path<(String, String)>,
+) -> Result<Response> {
+    let states = ProposalStates::default();
+    let html = match load(&engine, &kind, &entity).await? {
+        Some(AnyEntity::Publication(publication)) => {
+            publication_edit::Candidates::of(&publication, &states)
+                .await?
+                .render()?
+        }
+        Some(AnyEntity::Work(work)) => work_edit::Candidates::of(&work, &states).await?.render()?,
+        Some(AnyEntity::Person(person)) => person_edit::Candidates::of(&person, &states)
+            .await?
+            .render()?,
+        None => return Err(scorarium_engine::Error::NotFound.into()),
+    };
+    Ok(Html(html).into_response())
 }
 
 fn changed() -> Response {
