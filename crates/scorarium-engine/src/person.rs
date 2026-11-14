@@ -1074,10 +1074,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Russian piano album".into(),
-                    record: None,
-                },
+                ImportSeed::title("Russian piano album"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -1122,10 +1119,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
+                ImportSeed::title("Gymnopedies"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -1187,13 +1181,12 @@ mod tests {
             .create_library("Sheet music".parse().unwrap(), false)
             .await
             .unwrap();
-        let seed = |title: &str| ImportSeed::Title {
-            title: title.into(),
-            record: None,
-        };
 
         let mut nocturnes = library
-            .import(seed("Nocturnes"), NewHolding::Physical { location: None })
+            .import(
+                ImportSeed::title("Nocturnes"),
+                NewHolding::Physical { location: None },
+            )
             .await
             .unwrap();
         let chopin = nocturnes
@@ -1211,7 +1204,10 @@ mod tests {
         }
         nocturnes.commit().await.unwrap();
         let mut draft = library
-            .import(seed("Untitled"), NewHolding::Physical { location: None })
+            .import(
+                ImportSeed::title("Untitled"),
+                NewHolding::Physical { location: None },
+            )
             .await
             .unwrap();
         draft

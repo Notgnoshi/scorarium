@@ -2030,10 +2030,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2048,10 +2045,7 @@ mod tests {
             .unwrap();
         let mut other = library
             .import(
-                ImportSeed::Title {
-                    title: "Satie piano works".into(),
-                    record: None,
-                },
+                ImportSeed::title("Satie piano works"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2087,10 +2081,7 @@ mod tests {
             .unwrap();
         let mut a = library
             .import(
-                ImportSeed::Title {
-                    title: "Russian piano album".into(),
-                    record: None,
-                },
+                ImportSeed::title("Russian piano album"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2098,10 +2089,7 @@ mod tests {
         let prelude = a.create_work("Prelude".parse().unwrap()).await.unwrap();
         let b = library
             .import(
-                ImportSeed::Title {
-                    title: "Prelude edition".into(),
-                    record: None,
-                },
+                ImportSeed::title("Prelude edition"),
                 NewHolding::Physical { location: None },
             )
             .await

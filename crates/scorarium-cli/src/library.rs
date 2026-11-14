@@ -70,16 +70,7 @@ pub(crate) async fn import(
     let library = resolve(engine, reference).await?;
     let seed = Identifier::new(IdentifierKind::Isbn, seed)
         .or_else(|_| Identifier::new(IdentifierKind::Ismn, seed))
-        .map_or_else(
-            |_| ImportSeed::Title {
-                title: seed.to_string(),
-                record: None,
-            },
-            |identifier| ImportSeed::Identifier {
-                identifier,
-                record: None,
-            },
-        );
+        .map_or_else(|_| ImportSeed::title(seed), ImportSeed::identifier);
     let publication = library
         .import(seed, NewHolding::Physical { location })
         .await?;

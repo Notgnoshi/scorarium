@@ -363,10 +363,7 @@ async fn edit_refuses_to_remove_every_holding() {
 async fn commit_saves_the_form_and_then_commits() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
-    let seed = ImportSeed::Title {
-        title: "Gymnopedies".into(),
-        record: None,
-    };
+    let seed = ImportSeed::title("Gymnopedies");
     let draft = library
         .import(seed, NewHolding::Physical { location: None })
         .await

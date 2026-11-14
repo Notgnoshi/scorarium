@@ -299,10 +299,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -334,10 +331,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -364,10 +358,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -410,10 +401,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -467,10 +455,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await

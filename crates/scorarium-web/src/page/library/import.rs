@@ -146,24 +146,15 @@ pub async fn get(
 /// Seed the draft with the picked candidate if there is one, and otherwise read the typed text as
 /// an identifier if it is one, and as a title if not
 fn seed(text: &str, record: Option<ExternalRecord>) -> ImportSeed {
-    if record.is_some() {
-        return ImportSeed::Title {
-            title: text.to_owned(),
-            record,
-        };
+    if let Some(record) = record {
+        return ImportSeed::title(text).record(record);
     }
     let identifier = [IdentifierKind::Ismn, IdentifierKind::Isbn]
         .into_iter()
         .find_map(|kind| Identifier::new(kind, text).ok());
     match identifier {
-        Some(identifier) => ImportSeed::Identifier {
-            identifier,
-            record: None,
-        },
-        None => ImportSeed::Title {
-            title: text.to_owned(),
-            record: None,
-        },
+        Some(identifier) => ImportSeed::identifier(identifier),
+        None => ImportSeed::title(text),
     }
 }
 

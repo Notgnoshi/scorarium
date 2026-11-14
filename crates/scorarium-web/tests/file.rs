@@ -15,10 +15,7 @@ async fn a_private_librarys_cover_needs_login() {
         .unwrap();
     let mut publication = library
         .import(
-            ImportSeed::Title {
-                title: "Gymnopedies".into(),
-                record: None,
-            },
+            ImportSeed::title("Gymnopedies"),
             NewHolding::Physical { location: None },
         )
         .await

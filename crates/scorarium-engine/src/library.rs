@@ -474,16 +474,12 @@ mod tests {
             .create_library("Sheet music".parse().unwrap(), false)
             .await
             .unwrap();
-        let seed = |title: &str| ImportSeed::Title {
-            title: title.into(),
-            record: None,
-        };
 
         // Satie is composer on both works, and editor on the publication and on one work, so the
         // count has to be distinct across both contributor tables.
         let mut gymnopedies = library
             .import(
-                seed("Three gymnopedies"),
+                ImportSeed::title("Three gymnopedies"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -516,7 +512,10 @@ mod tests {
 
         // An imported publication is a draft, and so are the people created through it.
         let mut draft = library
-            .import(seed("Untitled"), NewHolding::Physical { location: None })
+            .import(
+                ImportSeed::title("Untitled"),
+                NewHolding::Physical { location: None },
+            )
             .await
             .unwrap();
         let pen_name = draft

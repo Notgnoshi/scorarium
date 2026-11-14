@@ -420,13 +420,7 @@ async fn create(
     classification: Classification,
 ) -> Result<Publication> {
     let mut publication = library
-        .import(
-            ImportSeed::Title {
-                title: title.into(),
-                record: None,
-            },
-            NewHolding::Physical { location },
-        )
+        .import(ImportSeed::title(title), NewHolding::Physical { location })
         .await?;
     publication.set_classification(classification).await?;
     Ok(publication)

@@ -52,19 +52,40 @@ impl FromStr for PublicationId {
     }
 }
 
-/// The different inputs that can be used to import a draft publication
+/// The inputs that seed a draft publication
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImportSeed {
-    /// A user-entered title
-    Title {
-        title: String,
-        record: Option<ExternalRecord>,
-    },
-    /// An identifier printed on the publication
-    Identifier {
-        identifier: Identifier,
-        record: Option<ExternalRecord>,
-    },
+pub struct ImportSeed {
+    title: Option<String>,
+    identifier: Option<Identifier>,
+    record: Option<ExternalRecord>,
+}
+
+impl ImportSeed {
+    /// Seed a draft with a title
+    pub fn title(title: impl Into<String>) -> ImportSeed {
+        ImportSeed {
+            title: Some(title.into()),
+            identifier: None,
+            record: None,
+        }
+    }
+
+    /// Seed a draft with an identifier printed on the publication
+    pub fn identifier(identifier: Identifier) -> ImportSeed {
+        ImportSeed {
+            title: None,
+            identifier: Some(identifier),
+            record: None,
+        }
+    }
+
+    /// Link the draft to its record at an external source
+    pub fn record(self, record: ExternalRecord) -> ImportSeed {
+        ImportSeed {
+            record: Some(record),
+            ..self
+        }
+    }
 }
 
 /// The fields of a publication
@@ -1797,12 +1818,14 @@ pub(crate) async fn import(
     seed: ImportSeed,
     holding: NewHolding<'_>,
 ) -> Result<Publication> {
-    let (title, identifier, record) = match seed {
-        ImportSeed::Title { title, record } => {
-            (Some(title.parse::<NonBlank>()?.to_string()), None, record)
-        }
-        ImportSeed::Identifier { identifier, record } => (None, Some(identifier), record),
-    };
+    let ImportSeed {
+        title,
+        identifier,
+        record,
+    } = seed;
+    let title = title
+        .map(|title| title.parse::<NonBlank>().map(|title| title.to_string()))
+        .transpose()?;
     let link = match record {
         Some(record) => Some((
             record.url(EntityKind::Publication).ok_or_else(|| {
@@ -2440,10 +2463,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical {
                     location: Some("Desk"),
                 },
@@ -2529,10 +2549,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2576,10 +2593,7 @@ mod tests {
             .unwrap();
         let mut album = library
             .import(
-                ImportSeed::Title {
-                    title: "Russian piano album".into(),
-                    record: None,
-                },
+                ImportSeed::title("Russian piano album"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2604,10 +2618,7 @@ mod tests {
             .unwrap();
         let mut masterpieces = library
             .import(
-                ImportSeed::Title {
-                    title: "Rachmaninoff masterpieces for solo piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Rachmaninoff masterpieces for solo piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2648,20 +2659,14 @@ mod tests {
             .unwrap();
         let publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut other = library
             .import(
-                ImportSeed::Title {
-                    title: "Scott Chacon".into(),
-                    record: None,
-                },
+                ImportSeed::title("Scott Chacon"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2711,20 +2716,14 @@ mod tests {
             .unwrap();
         let mut a = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes, book one".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes, book one"),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut b = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes, book two".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes, book two"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2764,10 +2763,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2802,10 +2798,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2849,10 +2842,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2904,10 +2894,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2939,10 +2926,7 @@ mod tests {
         let record = ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M");
         let mut publication = library
             .import(
-                ImportSeed::Identifier {
-                    identifier: isbn.clone(),
-                    record: Some(record.clone()),
-                },
+                ImportSeed::identifier(isbn.clone()).record(record.clone()),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -3115,13 +3099,7 @@ mod tests {
             })
         };
         let mut publication = library
-            .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
-                upload("score.pdf"),
-            )
+            .import(ImportSeed::title("Gymnopedies"), upload("score.pdf"))
             .await
             .unwrap();
         let assets = dir
@@ -3174,10 +3152,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
+                ImportSeed::title("Gymnopedies"),
                 NewHolding::Physical {
                     location: Some("Piano bench"),
                 },
@@ -3230,10 +3205,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
+                ImportSeed::title("Gymnopedies"),
                 NewHolding::Physical { location: None },
             )
             .await
