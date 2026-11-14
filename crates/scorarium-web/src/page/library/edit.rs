@@ -75,6 +75,7 @@ fn render(
         actions: EditActions {
             mode: EditMode::Committed,
             cancel: back.path().to_owned(),
+            reject_remaining: None,
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: format!("Delete {}?", library.name()),

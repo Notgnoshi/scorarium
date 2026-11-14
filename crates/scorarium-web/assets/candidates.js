@@ -25,6 +25,20 @@
     const visibleButton = (item) =>
         [...item.querySelectorAll("[data-proposal-state]")].find((button) => button.offsetParent !== null);
 
+    const countRemaining = () => {
+        const toggle = document.querySelector("[data-reject-remaining]");
+        if (!toggle) {
+            return;
+        }
+        const count = document.querySelectorAll('#edit [data-candidate="pending"]').length;
+        toggle.querySelector("label").textContent =
+            `Reject ${count} remaining ${count === 1 ? "proposal" : "proposals"}`;
+        toggle.hidden = count === 0;
+        if (count === 0) {
+            toggle.querySelector("input").checked = false;
+        }
+    };
+
     document.addEventListener("click", (event) => {
         const button = event.target.closest("[data-proposal-state]");
         const item = button?.closest("[data-candidate]");
@@ -51,5 +65,8 @@
         } else {
             item.querySelector('[data-proposal-state="accepted"]').focus();
         }
+        countRemaining();
     });
+
+    countRemaining();
 }

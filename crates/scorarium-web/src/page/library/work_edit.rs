@@ -244,6 +244,7 @@ async fn render(
                 EditMode::Committed
             },
             cancel: back.path().to_owned(),
+            reject_remaining: Some(posted.states.rejects_remaining()),
             delete: Confirm {
                 id: "delete".to_owned(),
                 title: if draft {

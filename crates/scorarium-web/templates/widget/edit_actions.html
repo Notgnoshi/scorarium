@@ -9,6 +9,18 @@
         <i class="bi bi-trash"></i>
         {% if let EditMode::Committed = mode %}Delete{% else %}Discard draft{% endif %}
     </button>
+    {% if let Some(checked) = reject_remaining %}
+        <div class="form-check align-self-center" data-reject-remaining hidden>
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="reject_remaining"
+                   name="reject_remaining"
+                   value="1"
+                   form="edit"
+                   {% if *checked %}checked{% endif %}>
+            <label class="form-check-label" for="reject_remaining"></label>
+        </div>
+    {% endif %}
     <a class="btn btn-outline-secondary" href="{{ cancel }}" data-cancel>Cancel</a>
     {% match mode %}
     {% when EditMode::Import { finish } %}

@@ -29,16 +29,26 @@ impl fmt::Display for ProposalState {
 #[serde(default)]
 pub(crate) struct ProposalStates {
     proposal: HashMap<String, ProposalState>,
+    reject_remaining: Option<String>,
 }
 
 impl ProposalStates {
-    /// Delete each accepted or rejected proposal of `entity`
+    /// Return whether the posted form asked to reject the pending proposals too
+    pub fn rejects_remaining(&self) -> bool {
+        self.reject_remaining.is_some()
+    }
+
+    /// Delete each accepted or rejected proposal of `entity`, and the pending ones if requested
     pub async fn apply<E: Entity>(&self, entity: &mut E) -> scorarium_engine::Result<()> {
+        let reject_all = self.rejects_remaining();
+        if reject_all && let Some(enrichment) = entity.enrichment() {
+            enrichment.cancel();
+        }
         for (id, state) in &self.proposal {
             let Ok(id) = id.parse::<ProposalId>() else {
                 continue;
             };
-            if *state == ProposalState::Pending {
+            if *state == ProposalState::Pending && !reject_all {
                 continue;
             }
             match entity.reject(id).await {

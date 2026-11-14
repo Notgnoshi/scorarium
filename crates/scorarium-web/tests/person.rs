@@ -162,3 +162,37 @@ async fn save_deletes_the_proposals_that_were_accepted_or_rejected() {
     response.assert_status(StatusCode::SEE_OTHER);
     assert_eq!(ids().await, expected);
 }
+
+#[tokio::test]
+async fn reject_remaining_rejects_only_the_posted_proposals() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let person = library.people(None).await.unwrap().pop().unwrap();
+    let ids = async || -> Vec<ProposalId> {
+        let proposals = person.proposals().await.unwrap();
+        proposals.iter().map(|proposal| proposal.id).collect()
+    };
+    let propose = async |name: &str| {
+        let proposal = Proposal::Name(name.into());
+        let id = person.propose(Source::OpenLibrary, proposal).await;
+        id.unwrap().unwrap()
+    };
+    let mut expected = ids().await;
+    let first = propose("A. Satie").await;
+    let second = propose("B. Satie").await;
+    let unseen = propose("C. Satie").await;
+    expected.push(unseen);
+
+    let form = [
+        ("name".to_owned(), person.name().to_owned()),
+        ("sort_name".to_owned(), String::new()),
+        (format!("proposal[{first}]"), "pending".to_owned()),
+        (format!("proposal[{second}]"), "pending".to_owned()),
+        ("reject_remaining".to_owned(), "1".to_owned()),
+    ];
+    let edit = format!("/library/{}/person/{}/edit", library.id(), person.id());
+    let response = app.server.post(&edit).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(ids().await, expected);
+}
