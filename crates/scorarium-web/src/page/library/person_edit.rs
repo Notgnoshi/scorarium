@@ -25,7 +25,7 @@ use crate::widget::edit_heading::EditHeading;
 use crate::widget::header::Header;
 use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
+use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
 use crate::widget::value_candidates::ValueCandidates;
 use crate::{Settings, proposal};
@@ -87,6 +87,7 @@ fn parse(posted: &Posted, refusals: &mut Refusals) -> Option<Parsed> {
 pub(crate) struct Candidates {
     name: ValueCandidates,
     links: LinkCandidates,
+    pictures: PictureCandidates,
 }
 
 impl Candidates {
@@ -106,7 +107,15 @@ impl Candidates {
             person::Proposal::Link(url) => Some(url.clone()),
             _ => None,
         }));
-        Ok(Candidates { name, links })
+        let pictures = PictureCandidates::new(proposal::pick(&candidates, |value| match value {
+            person::Proposal::Profile(url) => Some(url.clone()),
+            _ => None,
+        }));
+        Ok(Candidates {
+            name,
+            links,
+            pictures,
+        })
     }
 }
 
@@ -147,9 +156,10 @@ async fn render(
     let Candidates {
         name: name_candidates,
         links: link_candidates,
+        pictures,
     } = Candidates::of(person, &posted.states).await?;
     let page = Edit {
-        picture: PictureInput::profile(person, files_allowed).resubmitted(
+        picture: PictureInput::profile(person, files_allowed, pictures).resubmitted(
             engine,
             &posted.picture,
             &refusals,

@@ -1,0 +1,18 @@
+{% import "widget/proposal.html" as proposal %}
+<ul class="picture-candidates" data-candidates="picture">
+    {% for candidate in candidates %}
+        <li class="d-flex flex-column align-items-start gap-1"
+            data-candidate="{{ candidate.state }}"
+            data-picture-url="{{ candidate.value }}">
+            <a class="thumbnail d-inline-flex align-items-center justify-content-center flex-shrink-0 border rounded"
+               href="{{ candidate.value }}"
+               target="_blank"
+               rel="noopener"
+               title="Open the full picture">
+                <img src="{{ candidate.value }}" alt="" loading="lazy">
+            </a>
+            {% call proposal::controls(candidate) %}
+            {% endcall %}
+        </li>
+    {% endfor %}
+</ul>

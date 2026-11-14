@@ -33,7 +33,7 @@ use crate::widget::holdings::{HoldingEdits, Holdings, HoldingsForm};
 use crate::widget::identifiers_input::{IdentifierCandidates, IdentifiersForm, IdentifiersInput};
 use crate::widget::links_input::{LinkCandidates, LinksForm, LinksInput};
 use crate::widget::list::Edits;
-use crate::widget::picture_input::{PictureEdit, PictureForm, PictureInput};
+use crate::widget::picture_input::{PictureCandidates, PictureEdit, PictureForm, PictureInput};
 use crate::widget::refusals::Refusals;
 use crate::widget::stars_input::StarsInput;
 use crate::widget::tags_input::TagsInput;
@@ -90,6 +90,7 @@ pub(crate) struct Candidates {
     links: LinkCandidates,
     contributors: ContributorCandidates,
     contents: ContentsCandidates,
+    pictures: PictureCandidates,
 }
 
 impl Candidates {
@@ -150,6 +151,10 @@ impl Candidates {
                 publication.library(),
                 back,
             ),
+            pictures: PictureCandidates::new(proposal::pick(&candidates, |value| match value {
+                publication::Proposal::Cover(url) => Some(url.clone()),
+                _ => None,
+            })),
         })
     }
 }
@@ -307,9 +312,10 @@ async fn render(
         links: link_candidates,
         contributors: contributor_candidates,
         contents: contents_candidates,
+        pictures,
     } = Candidates::of(publication, &posted.states, &here).await?;
     let page = Edit {
-        picture: PictureInput::cover(publication, files_allowed).resubmitted(
+        picture: PictureInput::cover(publication, files_allowed, pictures).resubmitted(
             engine,
             &posted.picture,
             &refusals,

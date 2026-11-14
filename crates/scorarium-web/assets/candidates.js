@@ -22,6 +22,14 @@
         return filled;
     };
 
+    const rejectSiblings = (item) => {
+        for (const sibling of item.parentElement.children) {
+            if (sibling !== item && sibling.dataset.candidate !== "accepted") {
+                setState(sibling, "rejected");
+            }
+        }
+    };
+
     const acceptInto = (list, item) => {
         list.querySelector("[data-list-add]").click();
         const entry = [...list.querySelectorAll(":scope > [data-list-entry]")].at(-1);
@@ -94,17 +102,24 @@
             return;
         }
         const state = button.dataset.proposalState;
+        const picture = item.closest("[data-picture-input]");
+        if (state === "accepted" && picture) {
+            // The candidate is accepted on upload:end, once its picture is staged.
+            const field = picture.querySelector("[data-url-field]");
+            if (!field.disabled && !picture.querySelector("[data-fetching]")) {
+                item.dataset.fetching = "";
+                field.value = item.dataset.pictureUrl;
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            return;
+        }
         setState(item, state);
         const list = item.closest("[data-list]");
         if (state === "accepted" && list) {
             acceptInto(list, item);
         } else if (state === "accepted") {
             const filled = fill(item);
-            for (const sibling of item.parentElement.children) {
-                if (sibling !== item && sibling.dataset.candidate !== "accepted") {
-                    setState(sibling, "rejected");
-                }
-            }
+            rejectSiblings(item);
             const input = filled[0];
             if (input?.matches("[data-typeahead]")) {
                 // Suggestions would cover the other candidates and could replace the accepted value.
@@ -117,6 +132,19 @@
             item.querySelector('[data-proposal-state="accepted"]').focus();
         }
         countRemaining();
+    });
+
+    document.addEventListener("upload:end", (event) => {
+        const item = event.target.closest("[data-picture-input]")?.querySelector("[data-candidate][data-fetching]");
+        if (!item) {
+            return;
+        }
+        delete item.dataset.fetching;
+        if (event.detail.ok) {
+            setState(item, "accepted");
+            rejectSiblings(item);
+            countRemaining();
+        }
     });
 
     const edit = document.querySelector("form#edit[data-candidates-url]");
