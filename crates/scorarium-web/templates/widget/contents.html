@@ -30,11 +30,14 @@
         {% call list::removal("works", key, *removed, "Remove work", "Keep this work") %}
         {% endcall %}
     </li>
-    {% when EntryInput::New with { person, role, title, catalog_number, refusal, locked } %}
+    {% when EntryInput::New with { person, role, title, catalog_number, refusal, locked, proposal, sources, draft } %}
     <li class="d-flex align-items-start gap-2 mb-2"
         data-list-entry
         data-list-continue="title"
         {% if undoable %}data-list-undoable{% endif %}>
+        {% for id in proposal %}
+            <input type="hidden" name="works[{{ key }}][proposal]" value="{{ id }}">
+        {% endfor %}
         <div class="work-people" data-lockable data-list-repeat>
             <div>
                 <div class="position-relative"
@@ -51,7 +54,8 @@
              data-locks-fields
              data-pick-icon="work"
              data-existing="bi-file-earmark-check"
-             data-new="bi-file-earmark-plus">
+             data-new="bi-file-earmark-plus"
+             {% if let Some(draft) = draft %}data-pick-draft="{{ draft }}"{% endif %}>
             {{ title }}
             <i class="bi position-absolute top-50 end-0 translate-middle-y me-3 d-none"></i>
         </div>
@@ -63,6 +67,9 @@
                    {% if *locked %}disabled{% endif %}>
             {% if let Some(reason) = refusal %}<div class="invalid-feedback">{{ reason }}</div>{% endif %}
         </div>
+        {% if let Some(sources) = sources %}
+            <span class="small text-body-secondary text-nowrap align-self-center" data-sources>{{ sources }}</span>
+        {% endif %}
         {% call list::remove("Remove work") %}
         {% endcall %}
     </li>
@@ -70,7 +77,7 @@
 {% endmacro %}
 <fieldset class="box">
     <legend>Contents</legend>
-    <ul class="list-unstyled mb-0" data-list>
+    <ul class="list-unstyled mb-0" data-list data-candidates="works">
         {% for (key, input) in entries %}
             {% call entry(key, input, self.undoable(*loop.index0)) %}
             {% endcall %}
@@ -87,7 +94,8 @@
             {% call entry("__key__", blank, false) %}
             {% endcall %}
         </template>
-        <li class="d-flex gap-2">
+        {{ candidates }}
+        <li class="d-flex gap-2" data-candidates-end>
             {% call list::add("Add a work") %}
             {% endcall %}
             <button type="button"
@@ -95,6 +103,9 @@
                     hx-post="/api/library/{{ library }}/publication/{{ publication }}/contents/sequence/dialog"
                     hx-target="#contents-dialog">
                 <i class="bi bi-123"></i> Add a sequence
+            </button>
+            <button type="button" class="btn btn-outline-secondary" data-accept-all hidden>
+                <i class="bi bi-check-all"></i> Accept all proposals
             </button>
         </li>
     </ul>

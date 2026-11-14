@@ -22,7 +22,7 @@ use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, BackQuery};
 use crate::widget::classification_input::ClassificationInput;
 use crate::widget::confirm::Confirm;
-use crate::widget::contents::{Contents, ContentsEdits, ContentsForm};
+use crate::widget::contents::{Contents, ContentsCandidates, ContentsEdits, ContentsForm};
 use crate::widget::contributors_input::{
     ContributorCandidates, ContributorEdits, ContributorsForm, ContributorsInput, NewPeople,
 };
@@ -89,6 +89,7 @@ pub(crate) struct Candidates {
     identifiers: IdentifierCandidates,
     links: LinkCandidates,
     contributors: ContributorCandidates,
+    contents: ContentsCandidates,
 }
 
 impl Candidates {
@@ -136,6 +137,14 @@ impl Candidates {
                     publication::Proposal::Contributor { person, role } => {
                         Some((person.clone(), role.clone()))
                     }
+                    _ => None,
+                }),
+                publication.library(),
+                back,
+            ),
+            contents: ContentsCandidates::new(
+                proposal::pick(&candidates, |value| match value {
+                    publication::Proposal::Contents(work) => Some(work.clone()),
                     _ => None,
                 }),
                 publication.library(),
@@ -297,6 +306,7 @@ async fn render(
         identifiers: identifier_candidates,
         links: link_candidates,
         contributors: contributor_candidates,
+        contents: contents_candidates,
     } = Candidates::of(publication, &posted.states, &here).await?;
     let page = Edit {
         picture: PictureInput::cover(publication, files_allowed).resubmitted(
@@ -387,7 +397,15 @@ async fn render(
             &refusals,
             files_allowed,
         ),
-        contents: Contents::of(engine, publication, &posted.contents, &here, &refusals).await?,
+        contents: Contents::of(
+            engine,
+            publication,
+            &posted.contents,
+            &here,
+            &refusals,
+            contents_candidates,
+        )
+        .await?,
         back,
         refusals,
     };

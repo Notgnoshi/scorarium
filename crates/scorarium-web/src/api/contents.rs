@@ -4,14 +4,17 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
-use scorarium_engine::publication::Publication;
+use scorarium_engine::publication::{self, Publication};
 
 use crate::auth::{ApiSession, Viewer};
 use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
+use crate::proposal::{self, ProposalStates};
 use crate::redirect::{Back, CurrentPage};
-use crate::widget::contents::{Contents, ContentsForm, SequenceDialog, SequenceForm};
+use crate::widget::contents::{
+    Contents, ContentsCandidates, ContentsForm, SequenceDialog, SequenceForm,
+};
 use crate::widget::refusals::Refusals;
 
 async fn load(engine: &Engine, library: &str, id: &str) -> Result<Publication> {
@@ -43,6 +46,7 @@ pub async fn sequence(
     let publication = load(&engine, &library, &id).await?;
     let mut contents: ContentsForm = body.read()?;
     let form: SequenceForm = body.read()?;
+    let states: ProposalStates = body.read()?;
     let mut refusals = Refusals::default();
     let Some(sequence) = contents
         .append(&engine, &publication, &form, &mut refusals)
@@ -58,12 +62,22 @@ pub async fn sequence(
     );
     let back = Back::new(page.query(), edit.clone());
     let here = format!("{edit}{}", back.query());
+    let candidates = proposal::candidates(publication.proposals().await?, &states);
+    let candidates = ContentsCandidates::new(
+        proposal::pick(&candidates, |value| match value {
+            publication::Proposal::Contents(work) => Some(work.clone()),
+            _ => None,
+        }),
+        publication.library(),
+        &here,
+    );
     let contents = Contents::of(
         &engine,
         &publication,
         &contents,
         &here,
         &Refusals::default(),
+        candidates,
     )
     .await?
     .with_sequence(sequence);

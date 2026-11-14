@@ -622,3 +622,45 @@ async fn edit_keeps_a_proposed_person_that_was_accepted() {
     assert!(added);
     assert_eq!(ids().await, expected);
 }
+
+#[tokio::test]
+async fn edit_keeps_a_proposed_work_that_was_accepted() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = masterpieces(&library).await;
+    let ids = async || -> Vec<ProposalId> {
+        let proposals = publication.proposals().await.unwrap();
+        proposals.iter().map(|proposal| proposal.id).collect()
+    };
+    let expected = ids().await;
+    let work = publication
+        .propose_new_work(Source::OpenLibrary, "Elegie")
+        .await
+        .unwrap();
+    let proposal = ids().await.pop().unwrap().to_string();
+    let work_id = work.id().to_string();
+
+    let form = [
+        ("title".to_owned(), publication.title().unwrap()),
+        ("publisher".to_owned(), ""),
+        ("year".to_owned(), ""),
+        ("note".to_owned(), ""),
+        ("works[new1][work]".to_owned(), work_id.as_str()),
+        ("works[new1][title]".to_owned(), "Elegie"),
+        ("works[new1][proposal]".to_owned(), proposal.as_str()),
+        (format!("proposal[{proposal}]"), "accepted"),
+    ];
+    let edit = format!(
+        "/library/{}/publication/{}/edit",
+        library.id(),
+        publication.id()
+    );
+    let response = app.server.post(&edit).form(&form).await;
+
+    response.assert_status(StatusCode::SEE_OTHER);
+    let work = Work::load(&app.engine, work.id()).await.unwrap().unwrap();
+    assert!(!work.is_draft());
+    let contents = masterpieces(&library).await.works().await.unwrap();
+    assert!(contents.iter().any(|contained| contained.id() == work.id()));
+    assert_eq!(ids().await, expected);
+}

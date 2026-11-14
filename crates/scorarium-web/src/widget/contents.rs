@@ -18,6 +18,7 @@ use crate::error::Result;
 use crate::forms;
 use crate::page::form_error;
 use crate::page::library::entity::{self, ContainedWork, book_order, is_primary};
+use crate::proposal::{self, Candidate};
 use crate::widget::confirm::count;
 use crate::widget::contributors_input::{NewPeople, PICK, PersonPick};
 use crate::widget::refusals::Refusals;
@@ -36,6 +37,7 @@ struct WorkEntry {
     work: String,
     title: String,
     catalog_number: String,
+    proposal: Vec<String>,
 }
 
 impl WorkEntry {
@@ -504,6 +506,31 @@ fn is_same_person(one: &PersonPick, other: &PersonPick) -> bool {
     }
 }
 
+#[derive(Template)]
+#[template(path = "widget/contents_candidates.html")]
+pub(crate) struct ContentsCandidates {
+    candidates: Vec<Candidate<ContainedWork>>,
+    library: LibraryId,
+    back: String,
+}
+
+impl ContentsCandidates {
+    /// Draw `candidates`, whose pencils return to `back`
+    pub fn new(
+        candidates: Vec<Candidate<Work>>,
+        library: LibraryId,
+        back: &str,
+    ) -> ContentsCandidates {
+        ContentsCandidates {
+            candidates: proposal::pick(&candidates, |work| Some(ContainedWork::from(work))),
+            library,
+            back: back.to_owned(),
+        }
+    }
+}
+
+impl askama::filters::HtmlSafe for ContentsCandidates {}
+
 enum EntryInput {
     Saved {
         work: ContainedWork,
@@ -518,6 +545,10 @@ enum EntryInput {
         refusal: Option<String>,
         /// Whether the title is chosen, which disables the other fields
         locked: bool,
+        proposal: Vec<String>,
+        sources: Option<String>,
+        /// The draft work that the entry's proposal created
+        draft: Option<WorkId>,
     },
 }
 
@@ -531,6 +562,7 @@ pub struct Contents {
     entries: Vec<(String, EntryInput)>,
     blank: EntryInput,
     sequence: Option<Sequence>,
+    candidates: ContentsCandidates,
 }
 
 impl askama::filters::HtmlSafe for Contents {}
@@ -542,6 +574,7 @@ fn new_entry(
     entry: &WorkEntry,
     locked: bool,
     refusals: &Refusals,
+    candidates: &[Candidate<ContainedWork>],
 ) -> EntryInput {
     let field = |field: &str, suggests: &str, placeholder: &str, value: &str| {
         let name = format!("works[{key}][{field}]");
@@ -577,6 +610,7 @@ fn new_entry(
         role.attrs.push(("disabled", String::new()));
     }
     let number = format!("works[{key}][catalog_number]");
+    let holder = proposal::holder(candidates, &entry.proposal);
     EntryInput::New {
         person: Box::new(person),
         role: Box::new(role),
@@ -584,6 +618,9 @@ fn new_entry(
         catalog_number: entry.catalog_number.clone(),
         refusal: refusals.of(&number).map(str::to_owned),
         locked,
+        proposal: entry.proposal.clone(),
+        sources: holder.map(Candidate::sources),
+        draft: holder.filter(|c| c.value.draft).map(|c| c.value.id),
     }
 }
 
@@ -595,9 +632,11 @@ impl Contents {
         form: &ContentsForm,
         back: &str,
         refusals: &Refusals,
+        candidates: ContentsCandidates,
     ) -> Result<Contents> {
         let library = publication.library();
         let stored = publication.works().await?;
+        let proposed = candidates.candidates.as_slice();
         let mut entries = Vec::with_capacity(form.works.len());
         for (n, entry) in form.works.iter().enumerate() {
             let key = n.to_string();
@@ -624,19 +663,20 @@ impl Contents {
                                 .catalog_number
                                 .map(|number| number.to_string())
                                 .unwrap_or_default(),
+                            proposal: entry.proposal.clone(),
                             ..WorkEntry::default()
                         };
-                        new_entry(library, &key, &chosen, true, refusals)
+                        new_entry(library, &key, &chosen, true, refusals, proposed)
                     }
                     Err(_) => {
                         let typed = WorkEntry {
                             work: String::new(),
                             ..entry.clone()
                         };
-                        new_entry(library, &key, &typed, false, refusals)
+                        new_entry(library, &key, &typed, false, refusals, proposed)
                     }
                 },
-                None => new_entry(library, &key, entry, false, refusals),
+                None => new_entry(library, &key, entry, false, refusals, proposed),
             };
             entries.push((key, input));
         }
@@ -653,6 +693,7 @@ impl Contents {
             },
             false,
             refusals,
+            &[],
         );
         if let EntryInput::New { person, title, .. } = &mut blank {
             person.attrs.push(("autofocus", String::new()));
@@ -665,6 +706,7 @@ impl Contents {
             entries,
             blank,
             sequence: None,
+            candidates,
         })
     }
 

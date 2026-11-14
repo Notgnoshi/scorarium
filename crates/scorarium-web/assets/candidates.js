@@ -61,7 +61,12 @@
     const visibleButton = (item) =>
         [...item.querySelectorAll("[data-proposal-state]")].find((button) => button.offsetParent !== null);
 
+    const pendingIn = (list) => list.querySelectorAll(':scope > [data-candidate="pending"]');
+
     const countRemaining = () => {
+        for (const button of document.querySelectorAll("[data-accept-all]")) {
+            button.hidden = pendingIn(button.closest("[data-list]")).length < 2;
+        }
         const toggle = document.querySelector("[data-reject-remaining]");
         if (!toggle) {
             return;
@@ -76,6 +81,13 @@
     };
 
     document.addEventListener("click", (event) => {
+        const all = event.target.closest("[data-accept-all]");
+        if (all) {
+            for (const item of pendingIn(all.closest("[data-list]"))) {
+                item.querySelector('[data-proposal-state="accepted"]').click();
+            }
+            return;
+        }
         const button = event.target.closest("[data-proposal-state]");
         const item = button?.closest("[data-candidate]");
         if (!item) {
@@ -158,5 +170,7 @@
         setTimeout(poll, 5000);
     }
 
+    // A redrawn list draws its Accept all button hidden.
+    document.addEventListener("htmx:after:settle", countRemaining);
     countRemaining();
 }
