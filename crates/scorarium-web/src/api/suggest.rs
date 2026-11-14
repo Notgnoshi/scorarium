@@ -10,7 +10,7 @@ use scorarium_engine::work::CatalogNumber;
 use crate::api::{Query, SUGGESTION_LIMIT};
 use crate::auth::ApiSession;
 use crate::error::Result;
-use crate::page::library::entity::ContainedWork;
+use crate::page::library::entity::{self, ContainedWork};
 use crate::page::library::view;
 
 /// Map a route's field name to the field it suggests values for
@@ -39,6 +39,7 @@ struct Entry {
     text: String,
     draft: bool,
     subtitle: Option<String>,
+    lifespan: Option<String>,
     detail: Option<String>,
     /// The fields of the list entry that a selection fills, with their values
     fill: Vec<(&'static str, String)>,
@@ -51,6 +52,7 @@ impl Entry {
             text,
             draft: false,
             subtitle: None,
+            lifespan: None,
             detail: None,
             fill: vec![],
         }
@@ -92,6 +94,7 @@ pub async fn get(
                 text: person.name().to_owned(),
                 draft: person.is_draft(),
                 subtitle: None,
+                lifespan: entity::lifespan(person.birth_year(), person.death_year()),
                 detail: None,
                 fill: vec![],
             }),
@@ -120,6 +123,7 @@ pub async fn get(
                     text: work.title().to_owned(),
                     draft: work.is_draft(),
                     subtitle: contained.subtitle.clone(),
+                    lifespan: None,
                     detail: (!detail.is_empty()).then(|| detail.join(", ")),
                     fill,
                 })

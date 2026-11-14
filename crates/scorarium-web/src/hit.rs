@@ -4,7 +4,7 @@ use scorarium_engine::search::SearchHit;
 use scorarium_engine::value::{Classification, Tag};
 use scorarium_engine::work::CatalogNumber;
 
-use crate::page::library::entity::group_contributors;
+use crate::page::library::entity::{group_contributors, lifespan};
 use crate::widget::picture::Picture;
 
 pub(crate) struct Hit {
@@ -68,7 +68,7 @@ impl Hit {
                 href: format!("/library/{library}/person/{}", person.id()),
                 title: person.name().to_owned(),
                 subtitle: None,
-                detail: None,
+                detail: lifespan(person.birth_year(), person.death_year()),
                 kind: EntityKind::Person,
                 classification: None,
                 library_name,

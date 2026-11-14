@@ -4,11 +4,22 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::link::Link;
 use scorarium_engine::person::PersonId;
+use scorarium_engine::value::Year;
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 
 use crate::auth::Viewer;
 use crate::error::Result;
 use crate::icon::Icon;
+
+/// Write a lifespan from whichever years are known
+pub(crate) fn lifespan(birth: Option<Year>, death: Option<Year>) -> Option<String> {
+    match (birth, death) {
+        (Some(birth), Some(death)) => Some(format!("{birth}-{death}")),
+        (Some(birth), None) => Some(format!("b. {birth}")),
+        (None, Some(death)) => Some(format!("d. {death}")),
+        (None, None) => None,
+    }
+}
 
 /// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
 pub(crate) async fn load<E: Entity>(

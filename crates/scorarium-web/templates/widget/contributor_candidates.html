@@ -8,6 +8,9 @@
         {% if candidate.value.0.is_draft() %}data-pick-draft-person="{{ candidate.value.0.id() }}"{% endif %}>
         <div class="w-50 d-flex align-items-center gap-2">
             <span class="candidate-text">{{ candidate.value.0.name() }}</span>
+            {% if let Some(lifespan) = crate::page::library::entity::lifespan(candidate.value.0.birth_year(), candidate.value.0.death_year()) %}
+                <span class="small text-body-secondary">{{ lifespan }}</span>
+            {% endif %}
             {% if candidate.value.0.is_draft() %}
                 <i class="bi bi-person-plus" title="New person"></i>
             {% else %}
