@@ -2055,6 +2055,32 @@ pub(crate) async fn tagged(
     Ok(publications)
 }
 
+impl Engine {
+    /// List the publications in every library that have a copy on loan, oldest first
+    pub async fn publications_on_loan(&self) -> Result<Vec<Publication>> {
+        let mut conn = self.begin_read().await?;
+        let rows = sqlx::query_as!(
+            PublicationRow,
+            r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
+                      note, kind, cover, draft AS "draft: bool",
+                      created_at AS "created_at: Timestamp",
+                      last_modified_at AS "last_modified_at: Timestamp"
+               FROM publication
+               WHERE EXISTS (SELECT 1 FROM holding
+                             WHERE holding.publication_id = publication.id
+                               AND holding.loaned_to IS NOT NULL)
+               ORDER BY id"#
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        let mut publications = Vec::with_capacity(rows.len());
+        for row in rows {
+            publications.push(Publication::from_row(self, &mut conn, row).await?);
+        }
+        Ok(publications)
+    }
+}
+
 impl Publication {
     async fn fetch_proposal(
         &self,
@@ -2468,6 +2494,62 @@ fn normalize_ismn(text: &str) -> Result<String> {
 mod tests {
     use super::*;
     use crate::link::LinkKind;
+
+    #[tokio::test]
+    async fn publications_on_loan_span_libraries_and_appear_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let music = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let books = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let copy = || NewHolding::Physical { location: None };
+
+        let mut gymnopedies = music
+            .import(ImportSeed::title("Gymnopedies"), copy())
+            .await
+            .unwrap();
+        let second = gymnopedies.add_holding(copy()).await.unwrap();
+        let first = gymnopedies.holdings()[0].id;
+        gymnopedies
+            .set_holding_loaned_to(first, Some("Ann"))
+            .await
+            .unwrap();
+        gymnopedies
+            .set_holding_loaned_to(second, Some("Ben"))
+            .await
+            .unwrap();
+
+        music
+            .import(ImportSeed::title("Nocturnes"), copy())
+            .await
+            .unwrap();
+
+        let mut hobbit = books
+            .import(ImportSeed::title("The Hobbit"), copy())
+            .await
+            .unwrap();
+        let only = hobbit.holdings()[0].id;
+        hobbit
+            .set_holding_loaned_to(only, Some("Ann"))
+            .await
+            .unwrap();
+
+        let ids: Vec<PublicationId> = engine
+            .publications_on_loan()
+            .await
+            .unwrap()
+            .iter()
+            .map(Publication::id)
+            .collect();
+        assert_eq!(ids, [gymnopedies.id(), hobbit.id()]);
+    }
 
     #[tokio::test]
     async fn publication_edits_audit_once_per_change() {
