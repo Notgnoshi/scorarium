@@ -8,12 +8,12 @@
             <input type="hidden" name="contributor[{{ key }}][saved][person]" value="{{ saved.person }}">
             <input type="hidden" name="contributor[{{ key }}][saved][role]" value="{{ saved.role }}">
             <div class="w-50 d-flex align-items-center gap-2">
-                <span class="form-control-plaintext w-auto">{{ input.name }}</span>
                 <a class="btn btn-sm btn-link"
                    href="/library/{{ library }}/person/{{ saved.person }}/edit?back={{ back|urlencode }}"
                    title="Edit person">
                     <i class="bi bi-pencil"></i>
                 </a>
+                <span class="form-control-plaintext w-auto">{{ input.name }}</span>
             </div>
         {% else %}
             <div class="w-50 position-relative"

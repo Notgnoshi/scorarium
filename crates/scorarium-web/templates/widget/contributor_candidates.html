@@ -7,7 +7,12 @@
         data-fill-role="{{ candidate.value.1 }}"
         {% if candidate.value.0.is_draft() %}data-pick-draft-person="{{ candidate.value.0.id() }}"{% endif %}>
         <div class="w-50 d-flex align-items-center gap-2">
-            <span class="candidate-text">{{ candidate.value.0.name() }}</span>
+            <a class="btn btn-sm btn-link"
+               href="/library/{{ library }}/person/{{ candidate.value.0.id() }}/edit?back={{ back|urlencode }}"
+               title="Edit person">
+                <i class="bi bi-pencil"></i>
+            </a>
+            <span class="candidate-text ps-0">{{ candidate.value.0.name() }}</span>
             {% if let Some(lifespan) = crate::page::library::entity::lifespan(candidate.value.0.birth_year(), candidate.value.0.death_year()) %}
                 <span class="small text-body-secondary">{{ lifespan }}</span>
             {% endif %}
@@ -16,11 +21,6 @@
             {% else %}
                 <i class="bi bi-person-check" title="Existing person"></i>
             {% endif %}
-            <a class="btn btn-sm btn-link"
-               href="/library/{{ library }}/person/{{ candidate.value.0.id() }}/edit?back={{ back|urlencode }}"
-               title="Edit person">
-                <i class="bi bi-pencil"></i>
-            </a>
         </div>
         <div class="w-50">
             <span class="candidate-text">{{ candidate.value.1 }}</span>

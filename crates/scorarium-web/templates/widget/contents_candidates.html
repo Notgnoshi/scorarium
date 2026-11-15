@@ -22,17 +22,17 @@
             {% endfor %}
         </div>
         <div class="work-title d-flex align-items-center gap-2">
-            <span class="candidate-text">{{ work.title }}</span>
-            {% if work.draft %}
-                <i class="bi bi-file-earmark-plus" title="New work"></i>
-            {% else %}
-                <i class="bi bi-file-earmark-check" title="Existing work"></i>
-            {% endif %}
             <a class="btn btn-sm btn-link"
                href="/library/{{ library }}/work/{{ work.id }}/edit?back={{ back|urlencode }}"
                title="Edit work">
                 <i class="bi bi-pencil"></i>
             </a>
+            <span class="candidate-text ps-0">{{ work.title }}</span>
+            {% if work.draft %}
+                <i class="bi bi-file-earmark-plus" title="New work"></i>
+            {% else %}
+                <i class="bi bi-file-earmark-check" title="Existing work"></i>
+            {% endif %}
         </div>
         <div class="work-number">
             <span class="candidate-text">
