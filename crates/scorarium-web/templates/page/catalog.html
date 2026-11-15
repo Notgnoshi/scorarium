@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "widget/sort.html" as sort %}
+{% block content %}
+    <h1>
+        {{ base.title }} <small class="text-body-secondary">({{ entries.len() }})</small>
+    </h1>
+    {% if entries.is_empty() %}
+        <p>Every catalog number is recognized.</p>
+    {% else %}
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    {% call sort::header(sort, Column::Number, "Catalog No.") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Work, "Work") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Contributors, "Contributors") %}
+                    {% endcall %}
+                    {% call sort::header(sort, Column::Library, "Library") %}
+                    {% endcall %}
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for entry in entries %}
+                    <tr>
+                        <td>{{ entry.number }}</td>
+                        <td>
+                            <a href="/library/{{ entry.library }}/work/{{ entry.work.id }}">{{ entry.work.title }}</a>
+                            {% if entry.work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            {% if let Some(subtitle) = entry.work.subtitle %}
+                                <div class="small text-body-secondary">{{ subtitle }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% for contributor in entry.work.contributors %}
+                                {%- if !loop.first %}, {% endif -%}
+                                <a href="/library/{{ entry.library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                            {%- endfor %}
+                        </td>
+                        <td>
+                            <a class="text-body" href="/library/{{ entry.library }}">{{ entry.library_name }}</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}
