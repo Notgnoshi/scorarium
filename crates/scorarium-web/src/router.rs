@@ -155,6 +155,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         )
         .route("/settings/demo/reset", post(page::settings::reset_demo))
         .route("/settings/audit", get(page::audit::get))
+        .route("/settings/loans", get(page::loans::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)

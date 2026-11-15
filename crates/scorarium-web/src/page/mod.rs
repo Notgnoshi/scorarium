@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod index;
 pub mod library;
+pub mod loans;
 pub mod login;
 pub mod logout;
 pub mod password;

@@ -58,4 +58,5 @@
 | `/settings/password`                                                   | GET    | Change the password           |
 | `/settings/password`                                                   | POST   | Save the new password         |
 | `/settings/demo/reset`                                                 | POST   | Reset the demo data           |
+| `/settings/loans`                                                      | GET    | Lent copies                   |
 | `/settings`                                                            | GET    | Settings                      |

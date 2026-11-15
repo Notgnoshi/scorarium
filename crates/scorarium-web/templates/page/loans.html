@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    {% if loans.is_empty() %}
+        <p>Nothing is on loan.</p>
+    {% else %}
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th class="text-body-secondary fw-normal">Borrower</th>
+                    <th class="text-body-secondary fw-normal">Publication</th>
+                    <th class="text-body-secondary fw-normal">Library</th>
+                    <th class="text-body-secondary fw-normal">Location</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for loan in loans %}
+                    <tr>
+                        <td>{{ loan.borrower }}</td>
+                        <td><a href="{{ loan.href }}">{{ loan.title }}</a></td>
+                        <td>{{ loan.library }}</td>
+                        <td>{% if let Some(location) = loan.location %}{{ location }}{% endif %}</td>
+                        <td class="text-end">
+                            <form method="post" action="{{ loan.return_url }}">
+                                <button class="btn btn-link btn-sm p-0 link-secondary align-baseline"
+                                        type="submit">return</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}
