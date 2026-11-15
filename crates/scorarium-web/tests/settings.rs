@@ -3,7 +3,7 @@ use scorarium_test::TestApp;
 
 #[tokio::test]
 async fn login_is_required() {
-    for path in ["/settings", "/settings/catalog"] {
+    for path in ["/settings", "/settings/catalog", "/settings/duplicates"] {
         let app = TestApp::logged_out(true).await;
         let response = app.server.get(path).await;
         response.assert_status(StatusCode::SEE_OTHER);

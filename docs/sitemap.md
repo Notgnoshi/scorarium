@@ -56,6 +56,7 @@
 | `/search`                                                              | GET    | Search results                |
 | `/settings/audit`                                                      | GET    | Audit log                     |
 | `/settings/catalog`                                                    | GET    | Unrecognized catalog numbers  |
+| `/settings/duplicates`                                                 | GET    | Potential duplicates          |
 | `/settings/password`                                                   | GET    | Change the password           |
 | `/settings/password`                                                   | POST   | Save the new password         |
 | `/settings/demo/reset`                                                 | POST   | Reset the demo data           |

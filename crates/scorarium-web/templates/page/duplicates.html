@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    <h2>People</h2>
+    {% if people.is_empty() %}
+        <p>No potential duplicates.</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th class="text-body-secondary fw-normal">Library</th>
+                    <th class="text-body-secondary fw-normal">Name</th>
+                    <th class="text-body-secondary fw-normal">Years</th>
+                    <th class="text-body-secondary fw-normal">Reason</th>
+                </tr>
+            </thead>
+            {% for group in people %}
+                <tbody class="table-group-divider">
+                    {% for person in group.members %}
+                        <tr>
+                            {% if loop.first %}
+                                <td rowspan="{{ group.members.len() }}">
+                                    <a class="text-body"
+                                       href="/library/{{ group.library }}">{{ group.library_name }}</a>
+                                </td>
+                            {% endif %}
+                            <td>
+                                <a href="/library/{{ group.library }}/person/{{ person.id() }}">{{ person.name() }}</a>
+                                {% if person.is_draft() %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if let Some(years) = crate::page::library::entity::lifespan(person.birth_year(), person.death_year()) %}
+                                    {{ years }}
+                                {% endif %}
+                            </td>
+                            {% if loop.first %}<td rowspan="{{ group.members.len() }}">{{ group.reasons }}</td>{% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            {% endfor %}
+        </table>
+    {% endif %}
+    <h2>Works</h2>
+    {% if works.is_empty() %}
+        <p>No potential duplicates.</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th class="text-body-secondary fw-normal">Library</th>
+                    <th class="text-body-secondary fw-normal">Title</th>
+                    <th class="text-body-secondary fw-normal">Contributors</th>
+                    <th class="text-body-secondary fw-normal">Catalog No.</th>
+                    <th class="text-body-secondary fw-normal">Reason</th>
+                </tr>
+            </thead>
+            {% for group in works %}
+                <tbody class="table-group-divider">
+                    {% for work in group.members %}
+                        <tr>
+                            {% if loop.first %}
+                                <td rowspan="{{ group.members.len() }}">
+                                    <a class="text-body"
+                                       href="/library/{{ group.library }}">{{ group.library_name }}</a>
+                                </td>
+                            {% endif %}
+                            <td>
+                                <a href="/library/{{ group.library }}/work/{{ work.id }}">{{ work.title }}</a>
+                                {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                                {% if let Some(subtitle) = work.subtitle %}
+                                    <div class="small text-body-secondary">{{ subtitle }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% for contributor in work.contributors %}
+                                    {%- if !loop.first %}, {% endif -%}
+                                    <a href="/library/{{ group.library }}/person/{{ contributor.person }}">{{ contributor.name }}</a>
+                                {%- endfor %}
+                            </td>
+                            <td>{% if let Some(number) = work.catalog_number %}{{ number }}{% endif %}</td>
+                            {% if loop.first %}<td rowspan="{{ group.members.len() }}">{{ group.reasons }}</td>{% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            {% endfor %}
+        </table>
+    {% endif %}
+    <h2>Publications</h2>
+    {% if publications.is_empty() %}
+        <p>No potential duplicates.</p>
+    {% else %}
+        <table class="table align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th class="text-body-secondary fw-normal">Library</th>
+                    <th class="text-body-secondary fw-normal">Title</th>
+                    <th class="text-body-secondary fw-normal">Publisher</th>
+                    <th class="text-body-secondary fw-normal">Year</th>
+                    <th class="text-body-secondary fw-normal">Reason</th>
+                </tr>
+            </thead>
+            {% for group in publications %}
+                <tbody class="table-group-divider">
+                    {% for publication in group.members %}
+                        <tr>
+                            {% if loop.first %}
+                                <td rowspan="{{ group.members.len() }}">
+                                    <a class="text-body"
+                                       href="/library/{{ group.library }}">{{ group.library_name }}</a>
+                                </td>
+                            {% endif %}
+                            <td>
+                                <a href="/library/{{ group.library }}/publication/{{ publication.id() }}">
+                                    {%- if let Some(title) = publication.title() -%}
+                                        {{ title }}
+                                    {%- else -%}
+                                        Untitled
+                                    {%- endif -%}
+                                </a>
+                                {% if publication.is_draft() %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            </td>
+                            <td>{% if let Some(publisher) = publication.publisher() %}{{ publisher }}{% endif %}</td>
+                            <td>{% if let Some(year) = publication.year() %}{{ year }}{% endif %}</td>
+                            {% if loop.first %}<td rowspan="{{ group.members.len() }}">{{ group.reasons }}</td>{% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            {% endfor %}
+        </table>
+    {% endif %}
+{% endblock %}
