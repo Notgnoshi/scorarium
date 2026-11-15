@@ -4,6 +4,7 @@ use scorarium_engine::contributor::{Contributor, Role};
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::Library;
 use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::value::title_sort_key;
 
 use crate::command::{
     PersonAdd, PersonClear, PersonCommand, PersonRemove, PersonSet, reject, require,
@@ -54,7 +55,7 @@ pub(crate) async fn show(person: Person, out: &mut impl Write) -> eyre::Result<(
         rows.push(row("link", link.id.to_string(), link.url.to_string()));
     }
     let mut publications = person.publications().await?;
-    publications.sort_by(|a, b| a.title().cmp(&b.title()));
+    publications.sort_by_cached_key(|publication| publication.title().map(title_sort_key));
     for publication in &publications {
         let title = publication.title().unwrap_or_default();
         let roles = roles_of(publication.contributors(), person.id()).join(", ");
