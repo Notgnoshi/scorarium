@@ -192,6 +192,15 @@ pub fn parse_tags(input: &str) -> Result<Vec<Tag>> {
     Ok(tags)
 }
 
+/// Derive the key that orders a title, ignoring case and a leading "The"
+pub fn title_sort_key(title: &str) -> String {
+    let key = title.to_lowercase();
+    match key.split_once(char::is_whitespace) {
+        Some(("the", rest)) if !rest.trim_start().is_empty() => rest.trim_start().to_owned(),
+        _ => key,
+    }
+}
+
 pub(crate) fn clean_text(text: Option<&str>) -> Option<&str> {
     text.map(str::trim).filter(|text| !text.is_empty())
 }
@@ -199,6 +208,17 @@ pub(crate) fn clean_text(text: Option<&str>) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_sort_key_ignores_a_leading_the() {
+        assert_eq!(title_sort_key("The Planets"), "planets");
+        assert_eq!(title_sort_key("THE Planets"), "planets");
+        assert_eq!(
+            title_sort_key("Theme and Variations"),
+            "theme and variations"
+        );
+        assert_eq!(title_sort_key("The"), "the");
+    }
 
     #[test]
     fn parse_strong_types() {
