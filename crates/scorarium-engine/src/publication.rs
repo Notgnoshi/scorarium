@@ -1831,8 +1831,6 @@ impl Entity for Publication {
 }
 
 /// Import a draft publication in `library` from `seed` with its first holding
-///
-/// Enrichment starts on every import. It finishes at once when there is nothing to look up.
 pub(crate) async fn import(
     engine: &Engine,
     library: LibraryId,
@@ -1909,7 +1907,6 @@ pub(crate) async fn import(
     .await?
     .commit()
     .await?;
-    publication.enrich().await?;
     Ok(publication)
 }
 
@@ -3037,6 +3034,7 @@ mod tests {
             )
             .await
             .unwrap();
+        publication.enrich().await.unwrap();
         engine.wait_for_enrichment().await;
         let links: Vec<(&str, Option<&ExternalRecord>)> = publication
             .links()

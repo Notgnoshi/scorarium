@@ -74,6 +74,7 @@ pub(crate) async fn import(
     let publication = library
         .import(seed, NewHolding::Physical { location })
         .await?;
+    publication.enrich().await?;
     writeln!(out, "{}", publication.id())?;
     Ok(())
 }

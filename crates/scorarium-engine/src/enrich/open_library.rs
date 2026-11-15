@@ -437,6 +437,7 @@ mod tests {
             )
             .await
             .unwrap();
+        publication.enrich().await.unwrap();
 
         tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
             .await
@@ -471,6 +472,7 @@ mod tests {
             )
             .await
             .unwrap();
+        publication.enrich().await.unwrap();
 
         tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
             .await
@@ -574,6 +576,7 @@ mod tests {
             )
             .await
             .unwrap();
+        publication.enrich().await.unwrap();
         tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
             .await
             .unwrap();

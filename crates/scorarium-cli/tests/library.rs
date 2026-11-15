@@ -361,7 +361,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
@@ -405,7 +405,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
@@ -448,7 +448,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
@@ -474,16 +474,16 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         sorted_without_age(&out),
-        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
-         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
-         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
-         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment\tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t----------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t          \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t          \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t          \t10\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t          \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t          \t1\n\
          Sheet music\twork       \t14\tSerenade                                \tdraft\n\
-         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
-         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t          \t1\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t          \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
@@ -568,16 +568,16 @@ async fn add_work_links_by_id_or_creates() {
     );
     assert_eq!(
         sorted_without_age(queue),
-        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
-         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
-         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
-         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment\tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t----------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t          \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t          \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t          \t10\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t          \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t          \t1\n\
          Sheet music\twork       \t14\tSerenade                                \tdraft\n\
-         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
-         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t          \t1\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t          \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
@@ -626,7 +626,7 @@ async fn isbn_import_review() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\t                                        \tdraft\tcompleted 2/2\t5\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
@@ -716,7 +716,7 @@ async fn isbn_import_review() {
          -----------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                             \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce            \t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\t             \t10\n\
          Books      \tpublication\t10\tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n\
          Sheet music\twork       \t12\tElegie                                              \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                             \tdraft\t             \t1\n\
