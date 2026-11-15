@@ -21,21 +21,39 @@ pub(crate) struct LendForm {
 pub async fn lend(
     _session: Session,
     State(engine): State<Engine>,
-    Path((library, publication, holding)): Path<(String, String, String)>,
+    Path(path): Path<(String, String, String)>,
     Query(query): Query<BackQuery>,
     axum::Form(form): axum::Form<LendForm>,
 ) -> Result<Redirect> {
-    let library = view::load(&engine, &library).await?;
+    // A blank name would mark the copy returned.
+    let borrower: NonBlank = form.borrower.parse()?;
+    set_borrower(&engine, path, query, Some(borrower.as_str())).await
+}
+
+/// Mark a lent copy as returned
+pub async fn mark_returned(
+    _session: Session,
+    State(engine): State<Engine>,
+    Path(path): Path<(String, String, String)>,
+    Query(query): Query<BackQuery>,
+) -> Result<Redirect> {
+    set_borrower(&engine, path, query, None).await
+}
+
+/// Set or clear the borrower of a holding, and go back to the page that asked
+async fn set_borrower(
+    engine: &Engine,
+    (library, publication, holding): (String, String, String),
+    query: BackQuery,
+    borrower: Option<&str>,
+) -> Result<Redirect> {
+    let library = view::load(engine, &library).await?;
     let mut publication: Publication =
-        entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
+        entity::load(engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     let holding: HoldingId = holding
         .parse()
         .map_err(|_| scorarium_engine::Error::NotFound)?;
-    // A blank name would mark the copy returned.
-    let borrower: NonBlank = form.borrower.parse()?;
-    publication
-        .set_holding_loaned_to(holding, Some(borrower.as_str()))
-        .await?;
+    publication.set_holding_loaned_to(holding, borrower).await?;
     let back = Back::new(
         query,
         format!("/library/{}/publication/{}", library.id(), publication.id()),

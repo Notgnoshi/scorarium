@@ -712,3 +712,31 @@ async fn lend_records_the_borrower_and_refuses_a_blank_one() {
         .assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(borrower().await.as_deref(), Some("Ann"));
 }
+
+#[tokio::test]
+async fn return_clears_the_borrower() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let mut publication = library.publications().await.unwrap().pop().unwrap();
+    let only = publication.holdings()[0].id;
+    publication
+        .set_holding_loaned_to(only, Some("Ann"))
+        .await
+        .unwrap();
+
+    let give_back = format!(
+        "/library/{}/publication/{}/holding/{only}/return",
+        library.id(),
+        publication.id()
+    );
+    app.server
+        .post(&give_back)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+
+    let after = Publication::load(&app.engine, publication.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.holdings()[0].loaned_to, None);
+}

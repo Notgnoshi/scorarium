@@ -112,7 +112,13 @@
                                title="Open in a new tab">{{ filename }}</a>
                         {% endif %}
                         {% if let Some(loaned_to) = holding.loaned_to %}
-                            <span class="ms-auto text-body-secondary">on loan to {{ loaned_to }}</span>
+                            <form class="ms-auto text-body-secondary"
+                                  method="post"
+                                  action="/library/{{ library }}/publication/{{ id }}/holding/{{ holding.id }}/return{{ back }}">
+                                on loan to {{ loaned_to }}
+                                <button class="btn btn-link btn-sm p-0 link-secondary align-baseline"
+                                        type="submit">return</button>
+                            </form>
                         {% else if holding.physical %}
                             {% let dialog = "lend-" ~ holding.id %}
                             {% let url = "/library/" ~ library ~ "/publication/" ~ id ~ "/holding/" ~ holding.id ~ "/lend" ~ back %}
