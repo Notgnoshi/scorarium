@@ -1,7 +1,7 @@
 use scorarium_engine::entity::{AnyEntity, Contributed, Entity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::search::SearchHit;
-use scorarium_engine::value::{Classification, Tag};
+use scorarium_engine::value::{Classification, Tag, title_sort_key};
 use scorarium_engine::work::CatalogNumber;
 
 use crate::page::library::entity::{group_contributors, lifespan};
@@ -21,9 +21,12 @@ pub(crate) struct Hit {
 }
 
 impl Hit {
-    /// Derive the key that orders the hit by its title
+    /// Derive the key that orders the hit by its title, or by the display name of a person
     pub fn sort_key(&self) -> String {
-        self.title.to_lowercase()
+        match self.kind {
+            EntityKind::Person => self.title.to_lowercase(),
+            EntityKind::Publication | EntityKind::Work => title_sort_key(&self.title),
+        }
     }
 
     pub fn kind_rank(&self) -> (u8, u8) {
