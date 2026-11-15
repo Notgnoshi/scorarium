@@ -41,6 +41,7 @@ use crate::widget::value_candidates::ValueCandidates;
 #[derive(Deserialize)]
 pub(crate) struct Form {
     title: String,
+    subtitle: String,
     classification: Option<String>,
     key: String,
     time_signature: String,
@@ -76,6 +77,7 @@ impl Posted {
 #[template(path = "api/work_candidates.html")]
 pub(crate) struct Candidates {
     title: ValueCandidates,
+    subtitle: ValueCandidates,
     key: ValueCandidates,
     time_signature: ValueCandidates,
     instrumentation: ValueCandidates,
@@ -92,6 +94,13 @@ impl Candidates {
                 "title",
                 proposal::pick(&candidates, |value| match value {
                     work::Proposal::Title(title) => Some(title.clone()),
+                    _ => None,
+                }),
+            ),
+            subtitle: ValueCandidates::new(
+                "subtitle",
+                proposal::pick(&candidates, |value| match value {
+                    work::Proposal::Subtitle(subtitle) => Some(subtitle.clone()),
                     _ => None,
                 }),
             ),
@@ -153,6 +162,7 @@ struct Edit {
     actions: EditActions,
     form: Form,
     title_candidates: ValueCandidates,
+    subtitle_candidates: ValueCandidates,
     key_candidates: ValueCandidates,
     time_signature_candidates: ValueCandidates,
     instrumentation_candidates: ValueCandidates,
@@ -277,6 +287,7 @@ async fn render(
         .collect();
     let Candidates {
         title: title_candidates,
+        subtitle: subtitle_candidates,
         key: key_candidates,
         time_signature: time_signature_candidates,
         instrumentation: instrumentation_candidates,
@@ -346,6 +357,7 @@ async fn render(
         ),
         form: posted.form,
         title_candidates,
+        subtitle_candidates,
         key_candidates,
         time_signature_candidates,
         instrumentation_candidates,
@@ -380,6 +392,7 @@ pub async fn get(
     let text = |value: Option<&str>| value.unwrap_or_default().to_owned();
     let form = Form {
         title: work.title().to_owned(),
+        subtitle: text(work.subtitle()),
         classification: work.classification().map(|c| c.to_string()),
         key: text(work.key()),
         time_signature: text(work.time_signature()),
@@ -410,6 +423,7 @@ async fn save(
 ) -> scorarium_engine::Result<()> {
     let form = &posted.form;
     work.set_title(parsed.title).await?;
+    work.set_subtitle(Some(&form.subtitle)).await?;
     work.set_key(Some(&form.key)).await?;
     work.set_time_signature(Some(&form.time_signature)).await?;
     work.set_instrumentation(Some(&form.instrumentation))

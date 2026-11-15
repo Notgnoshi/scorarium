@@ -16,6 +16,9 @@
                 <div>
                     <a href="{{ entry.hit.href }}">{{ entry.hit.title }}</a>
                     {% if entry.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                    {% if let Some(subtitle) = entry.hit.subtitle %}
+                        <div class="small text-body-secondary">{{ subtitle }}</div>
+                    {% endif %}
                     {% if let Some(detail) = entry.hit.detail %}
                         <div class="small text-body-secondary">{{ detail }}</div>
                     {% endif %}

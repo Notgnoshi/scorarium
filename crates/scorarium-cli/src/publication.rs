@@ -111,6 +111,7 @@ pub(crate) async fn show(publication: Publication, out: &mut impl Write) -> eyre
         publication.title().unwrap_or_default().to_string(),
     ));
     let optional = [
+        ("subtitle", publication.subtitle().map(str::to_string)),
         ("publisher", publication.publisher().map(str::to_string)),
         ("year", publication.year().map(|year| year.to_string())),
         ("stars", publication.stars().map(|stars| stars.to_string())),
@@ -180,6 +181,7 @@ fn proposal(value: &scorarium_engine::publication::Proposal) -> (&'static str, S
 
     match value {
         Proposal::Title(title) => ("title", title.clone()),
+        Proposal::Subtitle(subtitle) => ("subtitle", subtitle.clone()),
         Proposal::Publisher(publisher) => ("publisher", publisher.clone()),
         Proposal::Year(year) => ("year", year.to_string()),
         Proposal::Identifier(identifier) => (
@@ -245,6 +247,9 @@ pub(crate) async fn run(
             let mut publication = resolve(library, require(subject, "publication")?).await?;
             match field {
                 PublicationSet::Title { title } => publication.set_title(title).await?,
+                PublicationSet::Subtitle { subtitle } => {
+                    publication.set_subtitle(Some(&subtitle)).await?
+                }
                 PublicationSet::Publisher { publisher } => {
                     publication.set_publisher(Some(&publisher)).await?
                 }
@@ -262,6 +267,7 @@ pub(crate) async fn run(
         PublicationCommand::Clear { field } => {
             let mut publication = resolve(library, require(subject, "publication")?).await?;
             match field {
+                PublicationClear::Subtitle => publication.set_subtitle(None).await?,
                 PublicationClear::Publisher => publication.set_publisher(None).await?,
                 PublicationClear::Year => publication.set_year(None).await?,
                 PublicationClear::Stars => publication.set_stars(None).await?,

@@ -51,6 +51,7 @@ impl FromStr for WorkId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
     Title,
+    Subtitle,
     Key,
     TimeSignature,
     Instrumentation,
@@ -67,6 +68,7 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Field::Title => "title",
+            Field::Subtitle => "subtitle",
             Field::Key => "key",
             Field::TimeSignature => "time_signature",
             Field::Instrumentation => "instrumentation",
@@ -87,6 +89,7 @@ impl FromStr for Field {
     fn from_str(text: &str) -> Result<Field> {
         Ok(match text {
             "title" => Field::Title,
+            "subtitle" => Field::Subtitle,
             "key" => Field::Key,
             "time_signature" => Field::TimeSignature,
             "instrumentation" => Field::Instrumentation,
@@ -106,6 +109,7 @@ impl FromStr for Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
+    Subtitle(String),
     Key(String),
     TimeSignature(String),
     Instrumentation(String),
@@ -123,6 +127,7 @@ pub struct Work {
     created_at: Timestamp,
     last_modified_at: Timestamp,
     title: String,
+    subtitle: Option<String>,
     key: Option<String>,
     time_signature: Option<String>,
     instrumentation: Option<String>,
@@ -149,6 +154,7 @@ struct WorkRow {
     id: i64,
     library_id: i64,
     title: String,
+    subtitle: Option<String>,
     key: Option<String>,
     time_signature: Option<String>,
     instrumentation: Option<String>,
@@ -168,6 +174,10 @@ impl Work {
 
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
     }
 
     pub fn key(&self) -> Option<&str> {
@@ -261,6 +271,7 @@ impl Work {
             created_at: row.created_at,
             last_modified_at: row.last_modified_at,
             title: row.title,
+            subtitle: row.subtitle,
             key: row.key,
             time_signature: row.time_signature,
             instrumentation: row.instrumentation,
@@ -281,7 +292,7 @@ impl Work {
     ) -> Result<Option<Work>> {
         let row = sqlx::query_as!(
             WorkRow,
-            r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+            r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                       stars AS "stars: u8", note, kind, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
@@ -355,6 +366,13 @@ impl Work {
         let blank = |what: &str| Error::InvalidValue(format!("{what} cannot be blank."));
         let (field, text, person) = match &value {
             Proposal::Title(title) => ("title", title.parse::<NonBlank>()?.to_string(), None),
+            Proposal::Subtitle(subtitle) => (
+                "subtitle",
+                clean_text(Some(subtitle))
+                    .ok_or_else(|| blank("A subtitle"))?
+                    .to_string(),
+                None,
+            ),
             Proposal::Key(key) => (
                 "key",
                 clean_text(Some(key))
@@ -388,6 +406,7 @@ impl Work {
             .ok_or(Error::NotFound)?;
         let has = match &value {
             Proposal::Title(_) => current.title == text,
+            Proposal::Subtitle(_) => current.subtitle.as_deref() == Some(&text),
             Proposal::Key(_) => current.key.as_deref() == Some(&text),
             Proposal::TimeSignature(_) => current.time_signature.as_deref() == Some(&text),
             Proposal::Instrumentation(_) => current.instrumentation.as_deref() == Some(&text),
@@ -476,6 +495,30 @@ impl Work {
         .commit()
         .await?;
         Ok(person)
+    }
+
+    /// Set or clear the subtitle, treating a blank subtitle as none
+    ///
+    /// Returns [Error::NotFound] if the work has been deleted.
+    pub async fn set_subtitle(&mut self, subtitle: Option<&str>) -> Result<()> {
+        let subtitle = clean_text(subtitle);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.subtitle.as_deref() == subtitle {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE work SET subtitle = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            subtitle,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Subtitle).await?;
+        self.subtitle = subtitle.map(str::to_string);
+        self.last_modified_at = last_modified_at;
+        Ok(())
     }
 
     /// Set or clear the key, treating a blank key as none
@@ -1044,6 +1087,7 @@ impl Entity for Work {
         drop(conn);
         match proposal.value {
             Proposal::Title(title) => self.set_title(title.parse()?).await?,
+            Proposal::Subtitle(subtitle) => self.set_subtitle(Some(&subtitle)).await?,
             Proposal::Key(key) => self.set_key(Some(&key)).await?,
             Proposal::TimeSignature(time_signature) => {
                 self.set_time_signature(Some(&time_signature)).await?
@@ -1258,6 +1302,7 @@ async fn from_row(
 ) -> Result<entity::Proposal<Work>> {
     let value = match row.field.as_str() {
         "title" => Proposal::Title(row.proposed_value),
+        "subtitle" => Proposal::Subtitle(row.proposed_value),
         "key" => Proposal::Key(row.proposed_value),
         "time_signature" => Proposal::TimeSignature(row.proposed_value),
         "instrumentation" => Proposal::Instrumentation(row.proposed_value),
@@ -1395,7 +1440,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let library = library.get();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+        r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                   stars AS "stars: u8", note, kind, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1421,7 +1466,7 @@ pub(crate) async fn candidates(
     let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT w.id AS "id!", w.title AS name,
-                  w.title || ' '
+                  w.title || ' ' || coalesce(w.subtitle, '') || ' '
                   || coalesce((SELECT group_concat(person.name, ' ')
                                FROM work_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.work_id = w.id), '') || ' '
@@ -1515,7 +1560,7 @@ pub(crate) async fn in_publication(
     let publication = publication.get();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+        r#"SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,
                   work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
                   work.draft AS "draft: bool",
                   work.created_at AS "created_at: Timestamp",
@@ -1541,7 +1586,7 @@ pub(crate) async fn with_contributor(engine: &Engine, person: PersonId) -> Resul
     // A person can contribute in several roles, so a join would repeat the work
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT id, library_id, title, key, time_signature, instrumentation,
+        r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
                   stars AS "stars: u8", note, kind, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1566,7 +1611,7 @@ pub(crate) async fn tagged(engine: &Engine, library: LibraryId, tag: &Tag) -> Re
     let tag = tag.as_str();
     let rows = sqlx::query_as!(
         WorkRow,
-        r#"SELECT work.id, work.library_id, work.title, work.key, work.time_signature,
+        r#"SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,
                   work.instrumentation, work.stars AS "stars: u8", work.note, work.kind,
                   work.draft AS "draft: bool",
                   work.created_at AS "created_at: Timestamp",
@@ -1985,10 +2030,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2003,10 +2045,7 @@ mod tests {
             .unwrap();
         let mut other = library
             .import(
-                ImportSeed::Title {
-                    title: "Satie piano works".into(),
-                    record: None,
-                },
+                ImportSeed::title("Satie piano works"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2042,10 +2081,7 @@ mod tests {
             .unwrap();
         let mut a = library
             .import(
-                ImportSeed::Title {
-                    title: "Russian piano album".into(),
-                    record: None,
-                },
+                ImportSeed::title("Russian piano album"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2053,10 +2089,7 @@ mod tests {
         let prelude = a.create_work("Prelude".parse().unwrap()).await.unwrap();
         let b = library
             .import(
-                ImportSeed::Title {
-                    title: "Prelude edition".into(),
-                    record: None,
-                },
+                ImportSeed::title("Prelude edition"),
                 NewHolding::Physical { location: None },
             )
             .await

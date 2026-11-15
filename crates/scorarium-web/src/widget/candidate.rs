@@ -7,6 +7,7 @@ use scorarium_engine::suggest::ExternalCandidate;
 #[template(path = "widget/candidate.html")]
 pub(crate) struct Candidate {
     pub(crate) title: String,
+    pub(crate) subtitle: Option<String>,
     pub(crate) detail: String,
     pub(crate) record: HttpUrl,
     pub(crate) source: &'static str,
@@ -19,10 +20,6 @@ impl Candidate {
     /// Summarize `candidate`, or return `None` if its record has no page for a publication
     pub fn new(candidate: &ExternalCandidate) -> Option<Candidate> {
         let record = candidate.record.url(EntityKind::Publication)?;
-        let title = match &candidate.subtitle {
-            Some(subtitle) => format!("{}: {subtitle}", candidate.title),
-            None => candidate.title.clone(),
-        };
         let published: Vec<String> = candidate
             .publisher
             .iter()
@@ -34,7 +31,8 @@ impl Candidate {
             .filter(|text| !text.is_empty())
             .collect();
         Some(Candidate {
-            title,
+            title: candidate.title.clone(),
+            subtitle: candidate.subtitle.clone(),
             detail: parts.join(" - "),
             record,
             source: candidate.record.kind().name(),

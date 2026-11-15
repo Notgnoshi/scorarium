@@ -8,10 +8,7 @@ async fn discard_asks_first_and_acts_only_on_what_was_confirmed() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
     let import = async |title: &str| {
-        let seed = ImportSeed::Title {
-            title: title.into(),
-            record: None,
-        };
+        let seed = ImportSeed::title(title);
         let holding = NewHolding::Physical { location: None };
         library.import(seed, holding).await.unwrap()
     };

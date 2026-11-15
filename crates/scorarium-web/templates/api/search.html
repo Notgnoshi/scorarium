@@ -9,6 +9,10 @@
                 {{ hit.picture }}
                 <span class="d-flex flex-column overflow-hidden">
                     <span class="text-truncate" title="{{ hit.title }}">{{ hit.title }}</span>
+                    {% if let Some(subtitle) = hit.subtitle %}
+                        <span class="small text-body-secondary text-truncate"
+                              title="{{ subtitle }}">{{ subtitle }}</span>
+                    {% endif %}
                     {% if let Some(detail) = hit.detail %}
                         <span class="small text-body-secondary text-truncate" title="{{ detail }}">{{ detail }}</span>
                     {% endif %}

@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT person.id, person.name, person.sort_name,\n                  person.birth_year AS \"birth_year: u16\", person.death_year AS \"death_year: u16\",\n                  person.profile, held.role AS \"role!\"\n           FROM person\n           JOIN (\n               SELECT pc.person_id, pc.role, publication.draft\n               FROM publication_contributor AS pc\n               JOIN publication ON publication.id = pc.publication_id\n               WHERE pc.library_id = ?1\n               UNION ALL\n               SELECT wc.person_id, wc.role, work.draft\n               FROM work_contributor AS wc\n               JOIN work ON work.id = wc.work_id\n               WHERE wc.library_id = ?1\n           ) AS held ON held.person_id = person.id\n           WHERE person.library_id = ?1 AND (?2 OR (person.draft = 0 AND held.draft = 0))\n           GROUP BY person.id, held.role\n           ORDER BY person.id, held.role",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "sort_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "sort_name"
+          }
+        }
+      },
+      {
+        "name": "birth_year: u16",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "birth_year"
+          }
+        }
+      },
+      {
+        "name": "death_year: u16",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "death_year"
+          }
+        }
+      },
+      {
+        "name": "profile",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "profile"
+          }
+        }
+      },
+      {
+        "name": "role!",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work_contributor",
+            "name": "role"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "6dd721925d671cc9e8ec0318ef4d1eba84e9826c0bc604d4c217cb2fb6807720"
+}

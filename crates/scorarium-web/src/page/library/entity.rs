@@ -4,11 +4,22 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::link::Link;
 use scorarium_engine::person::PersonId;
+use scorarium_engine::value::Year;
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 
 use crate::auth::Viewer;
 use crate::error::Result;
 use crate::icon::Icon;
+
+/// Write a lifespan from whichever years are known
+pub(crate) fn lifespan(birth: Option<Year>, death: Option<Year>) -> Option<String> {
+    match (birth, death) {
+        (Some(birth), Some(death)) => Some(format!("{birth}-{death}")),
+        (Some(birth), None) => Some(format!("b. {birth}")),
+        (None, Some(death)) => Some(format!("d. {death}")),
+        (None, None) => None,
+    }
+}
 
 /// Load an entity of `library` by the id in the URL, hiding drafts from anonymous visitors
 pub(crate) async fn load<E: Entity>(
@@ -80,6 +91,7 @@ pub(crate) struct ContainedWork {
     pub id: WorkId,
     pub draft: bool,
     pub title: String,
+    pub subtitle: Option<String>,
     /// The work's first catalog number, which is its most confidently recognized one
     pub catalog_number: Option<CatalogNumber>,
     pub contributors: Vec<Contributor>,
@@ -107,6 +119,7 @@ impl From<&Work> for ContainedWork {
             id: work.id(),
             draft: work.is_draft(),
             title: work.title().to_owned(),
+            subtitle: work.subtitle().map(ToOwned::to_owned),
             catalog_number: work.catalog_numbers().first().cloned(),
             contributors: group_contributors(work.contributors()),
         }

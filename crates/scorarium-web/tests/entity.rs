@@ -14,10 +14,7 @@ async fn publication_page_follows_library_visibility_and_hides_drafts() {
         .unwrap();
     let draft = library
         .import(
-            ImportSeed::Title {
-                title: "Draft".into(),
-                record: None,
-            },
+            ImportSeed::title("Draft"),
             NewHolding::Physical { location: None },
         )
         .await
@@ -44,10 +41,7 @@ async fn publication_page_follows_library_visibility_and_hides_drafts() {
         .unwrap();
     let draft = library
         .import(
-            ImportSeed::Title {
-                title: "Draft".into(),
-                record: None,
-            },
+            ImportSeed::title("Draft"),
             NewHolding::Physical { location: None },
         )
         .await

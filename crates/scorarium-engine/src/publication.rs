@@ -52,25 +52,58 @@ impl FromStr for PublicationId {
     }
 }
 
-/// The different inputs that can be used to import a draft publication
+/// The inputs that seed a draft publication
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImportSeed {
-    /// A user-entered title
-    Title {
-        title: String,
-        record: Option<ExternalRecord>,
-    },
-    /// An identifier printed on the publication
-    Identifier {
-        identifier: Identifier,
-        record: Option<ExternalRecord>,
-    },
+pub struct ImportSeed {
+    title: Option<String>,
+    subtitle: Option<String>,
+    identifier: Option<Identifier>,
+    record: Option<ExternalRecord>,
+}
+
+impl ImportSeed {
+    /// Seed a draft with a title
+    pub fn title(title: impl Into<String>) -> ImportSeed {
+        ImportSeed {
+            title: Some(title.into()),
+            subtitle: None,
+            identifier: None,
+            record: None,
+        }
+    }
+
+    /// Seed a draft with an identifier printed on the publication
+    pub fn identifier(identifier: Identifier) -> ImportSeed {
+        ImportSeed {
+            title: None,
+            subtitle: None,
+            identifier: Some(identifier),
+            record: None,
+        }
+    }
+
+    /// Add a subtitle, treating a blank subtitle as none
+    pub fn subtitle(self, subtitle: impl Into<String>) -> ImportSeed {
+        ImportSeed {
+            subtitle: Some(subtitle.into()),
+            ..self
+        }
+    }
+
+    /// Link the draft to its record at an external source
+    pub fn record(self, record: ExternalRecord) -> ImportSeed {
+        ImportSeed {
+            record: Some(record),
+            ..self
+        }
+    }
 }
 
 /// The fields of a publication
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
     Title,
+    Subtitle,
     Publisher,
     Year,
     Stars,
@@ -89,6 +122,7 @@ impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Field::Title => "title",
+            Field::Subtitle => "subtitle",
             Field::Publisher => "publisher",
             Field::Year => "year",
             Field::Stars => "stars",
@@ -111,6 +145,7 @@ impl FromStr for Field {
     fn from_str(text: &str) -> Result<Field> {
         Ok(match text {
             "title" => Field::Title,
+            "subtitle" => Field::Subtitle,
             "publisher" => Field::Publisher,
             "year" => Field::Year,
             "stars" => Field::Stars,
@@ -132,6 +167,7 @@ impl FromStr for Field {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proposal {
     Title(String),
+    Subtitle(String),
     Publisher(String),
     Year(Year),
     Identifier(Identifier),
@@ -150,6 +186,7 @@ pub struct Publication {
     created_at: Timestamp,
     last_modified_at: Timestamp,
     title: Option<String>,
+    subtitle: Option<String>,
     publisher: Option<String>,
     year: Option<Year>,
     stars: Option<Stars>,
@@ -168,6 +205,7 @@ struct PublicationRow {
     id: i64,
     library_id: i64,
     title: Option<String>,
+    subtitle: Option<String>,
     publisher: Option<String>,
     year: Option<u16>,
     stars: Option<u8>,
@@ -188,6 +226,10 @@ impl Publication {
     /// Only a draft publication is allowed to be missing a title
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
+    }
+
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
     }
 
     pub fn publisher(&self) -> Option<&str> {
@@ -320,6 +362,7 @@ impl Publication {
             created_at: row.created_at,
             last_modified_at: row.last_modified_at,
             title: row.title,
+            subtitle: row.subtitle,
             publisher: row.publisher,
             year: row.year.map(Year::try_from).transpose()?,
             stars: row.stars.map(Stars::try_from).transpose()?,
@@ -341,7 +384,7 @@ impl Publication {
     ) -> Result<Option<Publication>> {
         let row = sqlx::query_as!(
             PublicationRow,
-            r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+            r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                       note, kind, cover, draft AS "draft: bool",
                       created_at AS "created_at: Timestamp",
                       last_modified_at AS "last_modified_at: Timestamp"
@@ -405,6 +448,11 @@ impl Publication {
         let (mut work, mut person) = (None, None);
         let (field, text) = match &value {
             Proposal::Title(title) => ("title", Some(title.parse::<NonBlank>()?.to_string())),
+            Proposal::Subtitle(subtitle) => {
+                let subtitle = clean_text(Some(subtitle))
+                    .ok_or_else(|| Error::InvalidValue("A subtitle cannot be blank.".into()))?;
+                ("subtitle", Some(subtitle.to_string()))
+            }
             Proposal::Publisher(publisher) => {
                 let publisher = clean_text(Some(publisher))
                     .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
@@ -435,6 +483,7 @@ impl Publication {
             .ok_or(Error::NotFound)?;
         let has = match &value {
             Proposal::Title(_) => current.title.as_deref() == text.as_deref(),
+            Proposal::Subtitle(_) => current.subtitle.as_deref() == text.as_deref(),
             Proposal::Publisher(_) => current.publisher.as_deref() == text.as_deref(),
             Proposal::Year(year) => current.year == Some(*year),
             Proposal::Identifier(identifier) => current.identifiers.contains(identifier),
@@ -604,6 +653,30 @@ impl Publication {
         .await?;
         self.commit_update(tx, Field::Title).await?;
         self.title = Some(title.to_string());
+        self.last_modified_at = last_modified_at;
+        Ok(())
+    }
+
+    /// Set or clear the subtitle, treating a blank subtitle as none
+    ///
+    /// Returns [Error::NotFound] if the publication has been deleted.
+    pub async fn set_subtitle(&mut self, subtitle: Option<&str>) -> Result<()> {
+        let subtitle = clean_text(subtitle);
+        let mut tx = self.engine.begin_write().await?;
+        self.refresh(&mut tx).await?;
+        if self.subtitle.as_deref() == subtitle {
+            return Ok(());
+        }
+        let last_modified_at = sqlx::query_scalar!(
+            r#"UPDATE publication SET subtitle = ?, last_modified_at = unixepoch() WHERE id = ?
+               RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
+            subtitle,
+            self.id.get()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        self.commit_update(tx, Field::Subtitle).await?;
+        self.subtitle = subtitle.map(str::to_string);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -1579,6 +1652,7 @@ impl Entity for Publication {
         drop(conn);
         match proposal.value {
             Proposal::Title(title) => self.set_title(title.parse()?).await?,
+            Proposal::Subtitle(subtitle) => self.set_subtitle(Some(&subtitle)).await?,
             Proposal::Publisher(publisher) => self.set_publisher(Some(&publisher)).await?,
             Proposal::Year(year) => self.set_year(Some(year)).await?,
             Proposal::Identifier(identifier) => self.add_identifier(identifier).await?,
@@ -1755,12 +1829,16 @@ pub(crate) async fn import(
     seed: ImportSeed,
     holding: NewHolding<'_>,
 ) -> Result<Publication> {
-    let (title, identifier, record) = match seed {
-        ImportSeed::Title { title, record } => {
-            (Some(title.parse::<NonBlank>()?.to_string()), None, record)
-        }
-        ImportSeed::Identifier { identifier, record } => (None, Some(identifier), record),
-    };
+    let ImportSeed {
+        title,
+        subtitle,
+        identifier,
+        record,
+    } = seed;
+    let title = title
+        .map(|title| title.parse::<NonBlank>().map(|title| title.to_string()))
+        .transpose()?;
+    let subtitle = clean_text(subtitle.as_deref());
     let link = match record {
         Some(record) => Some((
             record.url(EntityKind::Publication).ok_or_else(|| {
@@ -1777,9 +1855,10 @@ pub(crate) async fn import(
     let mut tx = engine.begin_write().await?;
     let library = library.get();
     let id = sqlx::query_scalar!(
-        "INSERT INTO publication (library_id, title, draft) VALUES (?, ?, 1) RETURNING id AS \"id!\"",
+        "INSERT INTO publication (library_id, title, subtitle, draft) VALUES (?, ?, ?, 1) RETURNING id AS \"id!\"",
         library,
-        title
+        title,
+        subtitle
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -1830,7 +1909,7 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     let library = library.get();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+        r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                   note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1855,7 +1934,7 @@ pub(crate) async fn candidates(
     let include_tags = scope.includes_tags();
     let rows = sqlx::query!(
         r#"SELECT p.id AS "id!", coalesce(p.title, '') AS "name!: String",
-                  coalesce(p.title, '') || ' '
+                  coalesce(p.title, '') || ' ' || coalesce(p.subtitle, '') || ' '
                   || coalesce((SELECT group_concat(person.name, ' ')
                                FROM publication_contributor c JOIN person ON person.id = c.person_id
                                WHERE c.publication_id = p.id), '') || ' '
@@ -1890,7 +1969,8 @@ pub(crate) async fn containing(engine: &Engine, work: WorkId) -> Result<Vec<Publ
     let work = work.get();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.subtitle,
+                  publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
                   publication.note, publication.kind, publication.cover,
                   publication.draft AS "draft: bool",
@@ -1920,7 +2000,7 @@ pub(crate) async fn with_contributor(
     // A person can contribute in several roles, so a join would repeat the publication
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT id, library_id, title, publisher, year AS "year: u16", stars AS "stars: u8",
+        r#"SELECT id, library_id, title, subtitle, publisher, year AS "year: u16", stars AS "stars: u8",
                   note, kind, cover, draft AS "draft: bool",
                   created_at AS "created_at: Timestamp",
                   last_modified_at AS "last_modified_at: Timestamp"
@@ -1949,7 +2029,8 @@ pub(crate) async fn tagged(
     let tag = tag.as_str();
     let rows = sqlx::query_as!(
         PublicationRow,
-        r#"SELECT publication.id, publication.library_id, publication.title, publication.publisher,
+        r#"SELECT publication.id, publication.library_id, publication.title, publication.subtitle,
+                  publication.publisher,
                   publication.year AS "year: u16", publication.stars AS "stars: u8",
                   publication.note, publication.kind, publication.cover,
                   publication.draft AS "draft: bool",
@@ -2031,6 +2112,7 @@ async fn from_row(
 ) -> Result<entity::Proposal<Publication>> {
     let proposed = match row.field.as_str() {
         "title" => Proposal::Title(stored_value(row.proposed_value, row.id)?),
+        "subtitle" => Proposal::Subtitle(stored_value(row.proposed_value, row.id)?),
         "publisher" => Proposal::Publisher(stored_value(row.proposed_value, row.id)?),
         "year" => Proposal::Year(stored_value(row.proposed_value, row.id)?.parse()?),
         "identifier" => {
@@ -2395,10 +2477,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical {
                     location: Some("Desk"),
                 },
@@ -2484,10 +2563,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2531,10 +2607,7 @@ mod tests {
             .unwrap();
         let mut album = library
             .import(
-                ImportSeed::Title {
-                    title: "Russian piano album".into(),
-                    record: None,
-                },
+                ImportSeed::title("Russian piano album"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2559,10 +2632,7 @@ mod tests {
             .unwrap();
         let mut masterpieces = library
             .import(
-                ImportSeed::Title {
-                    title: "Rachmaninoff masterpieces for solo piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Rachmaninoff masterpieces for solo piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2603,20 +2673,14 @@ mod tests {
             .unwrap();
         let publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Pro Git".into(),
-                    record: None,
-                },
+                ImportSeed::title("Pro Git"),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut other = library
             .import(
-                ImportSeed::Title {
-                    title: "Scott Chacon".into(),
-                    record: None,
-                },
+                ImportSeed::title("Scott Chacon"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2666,20 +2730,14 @@ mod tests {
             .unwrap();
         let mut a = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes, book one".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes, book one"),
                 NewHolding::Physical { location: None },
             )
             .await
             .unwrap();
         let mut b = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes, book two".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes, book two"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2719,10 +2777,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2757,10 +2812,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Preludes".into(),
-                    record: None,
-                },
+                ImportSeed::title("Preludes"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2804,10 +2856,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2859,10 +2908,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Three gymnopedies for the piano".into(),
-                    record: None,
-                },
+                ImportSeed::title("Three gymnopedies for the piano"),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -2894,10 +2940,7 @@ mod tests {
         let record = ExternalRecord::new(LinkKind::OpenLibrary, "OL7636066M");
         let mut publication = library
             .import(
-                ImportSeed::Identifier {
-                    identifier: isbn.clone(),
-                    record: Some(record.clone()),
-                },
+                ImportSeed::identifier(isbn.clone()).record(record.clone()),
                 NewHolding::Physical { location: None },
             )
             .await
@@ -3070,13 +3113,7 @@ mod tests {
             })
         };
         let mut publication = library
-            .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
-                upload("score.pdf"),
-            )
+            .import(ImportSeed::title("Gymnopedies"), upload("score.pdf"))
             .await
             .unwrap();
         let assets = dir
@@ -3129,10 +3166,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
+                ImportSeed::title("Gymnopedies"),
                 NewHolding::Physical {
                     location: Some("Piano bench"),
                 },
@@ -3185,10 +3219,7 @@ mod tests {
             .unwrap();
         let mut publication = library
             .import(
-                ImportSeed::Title {
-                    title: "Gymnopedies".into(),
-                    record: None,
-                },
+                ImportSeed::title("Gymnopedies"),
                 NewHolding::Physical { location: None },
             )
             .await

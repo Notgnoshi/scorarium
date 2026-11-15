@@ -16,7 +16,12 @@ async fn edit_derives_the_sort_name() {
             library.id(),
             person.id()
         ))
-        .form(&[("name", "Erik Satie"), ("sort_name", "")])
+        .form(&[
+            ("name", "Erik Satie"),
+            ("sort_name", ""),
+            ("birth_year", ""),
+            ("death_year", ""),
+        ])
         .await;
     response.assert_status(StatusCode::SEE_OTHER);
     response.assert_header(
@@ -37,7 +42,12 @@ async fn back_is_honored_only_for_same_site_paths() {
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
     let person = library.people(None).await.unwrap().pop().unwrap();
     let edit = format!("/library/{}/person/{}/edit", library.id(), person.id());
-    let form = [("name", person.name()), ("sort_name", "")];
+    let form = [
+        ("name", person.name()),
+        ("sort_name", ""),
+        ("birth_year", ""),
+        ("death_year", ""),
+    ];
     let response = app
         .server
         .post(&format!("{edit}?back=https://example.com"))
@@ -89,13 +99,21 @@ async fn a_staged_profile_picture_is_saved_with_the_form() {
     let id = staged.id.to_string();
     assert!(person.profile().is_none());
 
-    let form = [("name", person.name()), ("sort_name", ""), ("picture", &id)];
+    let form = [
+        ("name", person.name()),
+        ("sort_name", ""),
+        ("birth_year", ""),
+        ("death_year", ""),
+        ("picture", &id),
+    ];
     app.server.post(&edit).form(&form).await;
     assert!(load().await.profile().is_some());
 
     let form = [
         ("name", person.name()),
         ("sort_name", ""),
+        ("birth_year", ""),
+        ("death_year", ""),
         ("remove_picture", "1"),
     ];
     app.server.post(&edit).form(&form).await;
@@ -117,6 +135,8 @@ async fn unfetched_picture_text_refuses_the_form() {
         .form(&[
             ("name", "Renamed"),
             ("sort_name", ""),
+            ("birth_year", ""),
+            ("death_year", ""),
             ("picture_url", "https://example.com/satie.png"),
         ])
         .await;
@@ -151,6 +171,8 @@ async fn save_deletes_the_proposals_that_were_accepted_or_rejected() {
     let form = [
         ("name".to_owned(), "A. Satie"),
         ("sort_name".to_owned(), ""),
+        ("birth_year".to_owned(), ""),
+        ("death_year".to_owned(), ""),
         (format!("proposal[{accepted}]"), "accepted"),
         (format!("proposal[{rejected}]"), "rejected"),
         (format!("proposal[{pending}]"), "pending"),
@@ -186,6 +208,8 @@ async fn reject_remaining_rejects_only_the_posted_proposals() {
     let form = [
         ("name".to_owned(), person.name().to_owned()),
         ("sort_name".to_owned(), String::new()),
+        ("birth_year".to_owned(), String::new()),
+        ("death_year".to_owned(), String::new()),
         (format!("proposal[{first}]"), "pending".to_owned()),
         (format!("proposal[{second}]"), "pending".to_owned()),
         ("reject_remaining".to_owned(), "1".to_owned()),
@@ -207,14 +231,24 @@ async fn enrich_saves_the_form_and_then_starts_enrichment() {
 
     app.server
         .post(&enrich)
-        .form(&[("name", " "), ("sort_name", "")])
+        .form(&[
+            ("name", " "),
+            ("sort_name", ""),
+            ("birth_year", ""),
+            ("death_year", ""),
+        ])
         .await;
     assert!(person.enrichment().is_none());
 
     let response = app
         .server
         .post(&enrich)
-        .form(&[("name", "Erik Satie"), ("sort_name", "")])
+        .form(&[
+            ("name", "Erik Satie"),
+            ("sort_name", ""),
+            ("birth_year", ""),
+            ("death_year", ""),
+        ])
         .await;
 
     response.assert_status(StatusCode::SEE_OTHER);

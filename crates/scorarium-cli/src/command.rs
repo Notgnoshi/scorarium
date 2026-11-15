@@ -241,6 +241,11 @@ pub(crate) enum PublicationSet {
         #[arg(value_name = "title")]
         title: NonBlank,
     },
+    /// The subtitle
+    Subtitle {
+        #[arg(value_name = "subtitle")]
+        subtitle: String,
+    },
     /// The publisher
     Publisher {
         #[arg(value_name = "publisher")]
@@ -270,6 +275,8 @@ pub(crate) enum PublicationSet {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum PublicationClear {
+    /// The subtitle
+    Subtitle,
     /// The publisher
     Publisher,
     /// The year of publication
@@ -424,6 +431,11 @@ pub(crate) enum WorkSet {
         #[arg(value_name = "title")]
         title: NonBlank,
     },
+    /// The subtitle
+    Subtitle {
+        #[arg(value_name = "subtitle")]
+        subtitle: String,
+    },
     /// The musical key
     Key {
         #[arg(value_name = "key")]
@@ -458,6 +470,8 @@ pub(crate) enum WorkSet {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum WorkClear {
+    /// The subtitle
+    Subtitle,
     /// The musical key
     Key,
     /// The time signature
@@ -557,6 +571,12 @@ pub(crate) enum PersonCommand {
         #[command(subcommand)]
         field: PersonSet,
     },
+    /// Clear an optional person field
+    #[command(subcommand_value_name = "field")]
+    Clear {
+        #[command(subcommand)]
+        field: PersonClear,
+    },
     /// Add a value to a person
     #[command(subcommand_value_name = "field")]
     Add {
@@ -605,6 +625,24 @@ pub(crate) enum PersonSet {
         #[arg(value_name = "sort-name")]
         sort_name: NonBlank,
     },
+    /// The year of birth
+    BirthYear {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+    /// The year of death
+    DeathYear {
+        #[arg(value_name = "year")]
+        year: Year,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PersonClear {
+    /// The year of birth
+    BirthYear,
+    /// The year of death
+    DeathYear,
 }
 
 #[derive(Debug, Subcommand)]

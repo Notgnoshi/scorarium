@@ -4,13 +4,14 @@ use scorarium_engine::search::SearchHit;
 use scorarium_engine::value::{Classification, Tag};
 use scorarium_engine::work::CatalogNumber;
 
-use crate::page::library::entity::group_contributors;
+use crate::page::library::entity::{group_contributors, lifespan};
 use crate::widget::picture::Picture;
 
 pub(crate) struct Hit {
     pub library: LibraryId,
     pub href: String,
     pub title: String,
+    pub subtitle: Option<String>,
     pub detail: Option<String>,
     pub kind: EntityKind,
     pub classification: Option<Classification>,
@@ -42,6 +43,7 @@ impl Hit {
                 library,
                 href: format!("/library/{library}/publication/{}", publication.id()),
                 title: publication.title().unwrap_or("Untitled").to_owned(),
+                subtitle: publication.subtitle().map(ToOwned::to_owned),
                 detail: detail(publication.contributors(), &[]),
                 kind: EntityKind::Publication,
                 classification: publication.classification(),
@@ -53,6 +55,7 @@ impl Hit {
                 library,
                 href: format!("/library/{library}/work/{}", work.id()),
                 title: work.title().to_owned(),
+                subtitle: work.subtitle().map(ToOwned::to_owned),
                 detail: detail(work.contributors(), work.catalog_numbers()),
                 kind: EntityKind::Work,
                 classification: work.classification(),
@@ -64,7 +67,8 @@ impl Hit {
                 library,
                 href: format!("/library/{library}/person/{}", person.id()),
                 title: person.name().to_owned(),
-                detail: None,
+                subtitle: None,
+                detail: lifespan(person.birth_year(), person.death_year()),
                 kind: EntityKind::Person,
                 classification: None,
                 library_name,

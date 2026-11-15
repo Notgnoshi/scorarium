@@ -28,7 +28,12 @@
                         <td>
                             <div class="d-flex align-items-center gap-2">
                                 {{ publication.picture }}
-                                <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                                <div>
+                                    <a href="/library/{{ id }}/publication/{{ publication.id }}">{{ publication.title }}</a>
+                                    {% if let Some(subtitle) = publication.subtitle %}
+                                        <div class="small text-body-secondary">{{ subtitle }}</div>
+                                    {% endif %}
+                                </div>
                             </div>
                         </td>
                         <td>

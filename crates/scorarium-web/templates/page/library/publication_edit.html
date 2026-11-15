@@ -27,6 +27,17 @@
                         </div>
                     </div>
                     <div class="row mb-3">
+                        <label class="col-sm-2 col-form-label" for="subtitle">Subtitle</label>
+                        <div class="col-sm-10">
+                            <input class="form-control"
+                                   type="text"
+                                   id="subtitle"
+                                   name="subtitle"
+                                   value="{{ form.subtitle }}">
+                            {{ subtitle_candidates }}
+                        </div>
+                    </div>
+                    <div class="row mb-3">
                         <span class="col-sm-2 col-form-label">Contributors</span>
                         <div class="col-sm-10">{{ contributors }}</div>
                     </div>

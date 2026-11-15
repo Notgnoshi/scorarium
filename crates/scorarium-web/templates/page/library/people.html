@@ -20,7 +20,12 @@
                     <td>
                         <div class="d-flex align-items-center gap-2">
                             {{ crate::widget::picture::Picture::summary(*library, person).thumbnail() }}
-                            <a href="/library/{{ library }}/person/{{ person.id }}">{{ person.name }}</a>
+                            <div>
+                                <a href="/library/{{ library }}/person/{{ person.id }}">{{ person.name }}</a>
+                                {% if let Some(lifespan) = crate::page::library::entity::lifespan(*person.birth_year, *person.death_year) %}
+                                    <div class="small text-body-secondary">{{ lifespan }}</div>
+                                {% endif %}
+                            </div>
                         </div>
                     </td>
                     <td>{{ person.roles|join(", ") }}</td>

@@ -159,10 +159,15 @@ async fn import_attaches_a_picked_candidates_record() {
         .form(&[
             ("text", "Pro Git"),
             ("record", record),
+            ("subtitle", "Everything You Need to Know About Git"),
             ("holding[0][location]", ""),
         ])
         .await;
     let draft = newest(&library).await;
+    assert_eq!(
+        draft.subtitle(),
+        Some("Everything You Need to Know About Git")
+    );
     let links: Vec<String> = draft
         .links()
         .iter()

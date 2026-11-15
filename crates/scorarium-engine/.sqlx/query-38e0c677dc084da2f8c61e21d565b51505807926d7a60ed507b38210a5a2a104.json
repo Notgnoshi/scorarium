@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, name, sort_name, profile, draft AS \"draft: bool\",\n                      created_at AS \"created_at: Timestamp\",\n                      last_modified_at AS \"last_modified_at: Timestamp\"\n               FROM person WHERE id = ?",
+  "query": "SELECT id, library_id, name, sort_name,\n                      birth_year AS \"birth_year: u16\", death_year AS \"death_year: u16\",\n                      profile, draft AS \"draft: bool\",\n                      created_at AS \"created_at: Timestamp\",\n                      last_modified_at AS \"last_modified_at: Timestamp\"\n               FROM person WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -48,8 +48,30 @@
         }
       },
       {
-        "name": "profile",
+        "name": "birth_year: u16",
         "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "birth_year"
+          }
+        }
+      },
+      {
+        "name": "death_year: u16",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "person",
+            "name": "death_year"
+          }
+        }
+      },
+      {
+        "name": "profile",
+        "ordinal": 6,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +82,7 @@
       },
       {
         "name": "draft: bool",
-        "ordinal": 5,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -71,7 +93,7 @@
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 6,
+        "ordinal": 8,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,7 +104,7 @@
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 7,
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -101,10 +123,12 @@
       false,
       false,
       true,
+      true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "5fb8771eb4c2d7a78969592ca13e2c3e0b8ba6038126632746d409dcd9ff3363"
+  "hash": "38e0c677dc084da2f8c61e21d565b51505807926d7a60ed507b38210a5a2a104"
 }

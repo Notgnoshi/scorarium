@@ -9,6 +9,7 @@ use scorarium_test::TestApp;
 fn save<'a>(work: &'a Work, extra: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
     let mut form = vec![
         ("title", work.title()),
+        ("subtitle", ""),
         ("key", ""),
         ("time_signature", ""),
         ("instrumentation", ""),

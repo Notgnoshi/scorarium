@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, library_id, title, publisher, year AS \"year: u16\", stars AS \"stars: u8\",\n                  note, kind, cover, draft AS \"draft: bool\",\n                  created_at AS \"created_at: Timestamp\",\n                  last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM publication WHERE library_id = ? ORDER BY id",
+  "query": "SELECT work.id, work.library_id, work.title, work.subtitle, work.key, work.time_signature,\n                  work.instrumentation, work.stars AS \"stars: u8\", work.note, work.kind,\n                  work.draft AS \"draft: bool\",\n                  work.created_at AS \"created_at: Timestamp\",\n                  work.last_modified_at AS \"last_modified_at: Timestamp\"\n           FROM work JOIN tag ON tag.work_id = work.id\n           WHERE tag.library_id = ? AND tag.tag = ?\n           ORDER BY work.id",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "id"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "library_id"
           }
         }
@@ -31,115 +31,127 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "title"
           }
         }
       },
       {
-        "name": "publisher",
+        "name": "subtitle",
         "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "publication",
-            "name": "publisher"
+            "table": "work",
+            "name": "subtitle"
           }
         }
       },
       {
-        "name": "year: u16",
+        "name": "key",
         "ordinal": 4,
-        "type_info": "Integer",
+        "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "publication",
-            "name": "year"
+            "table": "work",
+            "name": "key"
+          }
+        }
+      },
+      {
+        "name": "time_signature",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "time_signature"
+          }
+        }
+      },
+      {
+        "name": "instrumentation",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "instrumentation"
           }
         }
       },
       {
         "name": "stars: u8",
-        "ordinal": 5,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "stars"
           }
         }
       },
       {
         "name": "note",
-        "ordinal": 6,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "note"
           }
         }
       },
       {
         "name": "kind",
-        "ordinal": 7,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "kind"
           }
         }
       },
       {
-        "name": "cover",
-        "ordinal": 8,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "publication",
-            "name": "cover"
-          }
-        }
-      },
-      {
         "name": "draft: bool",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "draft"
           }
         }
       },
       {
         "name": "created_at: Timestamp",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "created_at"
           }
         }
       },
       {
         "name": "last_modified_at: Timestamp",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "publication",
+            "table": "work",
             "name": "last_modified_at"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
+      false,
       false,
       false,
       true,
@@ -154,5 +166,5 @@
       false
     ]
   },
-  "hash": "61765b3e4db7dc0f73ba51f9e03a9bae1fde001219974afb3f6ea692740226ea"
+  "hash": "feb115a5e5c00f788cf71462bb2e90f67b934d5853e5992eb69d4f2a1d7a98b1"
 }

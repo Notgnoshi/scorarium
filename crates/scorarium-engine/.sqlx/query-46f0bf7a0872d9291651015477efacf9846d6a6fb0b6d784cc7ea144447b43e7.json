@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO publication (library_id, title, draft) VALUES (?, ?, 1) RETURNING id AS \"id!\"",
+  "query": "INSERT INTO publication (library_id, title, subtitle, draft) VALUES (?, ?, ?, 1) RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       null
     ]
   },
-  "hash": "90dab6502a221340fcdf3add84c24047eb86e4463c5b7d9234ae87e08be10145"
+  "hash": "46f0bf7a0872d9291651015477efacf9846d6a6fb0b6d784cc7ea144447b43e7"
 }

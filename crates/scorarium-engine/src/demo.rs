@@ -20,6 +20,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         .add_identifier(Identifier::new(Isbn, "978-1-68050-127-8")?)
         .await?;
     practical_vim
+        .set_subtitle(Some("Edit Text at the Speed of Thought"))
+        .await?;
+    practical_vim
         .set_publisher(Some("Pragmatic Bookshelf"))
         .await?;
     practical_vim.set_year(Some(Year::try_from(2015)?)).await?;
@@ -77,6 +80,9 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     let mut ambrose_bierce = bierce
         .create_contributor("Ambrose Bierce".parse()?, "author".parse()?)
         .await?;
+    ambrose_bierce
+        .set_birth_year(Some(Year::try_from(1842)?))
+        .await?;
     for url in [
         "https://www.wikidata.org/wiki/Q191050",
         "https://d-nb.info/gnd/115511474",
@@ -93,6 +99,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         writing
             .add_contributor(ambrose_bierce.id(), "author".parse()?)
             .await?;
+        if title == "In the Midst of Life" {
+            writing
+                .set_subtitle(Some("Tales of Soldiers and Civilians"))
+                .await?;
+        }
         if title == "The Devil's Dictionary" {
             writing
                 .add_link("https://www.gutenberg.org/ebooks/972".parse()?)
@@ -112,17 +123,19 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     for tag in ["anthology", "russian"] {
         russian_album.add_tag(tag.parse()?).await?;
     }
-    for composer in [
-        "Dmitri Kabalevsky",
-        "Modest Mussorgsky",
-        "Sergei Prokofiev",
-        "Dmitri Shostakovich",
-        "Pyotr Ilyich Tchaikovsky",
-        "Sergei Rachmaninoff",
+    for (composer, birth, death) in [
+        ("Dmitri Kabalevsky", 1904, 1987),
+        ("Modest Mussorgsky", 1839, 1881),
+        ("Sergei Prokofiev", 1891, 1953),
+        ("Dmitri Shostakovich", 1906, 1975),
+        ("Pyotr Ilyich Tchaikovsky", 1840, 1893),
+        ("Sergei Rachmaninoff", 1873, 1943),
     ] {
-        russian_album
+        let mut person = russian_album
             .create_contributor(composer.parse()?, "composer".parse()?)
             .await?;
+        person.set_birth_year(Some(Year::try_from(birth)?)).await?;
+        person.set_death_year(Some(Year::try_from(death)?)).await?;
     }
     let mut rachmaninoff = sheet_music
         .people(Some(&"composer".parse()?))
@@ -256,9 +269,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     gymnopedies
         .add_link("https://imslp.org/wiki/3_Gymnop%C3%A9dies_(Satie,_Erik)".parse()?)
         .await?;
-    let satie = gymnopedies
+    let mut satie = gymnopedies
         .create_contributor("Erik Satie".parse()?, "composer".parse()?)
         .await?;
+    satie.set_birth_year(Some(Year::try_from(1866)?)).await?;
+    satie.set_death_year(Some(Year::try_from(1925)?)).await?;
     for (number, key) in [(1, "D major"), (2, "C major"), (3, "A minor")] {
         let title = format!("Gymnopedie No. {number}");
         let mut gymnopedie =
@@ -360,7 +375,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
     pro_git
         .propose(
             source,
-            publication::Proposal::Title("Pro Git: Everything You Need to Know About Git".into()),
+            publication::Proposal::Subtitle("Everything You Need to Know About Git".into()),
         )
         .await?;
     pro_git
@@ -400,6 +415,25 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
             person::Proposal::Link("https://en.wikipedia.org/wiki/Erik_Satie".parse()?),
         )
         .await?;
+    ambrose_bierce
+        .propose(source, person::Proposal::DeathYear(Year::try_from(1914)?))
+        .await?;
+
+    let mut waltzes = create(&sheet_music, "Viennese waltzes and marches", None, Music).await?;
+    for (title, birth, death) in [
+        ("Radetzky March", 1804, 1849),
+        ("The Blue Danube", 1825, 1899),
+    ] {
+        let mut strauss = waltzes
+            .create_contributor("Johann Strauss".parse()?, "composer".parse()?)
+            .await?;
+        strauss.set_birth_year(Some(Year::try_from(birth)?)).await?;
+        strauss.set_death_year(Some(Year::try_from(death)?)).await?;
+        let mut work = waltzes.create_work(title.parse()?).await?;
+        work.add_contributor(strauss.id(), "composer".parse()?)
+            .await?;
+    }
+    waltzes.commit().await?;
 
     Ok(())
 }
@@ -412,13 +446,7 @@ async fn create(
     classification: Classification,
 ) -> Result<Publication> {
     let mut publication = library
-        .import(
-            ImportSeed::Title {
-                title: title.into(),
-                record: None,
-            },
-            NewHolding::Physical { location },
-        )
+        .import(ImportSeed::title(title), NewHolding::Physical { location })
         .await?;
     publication.set_classification(classification).await?;
     Ok(publication)

@@ -4,7 +4,9 @@
         {% call suggestion::fill(id, entry.text, entry.fill) %}
             {{ entry.text }}
             {% if entry.draft %}<span class="badge small text-bg-secondary">Draft</span>{% endif %}
-            {% if let Some(detail) = entry.detail %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
+            {% if let Some(lifespan) = entry.lifespan %}<span class="small text-body-secondary">{{ lifespan }}</span>{% endif %}
+            {% if let Some(subtitle) = entry.subtitle %}<span class="d-block small text-body-secondary">{{ subtitle }}</span>{% endif %}
+            {% if let Some(detail) = entry.detail %}<span class="d-block small text-body-secondary">{{ detail }}</span>{% endif %}
         {% endcall %}
     {% else %}
         {% call suggestion::value(entry.text) %}

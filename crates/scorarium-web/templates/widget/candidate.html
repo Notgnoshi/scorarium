@@ -8,6 +8,7 @@
     </span>
     <span class="d-flex flex-column">
         <span>{{ title }}</span>
+        {% if let Some(subtitle) = subtitle %}<span class="small text-body-secondary">{{ subtitle }}</span>{% endif %}
         {% if !detail.is_empty() %}<span class="small text-body-secondary">{{ detail }}</span>{% endif %}
         <span class="small text-body-secondary">From {{ source }}</span>
     </span>

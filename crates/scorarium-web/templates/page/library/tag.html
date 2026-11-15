@@ -26,6 +26,9 @@
                                 {{ hit.picture }}
                                 <div>
                                     <a href="{{ hit.href }}">{{ hit.title }}</a>
+                                    {% if let Some(subtitle) = hit.subtitle %}
+                                        <div class="small text-body-secondary">{{ subtitle }}</div>
+                                    {% endif %}
                                     {% if let Some(detail) = hit.detail %}
                                         <div class="small text-body-secondary">{{ detail }}</div>
                                     {% endif %}

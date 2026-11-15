@@ -527,10 +527,7 @@ mod tests {
             .await
             .unwrap();
         let import = async |title: &str| {
-            let seed = ImportSeed::Title {
-                title: title.into(),
-                record: None,
-            };
+            let seed = ImportSeed::title(title);
             let holding = NewHolding::Physical { location: None };
             library.import(seed, holding).await.unwrap()
         };

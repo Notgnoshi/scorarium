@@ -7,6 +7,7 @@
           action="/library/{{ library }}/import">
         <fieldset class="box">
             <legend>Publication</legend>
+            <input type="hidden" name="subtitle" value="{{ subtitle }}">
             {{ refusals }}
             <label class="form-label" for="text">ISBN, ISMN, or title</label>
             {{ text }}

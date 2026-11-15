@@ -15,6 +15,7 @@
                        title="Edit person"><i class="bi bi-pencil"></i> Edit</a>
                 {% endif %}
             </h1>
+            {% if let Some(lifespan) = lifespan %}<p class="text-body-secondary">{{ lifespan }}</p>{% endif %}
             <p class="text-body-secondary">{{ sort_name }}</p>
             {% if !links.is_empty() %}
                 <div class="d-flex flex-wrap gap-3">
@@ -47,6 +48,9 @@
                         <td>
                             <a href="/library/{{ library }}/publication/{{ publication.id }}">{{ publication.title }}</a>
                             {% if publication.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                            {% if let Some(subtitle) = publication.subtitle %}
+                                <div class="small text-body-secondary">{{ subtitle }}</div>
+                            {% endif %}
                         </td>
                         <td>{{ publication.roles|join(", ") }}</td>
                         <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
@@ -58,6 +62,9 @@
                                 {% if work.draft %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
                                 {% if let Some(number) = work.catalog_number %}
                                     <span class="text-body-secondary">{{ number }}</span>
+                                {% endif %}
+                                {% if let Some(subtitle) = work.subtitle %}
+                                    <div class="small text-body-secondary">{{ subtitle }}</div>
                                 {% endif %}
                             </td>
                             <td>{{ work.roles|join(", ") }}</td>
