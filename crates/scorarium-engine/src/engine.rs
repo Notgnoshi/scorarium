@@ -38,7 +38,9 @@ impl EngineOptions {
             .read_timeout(Duration::from_secs(30))
             .build()
             .map_err(eyre::Report::new)?;
-        let client = Client::new(user_agent).map_err(Error::Generic)?;
+        let client = Client::builder(user_agent)
+            .build()
+            .map_err(Error::Generic)?;
         Ok(EngineOptions {
             migrate_on_startup: false,
             client,
@@ -77,7 +79,6 @@ struct EngineInner {
     sessions: SessionStore,
     login_throttle: tokio::sync::Mutex<LoginThrottle>,
     demo: bool,
-    _temp_dir: Option<tempfile::TempDir>,
 }
 
 impl Engine {
@@ -90,28 +91,20 @@ impl Engine {
             options.migrate_on_startup,
             options.client,
             options.downloads,
-            None,
             false,
         )
         .await
     }
 
-    /// Open a temporary engine filled with the demo libraries
+    /// Open the engine in `data_dir` and fill it with the demo libraries
     ///
-    /// The temporary directory is cleaned up on shutdown. A fresh database is always migrated, so
-    /// [EngineOptions::migrate_on_startup] has no effect.
-    pub async fn demo(options: EngineOptions) -> Result<Engine> {
-        let dir = tempfile::tempdir()?;
-        let data_dir = dir.path().to_path_buf();
-        let engine = Engine::new(
-            &data_dir,
-            true,
-            options.client,
-            options.downloads,
-            Some(dir),
-            true,
-        )
-        .await?;
+    /// Use a throwaway `data_dir`, because [Engine::reset_demo] will deletes everything in the
+    /// directory you pass. The database is always migrated, so [EngineOptions::migrate_on_startup]
+    /// has no effect.
+    pub async fn demo(data_dir: impl AsRef<Path>, options: EngineOptions) -> Result<Engine> {
+        let data_dir = data_dir.as_ref();
+        std::fs::create_dir_all(data_dir)?;
+        let engine = Engine::new(data_dir, true, options.client, options.downloads, true).await?;
         // Silence logs while awaiting the demo population future to avoid startup spam.
         crate::demo::populate(&engine)
             .with_subscriber(NoSubscriber::new())
@@ -124,7 +117,6 @@ impl Engine {
         migrate_on_startup: bool,
         client: Client,
         downloads: reqwest::Client,
-        temp_dir: Option<tempfile::TempDir>,
         demo: bool,
     ) -> Result<Engine> {
         let pool = open_database(data_dir, migrate_on_startup).await?;
@@ -140,7 +132,6 @@ impl Engine {
                 sessions: SessionStore::default(),
                 login_throttle: tokio::sync::Mutex::default(),
                 demo,
-                _temp_dir: temp_dir,
             }),
         })
     }

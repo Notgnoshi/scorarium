@@ -1,12 +1,14 @@
-mod cache;
+mod disk_cache;
 #[cfg(feature = "fake-transport")]
 pub mod fake;
 mod log;
 pub mod open_library;
 mod rate_limited_client;
+mod response_file;
 mod transport;
 
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +16,7 @@ use std::time::Duration;
 use eyre::WrapErr;
 use http::HeaderValue;
 
-use crate::cache::Cache;
+use crate::disk_cache::DiskCache;
 use crate::log::CallLog;
 pub use crate::log::{CallHistory, CallRecord, Outcome};
 use crate::open_library::OpenLibrary;
@@ -119,7 +121,6 @@ pub struct SourceStatus {
 
 /// The handle every source client is reached through.
 pub struct Client {
-    cache: Arc<Cache>,
     log: Arc<CallLog>,
     open_library: RateLimitedClient,
 }
@@ -131,27 +132,12 @@ impl fmt::Debug for Client {
 }
 
 impl Client {
-    pub fn new(user_agent: UserAgent) -> eyre::Result<Client> {
-        let transport = ReqwestTransport::new(&user_agent)?;
-        Ok(Client::with_transport(user_agent, Arc::new(transport)))
-    }
-
-    /// Builds a client over a transport of the caller's choosing
-    ///
-    /// The UserAgent is still required because the API clients can base their rate limits on it.
-    pub fn with_transport(user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
-        let log = Arc::new(CallLog::default());
-        let cache = Arc::new(Cache::new(log.clone()));
-        Client {
-            open_library: RateLimitedClient::spawn(
-                Source::OpenLibrary.name(),
-                transport.clone(),
-                open_library::limits(&user_agent),
-                cache.clone(),
-                log.clone(),
-            ),
-            cache,
-            log,
+    /// Start building a client that identifies itself to the sources with `user_agent`.
+    pub fn builder(user_agent: UserAgent) -> ClientBuilder {
+        ClientBuilder {
+            user_agent,
+            transport: None,
+            cache_dir: None,
         }
     }
 
@@ -169,13 +155,55 @@ impl Client {
     pub fn open_library(&self) -> OpenLibrary<'_> {
         OpenLibrary::new(&self.open_library)
     }
+}
 
-    /// Forgets every response fetched so far.
-    ///
-    /// Responses are kept for the lifetime of the process, so this is the only way to pick up a
-    /// correction made upstream, or to prevent running out of memory. Scorarium doesn't attempt to
-    /// keep its metadata up-to-date against the open APIs; only setting the metadata at import time.
-    pub fn clear_cache(&self) {
-        self.cache.clear();
+/// Configures a [Client] before it is built.
+pub struct ClientBuilder {
+    user_agent: UserAgent,
+    transport: Option<Arc<dyn Transport>>,
+    cache_dir: Option<PathBuf>,
+}
+
+impl fmt::Debug for ClientBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClientBuilder").finish_non_exhaustive()
+    }
+}
+
+impl ClientBuilder {
+    /// Send every request through `transport` instead of a [ReqwestTransport].
+    pub fn transport(mut self, transport: impl Transport + 'static) -> ClientBuilder {
+        self.transport = Some(Arc::new(transport));
+        self
+    }
+
+    /// Cache responses in `dir`. A client without a cache directory sends every request to its
+    /// transport.
+    pub fn cache_dir(mut self, dir: impl Into<PathBuf>) -> ClientBuilder {
+        self.cache_dir = Some(dir.into());
+        self
+    }
+
+    /// Build the client.
+    pub fn build(self) -> eyre::Result<Client> {
+        let transport = match self.transport {
+            Some(transport) => transport,
+            None => Arc::new(ReqwestTransport::new(&self.user_agent)?),
+        };
+        let log = Arc::new(CallLog::default());
+        let cache = match self.cache_dir {
+            Some(dir) => Some(Arc::new(DiskCache::open(dir, log.clone())?)),
+            None => None,
+        };
+        Ok(Client {
+            open_library: RateLimitedClient::spawn(
+                Source::OpenLibrary.name(),
+                transport,
+                open_library::limits(&self.user_agent),
+                cache,
+                log.clone(),
+            ),
+            log,
+        })
     }
 }

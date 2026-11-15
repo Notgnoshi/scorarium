@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use scorarium_cli::{LogWriter, ShellArgs};
-use scorarium_client::UserAgent;
+use scorarium_client::{Client, UserAgent};
 use scorarium_engine::{Engine, EngineOptions};
 use scorarium_web::ServeArgs;
 use tracing::level_filters::LevelFilter;
@@ -16,7 +16,7 @@ struct Args {
     #[arg(short, long, global = true, default_value = "debug")]
     log_level: LevelFilter,
 
-    /// Directory holding the database and managed files. Created if missing.
+    /// Directory holding the database and managed files. Created if missing. Ignored in --demo mode
     #[arg(
         short,
         long,
@@ -26,7 +26,13 @@ struct Args {
     )]
     data_dir: PathBuf,
 
-    /// Use an in-memory demo library instead of the data directory.
+    /// Directory holding cached API responses. Created if missing.
+    ///
+    /// Defaults to `cache` inside the data directory.
+    #[arg(long, global = true, env = "SCORARIUM_CACHE_DIR")]
+    cache_dir: Option<PathBuf>,
+
+    /// Use a demo library in a temporary data directory. Overrides --data-dir
     #[arg(long, global = true)]
     demo: bool,
 
@@ -79,26 +85,38 @@ async fn main() -> color_eyre::Result<()> {
         tracing::warn!("some enrichment APIs grant higher rate limits when a contact email is set");
     }
 
-    if matches!(args.command, Command::Shell(_)) && !args.demo && !args.data_dir.is_dir() {
-        color_eyre::eyre::bail!("data directory {} does not exist", args.data_dir.display());
+    let temp_dir = args.demo.then(tempfile::tempdir).transpose()?;
+    let data_dir = match &temp_dir {
+        Some(dir) => dir.path().to_path_buf(),
+        None => args.data_dir,
+    };
+
+    let database = data_dir.join("scorarium.db");
+    if matches!(args.command, Command::Shell(_)) && !args.demo && !database.is_file() {
+        color_eyre::eyre::bail!("data directory {} holds no library", data_dir.display());
     }
 
     // The shell an share the database with a running server, so only the server is allowed to migrate
     let migrate = matches!(args.command, Command::Serve(_));
-    let options = EngineOptions::new(UserAgent::new(args.contact.as_deref()))?;
+    let user_agent = UserAgent::new(args.contact.as_deref());
+    let cache_dir = args.cache_dir.unwrap_or_else(|| data_dir.join("cache"));
+    tracing::info!(cache_dir = %cache_dir.display(), "caching API responses");
+    let client = Client::builder(user_agent.clone())
+        .cache_dir(cache_dir)
+        .build()?;
+    let options = EngineOptions::new(user_agent)?.client(client);
     let engine = if args.demo {
-        tracing::info!("using an in-memory demo library");
-        Engine::demo(options).await?
+        tracing::info!(data_dir = %data_dir.display(), "opening a temporary demo library");
+        Engine::demo(&data_dir, options).await?
     } else {
-        tracing::info!(data_dir = %args.data_dir.display(), "opening library");
-        Engine::open(&args.data_dir, options.migrate_on_startup(migrate)).await?
+        tracing::info!(data_dir = %data_dir.display(), "opening library");
+        Engine::open(&data_dir, options.migrate_on_startup(migrate)).await?
     };
 
     match args.command {
         Command::Serve(serve) => scorarium_web::serve(serve, engine).await?,
         Command::Shell(shell) => {
-            // The demo library is throwaway, so its history is too
-            let history = (!args.demo).then(|| args.data_dir.join(".shell_history"));
+            let history = Some(data_dir.join(".shell_history"));
             scorarium_cli::shell(shell, engine, history, log).await?;
         }
     }

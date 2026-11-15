@@ -12,9 +12,8 @@ use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use url::Url;
 
-use crate::cache::Cache;
+use crate::disk_cache::DiskCache;
 use crate::log::{CallLog, CallRecord, Outcome};
-use crate::transport::request_key;
 use crate::{Priority, SourceStatus, Transport};
 
 /// Limits one API asks of the clients that use it.
@@ -45,7 +44,6 @@ const DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(5);
 struct Job {
     url: Url,
     headers: HeaderMap,
-    cache_key: String,
     priority: Priority,
     retry: bool,
     attempts: u8,
@@ -53,8 +51,8 @@ struct Job {
 }
 
 enum Pending {
-    Cached(http::Response<Bytes>),
     Queued(oneshot::Receiver<eyre::Result<http::Response<Bytes>>>),
+    Cached(Arc<DiskCache>, Url, HeaderMap),
 }
 
 #[derive(Default)]
@@ -129,7 +127,7 @@ pub(crate) struct RateLimitedClient {
     name: &'static str,
     deque: Arc<Mutex<JobDeque>>,
     wake: Arc<Notify>,
-    cache: Arc<Cache>,
+    cache: Option<Arc<DiskCache>>,
     worker: JoinHandle<()>,
 }
 
@@ -138,7 +136,7 @@ impl RateLimitedClient {
         name: &'static str,
         transport: Arc<dyn Transport>,
         limits: Limits,
-        cache: Arc<Cache>,
+        cache: Option<Arc<DiskCache>>,
         log: Arc<CallLog>,
     ) -> RateLimitedClient {
         let deque = Arc::new(Mutex::new(JobDeque::default()));
@@ -183,8 +181,7 @@ impl RateLimitedClient {
         headers: HeaderMap,
         priority: Priority,
     ) -> eyre::Result<Option<T>> {
-        let key = request_key(&url, &headers);
-        let response = self.get(url.clone(), headers, priority).await?;
+        let response = self.get(url.clone(), headers.clone(), priority).await?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
             return Ok(None);
@@ -197,53 +194,72 @@ impl RateLimitedClient {
             Err(error) => {
                 // The worker caches every 2xx before anyone has looked at the body, so a 2xx that
                 // isn't what we asked for, like a maintenance page, would otherwise be served from
-                // the cache until the process exits.
-                self.cache.remove(&key);
+                // the cache until it expires.
+                if let Some(cache) = &self.cache {
+                    cache.remove(&url, &headers).await;
+                }
                 Err(error).wrap_err_with(|| format!("Failed to parse the response to GET {url}"))
             }
         }
     }
 
-    /// Queues the request and returns a future that waits for its response.
+    /// Return a future that waits for the response to the request.
     ///
-    /// A response already in the cache is returned without queuing the job.
+    /// Queue the request now unless the cache holds a response to it.
     fn get(
         &self,
         url: Url,
         headers: HeaderMap,
         priority: Priority,
     ) -> impl Future<Output = eyre::Result<http::Response<Bytes>>> + use<> {
-        let key = request_key(&url, &headers);
-        let pending = match self.cache.get(&key) {
-            Some(cached) => {
-                tracing::debug!(source = self.name, %url, "Cached response");
-                Pending::Cached(cached)
+        let name = self.name;
+        let deque = self.deque.clone();
+        let wake = self.wake.clone();
+        let pending = match &self.cache {
+            Some(cache) if cache.contains(&url, &headers) => {
+                Pending::Cached(cache.clone(), url, headers)
             }
-            None => {
-                tracing::debug!(source = self.name, %url, ?priority, "Queued request");
-                let (reply, response) = oneshot::channel();
-                self.deque.lock().unwrap().push(Job {
-                    url,
-                    headers,
-                    cache_key: key,
-                    priority,
-                    retry: priority == Priority::Background,
-                    attempts: 0,
-                    reply,
-                });
-                self.wake.notify_one();
-                Pending::Queued(response)
-            }
+            _ => Pending::Queued(enqueue(name, &deque, &wake, url, headers, priority)),
         };
         async move {
-            match pending {
-                Pending::Cached(cached) => Ok(cached),
-                Pending::Queued(response) => response
-                    .await
-                    .map_err(|_| eyre!("The rate limited worker exited"))?,
-            }
+            let response = match pending {
+                Pending::Queued(response) => response,
+                Pending::Cached(cache, url, headers) => {
+                    if let Some(cached) = cache.get(&url, &headers).await {
+                        tracing::debug!(source = name, %url, "Cached response");
+                        return Ok(cached);
+                    }
+                    enqueue(name, &deque, &wake, url, headers, priority)
+                }
+            };
+            response
+                .await
+                .map_err(|_| eyre!("The rate limited worker exited"))?
         }
     }
+}
+
+/// Queue a request and return the receiver of its response.
+fn enqueue(
+    name: &'static str,
+    deque: &Mutex<JobDeque>,
+    wake: &Notify,
+    url: Url,
+    headers: HeaderMap,
+    priority: Priority,
+) -> oneshot::Receiver<eyre::Result<http::Response<Bytes>>> {
+    tracing::debug!(source = name, %url, ?priority, "Queued request");
+    let (reply, response) = oneshot::channel();
+    deque.lock().unwrap().push(Job {
+        url,
+        headers,
+        priority,
+        retry: priority == Priority::Background,
+        attempts: 0,
+        reply,
+    });
+    wake.notify_one();
+    response
 }
 
 impl Drop for RateLimitedClient {
@@ -263,7 +279,7 @@ async fn work(
     wake: Arc<Notify>,
     transport: Arc<dyn Transport>,
     limits: Limits,
-    cache: Arc<Cache>,
+    cache: Option<Arc<DiskCache>>,
     log: Arc<CallLog>,
 ) {
     let mut next_allowed = Instant::now();
@@ -281,7 +297,9 @@ async fn work(
 
         // We check the cache again when we start a job so that if there were duplicate requests
         // queued together, only one of them hits the API.
-        if let Some(cached) = cache.get(&job.cache_key) {
+        if let Some(cache) = &cache
+            && let Some(cached) = cache.get(&job.url, &job.headers).await
+        {
             tracing::debug!(source = name, url = %job.url, "Cached response while queued");
             let _eat_err = job.reply.send(Ok(cached));
             continue;
@@ -347,10 +365,11 @@ async fn work(
             at,
         });
 
-        if let Ok(response) = &result
+        if let Some(cache) = &cache
+            && let Ok(response) = &result
             && (response.status().is_success() || response.status() == StatusCode::NOT_FOUND)
         {
-            cache.insert(job.cache_key.clone(), response);
+            cache.insert(&job.url, &job.headers, response).await;
         }
 
         // Anything other than an answer or a client error is the source asking us, explicitly or
@@ -479,7 +498,7 @@ mod tests {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            Arc::new(Cache::new(log.clone())),
+            None,
             log.clone(),
         );
 
@@ -510,7 +529,7 @@ mod tests {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            Arc::new(Cache::new(log.clone())),
+            None,
             log.clone(),
         );
         let start = Instant::now();
@@ -530,7 +549,8 @@ mod tests {
     async fn a_repeated_request_never_reaches_the_transport() {
         let transport = Scripted::new([200]);
         let log = Arc::new(CallLog::default());
-        let cache = Arc::new(Cache::new(log.clone()));
+        let dir = tempfile::tempdir().unwrap();
+        let cache = DiskCache::open(dir.path().to_owned(), log.clone()).unwrap();
         let client = RateLimitedClient::spawn(
             "Test",
             transport.clone(),
@@ -538,7 +558,7 @@ mod tests {
                 min_interval: Duration::from_secs(1),
                 timeout: Duration::from_secs(30),
             },
-            cache.clone(),
+            Some(Arc::new(cache)),
             log.clone(),
         );
 
@@ -550,6 +570,34 @@ mod tests {
         assert_eq!(transport.requests(), ["/a"]);
         assert_eq!(log.history().calls.len(), 1);
         assert_eq!(log.history().cache_hits, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_request_whose_cached_file_was_deleted_reaches_the_transport() {
+        let transport = Scripted::new([200, 200]);
+        let log = Arc::new(CallLog::default());
+        let dir = tempfile::tempdir().unwrap();
+        let cache = DiskCache::open(dir.path().to_owned(), log.clone()).unwrap();
+        let client = RateLimitedClient::spawn(
+            "Test",
+            transport.clone(),
+            Limits {
+                min_interval: Duration::from_secs(1),
+                timeout: Duration::from_secs(30),
+            },
+            Some(Arc::new(cache)),
+            log.clone(),
+        );
+
+        let first = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        assert!(first.await.is_ok());
+        std::fs::remove_dir_all(dir.path().join("example.com")).unwrap();
+        let again = client.get(url("/a"), HeaderMap::new(), Priority::Background);
+        assert!(again.await.is_ok());
+
+        assert_eq!(transport.requests(), ["/a", "/a"]);
+        assert_eq!(log.history().calls.len(), 2);
+        assert_eq!(log.history().cache_hits, 0);
     }
 
     #[test]

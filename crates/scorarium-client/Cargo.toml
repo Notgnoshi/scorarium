@@ -7,7 +7,7 @@ description = "Clients for the external metadata sources scorarium imports from"
 
 [features]
 # Replays persisted API responses instead of making live requests
-fake-transport = ["dep:sha2"]
+fake-transport = []
 
 [dependencies]
 bytes.workspace = true
@@ -17,7 +17,8 @@ httpdate.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = { workspace = true, optional = true }
+sha2.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing.workspace = true
 url.workspace = true
