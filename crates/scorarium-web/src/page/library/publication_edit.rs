@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 use crate::Settings;
 use crate::auth::{Session, Viewer};
+use crate::duplicate::describe_reasons;
 use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
@@ -53,6 +54,8 @@ pub(crate) struct Form {
     note: String,
     #[serde(default)]
     tag: Vec<String>,
+    #[serde(default)]
+    duplicates_confirmed: bool,
 }
 
 struct Posted {
@@ -191,6 +194,8 @@ struct Edit {
     contents: Contents,
     back: Back,
     refusals: Refusals,
+    duplicates: Vec<(Publication, String)>,
+    confirm_finish: Option<String>,
 }
 
 struct Parsed {
@@ -297,6 +302,7 @@ async fn render(
     posted: Posted,
     back: Back,
     refusals: Refusals,
+    confirm_finish: bool,
 ) -> Result<Response> {
     let status = if refusals.is_empty() {
         StatusCode::OK
@@ -313,6 +319,26 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = publication.is_draft();
+    let duplicates = if draft {
+        publication
+            .duplicates()
+            .await?
+            .into_iter()
+            .map(|duplicate| {
+                let reasons = describe_reasons(&duplicate.reasons);
+                (duplicate.entity, reasons)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let finish = format!(
+        "/library/{}/publication/{}/commit{}",
+        library.id(),
+        publication.id(),
+        back.query()
+    );
+    let confirm_finish = (confirm_finish && !duplicates.is_empty()).then(|| finish.clone());
     let form = posted.form;
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
     let Candidates {
@@ -349,14 +375,7 @@ async fn render(
         },
         actions: EditActions {
             mode: if draft {
-                EditMode::Import {
-                    finish: format!(
-                        "/library/{}/publication/{}/commit{}",
-                        library.id(),
-                        publication.id(),
-                        back.query()
-                    ),
-                }
+                EditMode::Import { finish }
             } else {
                 EditMode::Committed
             },
@@ -437,6 +456,8 @@ async fn render(
         .await?,
         back,
         refusals,
+        duplicates,
+        confirm_finish,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
@@ -467,6 +488,7 @@ pub async fn get(
         stars: publication.stars().map(|stars| stars.get()),
         note: text(publication.note()),
         tag: publication.tags().iter().map(ToString::to_string).collect(),
+        duplicates_confirmed: false,
     };
     let posted = Posted {
         form,
@@ -487,6 +509,7 @@ pub async fn get(
         posted,
         back,
         Refusals::default(),
+        false,
     )
     .await
 }
@@ -569,6 +592,7 @@ async fn save(
     for id in edits.remove {
         publication.remove_holding(id).await?;
     }
+    posted.holdings = HoldingsForm::from(publication.holdings());
     posted.states.apply(publication).await?;
     Ok(())
 }
@@ -598,6 +622,7 @@ async fn submit(
         entity::load(&engine, library.id(), &publication, &Viewer::LoggedIn).await?;
     let back = Back::new(query, publication_path(&library, &publication));
     let mut refusals = Refusals::default();
+    let mut confirm_finish = false;
     let parsed = parse(&engine, library.id(), &mut posted, &mut refusals).await?;
     let contents = posted
         .contents
@@ -610,10 +635,20 @@ async fn submit(
         && let Some(parsed) = parsed
     {
         let saved = match save(&mut publication, &mut posted, parsed, edits, contents).await {
-            Ok(()) if matches!(then, Then::Commit) => publication.commit().await,
+            Ok(()) if matches!(then, Then::Commit) => {
+                confirm_finish = publication.is_draft()
+                    && !posted.form.duplicates_confirmed
+                    && !publication.duplicates().await?.is_empty();
+                if confirm_finish {
+                    Ok(())
+                } else {
+                    publication.commit().await
+                }
+            }
             saved => saved,
         };
         match saved {
+            Ok(()) if confirm_finish => {}
             Ok(()) if matches!(then, Then::Enrich) => {
                 publication.enrich().await?;
                 let edit = format!(
@@ -641,6 +676,7 @@ async fn submit(
         posted,
         back,
         refusals,
+        confirm_finish,
     )
     .await
 }

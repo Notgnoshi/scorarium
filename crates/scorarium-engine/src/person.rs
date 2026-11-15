@@ -857,6 +857,32 @@ pub(crate) async fn in_library(
     Ok(people)
 }
 
+/// List the people in `library` who contribute to a publication or a work, oldest first
+pub(crate) async fn contributing(engine: &Engine, library: LibraryId) -> Result<Vec<Person>> {
+    let mut conn = engine.begin_read().await?;
+    let rows = sqlx::query_as!(
+        PersonRow,
+        r#"SELECT id, library_id, name, sort_name,
+                  birth_year AS "birth_year: u16", death_year AS "death_year: u16",
+                  profile, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM person
+           WHERE library_id = ?
+             AND (EXISTS (SELECT 1 FROM publication_contributor WHERE person_id = person.id)
+                  OR EXISTS (SELECT 1 FROM work_contributor WHERE person_id = person.id))
+           ORDER BY id"#,
+        library.get()
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut people = Vec::with_capacity(rows.len());
+    for row in rows {
+        people.push(Person::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(people)
+}
+
 /// A person in a listing, with the roles they hold and how often they are credited
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersonSummary {

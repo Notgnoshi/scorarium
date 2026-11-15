@@ -15,6 +15,10 @@ document.addEventListener("click", (event) => {
     }
 });
 
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelector("dialog[data-open]")?.showModal();
+});
+
 document.addEventListener("htmx:after:settle", (event) => {
     if (event.target.matches("[data-dialog-slot]")) {
         event.target.querySelector("dialog")?.showModal();
