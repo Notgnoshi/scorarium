@@ -1,4 +1,5 @@
 mod cache;
+mod disk_cache;
 #[cfg(feature = "fake-transport")]
 pub mod fake;
 mod log;

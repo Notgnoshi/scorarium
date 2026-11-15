@@ -1,4 +1,5 @@
-use std::io;
+use std::io::{self, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
@@ -33,16 +34,24 @@ pub(crate) fn read(path: &Path) -> eyre::Result<Option<(String, http::Response<B
 }
 
 /// Write a response to the file at `path`, creating its directory if it is missing.
+///
+/// Move the finished file into place, so a reader can never see a partial file.
 pub(crate) fn write(path: &Path, key: &str, response: &http::Response<Bytes>) -> eyre::Result<()> {
-    let write = || -> eyre::Result<()> {
+    let try_write = || -> eyre::Result<()> {
         let dir = path
             .parent()
             .ok_or_else(|| eyre!("A response file has a parent"))?;
         std::fs::create_dir_all(dir)?;
-        std::fs::write(path, encode(key, response))?;
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(".request.");
+        // The 0600 default would hide a cached response from a process run by another user.
+        builder.permissions(std::fs::Permissions::from_mode(0o666));
+        let mut temp = builder.tempfile_in(dir)?;
+        temp.write_all(&encode(key, response))?;
+        temp.persist(path).map_err(io::Error::from)?;
         Ok(())
     };
-    write().wrap_err_with(|| format!("Failed to write {}", path.display()))
+    try_write().wrap_err_with(|| format!("Failed to write {}", path.display()))
 }
 
 /// Encode the host to a legal directory name
