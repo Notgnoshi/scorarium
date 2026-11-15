@@ -131,26 +131,11 @@ impl fmt::Debug for Client {
 }
 
 impl Client {
-    pub fn new(user_agent: UserAgent) -> eyre::Result<Client> {
-        let transport = ReqwestTransport::new(&user_agent)?;
-        Ok(Client::with_transport(user_agent, Arc::new(transport)))
-    }
-
-    /// Builds a client over a transport of the caller's choosing
-    ///
-    /// The UserAgent is still required because the API clients can base their rate limits on it.
-    pub fn with_transport(user_agent: UserAgent, transport: Arc<dyn Transport>) -> Client {
-        let log = Arc::new(CallLog::default());
-        let cache = Arc::new(Cache::new(log.clone()));
-        Client {
-            open_library: RateLimitedClient::spawn(
-                Source::OpenLibrary.name(),
-                transport.clone(),
-                open_library::limits(&user_agent),
-                cache,
-                log.clone(),
-            ),
-            log,
+    /// Start building a client that identifies itself to the sources with `user_agent`.
+    pub fn builder(user_agent: UserAgent) -> ClientBuilder {
+        ClientBuilder {
+            user_agent,
+            transport: None,
         }
     }
 
@@ -167,5 +152,45 @@ impl Client {
     /// Get an API client for [Open Library](https://openlibrary.org)
     pub fn open_library(&self) -> OpenLibrary<'_> {
         OpenLibrary::new(&self.open_library)
+    }
+}
+
+/// Configures a [Client] before it is built.
+pub struct ClientBuilder {
+    user_agent: UserAgent,
+    transport: Option<Arc<dyn Transport>>,
+}
+
+impl fmt::Debug for ClientBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClientBuilder").finish_non_exhaustive()
+    }
+}
+
+impl ClientBuilder {
+    /// Send every request through `transport` instead of a [ReqwestTransport].
+    pub fn transport(mut self, transport: impl Transport + 'static) -> ClientBuilder {
+        self.transport = Some(Arc::new(transport));
+        self
+    }
+
+    /// Build the client.
+    pub fn build(self) -> eyre::Result<Client> {
+        let transport = match self.transport {
+            Some(transport) => transport,
+            None => Arc::new(ReqwestTransport::new(&self.user_agent)?),
+        };
+        let log = Arc::new(CallLog::default());
+        let cache = Arc::new(Cache::new(log.clone()));
+        Ok(Client {
+            open_library: RateLimitedClient::spawn(
+                Source::OpenLibrary.name(),
+                transport,
+                open_library::limits(&self.user_agent),
+                cache,
+                log.clone(),
+            ),
+            log,
+        })
     }
 }

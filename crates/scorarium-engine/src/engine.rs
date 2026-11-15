@@ -38,7 +38,9 @@ impl EngineOptions {
             .read_timeout(Duration::from_secs(30))
             .build()
             .map_err(eyre::Report::new)?;
-        let client = Client::new(user_agent).map_err(Error::Generic)?;
+        let client = Client::builder(user_agent)
+            .build()
+            .map_err(Error::Generic)?;
         Ok(EngineOptions {
             migrate_on_startup: false,
             client,

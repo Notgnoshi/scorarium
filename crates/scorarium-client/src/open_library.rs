@@ -380,8 +380,6 @@ impl From<RawAuthor> for Author {
 
 #[cfg(all(test, feature = "fake-transport"))]
 mod tests {
-    use std::sync::Arc;
-
     use http::StatusCode;
 
     use super::AuthorHit;
@@ -391,7 +389,10 @@ mod tests {
     fn client() -> Client {
         let user_agent = UserAgent::new(Some("Notgnoshi@gmail.com"));
         let transport = FakeTransport::new(&user_agent).unwrap();
-        Client::with_transport(user_agent, Arc::new(transport))
+        Client::builder(user_agent)
+            .transport(transport)
+            .build()
+            .unwrap()
     }
 
     #[tokio::test]
