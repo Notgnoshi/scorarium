@@ -87,6 +87,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             "/library/{id}/publication/{publication}/holding/{holding}",
             get(page::library::file::holding),
         )
+        .route(
+            "/library/{id}/publication/{publication}/holding/{holding}/lend",
+            post(page::library::loan::lend),
+        )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
             "/library/{id}/work/{work}/edit",

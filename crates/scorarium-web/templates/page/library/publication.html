@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "widget/sort.html" as sort %}
 {% import "widget/tag.html" as badge %}
+{% import "widget/lend_dialog.html" as lend_dialog %}
 {% block content %}
     <div class="row">
         <div class="col-auto">{{ picture }}</div>
@@ -99,8 +100,8 @@
         <h2 class="mt-4">Holdings</h2>
         <ul class="list-unstyled">
             {% for holding in holdings %}
-                <li>
-                    {{ holding.icon }} {{ holding.icon.label() }}
+                <li class="d-flex align-items-baseline">
+                    <span>{{ holding.icon }} {{ holding.icon.label() }}</span>
                     {% if logged_in %}
                         {% if let Some(location) = holding.location %}<span class="ms-3">{{ location }}</span>{% endif %}
                         {% if let Some(filename) = holding.filename %}
@@ -111,7 +112,15 @@
                                title="Open in a new tab">{{ filename }}</a>
                         {% endif %}
                         {% if let Some(loaned_to) = holding.loaned_to %}
-                            <span class="ms-3 text-body-secondary">on loan to {{ loaned_to }}</span>
+                            <span class="ms-auto text-body-secondary">on loan to {{ loaned_to }}</span>
+                        {% else if holding.physical %}
+                            {% let dialog = "lend-" ~ holding.id %}
+                            {% let url = "/library/" ~ library ~ "/publication/" ~ id ~ "/holding/" ~ holding.id ~ "/lend" ~ back %}
+                            <button class="ms-auto btn btn-link btn-sm p-0 link-secondary align-baseline"
+                                    type="button"
+                                    data-dialog="{{ dialog }}">lend</button>
+                            {% call lend_dialog::dialog(dialog, url, title, holding.location) %}
+                            {% endcall %}
                         {% endif %}
                     {% endif %}
                 </li>

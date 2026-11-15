@@ -1,0 +1,21 @@
+{% macro dialog(id, url, title, location) %}
+    <dialog id="{{ id }}" class="confirm">
+        <div class="confirm-header">
+            <h5 class="mb-0">Lend this copy</h5>
+        </div>
+        <form class="confirm-body" id="{{ id }}-form" method="post" action="{{ url }}">
+            <p class="mb-3">
+                {{ title }}
+                {% if let Some(location) = location %}<br><span class="text-body-secondary">{{ location }}</span>{% endif %}
+            </p>
+            <label class="form-label" for="{{ id }}-borrower">Borrower</label>
+            <input class="form-control" id="{{ id }}-borrower" name="borrower" required pattern=".*\S.*" autofocus>
+        </form>
+        <div class="confirm-footer">
+            <form method="dialog">
+                <button class="btn btn-outline-secondary" type="submit">Cancel</button>
+            </form>
+            <button class="btn btn-primary" type="submit" form="{{ id }}-form">Lend</button>
+        </div>
+    </dialog>
+{% endmacro %}

@@ -676,3 +676,39 @@ async fn edit_keeps_a_proposed_work_that_was_accepted() {
     assert!(contents.iter().any(|contained| contained.id() == work.id()));
     assert_eq!(ids().await, expected);
 }
+
+#[tokio::test]
+async fn lend_records_the_borrower_and_refuses_a_blank_one() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let publication = library.publications().await.unwrap().pop().unwrap();
+    let lend = format!(
+        "/library/{}/publication/{}/holding/{}/lend",
+        library.id(),
+        publication.id(),
+        publication.holdings()[0].id
+    );
+    let borrower = async || {
+        Publication::load(&app.engine, publication.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .holdings()[0]
+            .loaned_to
+            .clone()
+    };
+
+    app.server
+        .post(&lend)
+        .form(&[("borrower", "Ann")])
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    assert_eq!(borrower().await.as_deref(), Some("Ann"));
+
+    app.server
+        .post(&lend)
+        .form(&[("borrower", "  ")])
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(borrower().await.as_deref(), Some("Ann"));
+}
