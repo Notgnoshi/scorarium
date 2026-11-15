@@ -749,6 +749,7 @@ pub(crate) enum Flow {
 pub(crate) struct Shell {
     engine: Engine,
     interactive: bool,
+    enrich: bool,
     /// The selected library's id.
     ///
     /// The library name is queried before the prompt is displayed to capture any library renames.
@@ -758,10 +759,11 @@ pub(crate) struct Shell {
 
 impl Shell {
     /// Start a session with no library selected.
-    pub(crate) fn new(engine: Engine, interactive: bool) -> Shell {
+    pub(crate) fn new(engine: Engine, interactive: bool, enrich: bool) -> Shell {
         Shell {
             engine,
             interactive,
+            enrich,
             selected: None,
             tree: tree(),
         }
@@ -873,6 +875,7 @@ impl Shell {
                         require(library.as_deref(), "library")?,
                         &seed,
                         location.as_deref(),
+                        self.enrich,
                         out,
                     )
                     .await?

@@ -27,6 +27,10 @@ pub use crate::script::run_script;
 pub struct ShellArgs {
     /// A script to run
     pub script: Option<PathBuf>,
+
+    /// Import without starting enrichment
+    #[arg(long)]
+    pub no_enrich: bool,
 }
 
 pub async fn shell(
@@ -36,13 +40,16 @@ pub async fn shell(
     log: LogWriter,
 ) -> eyre::Result<()> {
     let mut stdout = std::io::stdout();
+    let enrich = !args.no_enrich;
     match args.script {
         Some(path) => {
             let file = std::fs::File::open(&path)
                 .map_err(|e| eyre::eyre!("cannot open {}: {e}", path.display()))?;
-            run_script(&engine, BufReader::new(file), &mut stdout).await
+            run_script(&engine, BufReader::new(file), &mut stdout, enrich).await
         }
-        None if std::io::stdin().is_terminal() => interactive::run(&engine, history, &log).await,
-        None => run_script(&engine, std::io::stdin().lock(), &mut stdout).await,
+        None if std::io::stdin().is_terminal() => {
+            interactive::run(&engine, history, &log, enrich).await
+        }
+        None => run_script(&engine, std::io::stdin().lock(), &mut stdout, enrich).await,
     }
 }

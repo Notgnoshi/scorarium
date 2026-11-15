@@ -20,6 +20,7 @@ pub(crate) async fn run(
     engine: &Engine,
     history: Option<PathBuf>,
     log: &LogWriter,
+    enrich: bool,
 ) -> eyre::Result<()> {
     let mut keybindings = default_emacs_keybindings();
     keybindings.add_binding(
@@ -41,7 +42,7 @@ pub(crate) async fn run(
         let history = FileBackedHistory::with_file(HIST_SIZE, path)?;
         editor = editor.with_history(Box::new(history));
     }
-    let mut shell = Shell::new(engine.clone(), true);
+    let mut shell = Shell::new(engine.clone(), true, enrich);
     let mut stdout = std::io::stdout();
     loop {
         let label = match shell.selected().await? {

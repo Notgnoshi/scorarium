@@ -3,7 +3,7 @@ use scorarium_engine::Engine;
 /// Run a script, returning what it printed and how it ended.
 async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
     let mut out = Vec::new();
-    let result = scorarium_cli::run_script(engine, script.as_bytes(), &mut out).await;
+    let result = scorarium_cli::run_script(engine, script.as_bytes(), &mut out, true).await;
     (String::from_utf8(out).unwrap(), result)
 }
 

@@ -12,8 +12,9 @@ pub async fn run_script(
     engine: &Engine,
     source: impl BufRead,
     out: &mut impl Write,
+    enrich: bool,
 ) -> eyre::Result<()> {
-    let mut shell = Shell::new(engine.clone(), false);
+    let mut shell = Shell::new(engine.clone(), false, enrich);
     for (index, line) in source.lines().enumerate() {
         let line = line?;
         let flow = shell
