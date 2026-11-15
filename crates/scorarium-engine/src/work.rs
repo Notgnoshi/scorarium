@@ -1734,10 +1734,8 @@ impl CatalogNumber {
         &self.text
     }
 
-    /// The catalog number with everything but its letters and digits removed: "Op. 9 No. 2" is "op9no2"
-    ///
-    /// This is useful for adding the catalog number to the search corpus
-    pub(crate) fn squashed(&self) -> String {
+    /// Reduce the catalog number to its lowercase letters and digits: "Op. 9 No. 2" is "op9no2"
+    pub fn squashed(&self) -> String {
         self.text
             .chars()
             .filter(char::is_ascii_alphanumeric)
