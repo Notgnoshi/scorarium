@@ -252,9 +252,9 @@ async fn person_show_lists_each_credit_once() {
          death-year \t  \t1943\n\
          link       \t4 \thttps://imslp.org/wiki/Category:Rachmaninoff,_Sergei\n\
          link       \t5 \thttps://en.wikipedia.org/wiki/Sergei_Rachmaninoff\n\
+         publication\t6 \tThe Isle of the Dead (composer)\n\
          publication\t5 \tRachmaninoff masterpieces for solo piano (composer)\n\
          publication\t4 \tRussian piano album (composer)\n\
-         publication\t6 \tThe Isle of the Dead (composer)\n\
          work       \t4 \tPrelude in C-sharp minor (composer)\n\
          work       \t5 \tEtude-Tableau (composer)\n\
          work       \t6 \tPolichinelle (composer)\n\

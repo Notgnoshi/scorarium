@@ -55,7 +55,7 @@ fn sort_hits(hits: &mut [Hit], sort: &Sort) {
         return;
     }
     hits.sort_by(|a, b| {
-        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let (a_title, b_title) = (a.sort_key(), b.sort_key());
         let by_column = match sort.column {
             Column::Relevance => Ordering::Equal,
             Column::Title => sort::compare(Some(&a_title), Some(&b_title), sort.descending),

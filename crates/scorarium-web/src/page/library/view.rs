@@ -6,7 +6,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
-use scorarium_engine::value::{Tag, Year};
+use scorarium_engine::value::{Tag, Year, title_sort_key};
 use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
@@ -92,7 +92,7 @@ pub(crate) async fn load(engine: &Engine, id: &str) -> Result<scorarium_engine::
 /// Sort summaries by the column, empties last in either direction, title breaking ties
 fn sort_summaries(summaries: &mut [Summary], sort: &Sort) {
     summaries.sort_by(|a, b| {
-        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let (a_title, b_title) = (title_sort_key(&a.title), title_sort_key(&b.title));
         let by_column = match sort.column {
             Column::Title => compare(Some(&a_title), Some(&b_title), sort.descending),
             Column::Contributors => compare(

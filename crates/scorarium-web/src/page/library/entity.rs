@@ -4,7 +4,7 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::link::Link;
 use scorarium_engine::person::PersonId;
-use scorarium_engine::value::Year;
+use scorarium_engine::value::{Year, title_sort_key};
 use scorarium_engine::work::{CatalogNumber, Work, WorkId};
 
 use crate::auth::Viewer;
@@ -138,7 +138,7 @@ pub(crate) fn book_order(works: &mut [ContainedWork]) {
             sort_name,
             work.catalog_number.is_none(),
             work.catalog_number.clone(),
-            work.title.to_lowercase(),
+            title_sort_key(&work.title),
         )
     });
 }

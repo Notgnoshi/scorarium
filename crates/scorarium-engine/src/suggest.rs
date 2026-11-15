@@ -11,7 +11,7 @@ use crate::link::{ExternalRecord, HttpUrl, LinkKind};
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
 use crate::search::same_name;
-use crate::value::{Tag, Year};
+use crate::value::{Tag, Year, title_sort_key};
 use crate::work::{self, CatalogNumber, Work, WorkId};
 use crate::{Engine, Error, Result};
 
@@ -122,7 +122,11 @@ pub(crate) async fn suggest(
                 .into_iter()
                 .partition(|candidate| candidate.number.starts_with(&wanted));
             for tier in [&mut same, &mut begun] {
-                tier.sort_by(|a, b| a.number.cmp(&b.number).then_with(|| a.title.cmp(&b.title)));
+                tier.sort_by(|a, b| {
+                    a.number
+                        .cmp(&b.number)
+                        .then_with(|| title_sort_key(&a.title).cmp(&title_sort_key(&b.title)))
+                });
             }
             let texts: Vec<&str> = other
                 .iter()

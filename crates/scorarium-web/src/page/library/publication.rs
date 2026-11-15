@@ -7,7 +7,7 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::holding::{HoldingId, HoldingKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
-use scorarium_engine::value::{Classification, Tag, Year};
+use scorarium_engine::value::{Classification, Tag, Year, title_sort_key};
 use serde::Deserialize;
 
 use crate::auth::{Viewer, login_redirect};
@@ -108,7 +108,7 @@ fn sort_contents(works: &mut [ContainedWork], sort: &Sort) {
         return;
     }
     works.sort_by(|a, b| {
-        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let (a_title, b_title) = (title_sort_key(&a.title), title_sort_key(&b.title));
         let by_column = match sort.column {
             Column::Number => sort::compare(
                 a.catalog_number.as_ref(),
