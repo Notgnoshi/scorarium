@@ -6,6 +6,7 @@ use sqlx::SqliteConnection;
 
 use crate::audit::{Action, AuditSource, AuditSubject};
 use crate::contributor::Role;
+use crate::duplicate::{self, DuplicateGroup};
 use crate::entity::AnyEntityId;
 use crate::holding::NewHolding;
 use crate::person::{self, Person, PersonId, PersonSummary};
@@ -219,6 +220,11 @@ impl Library {
         include_drafts: bool,
     ) -> Result<Vec<PersonSummary>> {
         person::summarize(&self.engine, self.id, role, include_drafts).await
+    }
+
+    /// List the groups of people that may be duplicates, drafts included
+    pub async fn duplicate_people(&self) -> Result<Vec<DuplicateGroup<Person>>> {
+        duplicate::people(&self.engine, self.id).await
     }
 
     /// Count the publications and works with each tag in the library, alphabetically by tag

@@ -2,6 +2,7 @@ pub mod asset;
 pub mod audit;
 pub mod auth;
 pub mod contributor;
+pub mod duplicate;
 pub mod enrich;
 pub mod entity;
 pub mod holding;
