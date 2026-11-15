@@ -5,6 +5,7 @@ use crate::entity::Entity;
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, Link};
 use crate::person::{self, Person};
+use crate::publication::{self, Identifier, IdentifierKind, Publication};
 use crate::{Engine, Result, fuzzy};
 
 /// Entities that may all be the same
@@ -17,6 +18,8 @@ pub struct DuplicateGroup<E: Entity> {
 /// A kind of value that potential duplicates share
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DuplicateReason {
+    Identifier,
+    Title,
     Name,
     Record,
 }
@@ -105,6 +108,77 @@ fn records(links: &[Link]) -> Vec<ExternalRecord> {
         .collect()
 }
 
+fn title_key(title: &str) -> Option<String> {
+    let normalized = fuzzy::normalize(title);
+    let key = normalized.strip_prefix("the ").unwrap_or(&normalized);
+    Some(key.to_string()).filter(|key| !key.is_empty())
+}
+
+fn standard_numbers(publication: &Publication) -> Vec<Identifier> {
+    publication
+        .identifiers()
+        .iter()
+        .filter(|identifier| {
+            matches!(
+                identifier.kind(),
+                IdentifierKind::Isbn | IdentifierKind::Ismn
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// List the groups of publications in `library` that may be duplicates
+pub(crate) async fn publications(
+    engine: &Engine,
+    library: LibraryId,
+) -> Result<Vec<DuplicateGroup<Publication>>> {
+    let publications = publication::in_library(engine, library).await?;
+    let mut matches = match_by_key(&publications, DuplicateReason::Identifier, standard_numbers);
+    matches.extend(match_by_key(
+        &publications,
+        DuplicateReason::Title,
+        |publication| publication.title().and_then(title_key),
+    ));
+    Ok(group(publications, &matches))
+}
+
+/// An entity that may be the same as another, with the values that the two share
+#[derive(Clone, Debug)]
+pub struct Duplicate<E: Entity> {
+    pub entity: E,
+    pub reasons: Vec<DuplicateReason>,
+}
+
+/// List the publications in its library that may duplicate `publication`, oldest first
+pub(crate) async fn of_publication(
+    publication: &Publication,
+) -> Result<Vec<Duplicate<Publication>>> {
+    let numbers = standard_numbers(publication);
+    let title = publication.title().and_then(title_key);
+    let others = publication::in_library(publication.engine(), publication.library()).await?;
+    Ok(others
+        .into_iter()
+        .filter(|other| other.id() != publication.id())
+        .filter_map(|other| {
+            let mut reasons = Vec::new();
+            if standard_numbers(&other)
+                .iter()
+                .any(|number| numbers.contains(number))
+            {
+                reasons.push(DuplicateReason::Identifier);
+            }
+            if title.is_some() && other.title().and_then(title_key) == title {
+                reasons.push(DuplicateReason::Title);
+            }
+            (!reasons.is_empty()).then_some(Duplicate {
+                entity: other,
+                reasons,
+            })
+        })
+        .collect())
+}
+
 /// List the groups of people in `library` that may be duplicates
 pub(crate) async fn people(
     engine: &Engine,
@@ -125,7 +199,7 @@ mod tests {
     use crate::entity::{Contributed, Source};
     use crate::holding::NewHolding;
     use crate::link::HttpUrl;
-    use crate::publication::ImportSeed;
+    use crate::publication::{Identifier, IdentifierKind, ImportSeed};
 
     #[tokio::test]
     async fn people_sharing_a_name_or_a_record_form_one_group() {
@@ -209,5 +283,61 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].entities, [satie, proposed]);
         assert_eq!(groups[0].reasons, [DuplicateReason::Name]);
+    }
+
+    #[tokio::test]
+    async fn publications_sharing_an_identifier_or_a_title_form_one_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let import = async |title: &str| {
+            library
+                .import(
+                    ImportSeed::title(title),
+                    NewHolding::Physical { location: None },
+                )
+                .await
+                .unwrap()
+        };
+        let isbn = Identifier::new(IdentifierKind::Isbn, "978-0-486-25392-3").unwrap();
+        let plate = Identifier::new(IdentifierKind::PlateNumber, "D 1234").unwrap();
+        let mut gymnopedies = import("Gymnopedies").await;
+        gymnopedies.add_identifier(isbn.clone()).await.unwrap();
+        let mut the_hobbit = import("The Hobbit").await;
+        the_hobbit.add_identifier(isbn).await.unwrap();
+        let mut hobbit = import("hobbit").await;
+        hobbit.add_identifier(plate.clone()).await.unwrap();
+        let mut preludes = import("Preludes").await;
+        preludes.add_identifier(plate).await.unwrap();
+
+        let groups = library.duplicate_publications().await.unwrap();
+        assert_eq!(groups.len(), 1);
+        let members: Vec<_> = groups[0].entities.iter().map(Entity::id).collect();
+        assert_eq!(members, [gymnopedies.id(), the_hobbit.id(), hobbit.id()]);
+        assert_eq!(
+            groups[0].reasons,
+            [DuplicateReason::Identifier, DuplicateReason::Title]
+        );
+
+        let duplicates: Vec<_> = the_hobbit
+            .duplicates()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|duplicate| (duplicate.entity.id(), duplicate.reasons))
+            .collect();
+        assert_eq!(
+            duplicates,
+            [
+                (gymnopedies.id(), vec![DuplicateReason::Identifier]),
+                (hobbit.id(), vec![DuplicateReason::Title]),
+            ]
+        );
+        assert!(preludes.duplicates().await.unwrap().is_empty());
     }
 }

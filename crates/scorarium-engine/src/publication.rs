@@ -11,6 +11,7 @@ use sqlx::SqliteConnection;
 use crate::asset::{self, AssetSource, Staged};
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::{Contributor, Role};
+use crate::duplicate::{self, Duplicate};
 use crate::enrich::{Enrichment, open_library};
 use crate::entity::{
     self, AnyEntity, AnyEntityId, Contributed, Entity, EntityKind, ProposalId, Timestamp,
@@ -1424,6 +1425,11 @@ impl Publication {
     /// List every work in the publication
     pub async fn works(&self) -> Result<Vec<Work>> {
         work::in_publication(&self.engine, self.id).await
+    }
+
+    /// List the publications that may duplicate this one
+    pub async fn duplicates(&self) -> Result<Vec<Duplicate<Publication>>> {
+        duplicate::of_publication(self).await
     }
 }
 

@@ -222,6 +222,11 @@ impl Library {
         person::summarize(&self.engine, self.id, role, include_drafts).await
     }
 
+    /// List the groups of publications that may be duplicates, drafts included
+    pub async fn duplicate_publications(&self) -> Result<Vec<DuplicateGroup<Publication>>> {
+        duplicate::publications(&self.engine, self.id).await
+    }
+
     /// List the groups of people that may be duplicates, drafts included
     pub async fn duplicate_people(&self) -> Result<Vec<DuplicateGroup<Person>>> {
         duplicate::people(&self.engine, self.id).await
