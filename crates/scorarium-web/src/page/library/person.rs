@@ -8,7 +8,7 @@ use scorarium_engine::entity::{Contributed, Entity};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::person::PersonId;
 use scorarium_engine::publication::PublicationId;
-use scorarium_engine::value::Year;
+use scorarium_engine::value::{Year, title_sort_key};
 use scorarium_engine::work::{CatalogNumber, WorkId};
 use serde::Deserialize;
 
@@ -152,7 +152,7 @@ fn nest_works(
             (
                 work.catalog_number.is_none(),
                 work.catalog_number.clone(),
-                work.title.to_lowercase(),
+                title_sort_key(&work.title),
             )
         });
     }
@@ -162,7 +162,7 @@ fn nest_works(
 /// Sort publications by the column, breaking ties with the title
 fn sort_publications(publications: &mut [Publication], sort: &Sort) {
     publications.sort_by(|a, b| {
-        let (a_title, b_title) = (a.title.to_lowercase(), b.title.to_lowercase());
+        let (a_title, b_title) = (title_sort_key(&a.title), title_sort_key(&b.title));
         let by_column = match sort.column {
             Column::Title => sort::compare(Some(&a_title), Some(&b_title), sort.descending),
             Column::Role => sort::compare(
