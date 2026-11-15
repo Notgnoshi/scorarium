@@ -21,6 +21,11 @@ pub(crate) struct Hit {
 }
 
 impl Hit {
+    /// Derive the key that orders the hit by its title
+    pub fn sort_key(&self) -> String {
+        self.title.to_lowercase()
+    }
+
     pub fn kind_rank(&self) -> (u8, u8) {
         let kind = match self.kind {
             EntityKind::Person => 0,

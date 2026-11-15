@@ -245,8 +245,8 @@ impl ReviewEntry {
                 sort::compare(Some(other.queued_at), Some(self.queued_at), descending)
             }
             Column::Entry => sort::compare(
-                Some(self.hit.title.to_lowercase()),
-                Some(other.hit.title.to_lowercase()),
+                Some(self.hit.sort_key()),
+                Some(other.hit.sort_key()),
                 descending,
             ),
             Column::Library => sort::compare(
