@@ -1,4 +1,3 @@
-mod cache;
 mod disk_cache;
 #[cfg(feature = "fake-transport")]
 pub mod fake;
@@ -9,6 +8,7 @@ mod response_file;
 mod transport;
 
 use std::fmt;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +16,7 @@ use std::time::Duration;
 use eyre::WrapErr;
 use http::HeaderValue;
 
-use crate::cache::Cache;
+use crate::disk_cache::DiskCache;
 use crate::log::CallLog;
 pub use crate::log::{CallHistory, CallRecord, Outcome};
 use crate::open_library::OpenLibrary;
@@ -137,6 +137,7 @@ impl Client {
         ClientBuilder {
             user_agent,
             transport: None,
+            cache_dir: None,
         }
     }
 
@@ -160,6 +161,7 @@ impl Client {
 pub struct ClientBuilder {
     user_agent: UserAgent,
     transport: Option<Arc<dyn Transport>>,
+    cache_dir: Option<PathBuf>,
 }
 
 impl fmt::Debug for ClientBuilder {
@@ -175,6 +177,13 @@ impl ClientBuilder {
         self
     }
 
+    /// Cache responses in `dir`. A client without a cache directory sends every request to its
+    /// transport.
+    pub fn cache_dir(mut self, dir: impl Into<PathBuf>) -> ClientBuilder {
+        self.cache_dir = Some(dir.into());
+        self
+    }
+
     /// Build the client.
     pub fn build(self) -> eyre::Result<Client> {
         let transport = match self.transport {
@@ -182,7 +191,10 @@ impl ClientBuilder {
             None => Arc::new(ReqwestTransport::new(&self.user_agent)?),
         };
         let log = Arc::new(CallLog::default());
-        let cache = Arc::new(Cache::new(log.clone()));
+        let cache = match self.cache_dir {
+            Some(dir) => Some(Arc::new(DiskCache::open(dir, log.clone())?)),
+            None => None,
+        };
         Ok(Client {
             open_library: RateLimitedClient::spawn(
                 Source::OpenLibrary.name(),
