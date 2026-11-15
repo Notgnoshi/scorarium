@@ -585,6 +585,7 @@ async fn save(
     for id in edits.remove {
         publication.remove_holding(id).await?;
     }
+    posted.holdings = HoldingsForm::from(publication.holdings());
     posted.states.apply(publication).await?;
     Ok(())
 }
