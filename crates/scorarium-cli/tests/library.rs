@@ -716,3 +716,22 @@ async fn isbn_import_review() {
          Books      \tperson     \t15\tClifton Fadiman                                     \tdraft\n"
     );
 }
+
+#[tokio::test]
+async fn the_music_script_runs() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let script = include_str!("../../../tools/music.scr");
+    let mut out = Vec::new();
+    scorarium_cli::run_script(&engine, script.as_bytes(), &mut out, false)
+        .await
+        .unwrap();
+
+    let libraries = engine.libraries().await.unwrap();
+    let music = libraries.iter().find(|l| l.name() == "Music").unwrap();
+    let publications = music.publications().await.unwrap();
+    assert!(
+        publications
+            .iter()
+            .any(|p| p.title() == Some("Isle of the Dead"))
+    );
+}
