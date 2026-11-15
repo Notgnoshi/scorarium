@@ -120,7 +120,6 @@ pub struct SourceStatus {
 
 /// The handle every source client is reached through.
 pub struct Client {
-    cache: Arc<Cache>,
     log: Arc<CallLog>,
     open_library: RateLimitedClient,
 }
@@ -148,10 +147,9 @@ impl Client {
                 Source::OpenLibrary.name(),
                 transport.clone(),
                 open_library::limits(&user_agent),
-                cache.clone(),
+                cache,
                 log.clone(),
             ),
-            cache,
             log,
         }
     }
@@ -169,14 +167,5 @@ impl Client {
     /// Get an API client for [Open Library](https://openlibrary.org)
     pub fn open_library(&self) -> OpenLibrary<'_> {
         OpenLibrary::new(&self.open_library)
-    }
-
-    /// Forgets every response fetched so far.
-    ///
-    /// Responses are kept for the lifetime of the process, so this is the only way to pick up a
-    /// correction made upstream, or to prevent running out of memory. Scorarium doesn't attempt to
-    /// keep its metadata up-to-date against the open APIs; only setting the metadata at import time.
-    pub fn clear_cache(&self) {
-        self.cache.clear();
     }
 }

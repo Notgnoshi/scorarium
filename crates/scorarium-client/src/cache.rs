@@ -49,10 +49,6 @@ impl Cache {
     pub(crate) fn remove(&self, key: &str) {
         self.entries.lock().unwrap().remove(key);
     }
-
-    pub(crate) fn clear(&self) {
-        self.entries.lock().unwrap().clear();
-    }
 }
 
 #[cfg(test)]
@@ -86,11 +82,6 @@ mod tests {
         assert_eq!(hit.status(), StatusCode::NOT_FOUND);
         assert_eq!(hit.body(), &Bytes::from_static(b"{}"));
         assert!(cache.get(&xml).is_none());
-        assert_eq!(log.history().cache_hits, 1);
-
-        cache.clear();
-        assert!(cache.get(&json).is_none());
-        // Clearing forgets the responses, not the calls they already saved
         assert_eq!(log.history().cache_hits, 1);
     }
 }
