@@ -364,10 +364,10 @@ async fn import_commit_review_discard() {
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
-         Books      \twork       \t16\tChapter 1                               \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
+         Books      \twork       \t17\tChapter 1                               \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -393,7 +393,7 @@ async fn import_commit_review_discard() {
 
     let (out, result) = run(
         &engine,
-        "library books work 16 commit\n\
+        "library books work 17 commit\n\
          library books person 19 discard-changes\n\
          review\n",
     )
@@ -408,9 +408,9 @@ async fn import_commit_review_discard() {
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -430,7 +430,7 @@ async fn import_commit_review_discard() {
          title      \t  \tScorarium handbook\n\
          contributor\t  \tGrace Hopper (author)\n\
          holding    \t10\tphysical: Desk\n\
-         work       \t16\tChapter 1\n\
+         work       \t17\tChapter 1\n\
          enrichment \t  \tcompleted 0/0\n"
     );
 
@@ -450,9 +450,9 @@ async fn import_commit_review_discard() {
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -479,9 +479,9 @@ async fn import_commit_review_discard() {
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -538,7 +538,7 @@ async fn add_work_links_by_id_or_creates() {
             "{album} add work Polichinelle --new\n\
              {album} add work 6\n\
              library 'sheet music' work 6 show\n\
-             library 'sheet music' work 16 show\n\
+             library 'sheet music' work 17 show\n\
              review\n"
         ),
     )
@@ -561,7 +561,7 @@ async fn add_work_links_by_id_or_creates() {
          publication    \t5 \tRachmaninoff masterpieces for solo piano\n\
          field         \tid\tvalue\n\
          --------------\t--\t-------------------\n\
-         id            \t16\t\n\
+         id            \t17\t\n\
          title         \t  \tPolichinelle\n\
          classification\t  \tmusic\n\
          publication   \t4 \tRussian piano album\n"
@@ -573,9 +573,9 @@ async fn add_work_links_by_id_or_creates() {
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -628,9 +628,9 @@ async fn isbn_import_review() {
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
          Books      \tpublication\t10\t                                        \tdraft\tcompleted 2/2\t5\n\
-         Sheet music\twork       \t11\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                 \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
@@ -718,9 +718,9 @@ async fn isbn_import_review() {
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce            \t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\tcompleted 0/0\t10\n\
          Books      \tpublication\t10\tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n\
-         Sheet music\twork       \t11\tElegie                                              \tdraft\t             \t4\n\
-         Sheet music\twork       \t12\tMelodie                                             \tdraft\t             \t1\n\
-         Sheet music\twork       \t13\tSerenade                                            \tdraft\n\
+         Sheet music\twork       \t12\tElegie                                              \tdraft\t             \t4\n\
+         Sheet music\twork       \t13\tMelodie                                             \tdraft\t             \t1\n\
+         Sheet music\twork       \t14\tSerenade                                            \tdraft\n\
          Books      \tperson     \t4 \tAmbrose Bierce                                      \t     \t             \t1\n\
          Sheet music\tperson     \t12\tErik Satie                                          \t     \t             \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                                       \tdraft\n\

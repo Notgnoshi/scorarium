@@ -286,6 +286,24 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         }
     }
 
+    let tchaikovsky = sheet_music
+        .people(Some(&"composer".parse()?))
+        .await?
+        .into_iter()
+        .find(|person| person.name() == "Pyotr Ilyich Tchaikovsky")
+        .ok_or(Error::NotFound)?;
+    let mut barcarolle = piano_piece(
+        &mut russian_album,
+        tchaikovsky.id(),
+        "June: Barcarolle",
+        "G minor",
+        None,
+    )
+    .await?;
+    barcarolle
+        .add_catalog_number("Op. 37a No. 6".parse()?)
+        .await?;
+
     for library in [&books, &sheet_music] {
         for mut publication in library.publications().await? {
             publication.commit().await?;
