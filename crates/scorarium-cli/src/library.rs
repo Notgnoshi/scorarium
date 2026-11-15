@@ -65,6 +65,7 @@ pub(crate) async fn import(
     reference: &str,
     seed: &str,
     location: Option<&str>,
+    enrich: bool,
     out: &mut impl Write,
 ) -> eyre::Result<()> {
     let library = resolve(engine, reference).await?;
@@ -74,6 +75,9 @@ pub(crate) async fn import(
     let publication = library
         .import(seed, NewHolding::Physical { location })
         .await?;
+    if enrich {
+        publication.enrich().await?;
+    }
     writeln!(out, "{}", publication.id())?;
     Ok(())
 }

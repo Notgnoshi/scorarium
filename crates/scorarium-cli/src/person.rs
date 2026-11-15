@@ -133,6 +133,7 @@ pub(crate) async fn target(
         "person",
         reference,
         new,
+        true,
         library.people(None).await?,
         |p| p.name(),
         search::person_context,

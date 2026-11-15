@@ -176,6 +176,7 @@ async fn import(
     let mut draft = library
         .import(seed(text, subtitle, record), first.as_new())
         .await?;
+    draft.enrich().await?;
     // The draft exists by now, so a failure to add a later holding is logged and not shown. The
     // edit page can add the holding again.
     for holding in rest {

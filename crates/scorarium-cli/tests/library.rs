@@ -3,7 +3,7 @@ use scorarium_engine::Engine;
 /// Run a script, returning what it printed and how it ended.
 async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
     let mut out = Vec::new();
-    let result = scorarium_cli::run_script(engine, script.as_bytes(), &mut out).await;
+    let result = scorarium_cli::run_script(engine, script.as_bytes(), &mut out, true).await;
     (String::from_utf8(out).unwrap(), result)
 }
 
@@ -361,7 +361,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
@@ -405,7 +405,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\tScorarium handbook                      \tdraft\tcompleted 0/0\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
@@ -448,7 +448,7 @@ async fn import_commit_review_discard() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t11\t                                        \tdraft\tcompleted 1/1\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
@@ -474,16 +474,16 @@ async fn import_commit_review_discard() {
     result.unwrap();
     assert_eq!(
         sorted_without_age(&out),
-        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
-         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
-         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
-         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment\tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t----------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t          \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t          \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t          \t10\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t          \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t          \t1\n\
          Sheet music\twork       \t14\tSerenade                                \tdraft\n\
-         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
-         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t          \t1\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t          \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
@@ -511,18 +511,6 @@ async fn add_work_links_by_id_or_creates() {
         format!("{:#}", result.unwrap_err()),
         "line 1: 'polichinelle' names 1 work:\n\
          \x20 6  Polichinelle  Op. 3 No. 4 by Sergei Rachmaninoff\n\
-         re-run with an id to link one, or with --new to create another"
-    );
-
-    let (_, result) = run(
-        &engine,
-        &format!("{album} add contributor 'sergei rachmaninoff' composer\n"),
-    )
-    .await;
-    assert_eq!(
-        format!("{:#}", result.unwrap_err()),
-        "line 1: 'sergei rachmaninoff' names 1 person:\n\
-         \x20 10  Sergei Rachmaninoff  Rachmaninoff, Sergei\n\
          re-run with an id to link one, or with --new to create another"
     );
 
@@ -568,16 +556,16 @@ async fn add_work_links_by_id_or_creates() {
     );
     assert_eq!(
         sorted_without_age(queue),
-        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment   \tproposals\n\
-         -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
-         Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
-         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
-         Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
-         Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
+        "library    \tkind       \tid\ttitle                                   \tdraft\tenrichment\tproposals\n\
+         -----------\t-----------\t--\t----------------------------------------\t-----\t----------\t---------\n\
+         Books      \tpublication\t2 \tPro Git                                 \t     \t          \t5\n\
+         Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t          \t1\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t          \t10\n\
+         Sheet music\twork       \t12\tElegie                                  \tdraft\t          \t4\n\
+         Sheet music\twork       \t13\tMelodie                                 \tdraft\t          \t1\n\
          Sheet music\twork       \t14\tSerenade                                \tdraft\n\
-         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t             \t1\n\
-         Sheet music\tperson     \t12\tErik Satie                              \t     \t             \t2\n\
+         Books      \tperson     \t4 \tAmbrose Bierce                          \t     \t          \t1\n\
+         Sheet music\tperson     \t12\tErik Satie                              \t     \t          \t2\n\
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n"
@@ -626,7 +614,7 @@ async fn isbn_import_review() {
          -----------\t-----------\t--\t----------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
          Books      \tpublication\t10\t                                        \tdraft\tcompleted 2/2\t5\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
@@ -716,7 +704,7 @@ async fn isbn_import_review() {
          -----------\t-----------\t--\t----------------------------------------------------\t-----\t-------------\t---------\n\
          Books      \tpublication\t2 \tPro Git                                             \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce            \t     \t             \t1\n\
-         Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\tcompleted 0/0\t10\n\
+         Sheet music\tpublication\t8 \tMorceaux de fantaisie                               \tdraft\t             \t10\n\
          Books      \tpublication\t10\tBagatelles, Rondos and Other Shorter Works for Piano\tdraft\tcompleted 2/2\n\
          Sheet music\twork       \t12\tElegie                                              \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                             \tdraft\t             \t1\n\
@@ -726,5 +714,24 @@ async fn isbn_import_review() {
          Sheet music\tperson     \t13\tMurray Baylor                                       \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                                  \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                                     \tdraft\n"
+    );
+}
+
+#[tokio::test]
+async fn the_music_script_runs() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let script = include_str!("../../../tools/music.scr");
+    let mut out = Vec::new();
+    scorarium_cli::run_script(&engine, script.as_bytes(), &mut out, false)
+        .await
+        .unwrap();
+
+    let libraries = engine.libraries().await.unwrap();
+    let music = libraries.iter().find(|l| l.name() == "Music").unwrap();
+    let publications = music.publications().await.unwrap();
+    assert!(
+        publications
+            .iter()
+            .any(|p| p.title() == Some("Isle of the Dead"))
     );
 }

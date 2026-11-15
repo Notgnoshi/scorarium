@@ -91,11 +91,6 @@ async fn main() -> color_eyre::Result<()> {
         None => args.data_dir,
     };
 
-    let database = data_dir.join("scorarium.db");
-    if matches!(args.command, Command::Shell(_)) && !args.demo && !database.is_file() {
-        color_eyre::eyre::bail!("data directory {} holds no library", data_dir.display());
-    }
-
     // The shell an share the database with a running server, so only the server is allowed to migrate
     let migrate = matches!(args.command, Command::Serve(_));
     let user_agent = UserAgent::new(args.contact.as_deref());

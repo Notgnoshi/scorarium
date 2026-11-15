@@ -194,6 +194,8 @@ impl Library {
 
 impl Library {
     /// Import a draft publication from `seed` with its first holding
+    ///
+    /// Call [crate::entity::Entity::enrich] on the draft to start enrichment.
     pub async fn import(&self, seed: ImportSeed, holding: NewHolding<'_>) -> Result<Publication> {
         publication::import(&self.engine, self.id, seed, holding).await
     }
