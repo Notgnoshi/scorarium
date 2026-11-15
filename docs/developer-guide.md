@@ -108,8 +108,7 @@ acme-companion, which handle TLS.
 To update a deployment:
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose up -d --pull always
 ```
 
 ## Maintenance notes
