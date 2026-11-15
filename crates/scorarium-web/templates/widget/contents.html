@@ -15,12 +15,12 @@
             {% endfor %}
         </div>
         <div class="work-title d-flex align-items-center gap-2">
-            <span class="form-control-plaintext w-auto">{{ work.title }}</span>
             <a class="btn btn-sm btn-link"
                href="/library/{{ library }}/work/{{ work.id }}/edit?back={{ back|urlencode }}"
                title="Edit work">
                 <i class="bi bi-pencil"></i>
             </a>
+            <span class="form-control-plaintext w-auto">{{ work.title }}</span>
         </div>
         <div class="work-number">
             <span class="form-control-plaintext">
