@@ -1,7 +1,5 @@
 {% extends "base.html" %}
-{% block content %}
-    {{ heading }}
-    {{ refusals }}
+{% macro duplicate_warning(duplicates, library) %}
     {% if !duplicates.is_empty() %}
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle-fill" title="Potential duplicate"></i>
@@ -24,6 +22,12 @@
             </table>
         </div>
     {% endif %}
+{% endmacro %}
+{% block content %}
+    {{ heading }}
+    {{ refusals }}
+    {% call duplicate_warning(duplicates, library) %}
+    {% endcall %}
     <form id="edit"
           data-unsaved="unsaved"
           data-candidates-url="/api/review/publication/{{ id }}/proposals"
@@ -117,5 +121,27 @@
         {{ holdings }}
     </form>
     {{ actions }}
+    {% if let Some(finish) = confirm_finish %}
+        <dialog id="duplicates" class="confirm" data-open>
+            <div class="confirm-body">
+                {% call duplicate_warning(duplicates, library) %}
+                {% endcall %}
+            </div>
+            <div class="confirm-footer">
+                <form method="dialog">
+                    <button class="btn btn-outline-secondary" type="submit" autofocus>Keep editing</button>
+                </form>
+                <button class="btn btn-primary"
+                        type="submit"
+                        form="edit"
+                        formaction="{{ finish }}"
+                        name="duplicates_confirmed"
+                        value="true"
+                        title="Add this draft to the library anyway">
+                    <i class="bi bi-check-lg"></i> Finish import
+                </button>
+            </div>
+        </dialog>
+    {% endif %}
     <div id="contents-dialog" data-dialog-slot></div>
 {% endblock %}

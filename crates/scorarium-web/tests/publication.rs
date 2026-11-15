@@ -426,6 +426,51 @@ async fn commit_saves_the_form_and_then_commits() {
 }
 
 #[tokio::test]
+async fn commit_asks_before_finishing_a_potential_duplicate() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let existing = library.publications().await.unwrap().remove(0);
+    let title = existing.title().unwrap();
+    let draft = library
+        .import(
+            ImportSeed::title(title),
+            NewHolding::Physical { location: None },
+        )
+        .await
+        .unwrap();
+    let url = format!(
+        "/library/{}/publication/{}/commit",
+        library.id(),
+        draft.id()
+    );
+    let is_draft = async || {
+        Publication::load(&app.engine, draft.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .is_draft()
+    };
+    let mut form = vec![
+        ("title", title),
+        ("subtitle", ""),
+        ("publisher", ""),
+        ("year", ""),
+        ("note", ""),
+    ];
+
+    app.server.post(&url).form(&form).await.assert_status_ok();
+    assert!(is_draft().await);
+
+    form.push(("duplicates_confirmed", "true"));
+    app.server
+        .post(&url)
+        .form(&form)
+        .await
+        .assert_status(StatusCode::SEE_OTHER);
+    assert!(!is_draft().await);
+}
+
+#[tokio::test]
 async fn edit_clears_the_location_of_the_only_holding() {
     let app = TestApp::demo().await;
     let library = app.engine.libraries().await.unwrap().pop().unwrap();
