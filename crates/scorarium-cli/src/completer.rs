@@ -266,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn completion_follows_the_grammar() {
-        let engine = scorarium_test::demo_engine().await;
+        let (engine, _dir) = scorarium_test::demo_engine().await;
         let handle = Handle::current();
         tokio::task::spawn_blocking(move || {
             let values = |selected: Option<LibraryId>, line: &str| -> Vec<(String, usize)> {

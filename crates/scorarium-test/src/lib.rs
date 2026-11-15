@@ -24,8 +24,10 @@ async fn open_engine() -> (Engine, TempDir) {
 }
 
 /// Open a demo instance of the [Engine] configured for test [FakeTransport]
-pub async fn demo_engine() -> Engine {
-    Engine::demo(engine_options()).await.unwrap()
+pub async fn demo_engine() -> (Engine, TempDir) {
+    let dir = TempDir::new().unwrap();
+    let engine = Engine::demo(dir.path(), engine_options()).await.unwrap();
+    (engine, dir)
 }
 
 /// A test instance of the [Engine] configured with [FakeTransport]
@@ -33,7 +35,7 @@ pub struct TestApp {
     pub server: TestServer,
     pub engine: Engine,
     pub token: Option<Token>,
-    _dir: Option<TempDir>,
+    _dir: TempDir,
 }
 
 impl TestApp {
@@ -48,7 +50,7 @@ impl TestApp {
     }
 
     async fn logged_in_demo(demo_files: bool) -> TestApp {
-        let engine = demo_engine().await;
+        let (engine, dir) = demo_engine().await;
         let mut server = server(&engine, demo_files);
         let token = engine.login("").await.unwrap();
         server.add_cookie(Cookie::new(SESSION_COOKIE, token.as_str().to_owned()));
@@ -56,17 +58,16 @@ impl TestApp {
             server,
             engine,
             token: Some(token),
-            _dir: None,
+            _dir: dir,
         }
     }
 
     /// Get a logged-out instance of the test server
     pub async fn logged_out(demo: bool) -> TestApp {
         let (engine, dir) = if demo {
-            (demo_engine().await, None)
+            demo_engine().await
         } else {
-            let (engine, dir) = open_engine().await;
-            (engine, Some(dir))
+            open_engine().await
         };
         TestApp {
             server: server(&engine, true),

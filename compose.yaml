@@ -18,7 +18,7 @@ services:
               target: /data
               bind:
                   create_host_path: false
-        command: ["serve", "--demo"]  # Remove to switch to a persistent production deployment
+        command: ["serve", "--demo", "--cache-dir", "/data/cache"]  # Remove to switch to a persistent production deployment
         environment:
             - VIRTUAL_HOST=library.agill.xyz,library.agill.net
             - LETSENCRYPT_HOST=library.agill.xyz,library.agill.net

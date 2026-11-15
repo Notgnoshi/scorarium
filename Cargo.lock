@@ -2444,6 +2444,7 @@ dependencies = [
  "scorarium-client",
  "scorarium-engine",
  "scorarium-web",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
