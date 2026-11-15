@@ -16,3 +16,5 @@ mod widget;
 
 pub use router::{SESSION_COOKIE, Settings, router};
 pub use serve::{ServeArgs, serve};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
