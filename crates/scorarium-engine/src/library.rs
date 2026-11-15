@@ -227,6 +227,11 @@ impl Library {
         duplicate::publications(&self.engine, self.id).await
     }
 
+    /// List the groups of works that may be duplicates, drafts included
+    pub async fn duplicate_works(&self) -> Result<Vec<DuplicateGroup<Work>>> {
+        duplicate::works(&self.engine, self.id).await
+    }
+
     /// List the groups of people that may be duplicates, drafts included
     pub async fn duplicate_people(&self) -> Result<Vec<DuplicateGroup<Person>>> {
         duplicate::people(&self.engine, self.id).await

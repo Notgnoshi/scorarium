@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::num::ParseIntError;
 use std::str::FromStr;
 
@@ -1456,6 +1457,31 @@ pub(crate) async fn in_library(engine: &Engine, library: LibraryId) -> Result<Ve
     Ok(works)
 }
 
+/// List the works in `library` that a publication contains, oldest first
+pub(crate) async fn contained(engine: &Engine, library: LibraryId) -> Result<Vec<Work>> {
+    let mut conn = engine.begin_read().await?;
+    let library = library.get();
+    let rows = sqlx::query_as!(
+        WorkRow,
+        r#"SELECT id, library_id, title, subtitle, key, time_signature, instrumentation,
+                  stars AS "stars: u8", note, kind, draft AS "draft: bool",
+                  created_at AS "created_at: Timestamp",
+                  last_modified_at AS "last_modified_at: Timestamp"
+           FROM work
+           WHERE library_id = ?
+             AND EXISTS (SELECT 1 FROM publication_work WHERE work_id = work.id)
+           ORDER BY id"#,
+        library
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut works = Vec::with_capacity(rows.len());
+    for row in rows {
+        works.push(Work::from_row(engine, &mut conn, row).await?);
+    }
+    Ok(works)
+}
+
 /// Get work search candidates for the given library
 pub(crate) async fn candidates(
     conn: &mut SqliteConnection,
@@ -1748,6 +1774,11 @@ impl CatalogNumber {
         self.scheme.is_some()
     }
 
+    /// Check whether both numbers are written in one recognized scheme
+    pub(crate) fn same_scheme(&self, other: &CatalogNumber) -> bool {
+        self.scheme.is_some() && self.scheme == other.scheme
+    }
+
     /// Whether this number begins with `prefix`: "Op. 27 No. 2" begins with "Op. 27"
     ///
     /// Only recognized numbers of one scheme can begin one another.
@@ -1817,6 +1848,12 @@ impl PartialEq for CatalogNumber {
 }
 
 impl Eq for CatalogNumber {}
+
+impl Hash for CatalogNumber {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key().hash(state);
+    }
+}
 
 impl Ord for CatalogNumber {
     fn cmp(&self, other: &Self) -> Ordering {
