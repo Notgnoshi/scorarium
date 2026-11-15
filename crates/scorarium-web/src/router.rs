@@ -87,6 +87,14 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
             "/library/{id}/publication/{publication}/holding/{holding}",
             get(page::library::file::holding),
         )
+        .route(
+            "/library/{id}/publication/{publication}/holding/{holding}/lend",
+            post(page::library::loan::lend),
+        )
+        .route(
+            "/library/{id}/publication/{publication}/holding/{holding}/return",
+            post(page::library::loan::mark_returned),
+        )
         .route("/library/{id}/work/{work}", get(page::library::work::get))
         .route(
             "/library/{id}/work/{work}/edit",
@@ -147,6 +155,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         )
         .route("/settings/demo/reset", post(page::settings::reset_demo))
         .route("/settings/audit", get(page::audit::get))
+        .route("/settings/loans", get(page::loans::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)

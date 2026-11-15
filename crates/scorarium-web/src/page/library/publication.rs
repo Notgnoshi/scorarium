@@ -18,6 +18,7 @@ use crate::page::library::entity::{
 };
 use crate::page::library::view;
 use crate::page::{Base, Crumb};
+use crate::redirect::back_query;
 use crate::sort;
 use crate::widget::header::Header;
 use crate::widget::identifiers_input::kind_label;
@@ -48,6 +49,8 @@ struct Publication {
     works: Vec<ContainedWork>,
     numbered: bool,
     sort: Sort,
+    /// The query string that brings an action taken on this page back to it
+    back: String,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -94,6 +97,7 @@ struct Identifier {
 struct Holding {
     id: HoldingId,
     icon: Icon,
+    physical: bool,
     /// The shelf location of a physical copy
     location: Option<String>,
     /// The filename of a digital copy
@@ -151,6 +155,7 @@ impl From<&scorarium_engine::holding::Holding> for Holding {
         Holding {
             id: holding.id,
             icon,
+            physical: matches!(holding.kind, HoldingKind::Physical { .. }),
             location,
             filename,
             loaned_to: holding.loaned_to.clone(),
@@ -212,6 +217,7 @@ pub async fn get(
         works,
         numbered,
         sort,
+        back: back_query(&uri.to_string()),
     };
     Ok(Html(page.render()?).into_response())
 }

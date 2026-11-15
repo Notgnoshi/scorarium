@@ -37,6 +37,8 @@
 | `/library/{id}/publication/{publication}/edit`                         | POST   | Save a publication            |
 | `/library/{id}/publication/{publication}/enrich`                       | POST   | Save and enrich a publication |
 | `/library/{id}/publication/{publication}/holding/{holding}`            | GET    | Digital holding file          |
+| `/library/{id}/publication/{publication}/holding/{holding}/lend`       | POST   | Lend a copy                   |
+| `/library/{id}/publication/{publication}/holding/{holding}/return`     | POST   | Mark a copy as returned       |
 | `/library/{id}/publication/{publication}`                              | GET    | Publication details           |
 | `/library/{id}/tag/{tag}`                                              | GET    | Entries with one tag          |
 | `/library/{id}/tags`                                                   | GET    | Tags in a library             |
@@ -56,4 +58,5 @@
 | `/settings/password`                                                   | GET    | Change the password           |
 | `/settings/password`                                                   | POST   | Save the new password         |
 | `/settings/demo/reset`                                                 | POST   | Reset the demo data           |
+| `/settings/loans`                                                      | GET    | Lent copies                   |
 | `/settings`                                                            | GET    | Settings                      |
