@@ -12,6 +12,19 @@ the focus on user impact** rather than the mechanics of the change.
 
 <!-- Please add new changelog entries here -->
 
+# Scorarium - 0.2.0 - (2026-11-15)
+
+This is the MVP release for Scorarium! As of this release, you can:
+
+* Manually import publications
+* Do basic metadata enrichment from Open Library (enhancing this will be the focus of the next few
+  releases)
+* Basic view, edit, and delete publications, works, and people in your library
+
+Previous releases did not guarantee database stability. As of this release, I consider Scorarium's
+database to be stable, and will support forward migrations for any new schema changes going
+forwards.
+
 # Scorarium - 0.2.0-rc1 - (2026-11-14)
 
 This release polished the edit pages, focusing on improving the UX for list-type fields such that
