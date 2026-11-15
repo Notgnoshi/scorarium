@@ -61,6 +61,11 @@ SCORARIUM_TEST_RECORD_LIVE_API=1 cargo nextest run --all-features --test-threads
 
 Review the diff carefully before checking it in.
 
+## API response cache
+
+`scorarium` caches API responses in `<data-dir>/cache`, or in `--cache-dir`. This cache is persisted
+between server instances, and expires after 30 days.
+
 ## Identifiers
 
 ISBN validation and hyphenation need the ISBN agency's range table, which the `isbn` crate embeds at
