@@ -2,6 +2,28 @@
 {% block content %}
     {{ heading }}
     {{ refusals }}
+    {% if !duplicates.is_empty() %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill" title="Potential duplicate"></i>
+            This publication may be a duplicate of:
+            <table>
+                {% for (member, reasons) in duplicates %}
+                    <tr>
+                        <td class="pe-3">
+                            <a class="alert-link"
+                               href="/library/{{ library }}/publication/{{ member.id() }}">{{ member.title().unwrap_or("Untitled") }}</a>
+                            {% if member.is_draft() %}<span class="badge text-bg-secondary">Draft</span>{% endif %}
+                        </td>
+                        <td class="pe-3">
+                            {% if let Some(publisher) = member.publisher() %}{{ publisher }}{% endif %}
+                        </td>
+                        <td class="pe-3">{% if let Some(year) = member.year() %}{{ year }}{% endif %}</td>
+                        <td>{{ reasons }}</td>
+                    </tr>
+                {% endfor %}
+            </table>
+        </div>
+    {% endif %}
     <form id="edit"
           data-unsaved="unsaved"
           data-candidates-url="/api/review/publication/{{ id }}/proposals"

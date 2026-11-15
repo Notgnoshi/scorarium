@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 use crate::Settings;
 use crate::auth::{Session, Viewer};
+use crate::duplicate::describe_reasons;
 use crate::error::Result;
 use crate::forms::FormBody;
 use crate::page::library::{entity, view};
@@ -191,6 +192,7 @@ struct Edit {
     contents: Contents,
     back: Back,
     refusals: Refusals,
+    duplicates: Vec<(Publication, String)>,
 }
 
 struct Parsed {
@@ -313,6 +315,19 @@ async fn render(
         Crumb::new(library.name(), format!("/library/{}", library.id())),
     ];
     let draft = publication.is_draft();
+    let duplicates = if draft {
+        publication
+            .duplicates()
+            .await?
+            .into_iter()
+            .map(|duplicate| {
+                let reasons = describe_reasons(&duplicate.reasons);
+                (duplicate.entity, reasons)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let form = posted.form;
     let tags = form.tag.iter().filter_map(|tag| tag.parse().ok()).collect();
     let Candidates {
@@ -437,6 +452,7 @@ async fn render(
         .await?,
         back,
         refusals,
+        duplicates,
     };
     Ok((status, Html(page.render()?)).into_response())
 }
