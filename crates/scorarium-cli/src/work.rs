@@ -114,6 +114,7 @@ pub(crate) async fn target(
         "work",
         reference,
         new,
+        false,
         library.works().await?,
         |w| w.title(),
         search::work_context,

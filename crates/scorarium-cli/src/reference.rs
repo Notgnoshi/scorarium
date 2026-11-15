@@ -56,12 +56,13 @@ pub(crate) enum Target<E> {
 
 /// Decide whether an `add` reference links an existing entity or creates one.
 ///
-/// A name match is never linked implicitly, because names are not unique. Fail with the candidates
-/// so the caller can pick one by id or force creation.
+/// Link a name only when `link_by_name` is set and exactly one candidate has that name. Fail with
+/// the candidates otherwise, so the caller can pick one by id or force creation.
 pub(crate) fn target<E: Entity>(
     kind: &str,
     reference: &str,
     new: bool,
+    link_by_name: bool,
     mut candidates: Vec<E>,
     name: impl Fn(&E) -> &str,
     context: impl Fn(&E) -> String,
@@ -80,6 +81,9 @@ pub(crate) fn target<E: Entity>(
     candidates.retain(|c| same_name(name(c), reference));
     if candidates.is_empty() {
         return Ok(Target::New);
+    }
+    if link_by_name && candidates.len() == 1 {
+        return Ok(Target::Existing(candidates.remove(0)));
     }
     let entries: Vec<String> = candidates
         .iter()

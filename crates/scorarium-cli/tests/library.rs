@@ -514,18 +514,6 @@ async fn add_work_links_by_id_or_creates() {
          re-run with an id to link one, or with --new to create another"
     );
 
-    let (_, result) = run(
-        &engine,
-        &format!("{album} add contributor 'sergei rachmaninoff' composer\n"),
-    )
-    .await;
-    assert_eq!(
-        format!("{:#}", result.unwrap_err()),
-        "line 1: 'sergei rachmaninoff' names 1 person:\n\
-         \x20 10  Sergei Rachmaninoff  Rachmaninoff, Sergei\n\
-         re-run with an id to link one, or with --new to create another"
-    );
-
     let (_, result) = run(&engine, &format!("{album} add work 6 --new\n")).await;
     assert_eq!(
         format!("{:#}", result.unwrap_err()),
