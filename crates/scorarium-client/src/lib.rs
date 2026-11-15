@@ -4,6 +4,7 @@ pub mod fake;
 mod log;
 pub mod open_library;
 mod rate_limited_client;
+mod response_file;
 mod transport;
 
 use std::fmt;
