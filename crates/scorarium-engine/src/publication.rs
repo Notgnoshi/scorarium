@@ -1158,11 +1158,12 @@ impl Publication {
         Ok(())
     }
 
-    /// Lend a copy of the publication to `loaned_to`, or mark it returned with none
+    /// Lend a physical copy of the publication to `loaned_to`, or mark it returned with none
     ///
     /// Treat a blank name as none, and do nothing if the loan is unchanged.
     ///
-    /// Returns [Error::NotFound] if the publication has been deleted or has no such holding.
+    /// Returns [Error::InvalidValue] if the holding is digital, and [Error::NotFound] if the
+    /// publication has been deleted or has no such holding.
     pub async fn set_holding_loaned_to(
         &mut self,
         holding: HoldingId,
@@ -1174,6 +1175,9 @@ impl Publication {
         let Some(position) = self.holdings.iter().position(|h| h.id == holding) else {
             return Err(Error::NotFound);
         };
+        if matches!(self.holdings[position].kind, HoldingKind::Digital { .. }) {
+            return Err(Error::InvalidValue("Cannot loan a digital holding".into()));
+        }
         if self.holdings[position].loaned_to.as_deref() == loaned_to {
             return Ok(());
         }
