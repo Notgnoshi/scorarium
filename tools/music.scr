@@ -5,185 +5,185 @@
 library create Music public
 library Music select
 
-import "The well-tempered clavier"
-publication "The well-tempered clavier" add identifier isbn 0-486-24532-2
-publication "The well-tempered clavier" add contributor "Johann Sebastian Bach" composer
-publication "The well-tempered clavier" commit
+import "The well-tempered clavier" --as p-bach-well-tempered-clavier
+publication @p-bach-well-tempered-clavier add identifier isbn 0-486-24532-2
+publication @p-bach-well-tempered-clavier add contributor "Johann Sebastian Bach" composer
+publication @p-bach-well-tempered-clavier commit
 
-import "Mikrokosmos vol 1"
-publication "Mikrokosmos vol 1" add identifier isbn 978-1-4234-9304-4
-publication "Mikrokosmos vol 1" add identifier ismn M-060-08001-2
-publication "Mikrokosmos vol 1" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 1" commit
+import "Mikrokosmos vol 1" --as p-bartok-mikrokosmos-1
+publication @p-bartok-mikrokosmos-1 add identifier isbn 978-1-4234-9304-4
+publication @p-bartok-mikrokosmos-1 add identifier ismn M-060-08001-2
+publication @p-bartok-mikrokosmos-1 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-1 commit
 
-import "Mikrokosmos vol 2"
-publication "Mikrokosmos vol 2" add identifier isbn 978-0-85162-602-4
-publication "Mikrokosmos vol 2" add identifier ismn 979-0-060-08002-9
-publication "Mikrokosmos vol 2" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 2" commit
+import "Mikrokosmos vol 2" --as p-bartok-mikrokosmos-2
+publication @p-bartok-mikrokosmos-2 add identifier isbn 978-0-85162-602-4
+publication @p-bartok-mikrokosmos-2 add identifier ismn 979-0-060-08002-9
+publication @p-bartok-mikrokosmos-2 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-2 commit
 
-import "Mikrokosmos vol 3"
-publication "Mikrokosmos vol 3" add identifier isbn 978-0-85162-636-9
-publication "Mikrokosmos vol 3" add identifier ismn 979-0-060-08003-6
-publication "Mikrokosmos vol 3" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 3" commit
+import "Mikrokosmos vol 3" --as p-bartok-mikrokosmos-3
+publication @p-bartok-mikrokosmos-3 add identifier isbn 978-0-85162-636-9
+publication @p-bartok-mikrokosmos-3 add identifier ismn 979-0-060-08003-6
+publication @p-bartok-mikrokosmos-3 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-3 commit
 
-import "Mikrokosmos vol 4"
-publication "Mikrokosmos vol 4" add identifier isbn 978-0-85162-603-1
-publication "Mikrokosmos vol 4" add identifier ismn 979-0-060-08004-3
-publication "Mikrokosmos vol 4" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 4" commit
+import "Mikrokosmos vol 4" --as p-bartok-mikrokosmos-4
+publication @p-bartok-mikrokosmos-4 add identifier isbn 978-0-85162-603-1
+publication @p-bartok-mikrokosmos-4 add identifier ismn 979-0-060-08004-3
+publication @p-bartok-mikrokosmos-4 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-4 commit
 
-import "Mikrokosmos vol 5"
-publication "Mikrokosmos vol 5" add identifier isbn 978-0-85162-630-7
-publication "Mikrokosmos vol 5" add identifier ismn 979-0-060-08005-0
-publication "Mikrokosmos vol 5" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 5" commit
+import "Mikrokosmos vol 5" --as p-bartok-mikrokosmos-5
+publication @p-bartok-mikrokosmos-5 add identifier isbn 978-0-85162-630-7
+publication @p-bartok-mikrokosmos-5 add identifier ismn 979-0-060-08005-0
+publication @p-bartok-mikrokosmos-5 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-5 commit
 
-import "Mikrokosmos vol 6"
-publication "Mikrokosmos vol 6" add identifier isbn 978-0-85162-641-3
-publication "Mikrokosmos vol 6" add identifier ismn 979-0-060-08006-7
-publication "Mikrokosmos vol 6" add contributor "Bela Bartok" composer
-publication "Mikrokosmos vol 6" commit
+import "Mikrokosmos vol 6" --as p-bartok-mikrokosmos-6
+publication @p-bartok-mikrokosmos-6 add identifier isbn 978-0-85162-641-3
+publication @p-bartok-mikrokosmos-6 add identifier ismn 979-0-060-08006-7
+publication @p-bartok-mikrokosmos-6 add contributor "Bela Bartok" composer
+publication @p-bartok-mikrokosmos-6 commit
 
-import "Complete piano sonatas volume I"
-publication "Complete piano sonatas volume I" add identifier isbn 0-486-23134-8
-publication "Complete piano sonatas volume I" add contributor "Ludwig van Beethoven" composer
-publication "Complete piano sonatas volume I" commit
+import "Complete piano sonatas volume I" --as p-beethoven-sonatas-1
+publication @p-beethoven-sonatas-1 add identifier isbn 0-486-23134-8
+publication @p-beethoven-sonatas-1 add contributor "Ludwig van Beethoven" composer
+publication @p-beethoven-sonatas-1 commit
 
-import "Complete piano sonatas volume II"
-publication "Complete piano sonatas volume II" add identifier isbn 0-486-23135-6
-publication "Complete piano sonatas volume II" add contributor "Ludwig van Beethoven" composer
-publication "Complete piano sonatas volume II" commit
+import "Complete piano sonatas volume II" --as p-beethoven-sonatas-2
+publication @p-beethoven-sonatas-2 add identifier isbn 0-486-23135-6
+publication @p-beethoven-sonatas-2 add contributor "Ludwig van Beethoven" composer
+publication @p-beethoven-sonatas-2 commit
 
-import "Fifty-one exercises"
-publication "Fifty-one exercises" add identifier isbn 978-1-4584-2665-9
-publication "Fifty-one exercises" add identifier publisher-number "Vol 1600"
-publication "Fifty-one exercises" add contributor "Johannes Brahms" composer
-publication "Fifty-one exercises" commit
+import "Fifty-one exercises" --as p-brahms-fifty-one-exercises
+publication @p-brahms-fifty-one-exercises add identifier isbn 978-1-4584-2665-9
+publication @p-brahms-fifty-one-exercises add identifier publisher-number "Vol 1600"
+publication @p-brahms-fifty-one-exercises add contributor "Johannes Brahms" composer
+publication @p-brahms-fifty-one-exercises commit
 
-import "Piano works vol I"
-publication "Piano works vol I" add identifier publisher-number "K3254"
-publication "Piano works vol I" add contributor "Johannes Brahms" composer
-publication "Piano works vol I" commit
+import "Piano works vol I" --as p-brahms-piano-works-1
+publication @p-brahms-piano-works-1 add identifier publisher-number "K3254"
+publication @p-brahms-piano-works-1 add contributor "Johannes Brahms" composer
+publication @p-brahms-piano-works-1 commit
 
-import "Piano works Vol II"
-publication "Piano works Vol II" add identifier isbn 0-7692-4077-1
-publication "Piano works Vol II" add identifier publisher-number "K03255"
-publication "Piano works Vol II" add contributor "Johannes Brahms" composer
-publication "Piano works Vol II" commit
+import "Piano works Vol II" --as p-brahms-piano-works-2
+publication @p-brahms-piano-works-2 add identifier isbn 0-7692-4077-1
+publication @p-brahms-piano-works-2 add identifier publisher-number "K03255"
+publication @p-brahms-piano-works-2 add contributor "Johannes Brahms" composer
+publication @p-brahms-piano-works-2 commit
 
-import "Complete preludes & etudes"
-publication "Complete preludes & etudes" add identifier isbn 0-486-24052-5
-publication "Complete preludes & etudes" add contributor "Frederic Chopin" composer
-publication "Complete preludes & etudes" commit
+import "Complete preludes & etudes" --as p-chopin-preludes-etudes
+publication @p-chopin-preludes-etudes add identifier isbn 0-486-24052-5
+publication @p-chopin-preludes-etudes add contributor "Frederic Chopin" composer
+publication @p-chopin-preludes-etudes commit
 
-import "Mazurkas"
-publication "Mazurkas" add identifier isbn 0-486-25548-4
-publication "Mazurkas" add contributor "Frederic Chopin" composer
-publication "Mazurkas" commit
+import "Mazurkas" --as p-chopin-mazurkas
+publication @p-chopin-mazurkas add identifier isbn 0-486-25548-4
+publication @p-chopin-mazurkas add contributor "Frederic Chopin" composer
+publication @p-chopin-mazurkas commit
 
-import "Nocturns & polonaises"
-publication "Nocturns & polonaises" add identifier isbn 0-486-24564-0
-publication "Nocturns & polonaises" add contributor "Frederic Chopin" composer
-publication "Nocturns & polonaises" commit
+import "Nocturns & polonaises" --as p-chopin-nocturnes-polonaises
+publication @p-chopin-nocturnes-polonaises add identifier isbn 0-486-24564-0
+publication @p-chopin-nocturnes-polonaises add contributor "Frederic Chopin" composer
+publication @p-chopin-nocturnes-polonaises commit
 
-import "Scherzi"
-publication "Scherzi" add identifier publisher-number "UT 50061"
-publication "Scherzi" add contributor "Frederic Chopin" composer
-publication "Scherzi" commit
+import "Scherzi" --as p-chopin-scherzi
+publication @p-chopin-scherzi add identifier publisher-number "UT 50061"
+publication @p-chopin-scherzi add contributor "Frederic Chopin" composer
+publication @p-chopin-scherzi commit
 
-import "Favorite piano works"
-publication "Favorite piano works" add identifier isbn 978-1-4234-2741-4
-publication "Favorite piano works" add identifier publisher-number "Vol 2070"
-publication "Favorite piano works" add contributor "Claude Debussy" composer
-publication "Favorite piano works" commit
+import "Favorite piano works" --as p-debussy-favorite-piano-works
+publication @p-debussy-favorite-piano-works add identifier isbn 978-1-4234-2741-4
+publication @p-debussy-favorite-piano-works add identifier publisher-number "Vol 2070"
+publication @p-debussy-favorite-piano-works add contributor "Claude Debussy" composer
+publication @p-debussy-favorite-piano-works commit
 
-import "Concerto for the piano"
-publication "Concerto for the piano" add identifier isbn 0-7935-7224-X
-publication "Concerto for the piano" add identifier publisher-number "Vol 1399"
-publication "Concerto for the piano" add contributor "Edvard Grieg" composer
-publication "Concerto for the piano" commit
+import "Concerto for the piano" --as p-grieg-concerto
+publication @p-grieg-concerto add identifier isbn 0-7935-7224-X
+publication @p-grieg-concerto add identifier publisher-number "Vol 1399"
+publication @p-grieg-concerto add contributor "Edvard Grieg" composer
+publication @p-grieg-concerto commit
 
-import "Andalucia for piano"
-publication "Andalucia for piano" add identifier isbn 0-7935-2515-2
-publication "Andalucia for piano" add contributor "Ernesto Lecuona" composer
-publication "Andalucia for piano" commit
+import "Andalucia for piano" --as p-lecuona-andalucia
+publication @p-lecuona-andalucia add identifier isbn 0-7935-2515-2
+publication @p-lecuona-andalucia add contributor "Ernesto Lecuona" composer
+publication @p-lecuona-andalucia commit
 
-import "Liszt masterpieces for solo piano"
-publication "Liszt masterpieces for solo piano" add identifier isbn 0-486-41379-9
-publication "Liszt masterpieces for solo piano" add contributor "Franz Liszt" composer
-publication "Liszt masterpieces for solo piano" commit
+import "Liszt masterpieces for solo piano" --as p-liszt-masterpieces
+publication @p-liszt-masterpieces add identifier isbn 0-486-41379-9
+publication @p-liszt-masterpieces add contributor "Franz Liszt" composer
+publication @p-liszt-masterpieces commit
 
-import "Masterpieces for piano"
-publication "Masterpieces for piano" add identifier ismn 979-0-57702-578-0
-publication "Masterpieces for piano" add identifier publisher-number "EP 20036"
-publication "Masterpieces for piano" add contributor "Felix Mendelssohn" composer
-publication "Masterpieces for piano" commit
+import "Masterpieces for piano" --as p-mendelssohn-masterpieces
+publication @p-mendelssohn-masterpieces add identifier ismn 979-0-57702-578-0
+publication @p-mendelssohn-masterpieces add identifier publisher-number "EP 20036"
+publication @p-mendelssohn-masterpieces add contributor "Felix Mendelssohn" composer
+publication @p-mendelssohn-masterpieces commit
 
-import "Pictures at an exhibition"
-publication "Pictures at an exhibition" add identifier isbn 0-7390-1194-4
-publication "Pictures at an exhibition" add contributor "Modest Mussorgsky" composer
-publication "Pictures at an exhibition" commit
+import "Pictures at an exhibition" --as p-mussorgsky-pictures
+publication @p-mussorgsky-pictures add identifier isbn 0-7390-1194-4
+publication @p-mussorgsky-pictures add contributor "Modest Mussorgsky" composer
+publication @p-mussorgsky-pictures commit
 
-import "The Island of the Dead arr. Kirkor"
-publication "The Island of the Dead arr. Kirkor" add identifier publisher-number "M 26277"
-publication "The Island of the Dead arr. Kirkor" add contributor "Sergei Rachmaninoff" composer
-publication "The Island of the Dead arr. Kirkor" add contributor "Georgy Kirkor" arranger
-publication "The Island of the Dead arr. Kirkor" commit
+import "The Island of the Dead arr. Kirkor" --as p-rachmaninoff-island-of-the-dead-kirkor
+publication @p-rachmaninoff-island-of-the-dead-kirkor add identifier publisher-number "M 26277"
+publication @p-rachmaninoff-island-of-the-dead-kirkor add contributor "Sergei Rachmaninoff" composer
+publication @p-rachmaninoff-island-of-the-dead-kirkor add contributor "Georgy Kirkor" arranger
+publication @p-rachmaninoff-island-of-the-dead-kirkor commit
 
-import "Isle of the Dead"
-publication "Isle of the Dead" add identifier ismn M-060-11163-1
-publication "Isle of the Dead" add identifier publisher-number "A 9081 G"
-publication "Isle of the Dead" add contributor "Sergei Rachmaninoff" composer
-publication "Isle of the Dead" commit
+import "Isle of the Dead" --as p-rachmaninoff-isle-of-the-dead
+publication @p-rachmaninoff-isle-of-the-dead add identifier ismn M-060-11163-1
+publication @p-rachmaninoff-isle-of-the-dead add identifier publisher-number "A 9081 G"
+publication @p-rachmaninoff-isle-of-the-dead add contributor "Sergei Rachmaninoff" composer
+publication @p-rachmaninoff-isle-of-the-dead commit
 
-import "Rachmaninoff masterpieces for solo piano"
-publication "Rachmaninoff masterpieces for solo piano" add identifier isbn 0-486-43122-3
-publication "Rachmaninoff masterpieces for solo piano" add contributor "Sergei Rachmaninoff" composer
-publication "Rachmaninoff masterpieces for solo piano" commit
+import "Rachmaninoff masterpieces for solo piano" --as p-rachmaninoff-masterpieces
+publication @p-rachmaninoff-masterpieces add identifier isbn 0-486-43122-3
+publication @p-rachmaninoff-masterpieces add contributor "Sergei Rachmaninoff" composer
+publication @p-rachmaninoff-masterpieces commit
 
-import "Three piano concertos"
-publication "Three piano concertos" add identifier isbn 978-1-4234-8916-0
-publication "Three piano concertos" add identifier publisher-number "Vol 2087"
-publication "Three piano concertos" add contributor "Sergei Rachmaninoff" composer
-publication "Three piano concertos" commit
+import "Three piano concertos" --as p-rachmaninoff-concertos
+publication @p-rachmaninoff-concertos add identifier isbn 978-1-4234-8916-0
+publication @p-rachmaninoff-concertos add identifier publisher-number "Vol 2087"
+publication @p-rachmaninoff-concertos add contributor "Sergei Rachmaninoff" composer
+publication @p-rachmaninoff-concertos commit
 
-import "Variations on a theme of chopin and corelli"
-publication "Variations on a theme of chopin and corelli" add identifier isbn 0-7692-3972-2
-publication "Variations on a theme of chopin and corelli" add identifier publisher-number "Vol IV"
-publication "Variations on a theme of chopin and corelli" add contributor "Sergei Rachmaninoff" composer
-publication "Variations on a theme of chopin and corelli" commit
+import "Variations on a theme of chopin and corelli" --as p-rachmaninoff-variations
+publication @p-rachmaninoff-variations add identifier isbn 0-7692-3972-2
+publication @p-rachmaninoff-variations add identifier publisher-number "Vol IV"
+publication @p-rachmaninoff-variations add contributor "Sergei Rachmaninoff" composer
+publication @p-rachmaninoff-variations commit
 
-import "Three gymnopedies for the piano"
-publication "Three gymnopedies for the piano" add identifier isbn 978-0-7935-2590-4
-publication "Three gymnopedies for the piano" add identifier publisher-number "Vol 1869"
-publication "Three gymnopedies for the piano" add contributor "Erik Satie" composer
-publication "Three gymnopedies for the piano" commit
+import "Three gymnopedies for the piano" --as p-satie-gymnopedies
+publication @p-satie-gymnopedies add identifier isbn 978-0-7935-2590-4
+publication @p-satie-gymnopedies add identifier publisher-number "Vol 1869"
+publication @p-satie-gymnopedies add contributor "Erik Satie" composer
+publication @p-satie-gymnopedies commit
 
-import "Scenes from childhood"
-publication "Scenes from childhood" add identifier isbn 1-56939-408-3
-publication "Scenes from childhood" add identifier publisher-number "H 1013"
-publication "Scenes from childhood" add contributor "Robert Schumann" composer
-publication "Scenes from childhood" commit
+import "Scenes from childhood" --as p-schumann-scenes-from-childhood
+publication @p-schumann-scenes-from-childhood add identifier isbn 1-56939-408-3
+publication @p-schumann-scenes-from-childhood add identifier publisher-number "H 1013"
+publication @p-schumann-scenes-from-childhood add contributor "Robert Schumann" composer
+publication @p-schumann-scenes-from-childhood commit
 
-import "Concerto no 1"
-publication "Concerto no 1" add identifier isbn 978-1-4234-6595-9
-publication "Concerto no 1" add identifier publisher-number "Vol 1045"
-publication "Concerto no 1" add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication "Concerto no 1" commit
+import "Concerto no 1" --as p-tchaikovsky-concerto-1
+publication @p-tchaikovsky-concerto-1 add identifier isbn 978-1-4234-6595-9
+publication @p-tchaikovsky-concerto-1 add identifier publisher-number "Vol 1045"
+publication @p-tchaikovsky-concerto-1 add contributor "Pyotr Ilyich Tchaikovsky" composer
+publication @p-tchaikovsky-concerto-1 commit
 
-import "Russian piano album"
-publication "Russian piano album" add identifier isbn 978-1-4950-0871-9
-publication "Russian piano album" add identifier publisher-number "Vol 2115"
-publication "Russian piano album" commit
+import "Russian piano album" --as p-russian-piano-album
+publication @p-russian-piano-album add identifier isbn 978-1-4950-0871-9
+publication @p-russian-piano-album add identifier publisher-number "Vol 2115"
+publication @p-russian-piano-album commit
 
-import "Scales and chords"
-publication "Scales and chords" add identifier isbn 978-1-4950-7239-0
-publication "Scales and chords" add identifier publisher-number "Vol 392"
-publication "Scales and chords" commit
+import "Scales and chords" --as p-scales-and-chords
+publication @p-scales-and-chords add identifier isbn 978-1-4950-7239-0
+publication @p-scales-and-chords add identifier publisher-number "Vol 392"
+publication @p-scales-and-chords commit
 
-import "Scales and finger exercises"
-publication "Scales and finger exercises" add identifier isbn 978-1-4950-0547-3
-publication "Scales and finger exercises" add identifier publisher-number "Vol 2107"
-publication "Scales and finger exercises" commit
+import "Scales and finger exercises" --as p-scales-and-finger-exercises
+publication @p-scales-and-finger-exercises add identifier isbn 978-1-4950-0547-3
+publication @p-scales-and-finger-exercises add identifier publisher-number "Vol 2107"
+publication @p-scales-and-finger-exercises commit
