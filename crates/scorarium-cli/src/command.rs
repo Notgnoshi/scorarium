@@ -789,6 +789,11 @@ impl Shell {
         self.selected
     }
 
+    /// Return the labels bound so far in this session.
+    pub(crate) fn labels(&self) -> &Labels {
+        &self.labels
+    }
+
     /// Look up the selected library, or nothing when none is selected or it has since been deleted.
     pub(crate) async fn selected(&self) -> eyre::Result<Option<Library>> {
         match self.selected {

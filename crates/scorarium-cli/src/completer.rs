@@ -1,12 +1,13 @@
 use clap::{Arg, Command};
 use reedline::{Completer, CompletionResult, Span, Suggestion};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::AnyEntity;
+use scorarium_engine::entity::{AnyEntity, EntityKind};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::suggest::{SuggestField, Suggested};
 use tokio::runtime::Handle;
 
 use crate::command::{self, VERBS_WITHOUT_SUBJECT};
+use crate::label::Labels;
 use crate::library::{self, visibility};
 use crate::search::context;
 
@@ -68,18 +69,25 @@ pub(crate) struct ShellCompleter {
     engine: Engine,
     handle: Handle,
     selected: Option<LibraryId>,
+    labels: Labels,
 }
 
 impl ShellCompleter {
     /// Complete against `engine`, rewriting lines for the `selected` library as the shell does.
     ///
     /// `handle` runs engine queries, so the completer must be called off the runtime's threads.
-    pub(crate) fn new(engine: Engine, handle: Handle, selected: Option<LibraryId>) -> Self {
+    pub(crate) fn new(
+        engine: Engine,
+        handle: Handle,
+        selected: Option<LibraryId>,
+        labels: Labels,
+    ) -> Self {
         ShellCompleter {
             tree: command::tree(),
             engine,
             handle,
             selected,
+            labels,
         }
     }
 
@@ -184,6 +192,23 @@ impl ShellCompleter {
         field: SuggestField,
         typed: &str,
     ) -> Vec<(String, Option<String>)> {
+        let kind = match field {
+            SuggestField::Publication => Some(EntityKind::Publication),
+            SuggestField::Work { .. } => Some(EntityKind::Work),
+            SuggestField::Person => Some(EntityKind::Person),
+            _ => None,
+        };
+        if typed.starts_with('@')
+            && let Some(kind) = kind
+        {
+            return self
+                .labels
+                .of_kind(kind)
+                .map(ToString::to_string)
+                .filter(|label| label.starts_with(typed))
+                .map(|label| (label, None))
+                .collect();
+        }
         let found = self.handle.block_on(async {
             let library = library::resolve(&self.engine, library).await?;
             eyre::Ok(library.suggest(field, typed, 10).await?)
@@ -262,15 +287,26 @@ impl Completer for ShellCompleter {
 
 #[cfg(test)]
 mod tests {
+    use scorarium_engine::entity::AnyEntityId;
+
     use super::*;
 
     #[tokio::test]
     async fn completion_follows_the_grammar() {
         let (engine, _dir) = scorarium_test::demo_engine().await;
         let handle = Handle::current();
+        let mut labels = Labels::default();
+        labels.bind(
+            "a".parse().unwrap(),
+            AnyEntityId::Publication("1".parse().unwrap()),
+        );
+        labels.bind(
+            "b".parse().unwrap(),
+            AnyEntityId::Work("2".parse().unwrap()),
+        );
         tokio::task::spawn_blocking(move || {
             let values = |selected: Option<LibraryId>, line: &str| -> Vec<(String, usize)> {
-                ShellCompleter::new(engine.clone(), handle.clone(), selected)
+                ShellCompleter::new(engine.clone(), handle.clone(), selected, labels.clone())
                     .complete(line, line.len())
                     .suggestions()
                     .iter()
@@ -333,6 +369,14 @@ mod tests {
                     ],
                     36
                 )
+            );
+            assert_eq!(
+                values(None, "library books publication @"),
+                expected(&["@a"], 26)
+            );
+            assert_eq!(
+                values(None, "library books publication @a add work @"),
+                expected(&["@b"], 38)
             );
             assert_eq!(
                 values(None, "library 'sheet music' publication list --tag r").first(),

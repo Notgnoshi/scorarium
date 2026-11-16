@@ -74,6 +74,14 @@ impl Labels {
         })
     }
 
+    /// List the labels bound to entities of `kind`, in label order.
+    pub(crate) fn of_kind(&self, kind: EntityKind) -> impl Iterator<Item = &Label> {
+        self.0
+            .iter()
+            .filter(move |(_, id)| id.kind() == kind)
+            .map(|(label, _)| label)
+    }
+
     fn lookup(&self, reference: &str, expected: EntityKind) -> eyre::Result<Option<AnyEntityId>> {
         let Some(name) = reference.strip_prefix('@') else {
             return Ok(None);

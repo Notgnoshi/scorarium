@@ -57,6 +57,7 @@ pub(crate) async fn run(
             engine.clone(),
             Handle::current(),
             shell.selection(),
+            shell.labels().clone(),
         )));
         let signal;
         log.set_prompt_active(true);
