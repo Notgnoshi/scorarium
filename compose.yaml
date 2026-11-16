@@ -4,7 +4,7 @@ networks:
         external: true
 
 services:
-    scorarium:
+    scorarium-demo:
         image: ghcr.io/notgnoshi/scorarium:latest
         restart: unless-stopped
         user: "${UID:-1000}:${GID:-1000}"
@@ -18,7 +18,26 @@ services:
               target: /data
               bind:
                   create_host_path: false
-        command: ["serve", "--demo", "--cache-dir", "/data/cache"]  # Remove to switch to a persistent production deployment
+        command: ["serve", "--demo", "--cache-dir", "/data/cache"]
+        environment:
+            - VIRTUAL_HOST=scorarium.agill.xyz,scorarium.agill.net
+            - LETSENCRYPT_HOST=scorarium.agill.xyz,scorarium.agill.net
+            - SCORARIUM_CONTACT=${SCORARIUM_CONTACT:-notgnoshi@gmail.com}
+
+    scorarium-prod:
+        image: ghcr.io/notgnoshi/scorarium:latest
+        restart: unless-stopped
+        user: "${UID:-1000}:${GID:-1000}"
+        networks:
+            - nginx_proxy
+        volumes:
+            # Share the same cache directory as the demo instance. This doesn't share a database
+            # because the demo instance still uses a tempdir for that.
+            - type: bind
+              source: ./data
+              target: /data
+              bind:
+                  create_host_path: false
         environment:
             - VIRTUAL_HOST=library.agill.xyz,library.agill.net
             - LETSENCRYPT_HOST=library.agill.xyz,library.agill.net
