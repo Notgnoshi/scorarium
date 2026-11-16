@@ -32,6 +32,7 @@ pub(crate) async fn resolve(engine: &Engine, reference: &str) -> eyre::Result<Li
     reference::resolve(
         "library",
         reference,
+        None,
         engine.libraries().await?,
         |l| l.id(),
         |l| l.name(),

@@ -142,8 +142,10 @@ The DSL needs to provide:
 #### Grammar
 
 This is the grammar that I have settled on. Every command is `noun [subject] verb [arguments]`.
-Subjects can be an id or a name when non-ambiguous. Most commands are scoped by `library <library>`,
-which to save typing can be selected, in which case the `library <library>` prefix can be omitted.
+Subjects can be an id or a name when non-ambiguous. Publication, work, and person subjects, and the
+`add` and `remove` work and contributor arguments, can also be an `@label` bound earlier in the
+session with `--as`. Most commands are scoped by `library <library>`, which to save typing can be
+selected, in which case the `library <library>` prefix can be omitted.
 
 ```
 library list

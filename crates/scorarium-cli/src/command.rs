@@ -931,7 +931,7 @@ impl Shell {
                     let library =
                         library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?;
-                    person::run(&library, person.as_deref(), command, out).await?
+                    person::run(&library, &self.labels, person.as_deref(), command, out).await?
                 }
                 LibraryCommand::Tag { command } => {
                     let library =

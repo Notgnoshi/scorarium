@@ -7,10 +7,12 @@ use scorarium_engine::search::same_name;
 
 /// Find the one entity a reference names, by id or by name.
 ///
-/// Fail if the reference is ambiguous, or names no candidate.
+/// Match only the `labeled` id when it is set. Fail if the reference is ambiguous, or names no
+/// candidate.
 pub(crate) fn resolve<T, I: FromStr + PartialEq + Display>(
     kind: &str,
     reference: &str,
+    labeled: Option<I>,
     candidates: Vec<T>,
     id: impl Fn(&T) -> I,
     name: impl Fn(&T) -> &str,
@@ -18,7 +20,10 @@ pub(crate) fn resolve<T, I: FromStr + PartialEq + Display>(
     let parsed = reference.parse::<I>().ok();
     let mut matches: Vec<T> = candidates
         .into_iter()
-        .filter(|c| Some(id(c)) == parsed || same_name(name(c), reference))
+        .filter(|c| match &labeled {
+            Some(labeled) => id(c) == *labeled,
+            None => Some(id(c)) == parsed || same_name(name(c), reference),
+        })
         .collect();
     match matches.len() {
         0 => eyre::bail!("no {kind} '{reference}'"),
@@ -57,16 +62,27 @@ pub(crate) enum Target<E> {
 /// Decide whether an `add` reference links an existing entity or creates one.
 ///
 /// Link a name only when `link_by_name` is set and exactly one candidate has that name. Fail with
-/// the candidates otherwise, so the caller can pick one by id or force creation.
+/// the candidates otherwise, so the caller can pick one by id or force creation. Link only the
+/// `labeled` id when it is set, and fail if `new` is also set.
 pub(crate) fn target<E: Entity>(
-    kind: &str,
     reference: &str,
+    labeled: Option<E::Id>,
     new: bool,
     link_by_name: bool,
     mut candidates: Vec<E>,
     name: impl Fn(&E) -> &str,
     context: impl Fn(&E) -> String,
 ) -> eyre::Result<Target<E>> {
+    let kind = E::KIND.to_string();
+    if let Some(id) = labeled {
+        if new {
+            eyre::bail!("--new takes a name, not the id of an existing {kind}");
+        }
+        return match candidates.iter().position(|c| c.id() == id) {
+            Some(i) => Ok(Target::Existing(candidates.swap_remove(i))),
+            None => eyre::bail!("no {kind} '{reference}'"),
+        };
+    }
     if let Ok(id) = reference.parse::<E::Id>()
         && let Some(i) = candidates.iter().position(|c| c.id() == id)
     {
@@ -96,7 +112,7 @@ pub(crate) fn target<E: Entity>(
     eyre::bail!(
         "'{reference}' names {} {}:\n{}\nre-run with an id to link one, or with --new to create another",
         candidates.len(),
-        plural(kind, candidates.len()),
+        plural(&kind, candidates.len()),
         entries.join("\n")
     )
 }

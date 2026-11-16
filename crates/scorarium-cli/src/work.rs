@@ -94,26 +94,32 @@ fn proposal(value: &scorarium_engine::work::Proposal) -> (&'static str, String) 
     }
 }
 
-/// Resolve the title or id of a work
-pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Work> {
+/// Resolve a work title, id, or `@label`.
+pub(crate) async fn resolve(
+    library: &Library,
+    labels: &Labels,
+    reference: &str,
+) -> eyre::Result<Work> {
     reference::resolve(
         "work",
         reference,
+        labels.work(reference)?,
         library.works().await?,
         |w| w.id(),
         |w| w.title(),
     )
 }
 
-/// Decide whether a work title or id links an existing work or creates a new one.
+/// Decide whether a work title, id, or `@label` links an existing work or creates a new one.
 pub(crate) async fn target(
     library: &Library,
+    labels: &Labels,
     reference: &str,
     new: bool,
 ) -> eyre::Result<Target<Work>> {
     reference::target(
-        "work",
         reference,
+        labels.work(reference)?,
         new,
         false,
         library.works().await?,
@@ -132,47 +138,47 @@ pub(crate) async fn run(
 ) -> eyre::Result<()> {
     match command {
         WorkCommand::Show => {
-            let work = resolve(library, require(subject, "work")?).await?;
+            let work = resolve(library, labels, require(subject, "work")?).await?;
             show(work, out).await
         }
         WorkCommand::Audit(args) => {
-            let work = resolve(library, require(subject, "work")?).await?;
+            let work = resolve(library, labels, require(subject, "work")?).await?;
             audit::entity_log(&work, args.limit(), out).await
         }
         WorkCommand::Commit => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             work.commit().await?;
             Ok(())
         }
         WorkCommand::DiscardChanges => {
             let reference = require(subject, "work")?;
-            let work = resolve(library, reference).await?;
+            let work = resolve(library, labels, reference).await?;
             review::discard_changes(&work, "work", reference).await
         }
         WorkCommand::Accept { proposals } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             review::accept(&mut work, &proposals).await
         }
         WorkCommand::Reject { proposals } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             review::reject(&mut work, &proposals).await
         }
         WorkCommand::RejectAll => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             work.reject_all().await?;
             Ok(())
         }
         WorkCommand::Enrich => {
-            let work = resolve(library, require(subject, "work")?).await?;
+            let work = resolve(library, labels, require(subject, "work")?).await?;
             enrichment::enrich(&work, out).await
         }
         WorkCommand::CancelEnrichment => {
             let reference = require(subject, "work")?;
-            let work = resolve(library, reference).await?;
+            let work = resolve(library, labels, reference).await?;
             enrichment::cancel_enrichment(&work, "work", reference)
         }
         WorkCommand::Set { field } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             match field {
                 WorkSet::Title { title } => work.set_title(title).await?,
                 WorkSet::Subtitle { subtitle } => work.set_subtitle(Some(&subtitle)).await?,
@@ -192,7 +198,7 @@ pub(crate) async fn run(
             Ok(())
         }
         WorkCommand::Clear { field } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             match field {
                 WorkClear::Subtitle => work.set_subtitle(None).await?,
                 WorkClear::Key => work.set_key(None).await?,
@@ -204,7 +210,7 @@ pub(crate) async fn run(
             Ok(())
         }
         WorkCommand::Add { field } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             match field {
                 WorkAdd::Tag { tag } => work.add_tag(tag).await?,
                 WorkAdd::CatalogNumber { number } => work.add_catalog_number(number).await?,
@@ -218,7 +224,7 @@ pub(crate) async fn run(
                     if let Some(label) = &label {
                         labels.check(label)?;
                     }
-                    let id = match person::target(library, &person, new).await? {
+                    let id = match person::target(library, labels, &person, new).await? {
                         Target::Existing(person) => {
                             work.add_contributor(person.id(), role).await?;
                             person.id()
@@ -233,7 +239,7 @@ pub(crate) async fn run(
             Ok(())
         }
         WorkCommand::Remove { field } => {
-            let mut work = resolve(library, require(subject, "work")?).await?;
+            let mut work = resolve(library, labels, require(subject, "work")?).await?;
             match field {
                 WorkRemove::Tag { tag } => work.remove_tag(&tag).await?,
                 WorkRemove::CatalogNumber { number } => work.remove_catalog_number(&number).await?,
@@ -242,7 +248,7 @@ pub(crate) async fn run(
                     work.remove_link(id).await?
                 }
                 WorkRemove::Contributor { person, role } => {
-                    let person = person::resolve(library, &person).await?.id();
+                    let person = person::resolve(library, labels, &person).await?.id();
                     let roles: Vec<Role> = match role {
                         Some(role) => vec![role],
                         None => work
