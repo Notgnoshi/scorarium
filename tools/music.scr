@@ -5,65 +5,10 @@
 library create Music public
 library Music select
 
-import "Complete piano sonatas volume I"
-publication "Complete piano sonatas volume I" add identifier isbn 0-486-23134-8
-publication "Complete piano sonatas volume I" add contributor "Ludwig van Beethoven" composer
-publication "Complete piano sonatas volume I" commit
-
-import "Complete piano sonatas volume II"
-publication "Complete piano sonatas volume II" add identifier isbn 0-486-23135-6
-publication "Complete piano sonatas volume II" add contributor "Ludwig van Beethoven" composer
-publication "Complete piano sonatas volume II" commit
-
-import "Fifty-one exercises"
-publication "Fifty-one exercises" add identifier isbn 978-1-4584-2665-9
-publication "Fifty-one exercises" add identifier publisher-number "Vol 1600"
-publication "Fifty-one exercises" add contributor "Johannes Brahms" composer
-publication "Fifty-one exercises" commit
-
-import "Scales and finger exercises"
-publication "Scales and finger exercises" add identifier isbn 978-1-4950-0547-3
-publication "Scales and finger exercises" add identifier publisher-number "Vol 2107"
-publication "Scales and finger exercises" commit
-
-import "Scales and chords"
-publication "Scales and chords" add identifier isbn 978-1-4950-7239-0
-publication "Scales and chords" add identifier publisher-number "Vol 392"
-publication "Scales and chords" commit
-
-import "Rachmaninoff masterpieces for solo piano"
-publication "Rachmaninoff masterpieces for solo piano" add identifier isbn 0-486-43122-3
-publication "Rachmaninoff masterpieces for solo piano" add contributor "Sergei Rachmaninoff" composer
-publication "Rachmaninoff masterpieces for solo piano" commit
-
-import "Variations on a theme of chopin and corelli"
-publication "Variations on a theme of chopin and corelli" add identifier isbn 0-7692-3972-2
-publication "Variations on a theme of chopin and corelli" add identifier publisher-number "Vol IV"
-publication "Variations on a theme of chopin and corelli" add contributor "Sergei Rachmaninoff" composer
-publication "Variations on a theme of chopin and corelli" commit
-
-import "Three piano concertos"
-publication "Three piano concertos" add identifier isbn 978-1-4234-8916-0
-publication "Three piano concertos" add identifier publisher-number "Vol 2087"
-publication "Three piano concertos" add contributor "Sergei Rachmaninoff" composer
-publication "Three piano concertos" commit
-
-import "Concerto no 1"
-publication "Concerto no 1" add identifier isbn 978-1-4234-6595-9
-publication "Concerto no 1" add identifier publisher-number "Vol 1045"
-publication "Concerto no 1" add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication "Concerto no 1" commit
-
-import "Liszt masterpieces for solo piano"
-publication "Liszt masterpieces for solo piano" add identifier isbn 0-486-41379-9
-publication "Liszt masterpieces for solo piano" add contributor "Franz Liszt" composer
-publication "Liszt masterpieces for solo piano" commit
-
-import "Scenes from childhood"
-publication "Scenes from childhood" add identifier isbn 1-56939-408-3
-publication "Scenes from childhood" add identifier publisher-number "H 1013"
-publication "Scenes from childhood" add contributor "Robert Schumann" composer
-publication "Scenes from childhood" commit
+import "The well-tempered clavier"
+publication "The well-tempered clavier" add identifier isbn 0-486-24532-2
+publication "The well-tempered clavier" add contributor "Johann Sebastian Bach" composer
+publication "The well-tempered clavier" commit
 
 import "Mikrokosmos vol 1"
 publication "Mikrokosmos vol 1" add identifier isbn 978-1-4234-9304-4
@@ -101,43 +46,26 @@ publication "Mikrokosmos vol 6" add identifier ismn 979-0-060-08006-7
 publication "Mikrokosmos vol 6" add contributor "Bela Bartok" composer
 publication "Mikrokosmos vol 6" commit
 
-import "Andalucia for piano"
-publication "Andalucia for piano" add identifier isbn 0-7935-2515-2
-publication "Andalucia for piano" add contributor "Ernesto Lecuona" composer
-publication "Andalucia for piano" commit
+import "Complete piano sonatas volume I"
+publication "Complete piano sonatas volume I" add identifier isbn 0-486-23134-8
+publication "Complete piano sonatas volume I" add contributor "Ludwig van Beethoven" composer
+publication "Complete piano sonatas volume I" commit
 
-import "Complete preludes & etudes"
-publication "Complete preludes & etudes" add identifier isbn 0-486-24052-5
-publication "Complete preludes & etudes" add contributor "Frederic Chopin" composer
-publication "Complete preludes & etudes" commit
+import "Complete piano sonatas volume II"
+publication "Complete piano sonatas volume II" add identifier isbn 0-486-23135-6
+publication "Complete piano sonatas volume II" add contributor "Ludwig van Beethoven" composer
+publication "Complete piano sonatas volume II" commit
 
-import "Nocturns & polonaises"
-publication "Nocturns & polonaises" add identifier isbn 0-486-24564-0
-publication "Nocturns & polonaises" add contributor "Frederic Chopin" composer
-publication "Nocturns & polonaises" commit
+import "Fifty-one exercises"
+publication "Fifty-one exercises" add identifier isbn 978-1-4584-2665-9
+publication "Fifty-one exercises" add identifier publisher-number "Vol 1600"
+publication "Fifty-one exercises" add contributor "Johannes Brahms" composer
+publication "Fifty-one exercises" commit
 
-import "Favorite piano works"
-publication "Favorite piano works" add identifier isbn 978-1-4234-2741-4
-publication "Favorite piano works" add identifier publisher-number "Vol 2070"
-publication "Favorite piano works" add contributor "Claude Debussy" composer
-publication "Favorite piano works" commit
-
-import "Three gymnopedies for the piano"
-publication "Three gymnopedies for the piano" add identifier isbn 978-0-7935-2590-4
-publication "Three gymnopedies for the piano" add identifier publisher-number "Vol 1869"
-publication "Three gymnopedies for the piano" add contributor "Erik Satie" composer
-publication "Three gymnopedies for the piano" commit
-
-import "Masterpieces for piano"
-publication "Masterpieces for piano" add identifier ismn 979-0-57702-578-0
-publication "Masterpieces for piano" add identifier publisher-number "EP 20036"
-publication "Masterpieces for piano" add contributor "Felix Mendelssohn" composer
-publication "Masterpieces for piano" commit
-
-import "Mazurkas"
-publication "Mazurkas" add identifier isbn 0-486-25548-4
-publication "Mazurkas" add contributor "Frederic Chopin" composer
-publication "Mazurkas" commit
+import "Piano works vol I"
+publication "Piano works vol I" add identifier publisher-number "K3254"
+publication "Piano works vol I" add contributor "Johannes Brahms" composer
+publication "Piano works vol I" commit
 
 import "Piano works Vol II"
 publication "Piano works Vol II" add identifier isbn 0-7692-4077-1
@@ -145,31 +73,58 @@ publication "Piano works Vol II" add identifier publisher-number "K03255"
 publication "Piano works Vol II" add contributor "Johannes Brahms" composer
 publication "Piano works Vol II" commit
 
-import "The well-tempered clavier"
-publication "The well-tempered clavier" add identifier isbn 0-486-24532-2
-publication "The well-tempered clavier" add contributor "Johann Sebastian Bach" composer
-publication "The well-tempered clavier" commit
+import "Complete preludes & etudes"
+publication "Complete preludes & etudes" add identifier isbn 0-486-24052-5
+publication "Complete preludes & etudes" add contributor "Frederic Chopin" composer
+publication "Complete preludes & etudes" commit
 
-import "Russian piano album"
-publication "Russian piano album" add identifier isbn 978-1-4950-0871-9
-publication "Russian piano album" add identifier publisher-number "Vol 2115"
-publication "Russian piano album" commit
+import "Mazurkas"
+publication "Mazurkas" add identifier isbn 0-486-25548-4
+publication "Mazurkas" add contributor "Frederic Chopin" composer
+publication "Mazurkas" commit
 
-import "Piano works vol I"
-publication "Piano works vol I" add identifier publisher-number "K3254"
-publication "Piano works vol I" add contributor "Johannes Brahms" composer
-publication "Piano works vol I" commit
+import "Nocturns & polonaises"
+publication "Nocturns & polonaises" add identifier isbn 0-486-24564-0
+publication "Nocturns & polonaises" add contributor "Frederic Chopin" composer
+publication "Nocturns & polonaises" commit
 
 import "Scherzi"
 publication "Scherzi" add identifier publisher-number "UT 50061"
 publication "Scherzi" add contributor "Frederic Chopin" composer
 publication "Scherzi" commit
 
-import "Isle of the Dead"
-publication "Isle of the Dead" add identifier ismn M-060-11163-1
-publication "Isle of the Dead" add identifier publisher-number "A 9081 G"
-publication "Isle of the Dead" add contributor "Sergei Rachmaninoff" composer
-publication "Isle of the Dead" commit
+import "Favorite piano works"
+publication "Favorite piano works" add identifier isbn 978-1-4234-2741-4
+publication "Favorite piano works" add identifier publisher-number "Vol 2070"
+publication "Favorite piano works" add contributor "Claude Debussy" composer
+publication "Favorite piano works" commit
+
+import "Concerto for the piano"
+publication "Concerto for the piano" add identifier isbn 0-7935-7224-X
+publication "Concerto for the piano" add identifier publisher-number "Vol 1399"
+publication "Concerto for the piano" add contributor "Edvard Grieg" composer
+publication "Concerto for the piano" commit
+
+import "Andalucia for piano"
+publication "Andalucia for piano" add identifier isbn 0-7935-2515-2
+publication "Andalucia for piano" add contributor "Ernesto Lecuona" composer
+publication "Andalucia for piano" commit
+
+import "Liszt masterpieces for solo piano"
+publication "Liszt masterpieces for solo piano" add identifier isbn 0-486-41379-9
+publication "Liszt masterpieces for solo piano" add contributor "Franz Liszt" composer
+publication "Liszt masterpieces for solo piano" commit
+
+import "Masterpieces for piano"
+publication "Masterpieces for piano" add identifier ismn 979-0-57702-578-0
+publication "Masterpieces for piano" add identifier publisher-number "EP 20036"
+publication "Masterpieces for piano" add contributor "Felix Mendelssohn" composer
+publication "Masterpieces for piano" commit
+
+import "Pictures at an exhibition"
+publication "Pictures at an exhibition" add identifier isbn 0-7390-1194-4
+publication "Pictures at an exhibition" add contributor "Modest Mussorgsky" composer
+publication "Pictures at an exhibition" commit
 
 import "The Island of the Dead arr. Kirkor"
 publication "The Island of the Dead arr. Kirkor" add identifier publisher-number "M 26277"
@@ -177,13 +132,58 @@ publication "The Island of the Dead arr. Kirkor" add contributor "Sergei Rachman
 publication "The Island of the Dead arr. Kirkor" add contributor "Georgy Kirkor" arranger
 publication "The Island of the Dead arr. Kirkor" commit
 
-import "Pictures at an exhibition"
-publication "Pictures at an exhibition" add identifier isbn 0-7390-1194-4
-publication "Pictures at an exhibition" add contributor "Modest Mussorgsky" composer
-publication "Pictures at an exhibition" commit
+import "Isle of the Dead"
+publication "Isle of the Dead" add identifier ismn M-060-11163-1
+publication "Isle of the Dead" add identifier publisher-number "A 9081 G"
+publication "Isle of the Dead" add contributor "Sergei Rachmaninoff" composer
+publication "Isle of the Dead" commit
 
-import "Concerto for the piano"
-publication "Concerto for the piano" add identifier isbn 0-7935-7224-X
-publication "Concerto for the piano" add identifier publisher-number "Vol 1399"
-publication "Concerto for the piano" add contributor "Edvard Grieg" composer
-publication "Concerto for the piano" commit
+import "Rachmaninoff masterpieces for solo piano"
+publication "Rachmaninoff masterpieces for solo piano" add identifier isbn 0-486-43122-3
+publication "Rachmaninoff masterpieces for solo piano" add contributor "Sergei Rachmaninoff" composer
+publication "Rachmaninoff masterpieces for solo piano" commit
+
+import "Three piano concertos"
+publication "Three piano concertos" add identifier isbn 978-1-4234-8916-0
+publication "Three piano concertos" add identifier publisher-number "Vol 2087"
+publication "Three piano concertos" add contributor "Sergei Rachmaninoff" composer
+publication "Three piano concertos" commit
+
+import "Variations on a theme of chopin and corelli"
+publication "Variations on a theme of chopin and corelli" add identifier isbn 0-7692-3972-2
+publication "Variations on a theme of chopin and corelli" add identifier publisher-number "Vol IV"
+publication "Variations on a theme of chopin and corelli" add contributor "Sergei Rachmaninoff" composer
+publication "Variations on a theme of chopin and corelli" commit
+
+import "Three gymnopedies for the piano"
+publication "Three gymnopedies for the piano" add identifier isbn 978-0-7935-2590-4
+publication "Three gymnopedies for the piano" add identifier publisher-number "Vol 1869"
+publication "Three gymnopedies for the piano" add contributor "Erik Satie" composer
+publication "Three gymnopedies for the piano" commit
+
+import "Scenes from childhood"
+publication "Scenes from childhood" add identifier isbn 1-56939-408-3
+publication "Scenes from childhood" add identifier publisher-number "H 1013"
+publication "Scenes from childhood" add contributor "Robert Schumann" composer
+publication "Scenes from childhood" commit
+
+import "Concerto no 1"
+publication "Concerto no 1" add identifier isbn 978-1-4234-6595-9
+publication "Concerto no 1" add identifier publisher-number "Vol 1045"
+publication "Concerto no 1" add contributor "Pyotr Ilyich Tchaikovsky" composer
+publication "Concerto no 1" commit
+
+import "Russian piano album"
+publication "Russian piano album" add identifier isbn 978-1-4950-0871-9
+publication "Russian piano album" add identifier publisher-number "Vol 2115"
+publication "Russian piano album" commit
+
+import "Scales and chords"
+publication "Scales and chords" add identifier isbn 978-1-4950-7239-0
+publication "Scales and chords" add identifier publisher-number "Vol 392"
+publication "Scales and chords" commit
+
+import "Scales and finger exercises"
+publication "Scales and finger exercises" add identifier isbn 978-1-4950-0547-3
+publication "Scales and finger exercises" add identifier publisher-number "Vol 2107"
+publication "Scales and finger exercises" commit
