@@ -4,7 +4,7 @@ use scorarium_engine::Engine;
 use scorarium_engine::entity::Entity;
 use scorarium_engine::holding::NewHolding;
 use scorarium_engine::library::Library;
-use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed};
+use scorarium_engine::publication::{Identifier, IdentifierKind, ImportSeed, PublicationId};
 use scorarium_engine::value::NonBlank;
 
 use crate::reference;
@@ -67,7 +67,7 @@ pub(crate) async fn import(
     location: Option<&str>,
     enrich: bool,
     out: &mut impl Write,
-) -> eyre::Result<()> {
+) -> eyre::Result<PublicationId> {
     let library = resolve(engine, reference).await?;
     let seed = Identifier::new(IdentifierKind::Isbn, seed)
         .or_else(|_| Identifier::new(IdentifierKind::Ismn, seed))
@@ -79,7 +79,7 @@ pub(crate) async fn import(
         publication.enrich().await?;
     }
     writeln!(out, "{}", publication.id())?;
-    Ok(())
+    Ok(publication.id())
 }
 
 pub(crate) fn visibility(private: bool) -> &'static str {

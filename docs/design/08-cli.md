@@ -154,18 +154,18 @@ library <library> set visibility public|private
 library <library> delete
 library <library> select
 library deselect
-library <library> import <seed> [--location <location>]
+library <library> import <seed> [--location <location>] [--as <label>]
 
 publication list [--tag <tag>]...
 publication <publication> show
 publication <publication> audit [--limit <n>]
-publication <publication> set title|publisher|year|stars|note|classification <value>
-publication <publication> clear publisher|year|stars|note
+publication <publication> set title|subtitle|publisher|year|stars|note|classification <value>
+publication <publication> clear subtitle|publisher|year|stars|note
 publication <publication> add tag <tag>
 publication <publication> add identifier isbn|ismn|publisher-number|plate-number <text>
 publication <publication> add link <url>
-publication <publication> add contributor <person> <role> [--new]
-publication <publication> add work <work> [--new]
+publication <publication> add contributor <person> <role> [--new] [--as <label>]
+publication <publication> add work <work> [--new] [--as <label>]
 publication <publication> add holding physical [--location <location>]
 publication <publication> remove tag <tag>
 publication <publication> remove identifier isbn|ismn|publisher-number|plate-number <text>
@@ -176,36 +176,54 @@ publication <publication> remove holding <id>
 publication <publication> commit
 publication <publication> discard-changes
 publication <publication> delete
+publication <publication> accept <proposal-id>...
+publication <publication> reject <proposal-id>...
+publication <publication> reject-all
+publication <publication> enrich
+publication <publication> cancel-enrichment
 
 work <work> show
 work <work> audit [--limit <n>]
-work <work> set title|key|time-signature|instrumentation|stars|note|classification <value>
-work <work> clear key|time-signature|instrumentation|stars|note
+work <work> set title|subtitle|key|time-signature|instrumentation|stars|note|classification <value>
+work <work> clear subtitle|key|time-signature|instrumentation|stars|note
 work <work> add tag <tag>
 work <work> add catalog-number <number>
 work <work> add link <url>
-work <work> add contributor <person> <role> [--new]
+work <work> add contributor <person> <role> [--new] [--as <label>]
 work <work> remove tag <tag>
 work <work> remove catalog-number <number>
 work <work> remove link <url|id>
 work <work> remove contributor <person> [<role>]
 work <work> commit
 work <work> discard-changes
+work <work> accept <proposal-id>...
+work <work> reject <proposal-id>...
+work <work> reject-all
+work <work> enrich
+work <work> cancel-enrichment
 
 person list [--role <role>]
 person <person> show
 person <person> audit [--limit <n>]
-person <person> set name|sort-name <value>
+person <person> set name|sort-name|birth-year|death-year <value>
+person <person> clear birth-year|death-year
 person <person> add link <url>
 person <person> remove link <url|id>
 person <person> commit
 person <person> discard-changes
+person <person> accept <proposal-id>...
+person <person> reject <proposal-id>...
+person <person> reject-all
+person <person> enrich
+person <person> cancel-enrichment
 
 tag list
 
 search <query>
 audit [--limit <n>]
 review
+wait [<seconds>]
+password set
 quit
 ```
 

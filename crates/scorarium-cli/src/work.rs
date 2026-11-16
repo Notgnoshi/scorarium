@@ -1,12 +1,13 @@
 use std::io::Write;
 
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::library::Library;
 use scorarium_engine::value::Tag;
 use scorarium_engine::work::Work;
 
 use crate::command::{WorkAdd, WorkClear, WorkCommand, WorkRemove, WorkSet, require};
+use crate::label::Labels;
 use crate::library::write_table;
 use crate::reference::Target;
 use crate::{audit, enrichment, person, reference, review, search};
@@ -124,6 +125,7 @@ pub(crate) async fn target(
 /// Run a work command against a library.
 pub(crate) async fn run(
     library: &Library,
+    labels: &mut Labels,
     subject: Option<&str>,
     command: WorkCommand,
     out: &mut impl Write,
@@ -207,12 +209,24 @@ pub(crate) async fn run(
                 WorkAdd::Tag { tag } => work.add_tag(tag).await?,
                 WorkAdd::CatalogNumber { number } => work.add_catalog_number(number).await?,
                 WorkAdd::Link { url } => work.add_link(url).await?,
-                WorkAdd::Contributor { person, role, new } => {
-                    match person::target(library, &person, new).await? {
-                        Target::Existing(person) => work.add_contributor(person.id(), role).await?,
-                        Target::New => {
-                            work.create_contributor(person.parse()?, role).await?;
+                WorkAdd::Contributor {
+                    person,
+                    role,
+                    new,
+                    label,
+                } => {
+                    if let Some(label) = &label {
+                        labels.check(label)?;
+                    }
+                    let id = match person::target(library, &person, new).await? {
+                        Target::Existing(person) => {
+                            work.add_contributor(person.id(), role).await?;
+                            person.id()
                         }
+                        Target::New => work.create_contributor(person.parse()?, role).await?.id(),
+                    };
+                    if let Some(label) = label {
+                        labels.bind(label, AnyEntityId::Person(id));
                     }
                 }
             }

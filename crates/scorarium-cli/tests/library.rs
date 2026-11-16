@@ -735,3 +735,30 @@ async fn the_music_script_runs() {
             .any(|p| p.title() == Some("Isle of the Dead"))
     );
 }
+
+#[tokio::test]
+async fn a_reused_label_fails_before_creating_anything() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let (_, result) = run(
+        &engine,
+        "library books select\n\
+         import First --as dup\n\
+         import Second --as dup\n",
+    )
+    .await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 3: label '@dup' is already defined"
+    );
+    let libraries = engine.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name() == "Books").unwrap();
+    let titles: Vec<String> = books
+        .publications()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|p| p.title().map(str::to_string))
+        .collect();
+    assert!(titles.contains(&"First".to_string()));
+    assert!(!titles.contains(&"Second".to_string()));
+}

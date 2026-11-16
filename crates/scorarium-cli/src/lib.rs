@@ -3,6 +3,7 @@ mod command;
 mod completer;
 mod enrichment;
 mod interactive;
+mod label;
 mod library;
 mod log;
 mod password;
