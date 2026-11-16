@@ -5,13 +5,14 @@ use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 use scorarium_engine::Engine;
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::ProposalId;
+use scorarium_engine::entity::{AnyEntityId, ProposalId};
 use scorarium_engine::holding::HoldingId;
 use scorarium_engine::library::{Library, LibraryId};
 use scorarium_engine::link::HttpUrl;
 use scorarium_engine::value::{NonBlank, Stars, Tag, Year};
 use scorarium_engine::work::CatalogNumber;
 
+use crate::label::{Label, Labels};
 use crate::library::{self, Visibility};
 use crate::publication::{HoldingKind, IdentifierKind};
 use crate::{audit, password, person, publication, review, search, tag, work};
@@ -138,6 +139,9 @@ enum LibraryCommand {
         /// The location of the first holding
         #[arg(long, value_name = "location")]
         location: Option<String>,
+        /// Label the publication for later reference
+        #[arg(long = "as", value_name = "label")]
+        label: Option<Label>,
     },
     /// Manage publications
     #[command(subcommand_value_name = "command")]
@@ -315,6 +319,9 @@ pub(crate) enum PublicationAdd {
         /// Force-create a new person
         #[arg(long)]
         new: bool,
+        /// Label the person for later reference
+        #[arg(long = "as", value_name = "label")]
+        label: Option<Label>,
     },
     /// A work the publication contains
     Work {
@@ -323,6 +330,9 @@ pub(crate) enum PublicationAdd {
         /// Force-create a new work
         #[arg(long)]
         new: bool,
+        /// Label the work for later reference
+        #[arg(long = "as", value_name = "label")]
+        label: Option<Label>,
     },
     /// A copy of the publication that the library owns
     Holding {
@@ -510,6 +520,9 @@ pub(crate) enum WorkAdd {
         /// Force-create a new person
         #[arg(long)]
         new: bool,
+        /// Label the person for later reference
+        #[arg(long = "as", value_name = "label")]
+        label: Option<Label>,
     },
 }
 
@@ -754,6 +767,7 @@ pub(crate) struct Shell {
     ///
     /// The library name is queried before the prompt is displayed to capture any library renames.
     selected: Option<LibraryId>,
+    labels: Labels,
     tree: clap::Command,
 }
 
@@ -765,6 +779,7 @@ impl Shell {
             interactive,
             enrich,
             selected: None,
+            labels: Labels::default(),
             tree: tree(),
         }
     }
@@ -772,6 +787,11 @@ impl Shell {
     /// Return the id of the selected library, if any.
     pub(crate) fn selection(&self) -> Option<LibraryId> {
         self.selected
+    }
+
+    /// Return the labels bound so far in this session.
+    pub(crate) fn labels(&self) -> &Labels {
+        &self.labels
     }
 
     /// Look up the selected library, or nothing when none is selected or it has since been deleted.
@@ -869,8 +889,15 @@ impl Shell {
                     reject(library.as_deref(), "library", "deselect")?;
                     self.selected = None;
                 }
-                LibraryCommand::Import { seed, location } => {
-                    library::import(
+                LibraryCommand::Import {
+                    seed,
+                    location,
+                    label,
+                } => {
+                    if let Some(label) = &label {
+                        self.labels.check(label)?;
+                    }
+                    let id = library::import(
                         &self.engine,
                         require(library.as_deref(), "library")?,
                         &seed,
@@ -878,7 +905,10 @@ impl Shell {
                         self.enrich,
                         out,
                     )
-                    .await?
+                    .await?;
+                    if let Some(label) = label {
+                        self.labels.bind(label, AnyEntityId::Publication(id));
+                    }
                 }
                 LibraryCommand::Publication {
                     publication,
@@ -887,19 +917,26 @@ impl Shell {
                     let library =
                         library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?;
-                    publication::run(&library, publication.as_deref(), command, out).await?
+                    publication::run(
+                        &library,
+                        &mut self.labels,
+                        publication.as_deref(),
+                        command,
+                        out,
+                    )
+                    .await?
                 }
                 LibraryCommand::Work { work, command } => {
                     let library =
                         library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?;
-                    work::run(&library, work.as_deref(), command, out).await?
+                    work::run(&library, &mut self.labels, work.as_deref(), command, out).await?
                 }
                 LibraryCommand::Person { person, command } => {
                     let library =
                         library::resolve(&self.engine, require(library.as_deref(), "library")?)
                             .await?;
-                    person::run(&library, person.as_deref(), command, out).await?
+                    person::run(&library, &self.labels, person.as_deref(), command, out).await?
                 }
                 LibraryCommand::Tag { command } => {
                     let library =

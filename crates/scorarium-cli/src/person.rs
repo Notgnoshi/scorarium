@@ -9,6 +9,7 @@ use scorarium_engine::value::title_sort_key;
 use crate::command::{
     PersonAdd, PersonClear, PersonCommand, PersonRemove, PersonSet, reject, require,
 };
+use crate::label::Labels;
 use crate::library::write_table;
 use crate::reference::Target;
 use crate::{audit, enrichment, reference, review, search};
@@ -112,26 +113,32 @@ fn roles_of(contributors: &[Contributor], person: PersonId) -> Vec<&str> {
         .collect()
 }
 
-/// Resolve a person name or id
-pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Person> {
+/// Resolve a person name, id, or `@label`.
+pub(crate) async fn resolve(
+    library: &Library,
+    labels: &Labels,
+    reference: &str,
+) -> eyre::Result<Person> {
     reference::resolve(
         "person",
         reference,
+        labels.person(reference)?,
         library.people(None).await?,
         |p| p.id(),
         |p| p.name(),
     )
 }
 
-/// Decide whether a person name or id links an existing person or creates a new one.
+/// Decide whether a person name, id, or `@label` links an existing person or creates a new one.
 pub(crate) async fn target(
     library: &Library,
+    labels: &Labels,
     reference: &str,
     new: bool,
 ) -> eyre::Result<Target<Person>> {
     reference::target(
-        "person",
         reference,
+        labels.person(reference)?,
         new,
         true,
         library.people(None).await?,
@@ -143,6 +150,7 @@ pub(crate) async fn target(
 /// Run a person command against a library.
 pub(crate) async fn run(
     library: &Library,
+    labels: &Labels,
     subject: Option<&str>,
     command: PersonCommand,
     out: &mut impl Write,
@@ -153,47 +161,47 @@ pub(crate) async fn run(
             list(library, role.as_ref(), out).await
         }
         PersonCommand::Show => {
-            let person = resolve(library, require(subject, "person")?).await?;
+            let person = resolve(library, labels, require(subject, "person")?).await?;
             show(person, out).await
         }
         PersonCommand::Audit(args) => {
-            let person = resolve(library, require(subject, "person")?).await?;
+            let person = resolve(library, labels, require(subject, "person")?).await?;
             audit::entity_log(&person, args.limit(), out).await
         }
         PersonCommand::Commit => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             person.commit().await?;
             Ok(())
         }
         PersonCommand::DiscardChanges => {
             let reference = require(subject, "person")?;
-            let person = resolve(library, reference).await?;
+            let person = resolve(library, labels, reference).await?;
             review::discard_changes(&person, "person", reference).await
         }
         PersonCommand::Accept { proposals } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             review::accept(&mut person, &proposals).await
         }
         PersonCommand::Reject { proposals } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             review::reject(&mut person, &proposals).await
         }
         PersonCommand::RejectAll => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             person.reject_all().await?;
             Ok(())
         }
         PersonCommand::Enrich => {
-            let person = resolve(library, require(subject, "person")?).await?;
+            let person = resolve(library, labels, require(subject, "person")?).await?;
             enrichment::enrich(&person, out).await
         }
         PersonCommand::CancelEnrichment => {
             let reference = require(subject, "person")?;
-            let person = resolve(library, reference).await?;
+            let person = resolve(library, labels, reference).await?;
             enrichment::cancel_enrichment(&person, "person", reference)
         }
         PersonCommand::Set { field } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             match field {
                 PersonSet::Name { name } => {
                     let sort_name = derive_sort_name(&name);
@@ -208,7 +216,7 @@ pub(crate) async fn run(
             Ok(())
         }
         PersonCommand::Clear { field } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             match field {
                 PersonClear::BirthYear => person.set_birth_year(None).await?,
                 PersonClear::DeathYear => person.set_death_year(None).await?,
@@ -216,13 +224,13 @@ pub(crate) async fn run(
             Ok(())
         }
         PersonCommand::Add { field } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             match field {
                 PersonAdd::Link { url } => Ok(person.add_link(url).await?),
             }
         }
         PersonCommand::Remove { field } => {
-            let mut person = resolve(library, require(subject, "person")?).await?;
+            let mut person = resolve(library, labels, require(subject, "person")?).await?;
             match field {
                 PersonRemove::Link { link } => {
                     let id = reference::link(person.links(), &link)?;

@@ -22,8 +22,9 @@ Because I like Rust :)
 
 ## Demo
 
-There's a demo instance running at <https://library.agill.net>. The demo instance uses an ephemeral
-in-memory database, which gets wiped with every deployment.
+There's a demo instance running at <https://scorarium.agill.net> and my personal instance at
+<https://library.agill.net>. The demo instance uses an ephemeral in-memory database, which gets
+wiped with every deployment.
 
 ## Developer info
 

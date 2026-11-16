@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{AnyEntityId, Contributed, Entity};
 use scorarium_engine::holding::NewHolding;
 use scorarium_engine::library::Library;
 use scorarium_engine::publication::{Identifier, Publication};
@@ -11,6 +11,7 @@ use crate::command::{
     PublicationAdd, PublicationClear, PublicationCommand, PublicationRemove, PublicationSet,
     reject, require,
 };
+use crate::label::Labels;
 use crate::library::write_table;
 use crate::reference::Target;
 use crate::{audit, enrichment, person, reference, review, work};
@@ -208,11 +209,16 @@ fn identifier_kind(kind: scorarium_engine::publication::IdentifierKind) -> &'sta
     }
 }
 
-/// Resolve a publication title or id
-pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<Publication> {
+/// Resolve a publication title, id, or `@label`.
+pub(crate) async fn resolve(
+    library: &Library,
+    labels: &Labels,
+    reference: &str,
+) -> eyre::Result<Publication> {
     reference::resolve(
         "publication",
         reference,
+        labels.publication(reference)?,
         library.publications().await?,
         |p| p.id(),
         |p| p.title().unwrap_or_default(),
@@ -222,6 +228,7 @@ pub(crate) async fn resolve(library: &Library, reference: &str) -> eyre::Result<
 /// Run a publication command against a library.
 pub(crate) async fn run(
     library: &Library,
+    labels: &mut Labels,
     subject: Option<&str>,
     command: PublicationCommand,
     out: &mut impl Write,
@@ -236,15 +243,16 @@ pub(crate) async fn run(
             list(library, &tags, out).await
         }
         PublicationCommand::Show => {
-            let publication = resolve(library, require(subject, "publication")?).await?;
+            let publication = resolve(library, labels, require(subject, "publication")?).await?;
             show(publication, out).await
         }
         PublicationCommand::Audit(args) => {
-            let publication = resolve(library, require(subject, "publication")?).await?;
+            let publication = resolve(library, labels, require(subject, "publication")?).await?;
             audit::entity_log(&publication, args.limit(), out).await
         }
         PublicationCommand::Set { field } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             match field {
                 PublicationSet::Title { title } => publication.set_title(title).await?,
                 PublicationSet::Subtitle { subtitle } => {
@@ -265,7 +273,8 @@ pub(crate) async fn run(
             Ok(())
         }
         PublicationCommand::Clear { field } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             match field {
                 PublicationClear::Subtitle => publication.set_subtitle(None).await?,
                 PublicationClear::Publisher => publication.set_publisher(None).await?,
@@ -276,7 +285,8 @@ pub(crate) async fn run(
             Ok(())
         }
         PublicationCommand::Add { field } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             match field {
                 PublicationAdd::Tag { tag } => publication.add_tag(tag).await?,
                 PublicationAdd::Identifier { kind, text } => {
@@ -285,24 +295,42 @@ pub(crate) async fn run(
                         .await?
                 }
                 PublicationAdd::Link { url } => publication.add_link(url).await?,
-                PublicationAdd::Contributor { person, role, new } => {
-                    match person::target(library, &person, new).await? {
+                PublicationAdd::Contributor {
+                    person,
+                    role,
+                    new,
+                    label,
+                } => {
+                    if let Some(label) = &label {
+                        labels.check(label)?;
+                    }
+                    let id = match person::target(library, labels, &person, new).await? {
                         Target::Existing(person) => {
-                            publication.add_contributor(person.id(), role).await?
+                            publication.add_contributor(person.id(), role).await?;
+                            person.id()
                         }
-                        Target::New => {
-                            publication
-                                .create_contributor(person.parse()?, role)
-                                .await?;
-                        }
+                        Target::New => publication
+                            .create_contributor(person.parse()?, role)
+                            .await?
+                            .id(),
+                    };
+                    if let Some(label) = label {
+                        labels.bind(label, AnyEntityId::Person(id));
                     }
                 }
-                PublicationAdd::Work { work, new } => {
-                    match work::target(library, &work, new).await? {
-                        Target::Existing(work) => publication.add_work(work.id()).await?,
-                        Target::New => {
-                            publication.create_work(work.parse()?).await?;
+                PublicationAdd::Work { work, new, label } => {
+                    if let Some(label) = &label {
+                        labels.check(label)?;
+                    }
+                    let id = match work::target(library, labels, &work, new).await? {
+                        Target::Existing(work) => {
+                            publication.add_work(work.id()).await?;
+                            work.id()
                         }
+                        Target::New => publication.create_work(work.parse()?).await?.id(),
+                    };
+                    if let Some(label) = label {
+                        labels.bind(label, AnyEntityId::Work(id));
                     }
                 }
                 PublicationAdd::Holding { kind, location } => {
@@ -313,7 +341,8 @@ pub(crate) async fn run(
             Ok(())
         }
         PublicationCommand::Remove { field } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             match field {
                 PublicationRemove::Tag { tag } => publication.remove_tag(&tag).await?,
                 PublicationRemove::Identifier { kind, text } => {
@@ -326,7 +355,7 @@ pub(crate) async fn run(
                     publication.remove_link(id).await?
                 }
                 PublicationRemove::Contributor { person, role } => {
-                    let person = person::resolve(library, &person).await?.id();
+                    let person = person::resolve(library, labels, &person).await?.id();
                     let roles: Vec<Role> = match role {
                         Some(role) => vec![role],
                         None => publication
@@ -341,7 +370,7 @@ pub(crate) async fn run(
                     }
                 }
                 PublicationRemove::Work { work } => {
-                    let work = work::resolve(library, &work).await?;
+                    let work = work::resolve(library, labels, &work).await?;
                     publication.remove_work(work.id()).await?
                 }
                 PublicationRemove::Holding { holding } => {
@@ -354,40 +383,44 @@ pub(crate) async fn run(
             Ok(())
         }
         PublicationCommand::Delete => {
-            let publication = resolve(library, require(subject, "publication")?).await?;
+            let publication = resolve(library, labels, require(subject, "publication")?).await?;
             publication.delete().await?;
             Ok(())
         }
         PublicationCommand::Commit => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             publication.commit().await?;
             Ok(())
         }
         PublicationCommand::DiscardChanges => {
             let reference = require(subject, "publication")?;
-            let publication = resolve(library, reference).await?;
+            let publication = resolve(library, labels, reference).await?;
             review::discard_changes(&publication, "publication", reference).await
         }
         PublicationCommand::Accept { proposals } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             review::accept(&mut publication, &proposals).await
         }
         PublicationCommand::Reject { proposals } => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             review::reject(&mut publication, &proposals).await
         }
         PublicationCommand::RejectAll => {
-            let mut publication = resolve(library, require(subject, "publication")?).await?;
+            let mut publication =
+                resolve(library, labels, require(subject, "publication")?).await?;
             publication.reject_all().await?;
             Ok(())
         }
         PublicationCommand::Enrich => {
-            let publication = resolve(library, require(subject, "publication")?).await?;
+            let publication = resolve(library, labels, require(subject, "publication")?).await?;
             enrichment::enrich(&publication, out).await
         }
         PublicationCommand::CancelEnrichment => {
             let reference = require(subject, "publication")?;
-            let publication = resolve(library, reference).await?;
+            let publication = resolve(library, labels, reference).await?;
             enrichment::cancel_enrichment(&publication, "publication", reference)
         }
     }

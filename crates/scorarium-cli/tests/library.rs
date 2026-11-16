@@ -1,4 +1,5 @@
 use scorarium_engine::Engine;
+use scorarium_engine::entity::{Contributed, Entity};
 
 /// Run a script, returning what it printed and how it ended.
 async fn run(engine: &Engine, script: &str) -> (String, eyre::Result<()>) {
@@ -733,5 +734,94 @@ async fn the_music_script_runs() {
         publications
             .iter()
             .any(|p| p.title() == Some("Isle of the Dead"))
+    );
+}
+
+#[tokio::test]
+async fn a_reused_label_fails_before_creating_anything() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let (_, result) = run(
+        &engine,
+        "library books select\n\
+         import First --as dup\n\
+         import Second --as dup\n",
+    )
+    .await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 3: label '@dup' is already defined"
+    );
+    let libraries = engine.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name() == "Books").unwrap();
+    let titles: Vec<String> = books
+        .publications()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|p| p.title().map(str::to_string))
+        .collect();
+    assert!(titles.contains(&"First".to_string()));
+    assert!(!titles.contains(&"Second".to_string()));
+}
+
+#[tokio::test]
+async fn a_label_links_one_of_several_works_with_the_same_title() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let (_, result) = run(
+        &engine,
+        "library books select\n\
+         import One --as one\n\
+         import Two --as two\n\
+         import Three --as three\n\
+         publication @one add work Prelude --as prelude\n\
+         publication @two add work Prelude --new\n\
+         publication @three add work @prelude\n\
+         publication @one add contributor Somebody composer\n\
+         publication @two add contributor Somebody composer --as somebody\n\
+         publication @three add contributor @somebody composer\n",
+    )
+    .await;
+    result.unwrap();
+    let libraries = engine.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name() == "Books").unwrap();
+    let publications = books.publications().await.unwrap();
+    // The second contributor links the existing person, so --as binds a linked entity
+    let contributor = |title: &str| {
+        let publication = publications.iter().find(|p| p.title() == Some(title));
+        publication.unwrap().contributors()[0].person
+    };
+    assert_eq!(contributor("Three"), contributor("One"));
+    let works = |title: &str| {
+        let publication = publications
+            .iter()
+            .find(|p| p.title() == Some(title))
+            .unwrap();
+        async move {
+            let works = publication.works().await.unwrap();
+            works.iter().map(|w| w.id()).collect::<Vec<_>>()
+        }
+    };
+    let one = works("One").await;
+    assert_eq!(one.len(), 1);
+    assert_ne!(works("Two").await, one);
+    assert_eq!(works("Three").await, one);
+}
+
+#[tokio::test]
+async fn a_label_of_the_wrong_kind_or_undefined_fails() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let (_, result) = run(
+        &engine,
+        "library books select\nimport One --as one\nwork @one show\n",
+    )
+    .await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 3: '@one' labels a publication, not a work"
+    );
+    let (_, result) = run(&engine, "library books publication @missing show\n").await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 1: no label '@missing'"
     );
 }
