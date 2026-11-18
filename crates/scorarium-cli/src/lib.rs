@@ -2,6 +2,7 @@ mod audit;
 mod command;
 mod completer;
 mod enrichment;
+mod export;
 mod interactive;
 mod label;
 mod library;
