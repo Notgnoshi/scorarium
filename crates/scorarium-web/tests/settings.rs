@@ -7,6 +7,7 @@ async fn login_is_required() {
         "/settings",
         "/settings/catalog",
         "/settings/duplicates",
+        "/settings/export",
         "/library/2/export/full",
     ] {
         let app = TestApp::logged_out(true).await;

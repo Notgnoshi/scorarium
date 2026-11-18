@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod catalog;
 pub mod duplicates;
+pub mod export;
 pub mod index;
 pub mod library;
 pub mod loans;
