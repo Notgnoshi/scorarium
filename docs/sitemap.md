@@ -20,6 +20,7 @@
 | `/library/{id}/delete`                                                 | POST   | Delete a library              |
 | `/library/{id}/edit`                                                   | GET    | Edit or delete a library      |
 | `/library/{id}/edit`                                                   | POST   | Save a library                |
+| `/library/{id}/export/{level}`                                         | GET    | Download a library script     |
 | `/library/{id}/import`                                                 | GET    | Import a publication          |
 | `/library/{id}/import`                                                 | POST   | Create a draft                |
 | `/library/{id}/people/{role}`                                          | GET    | People with one role          |

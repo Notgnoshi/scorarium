@@ -60,6 +60,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route("/library", post(page::index::post))
         .route("/library/{id}", get(page::library::view::get))
         .route(
+            "/library/{id}/export/{level}",
+            get(page::library::export::get),
+        )
+        .route(
             "/library/{id}/publication/{publication}",
             get(page::library::publication::get),
         )
