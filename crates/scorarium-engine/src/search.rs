@@ -2,7 +2,8 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 
 use crate::entity::{AnyEntity, Entity, EntityKind};
-use crate::fuzzy::{normalize, score};
+pub use crate::fuzzy::normalize;
+use crate::fuzzy::score;
 use crate::library::LibraryId;
 use crate::person::{self, Person, PersonId};
 use crate::publication::{self, Identifier, IdentifierKind, Publication, PublicationId};
