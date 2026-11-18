@@ -15,15 +15,28 @@ pub async fn run_script(
     enrich: bool,
 ) -> eyre::Result<()> {
     let mut shell = Shell::new(engine.clone(), false, enrich);
+    let mut command = String::new();
+    let mut first = 0;
     for (index, line) in source.lines().enumerate() {
-        let line = line?;
+        if command.is_empty() {
+            first = index + 1;
+        }
+        command.push_str(&line?);
+        if shlex::split(&command).is_none() {
+            command.push('\n');
+            continue;
+        }
         let flow = shell
-            .execute(&line, out)
+            .execute(&command, out)
             .await
-            .wrap_err_with(|| format!("line {}", index + 1))?;
+            .wrap_err_with(|| format!("line {first}"))?;
+        command.clear();
         if let Flow::Quit = flow {
             break;
         }
+    }
+    if !command.is_empty() {
+        eyre::bail!("line {first}: unterminated quote or trailing backslash");
     }
     enrichment::wait(engine, Some(Duration::from_secs(10))).await;
     Ok(())
