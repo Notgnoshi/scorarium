@@ -22,6 +22,7 @@ use std::path::PathBuf;
 
 use scorarium_engine::Engine;
 
+pub use crate::export::{ExportLevel, export_script};
 pub use crate::log::LogWriter;
 pub use crate::script::run_script;
 
