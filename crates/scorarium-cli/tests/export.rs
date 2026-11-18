@@ -39,8 +39,20 @@ async fn round_trip_exports() {
         );
         let works = match level {
             ExportLevel::Publications => 0,
-            ExportLevel::Works => committed_works(&source).await,
+            ExportLevel::Works | ExportLevel::Full => committed_works(&source).await,
         };
         assert_eq!(committed_works(&replayed).await, works);
     }
+}
+
+#[tokio::test]
+async fn rount_trip_full_detail() {
+    let fixture = include_str!("fixtures/full.scr");
+    let (engine, _dir) = scorarium_test::empty_engine().await;
+    let build = format!("{fixture}library Music import Draft\n");
+    run_script(&engine, build.as_bytes(), &mut Vec::new(), false)
+        .await
+        .unwrap();
+    let music = library(&engine, "Music").await;
+    assert_eq!(export(&music, ExportLevel::Full).await, fixture);
 }

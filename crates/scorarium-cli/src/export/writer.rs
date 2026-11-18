@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::io::Write;
 
 use scorarium_engine::contributor::Contributor;
 use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::holding::HoldingKind;
 use scorarium_engine::library::Library;
-use scorarium_engine::person::{PersonId, derive_sort_name};
-use scorarium_engine::publication::{IdentifierKind, Publication};
+use scorarium_engine::person::{Person, PersonId, derive_sort_name};
+use scorarium_engine::publication::{Identifier, IdentifierKind, Publication};
 use scorarium_engine::search::normalize;
 use scorarium_engine::value::{NonBlank, title_sort_key};
 use scorarium_engine::work::{Work, WorkId};
@@ -20,6 +22,8 @@ pub enum ExportLevel {
     Publications,
     /// Publications and their works, with catalog numbers and contributors
     Works,
+    /// Every field the shell grammar can set
+    Full,
 }
 
 /// Write a script that recreates the committed publications of `library`.
@@ -41,18 +45,24 @@ pub async fn export_script(
     });
 
     let description = match level {
-        ExportLevel::Publications => "publications only",
-        ExportLevel::Works => "publications and works",
+        ExportLevel::Publications => "with publications only",
+        ExportLevel::Works => "with publications and works",
+        ExportLevel::Full => "in full",
     };
-    writeln!(out, "# {}, exported with {description}", library.name())?;
+    writeln!(out, "# {}, exported {description}", library.name())?;
     writeln!(out)?;
 
+    let persons = match level {
+        ExportLevel::Full => library.people(None).await?,
+        ExportLevel::Publications | ExportLevel::Works => Vec::new(),
+    };
     let mut exporter = Exporter {
         out,
         level,
         labeler: Labeler::default(),
         people: HashMap::new(),
         works: HashMap::new(),
+        persons: persons.into_iter().map(|p| (p.id(), p)).collect(),
     };
     let name = library.name();
     exporter.command(
@@ -77,6 +87,8 @@ struct Exporter<'a, W: Write> {
     people: HashMap<PersonId, String>,
     /// The label of each work already written
     works: HashMap<WorkId, String>,
+    /// Every person in the library
+    persons: HashMap<PersonId, Person>,
 }
 
 impl<W: Write> Exporter<'_, W> {
@@ -112,34 +124,90 @@ impl<W: Write> Exporter<'_, W> {
         Ok(())
     }
 
+    /// Write `<subject> set <field> <value>` when the value is set.
+    fn set(
+        &mut self,
+        subject: &[&str],
+        field: &str,
+        value: Option<impl Display>,
+    ) -> eyre::Result<()> {
+        let Some(value) = value else {
+            return Ok(());
+        };
+        let keywords = [subject, &["set", field]].concat();
+        self.command(&keywords, &[&value.to_string()], &[])
+    }
+
     async fn publication(&mut self, publication: &Publication) -> eyre::Result<()> {
+        let full = self.level == ExportLevel::Full;
         let label = self.labeler.publication(publication);
         let subject = format!("@{label}");
         let title = publication.title();
         // Identifiers are ordered by kind, so the seed is an ISBN when there is one.
-        let mut identifiers = publication
-            .identifiers()
-            .iter()
-            .filter_map(|i| match i.kind() {
-                IdentifierKind::Isbn => Some(("isbn", i.as_str())),
-                IdentifierKind::Ismn => Some(("ismn", i.as_str())),
-                IdentifierKind::PublisherNumber | IdentifierKind::PlateNumber => None,
-            });
-        let seed = identifiers.next();
+        let mut identifiers = publication.identifiers().iter().peekable();
+        let seed = identifiers
+            .next_if(|i| matches!(i.kind(), IdentifierKind::Isbn | IdentifierKind::Ismn));
+        let mut locations = publication.holdings().iter().filter_map(|h| match &h.kind {
+            HoldingKind::Physical { location } => Some(location.as_deref()),
+            HoldingKind::Digital { .. } => None,
+        });
 
-        let seed_text = seed.map_or(title.unwrap_or_default(), |(_, text)| text);
-        self.command(&["import"], &[seed_text], &[("--as", Some(&label))])?;
+        let seed_text = seed.map_or(title.unwrap_or_default(), Identifier::as_str);
+        let first_location = locations.next().flatten();
+        let mut options = Vec::new();
+        if full && let Some(location) = first_location {
+            options.push(("--location", Some(location)));
+        }
+        options.push(("--as", Some(label.as_str())));
+        self.command(&["import"], &[seed_text], &options)?;
         if seed.is_some()
             && let Some(title) = title
         {
             self.command(&["publication", &subject, "set", "title"], &[title], &[])?;
         }
-        for (kind, text) in identifiers {
+        if full {
+            let entity = ["publication", subject.as_str()];
+            self.set(&entity, "subtitle", publication.subtitle())?;
+            self.set(&entity, "publisher", publication.publisher())?;
+            self.set(&entity, "year", publication.year())?;
+            self.set(&entity, "stars", publication.stars())?;
+            self.set(&entity, "classification", publication.classification())?;
+            self.set(&entity, "note", publication.note())?;
+            for tag in publication.tags() {
+                self.command(
+                    &["publication", &subject, "add", "tag"],
+                    &[tag.as_str()],
+                    &[],
+                )?;
+            }
+        }
+        for identifier in identifiers {
+            let kind = match identifier.kind() {
+                IdentifierKind::Isbn => "isbn",
+                IdentifierKind::Ismn => "ismn",
+                IdentifierKind::PublisherNumber if full => "publisher-number",
+                IdentifierKind::PlateNumber if full => "plate-number",
+                IdentifierKind::PublisherNumber | IdentifierKind::PlateNumber => continue,
+            };
             self.command(
                 &["publication", &subject, "add", "identifier", kind],
-                &[text],
+                &[identifier.as_str()],
                 &[],
             )?;
+        }
+        if full {
+            for link in publication.links() {
+                let url = link.url.to_string();
+                self.command(&["publication", &subject, "add", "link"], &[&url], &[])?;
+            }
+            for location in locations {
+                let option = location.map(|location| ("--location", Some(location)));
+                self.command(
+                    &["publication", &subject, "add", "holding", "physical"],
+                    &[],
+                    option.as_slice(),
+                )?;
+            }
         }
         for contributor in publication.contributors() {
             self.contributor(&["publication", &subject], contributor)?;
@@ -159,6 +227,7 @@ impl<W: Write> Exporter<'_, W> {
             return self.command(&keywords, &[&format!("@{label}")], &[]);
         }
 
+        let full = self.level == ExportLevel::Full;
         let label = self.labeler.work(work);
         self.command(
             &keywords,
@@ -166,12 +235,31 @@ impl<W: Write> Exporter<'_, W> {
             &[("--new", None), ("--as", Some(&label))],
         )?;
         let subject = format!("@{label}");
+        if full {
+            let entity = ["work", subject.as_str()];
+            self.set(&entity, "subtitle", work.subtitle())?;
+            self.set(&entity, "key", work.key())?;
+            self.set(&entity, "time-signature", work.time_signature())?;
+            self.set(&entity, "instrumentation", work.instrumentation())?;
+            self.set(&entity, "stars", work.stars())?;
+            self.set(&entity, "classification", work.classification())?;
+            self.set(&entity, "note", work.note())?;
+            for tag in work.tags() {
+                self.command(&["work", &subject, "add", "tag"], &[tag.as_str()], &[])?;
+            }
+        }
         for number in work.catalog_numbers() {
             self.command(
                 &["work", &subject, "add", "catalog-number"],
                 &[number.as_str()],
                 &[],
             )?;
+        }
+        if full {
+            for link in work.links() {
+                let url = link.url.to_string();
+                self.command(&["work", &subject, "add", "link"], &[&url], &[])?;
+            }
         }
         for contributor in work.contributors() {
             self.contributor(&["work", &subject], contributor)?;
@@ -195,14 +283,22 @@ impl<W: Write> Exporter<'_, W> {
             &[&contributor.name, role],
             &[("--new", None), ("--as", Some(&label))],
         )?;
+        let person = format!("@{label}");
         let name: NonBlank = contributor.name.parse()?;
         if derive_sort_name(&name).as_str() != contributor.sort_name {
-            let person = format!("@{label}");
             self.command(
                 &["person", &person, "set", "sort-name"],
                 &[&contributor.sort_name],
                 &[],
             )?;
+        }
+        if let Some(details) = self.persons.get(&contributor.person).cloned() {
+            self.set(&["person", &person], "birth-year", details.birth_year())?;
+            self.set(&["person", &person], "death-year", details.death_year())?;
+            for link in details.links() {
+                let url = link.url.to_string();
+                self.command(&["person", &person, "add", "link"], &[&url], &[])?;
+            }
         }
         self.people.insert(contributor.person, label);
         Ok(())
