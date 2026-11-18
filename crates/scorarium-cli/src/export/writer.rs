@@ -8,6 +8,7 @@ use scorarium_engine::person::{PersonId, derive_sort_name};
 use scorarium_engine::publication::{IdentifierKind, Publication};
 use scorarium_engine::search::normalize;
 use scorarium_engine::value::{NonBlank, title_sort_key};
+use scorarium_engine::work::{Work, WorkId};
 
 use crate::export::label::{Labeler, lead};
 use crate::library::visibility;
@@ -17,6 +18,8 @@ use crate::library::visibility;
 pub enum ExportLevel {
     /// Publications with just their titles and contributors
     Publications,
+    /// Publications and their works, with catalog numbers and contributors
+    Works,
 }
 
 /// Write a script that recreates the committed publications of `library`.
@@ -39,14 +42,17 @@ pub async fn export_script(
 
     let description = match level {
         ExportLevel::Publications => "publications only",
+        ExportLevel::Works => "publications and works",
     };
     writeln!(out, "# {}, exported with {description}", library.name())?;
     writeln!(out)?;
 
     let mut exporter = Exporter {
         out,
+        level,
         labeler: Labeler::default(),
         people: HashMap::new(),
+        works: HashMap::new(),
     };
     let name = library.name();
     exporter.command(
@@ -57,7 +63,7 @@ pub async fn export_script(
     exporter.command(&["library", name, "select"], &[], &[])?;
     for publication in &publications {
         writeln!(exporter.out)?;
-        exporter.publication(publication)?;
+        exporter.publication(publication).await?;
     }
     writeln!(exporter.out)?;
     exporter.command(&["wait"], &[], &[])
@@ -65,9 +71,12 @@ pub async fn export_script(
 
 struct Exporter<'a, W: Write> {
     out: &'a mut W,
+    level: ExportLevel,
     labeler: Labeler,
     /// The label of each person already written
     people: HashMap<PersonId, String>,
+    /// The label of each work already written
+    works: HashMap<WorkId, String>,
 }
 
 impl<W: Write> Exporter<'_, W> {
@@ -103,7 +112,7 @@ impl<W: Write> Exporter<'_, W> {
         Ok(())
     }
 
-    fn publication(&mut self, publication: &Publication) -> eyre::Result<()> {
+    async fn publication(&mut self, publication: &Publication) -> eyre::Result<()> {
         let label = self.labeler.publication(publication);
         let subject = format!("@{label}");
         let title = publication.title();
@@ -135,7 +144,40 @@ impl<W: Write> Exporter<'_, W> {
         for contributor in publication.contributors() {
             self.contributor(&["publication", &subject], contributor)?;
         }
+        if self.level != ExportLevel::Publications {
+            for work in publication.works().await?.iter().filter(|w| !w.is_draft()) {
+                self.work(&["publication", &subject], work)?;
+            }
+        }
         self.command(&["publication", &subject, "commit"], &[], &[])
+    }
+
+    /// Write `<subject> add work`, creating the work at the first mention.
+    fn work(&mut self, subject: &[&str], work: &Work) -> eyre::Result<()> {
+        let keywords = [subject, &["add", "work"]].concat();
+        if let Some(label) = self.works.get(&work.id()) {
+            return self.command(&keywords, &[&format!("@{label}")], &[]);
+        }
+
+        let label = self.labeler.work(work);
+        self.command(
+            &keywords,
+            &[work.title()],
+            &[("--new", None), ("--as", Some(&label))],
+        )?;
+        let subject = format!("@{label}");
+        for number in work.catalog_numbers() {
+            self.command(
+                &["work", &subject, "add", "catalog-number"],
+                &[number.as_str()],
+                &[],
+            )?;
+        }
+        for contributor in work.contributors() {
+            self.contributor(&["work", &subject], contributor)?;
+        }
+        self.works.insert(work.id(), label);
+        Ok(())
     }
 
     /// Write `<subject> add contributor`, creating the person at the first mention.
