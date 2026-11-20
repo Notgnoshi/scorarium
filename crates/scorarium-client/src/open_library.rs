@@ -78,6 +78,22 @@ impl<'a> OpenLibrary<'a> {
         Ok(raw.map(Author::from))
     }
 
+    /// List the editions of the work `olid`, such as "OL45804W"
+    ///
+    /// Open Library returns the first 50 editions at most.
+    pub async fn work_editions(
+        &self,
+        olid: &str,
+        priority: Priority,
+    ) -> eyre::Result<Option<Vec<Edition>>> {
+        let url = url(["works", olid, "editions.json"])?;
+        let raw: Option<RawEditions> = self
+            .client
+            .get_json(url, HeaderMap::new(), priority)
+            .await?;
+        Ok(raw.map(|raw| raw.entries.into_iter().map(Edition::from).collect()))
+    }
+
     /// Search-as-you-type candidates for a title.
     ///
     /// Deciding when a query is long enough to be worth sending, and debouncing keystrokes, is the
@@ -239,6 +255,12 @@ struct RawEdition {
     covers: Vec<i64>,
     #[serde(default)]
     works: Vec<RawKey>,
+}
+
+#[derive(Deserialize)]
+struct RawEditions {
+    #[serde(default)]
+    entries: Vec<RawEdition>,
 }
 
 #[derive(Deserialize)]
@@ -588,5 +610,18 @@ mod tests {
             author.links,
             ["http://en.wikipedia.org/wiki/Ambrose_Bierce"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_work_lists_its_editions() {
+        let editions = client()
+            .open_library()
+            .work_editions("OL45804W", Priority::Background)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(editions.len(), 50);
+        assert_eq!(editions[0].works, ["OL45804W"]);
     }
 }
