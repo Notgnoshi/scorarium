@@ -1,9 +1,12 @@
+use std::time::Duration;
+
 use axum::http::StatusCode;
 use scorarium_engine::asset::AssetSource;
 use scorarium_engine::contributor::Role;
-use scorarium_engine::entity::{Contributed, Entity, ProposalId, Source};
+use scorarium_engine::entity::{Contributed, Entity, EntityKind, ProposalId, Source};
 use scorarium_engine::holding::{HoldingKind, NewHolding};
 use scorarium_engine::library::Library;
+use scorarium_engine::link::ExternalRecord;
 use scorarium_engine::person::{NewPerson, Person};
 use scorarium_engine::publication::{
     Identifier, IdentifierKind, ImportSeed, Proposal, Publication,
@@ -788,4 +791,33 @@ async fn return_clears_the_borrower() {
         .unwrap()
         .unwrap();
     assert_eq!(after.holdings()[0].loaned_to, None);
+}
+
+#[tokio::test]
+async fn covers_search_proposes_covers() {
+    let app = TestApp::demo().await;
+    let library = app.engine.libraries().await.unwrap().pop().unwrap();
+    let url = "https://openlibrary.org/books/OL27277998M".parse().unwrap();
+    let record = ExternalRecord::recognize(EntityKind::Publication, &url).unwrap();
+    let publication = library
+        .import(
+            ImportSeed::title("Fantastic Mr Fox").record(record),
+            NewHolding::Physical { location: None },
+        )
+        .await
+        .unwrap();
+
+    app.server
+        .post(&format!(
+            "/api/library/{}/publication/{}/covers",
+            library.id(),
+            publication.id()
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    tokio::time::timeout(Duration::from_secs(5), app.engine.wait_for_enrichment())
+        .await
+        .unwrap();
+
+    assert_eq!(publication.proposals().await.unwrap().len(), 5);
 }

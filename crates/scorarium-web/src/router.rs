@@ -186,6 +186,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
                     post(api::contents::sequence),
                 )
                 .route(
+                    "/library/{id}/publication/{publication}/covers",
+                    post(api::covers::search),
+                )
+                .route(
                     "/stage",
                     post(api::stage::post).layer(DefaultBodyLimit::max(MAX_ASSET_SIZE as usize)),
                 )
