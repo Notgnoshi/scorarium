@@ -54,3 +54,12 @@ document.addEventListener("keydown", (event) => {
         search.select();
     }
 });
+
+document.addEventListener("keydown", (event) => {
+    if (!isShortcut(event)) return;
+    const element = document.querySelector(`[data-hotkey="${CSS.escape(event.key)}"]`);
+    if (element) {
+        event.preventDefault();
+        element.click();
+    }
+});
