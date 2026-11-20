@@ -32,15 +32,21 @@ document.addEventListener("htmx:before:swap", (event) => {
     }
 });
 
-// Focus the navbar search box on "/", unless the slash is being typed into something editable.
-document.addEventListener("keydown", (event) => {
-    if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {
-        return;
+// A bare key is a shortcut only when the user is not typing, not using a modifier, and not in a dialog.
+function isShortcut(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        return false;
     }
     const target = event.target;
-    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
-        return;
+    if (target.matches("input, textarea, select") || target.isContentEditable) {
+        return false;
     }
+    return !document.querySelector("dialog[open]");
+}
+
+// Focus the navbar search box on "/".
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "/" || !isShortcut(event)) return;
     const search = document.getElementById("q");
     if (search) {
         event.preventDefault();
