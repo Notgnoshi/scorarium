@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)\n               RETURNING id AS \"id!\"",
+  "query": "INSERT INTO person (library_id, name, sort_name, birth_year, death_year, draft)\n           VALUES (?, ?, ?, ?, ?, ?) RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -9,18 +9,18 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "person_link",
+            "table": "person",
             "name": "id"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 6
     },
     "nullable": [
       null
     ]
   },
-  "hash": "729b51cf880ce676f18f626e1d3004f3357394ac15e902950e87f9b8644c9e4c"
+  "hash": "7215c86007b5a1757832b8bbf62a44d49efc3c045dff1ae91500dec866aab1ad"
 }

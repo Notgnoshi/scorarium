@@ -5,10 +5,10 @@ use crate::contributor::Role;
 use crate::enrich::SubTaskQueue;
 use crate::entity::{AnyEntityId, Entity, EntityKind};
 use crate::fuzzy::normalize;
-use crate::link::{ExternalRecord, LinkKind};
-use crate::person::{self, Person};
+use crate::link::{ExternalRecord, HttpUrl, LinkKind};
+use crate::person::{self, NewPerson, Person};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
-use crate::value::{Classification, Year};
+use crate::value::{Classification, NonBlank, Year};
 use crate::{Engine, Error, Result};
 
 /// How to ask Open Library for information on an edition
@@ -270,45 +270,50 @@ pub(crate) async fn author(
     if queue.is_cancelled() {
         return Ok(());
     }
-    let author: Role = "author".parse().expect("a literal role");
-    let person = match best_match(matches) {
-        Some(person) => {
-            let proposal = Proposal::Contributor {
-                person: person.clone(),
-                role: author,
-            };
-            publication.propose(Source::OpenLibrary, proposal).await?;
-            person
-        }
-        None => match publication
-            .propose_new_contributor(Source::OpenLibrary, &record.name, &author)
-            .await
-        {
-            Ok(person) => person,
-            Err(Error::InvalidValue(reason)) => {
-                tracing::error!("Open Library author {olid} invalid: {reason}");
-                return Ok(());
-            }
-            Err(error) => return Err(error),
-        },
-    };
-
-    // Links are proposals too; the person may be committed, and the user decides.
-    let mut links = vec![this];
+    let mut records = vec![this];
     for (key, kind) in AUTHOR_IDS {
         if let Some(id) = record.remote_ids.get(key) {
-            links.push(ExternalRecord::new(kind, id));
+            records.push(ExternalRecord::new(kind, id));
         }
     }
-    let mut proposals: Vec<person::Proposal> = links
+    let links: Vec<HttpUrl> = records
         .iter()
-        .filter_map(|link| link.url(EntityKind::Person))
-        .map(person::Proposal::Link)
+        .filter_map(|external| external.url(EntityKind::Person))
         .collect();
-    if let Some(year) = record.birth_date.as_deref().and_then(year) {
+    let birth_year = record.birth_date.as_deref().and_then(year);
+    let death_year = record.death_date.as_deref().and_then(year);
+
+    let author: Role = "author".parse().expect("a literal role");
+    let Some(person) = best_match(matches) else {
+        let name = match record.name.parse::<NonBlank>() {
+            Ok(name) => name,
+            Err(error) => {
+                tracing::error!("Open Library author {olid} invalid: {error}");
+                return Ok(());
+            }
+        };
+        let person = NewPerson::new(name)
+            .birth_year(birth_year)
+            .death_year(death_year)
+            .links(links);
+        publication
+            .propose_new_contributor(Source::OpenLibrary, person, &author)
+            .await?;
+        return Ok(());
+    };
+    let proposal = Proposal::Contributor {
+        person: person.clone(),
+        role: author,
+    };
+    publication.propose(Source::OpenLibrary, proposal).await?;
+
+    // A match is not proof of identity, so the user decides.
+    let mut proposals: Vec<person::Proposal> =
+        links.into_iter().map(person::Proposal::Link).collect();
+    if let Some(year) = birth_year {
         proposals.push(person::Proposal::BirthYear(year));
     }
-    if let Some(year) = record.death_date.as_deref().and_then(year) {
+    if let Some(year) = death_year {
         proposals.push(person::Proposal::DeathYear(year));
     }
     for proposal in proposals {
@@ -517,15 +522,14 @@ mod tests {
             panic!("expected a contributor proposal");
         };
         assert!(person.is_draft());
-        let facts: Vec<String> = person
-            .proposals()
-            .await
-            .unwrap()
+        assert!(person.proposals().await.unwrap().is_empty());
+        let links: Vec<String> = person
+            .links()
             .iter()
-            .map(fact_of)
+            .map(|link| link.url.to_string())
             .collect();
         assert_eq!(
-            facts,
+            links,
             [
                 "https://openlibrary.org/authors/OL127077A",
                 "https://www.wikidata.org/wiki/Q255",
@@ -536,10 +540,10 @@ mod tests {
                 "https://www.librarything.com/author/beethovenludwigvan",
                 "https://www.gutenberg.org/ebooks/author/75",
                 "https://librivox.org/author/4437",
-                "born 1770",
-                "died 1827",
             ]
         );
+        assert_eq!(person.birth_year(), Some(Year::try_from(1770).unwrap()));
+        assert_eq!(person.death_year(), Some(Year::try_from(1827).unwrap()));
     }
 
     #[tokio::test]
@@ -588,5 +592,28 @@ mod tests {
         assert_eq!(person.id(), beethoven.id());
         assert_eq!(role.as_str(), "author");
         assert_eq!(library.people(None).await.unwrap().len(), 1);
+        let facts: Vec<String> = beethoven
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(fact_of)
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                "https://openlibrary.org/authors/OL127077A",
+                "https://www.wikidata.org/wiki/Q255",
+                "https://viaf.org/viaf/32182557",
+                "https://isni.org/isni/0000000121268987",
+                "https://id.loc.gov/authorities/names/n79107741",
+                "https://musicbrainz.org/artist/1f9df192-a621-4f54-8850-2c5373b7eac9",
+                "https://www.librarything.com/author/beethovenludwigvan",
+                "https://www.gutenberg.org/ebooks/author/75",
+                "https://librivox.org/author/4437",
+                "born 1770",
+                "died 1827",
+            ]
+        );
     }
 }

@@ -95,6 +95,49 @@ pub enum Proposal {
     Profile(HttpUrl),
 }
 
+/// The values of a person to create
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NewPerson {
+    name: NonBlank,
+    birth_year: Option<Year>,
+    death_year: Option<Year>,
+    links: Vec<HttpUrl>,
+}
+
+impl NewPerson {
+    /// Start a person named `name` with no other values
+    pub fn new(name: NonBlank) -> NewPerson {
+        NewPerson {
+            name,
+            birth_year: None,
+            death_year: None,
+            links: Vec::new(),
+        }
+    }
+
+    /// Set or clear the year of birth
+    pub fn birth_year(self, year: Option<Year>) -> NewPerson {
+        NewPerson {
+            birth_year: year,
+            ..self
+        }
+    }
+
+    /// Set or clear the year of death
+    pub fn death_year(self, year: Option<Year>) -> NewPerson {
+        NewPerson {
+            death_year: year,
+            ..self
+        }
+    }
+
+    /// Add links, of which the created person holds each URL and external record once
+    pub fn links(mut self, urls: impl IntoIterator<Item = HttpUrl>) -> NewPerson {
+        self.links.extend(urls);
+        self
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Person {
     engine: Engine,
@@ -374,30 +417,11 @@ impl Person {
     ///
     /// Returns [Error::NotFound] if the person has been deleted.
     pub async fn add_link(&mut self, url: HttpUrl) -> Result<()> {
-        let record = ExternalRecord::recognize(EntityKind::Person, &url);
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        if self
-            .links
-            .iter()
-            .any(|link| link.url == url || (link.record.is_some() && link.record == record))
-        {
+        let Some(link) = insert_link(&mut tx, self.id, url).await? else {
             return Ok(());
-        }
-        let kind = record
-            .as_ref()
-            .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
-        let external_id = record.as_ref().map(ExternalRecord::id);
-        let id = sqlx::query_scalar!(
-            r#"INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)
-               RETURNING id AS "id!""#,
-            self.id.get(),
-            url.as_url().as_str(),
-            kind,
-            external_id
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+        };
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE person SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,
@@ -406,11 +430,7 @@ impl Person {
         .fetch_one(&mut *tx)
         .await?;
         self.commit_update(tx, Field::Links).await?;
-        self.links.push(Link {
-            id: LinkId::new(id),
-            url,
-            record,
-        });
+        self.links.push(link);
         self.last_modified_at = last_modified_at;
         Ok(())
     }
@@ -761,30 +781,67 @@ fn from_row(row: ProposalRow) -> Result<entity::Proposal<Person>> {
     })
 }
 
-/// Insert a person named `name` in `library` with a derived sort name and load them
+/// Insert `person` in `library` with a derived sort name and load them
 pub(crate) async fn insert(
     engine: &Engine,
     conn: &mut SqliteConnection,
     library: LibraryId,
-    name: &NonBlank,
+    person: &NewPerson,
     draft: bool,
 ) -> Result<Person> {
     let library = library.get();
-    let sort_name = derive_sort_name(name);
-    let (name, sort_name) = (name.as_str(), sort_name.as_str());
+    let sort_name = derive_sort_name(&person.name);
+    let (name, sort_name) = (person.name.as_str(), sort_name.as_str());
+    let birth_year = person.birth_year.map(Year::get);
+    let death_year = person.death_year.map(Year::get);
     let id = sqlx::query_scalar!(
-        r#"INSERT INTO person (library_id, name, sort_name, draft) VALUES (?, ?, ?, ?)
-           RETURNING id AS "id!""#,
+        r#"INSERT INTO person (library_id, name, sort_name, birth_year, death_year, draft)
+           VALUES (?, ?, ?, ?, ?, ?) RETURNING id AS "id!""#,
         library,
         name,
         sort_name,
+        birth_year,
+        death_year,
         draft
     )
     .fetch_one(&mut *conn)
     .await?;
-    Person::fetch(engine, conn, PersonId::new(id))
+    let id = PersonId::new(id);
+    for url in &person.links {
+        insert_link(conn, id, url.clone()).await?;
+    }
+    Person::fetch(engine, conn, id)
         .await?
         .ok_or(Error::NotFound)
+}
+
+/// Link `person` to `url`, or return `None` if the person already holds the URL or its record
+async fn insert_link(
+    conn: &mut SqliteConnection,
+    person: PersonId,
+    url: HttpUrl,
+) -> Result<Option<Link>> {
+    let record = ExternalRecord::recognize(EntityKind::Person, &url);
+    let kind = record
+        .as_ref()
+        .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
+    let external_id = record.as_ref().map(ExternalRecord::id);
+    let id = sqlx::query_scalar!(
+        r#"INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)
+           ON CONFLICT DO NOTHING
+           RETURNING id AS "id!""#,
+        person.get(),
+        url.as_url().as_str(),
+        kind,
+        external_id
+    )
+    .fetch_optional(conn)
+    .await?;
+    Ok(id.map(|id| Link {
+        id: LinkId::new(id),
+        url,
+        record,
+    }))
 }
 
 /// Get the name and sort name of `person`, or none if `library` has no such person
