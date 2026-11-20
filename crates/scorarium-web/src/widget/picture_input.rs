@@ -1,6 +1,7 @@
 use askama::Template;
 use scorarium_engine::Engine;
 use scorarium_engine::asset::StagedId;
+use scorarium_engine::entity::Entity;
 use scorarium_engine::link::HttpUrl;
 use scorarium_engine::person::Person;
 use scorarium_engine::publication::Publication;
@@ -66,6 +67,8 @@ pub(crate) struct PictureInput {
     remove: bool,
     input: FileInput,
     candidates: PictureCandidates,
+    /// The URL that searches for more candidates
+    search: Option<String>,
 }
 
 impl askama::filters::HtmlSafe for PictureInput {}
@@ -89,12 +92,20 @@ impl PictureInput {
         files_allowed: bool,
         candidates: PictureCandidates,
     ) -> PictureInput {
-        PictureInput::new(
+        let mut input = PictureInput::new(
             Picture::from(publication),
             "Cover",
             files_allowed,
             candidates,
-        )
+        );
+        if files_allowed {
+            input.search = Some(format!(
+                "/api/library/{}/publication/{}/covers",
+                publication.library(),
+                publication.id()
+            ));
+        }
+        input
     }
 
     fn new(
@@ -123,6 +134,7 @@ impl PictureInput {
                 browse_icon: Some("Browse for a picture"),
             },
             candidates,
+            search: None,
         }
     }
 

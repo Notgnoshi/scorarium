@@ -16,4 +16,13 @@
     <input type="hidden" name="remove_picture" value="1" {% if !remove %}disabled{% endif %}>
     {{ input }}
     {{ candidates }}
+    {% if let Some(search) = search %}
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary mt-2"
+                title="Search Open Library for covers of other editions"
+                data-cover-search="{{ search }}">
+            <i class="bi bi-search"></i> More covers
+        </button>
+        <div class="small text-body-secondary mt-1" hidden>No more covers found.</div>
+    {% endif %}
 </div>
