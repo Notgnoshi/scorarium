@@ -645,7 +645,7 @@ async fn isbn_import_review() {
          Books      \tpublication\t2 \tPro Git                                 \t     \t             \t5\n\
          Books      \tpublication\t3 \tThe Collected Writings of Ambrose Bierce\t     \t             \t1\n\
          Sheet music\tpublication\t8 \tMorceaux de fantaisie                   \tdraft\t             \t10\n\
-         Books      \tpublication\t10\t                                        \tdraft\tcompleted 2/2\t5\n\
+         Books      \tpublication\t10\t                                        \tdraft\tcompleted 2/2\t6\n\
          Sheet music\twork       \t12\tElegie                                  \tdraft\t             \t4\n\
          Sheet music\twork       \t13\tMelodie                                 \tdraft\t             \t1\n\
          Sheet music\twork       \t14\tSerenade                                \tdraft\n\
@@ -654,7 +654,7 @@ async fn isbn_import_review() {
          Sheet music\tperson     \t13\tMurray Baylor                           \tdraft\n\
          Sheet music\tperson     \t14\tSergei Rachmaninov                      \tdraft\n\
          Books      \tperson     \t15\tClifton Fadiman                         \tdraft\n\
-         Books      \tperson     \t18\tLudwig van Beethoven                    \tdraft\n"
+         Books      \tperson     \t18\tLudwig van Beethoven                    \tdraft\t             \t1\n"
     );
     assert_eq!(
         format!("field{show}"),
@@ -671,7 +671,8 @@ async fn isbn_import_review() {
          proposal      \t18\tpublisher: Dover Publications (openlibrary)\n\
          proposal      \t19\tyear: 1987 (openlibrary)\n\
          proposal      \t20\tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
-         proposal      \t21\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+         proposal      \t21\tcover: https://covers.openlibrary.org/b/id/310277-M.jpg (openlibrary)\n\
+         proposal      \t22\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
     );
 
     let (out, result) = run(
@@ -685,7 +686,7 @@ async fn isbn_import_review() {
     assert_eq!(
         out,
         "field         \tid\tvalue\n\
-         --------------\t--\t------------------------------------------------------------\n\
+         --------------\t--\t---------------------------------------------------------------------\n\
          id            \t10\t\n\
          draft         \t  \t\n\
          title         \t  \tBagatelles, Rondos and Other Shorter Works for Piano\n\
@@ -695,7 +696,8 @@ async fn isbn_import_review() {
          holding       \t10\tphysical\n\
          enrichment    \t  \tcompleted 2/2\n\
          proposal      \t20\tlink: https://openlibrary.org/books/OL7636066M (openlibrary)\n\
-         proposal      \t21\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
+         proposal      \t21\tcover: https://covers.openlibrary.org/b/id/310277-M.jpg (openlibrary)\n\
+         proposal      \t22\tcontributor: Ludwig van Beethoven (author) (openlibrary)\n"
     );
 
     let (_, result) = run(&engine, "library books publication 10 accept 19\n").await;

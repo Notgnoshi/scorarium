@@ -1,4 +1,4 @@
-use scorarium_client::open_library::Edition;
+use scorarium_client::open_library::{Edition, cover_url, photo_url};
 use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
@@ -12,9 +12,44 @@ use crate::value::{Classification, NonBlank, Year};
 use crate::{Engine, Error, Result};
 
 /// How to ask Open Library for information on an edition
+#[derive(Debug)]
 pub(crate) enum EditionKey {
     Olid(String),
     Isbn(Identifier),
+}
+
+impl EditionKey {
+    /// Derive the key from the Open Library link of `publication`, or else its first ISBN
+    pub(crate) fn of(publication: &Publication) -> Option<EditionKey> {
+        let olid = publication.links().iter().find_map(|link| {
+            link.record
+                .as_ref()
+                .filter(|record| record.kind() == LinkKind::OpenLibrary)
+                .map(|record| EditionKey::Olid(record.id().to_string()))
+        });
+        olid.or_else(|| {
+            publication
+                .identifiers()
+                .iter()
+                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+                .cloned()
+                .map(EditionKey::Isbn)
+        })
+    }
+
+    /// Look up the edition that the key addresses
+    async fn fetch(&self, engine: &Engine) -> Result<Option<Edition>> {
+        let open_library = engine.client().open_library();
+        let edition = match self {
+            EditionKey::Olid(olid) => open_library.edition(olid, Priority::Background).await?,
+            EditionKey::Isbn(isbn) => {
+                open_library
+                    .edition_by_isbn(isbn.as_str(), Priority::Background)
+                    .await?
+            }
+        };
+        Ok(edition)
+    }
 }
 
 /// Start Open Library enrichment from the edition `key`
@@ -27,20 +62,8 @@ pub(crate) async fn edition(
     if queue.is_cancelled() {
         return Ok(());
     }
-    let open_library = engine.client().open_library();
-    let edition = match &key {
-        EditionKey::Olid(olid) => {
-            tracing::debug!("enriching publication {publication} from Open Library by OLID {olid}");
-            open_library.edition(olid, Priority::Background).await?
-        }
-        EditionKey::Isbn(isbn) => {
-            tracing::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
-            open_library
-                .edition_by_isbn(isbn.as_str(), Priority::Background)
-                .await?
-        }
-    };
-    let Some(edition) = edition else {
+    tracing::debug!("enriching publication {publication} from Open Library by {key:?}");
+    let Some(edition) = key.fetch(&engine).await? else {
         // A 404 is a definite answer, so there is nothing to propose.
         return Ok(());
     };
@@ -70,6 +93,13 @@ pub(crate) async fn edition(
         }
     }
     proposals.push(Proposal::Link(edition.url().parse()?));
+    // A cover stored on disk cannot be compared to a URL, so we only make cover proposals if
+    // there's no existing cover.
+    if publication.cover().is_none() {
+        for id in &edition.covers {
+            proposals.push(Proposal::Cover(cover_url(*id).try_into()?));
+        }
+    }
 
     let (mut accepted, mut present) = (0, 0);
     for proposal in proposals {
@@ -282,6 +312,11 @@ pub(crate) async fn author(
         .collect();
     let birth_year = record.birth_date.as_deref().and_then(year);
     let death_year = record.death_date.as_deref().and_then(year);
+    let pictures: Vec<person::Proposal> = record
+        .photos
+        .iter()
+        .map(|id| photo_url(*id).try_into().map(person::Proposal::Profile))
+        .collect::<Result<_>>()?;
 
     let author: Role = "author".parse().expect("a literal role");
     let Some(person) = best_match(matches) else {
@@ -296,9 +331,12 @@ pub(crate) async fn author(
             .birth_year(birth_year)
             .death_year(death_year)
             .links(links);
-        publication
+        let person = publication
             .propose_new_contributor(Source::OpenLibrary, person, &author)
             .await?;
+        for picture in pictures {
+            person.propose(Source::OpenLibrary, picture).await?;
+        }
         return Ok(());
     };
     let proposal = Proposal::Contributor {
@@ -316,6 +354,9 @@ pub(crate) async fn author(
     if let Some(year) = death_year {
         proposals.push(person::Proposal::DeathYear(year));
     }
+    if person.profile().is_none() {
+        proposals.extend(pictures);
+    }
     for proposal in proposals {
         if queue.is_cancelled() {
             return Ok(());
@@ -326,6 +367,49 @@ pub(crate) async fn author(
                 tracing::error!("Open Library author {olid} invalid: {reason}")
             }
             Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// Propose covers from the other editions of the work that the edition `key` belongs to
+pub(crate) async fn covers(
+    engine: Engine,
+    publication: PublicationId,
+    key: EditionKey,
+    queue: SubTaskQueue,
+) -> Result<()> {
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    let Some(edition) = key.fetch(&engine).await? else {
+        return Ok(());
+    };
+    let Some(work) = edition.works.first() else {
+        return Ok(());
+    };
+    let editions = engine
+        .client()
+        .open_library()
+        .work_editions(work, Priority::Background)
+        .await?
+        .unwrap_or_default();
+    let Some(publication) = Publication::load(&engine, publication).await? else {
+        engine.forget_enrichment(AnyEntityId::Publication(publication));
+        return Ok(());
+    };
+    let mut proposed = 0;
+    for id in editions.iter().flat_map(|edition| &edition.covers) {
+        if proposed == 5 || queue.is_cancelled() {
+            break;
+        }
+        let cover = Proposal::Cover(cover_url(*id).try_into()?);
+        if publication
+            .propose(Source::OpenLibrary, cover)
+            .await?
+            .is_some()
+        {
+            proposed += 1;
         }
     }
     Ok(())
@@ -415,13 +499,55 @@ mod tests {
     /// Render a person proposal as its URL or its year
     fn fact_of(proposal: &entity::Proposal<Person>) -> String {
         match &proposal.value {
-            person::Proposal::Link(url) => url.to_string(),
+            person::Proposal::Link(url) | person::Proposal::Profile(url) => url.to_string(),
             person::Proposal::BirthYear(year) => format!("born {year}"),
             person::Proposal::DeathYear(year) => format!("died {year}"),
-            person::Proposal::Name(_) | person::Proposal::Profile(_) => {
-                panic!("expected a link or a year proposal")
-            }
+            person::Proposal::Name(_) => panic!("expected a link, a picture, or a year proposal"),
         }
+    }
+
+    #[tokio::test]
+    async fn a_search_proposes_the_next_five_covers() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let publication = library
+            .import(
+                ImportSeed::title("Fantastic Mr Fox")
+                    .record(ExternalRecord::new(LinkKind::OpenLibrary, "OL27277998M")),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        publication.search_covers();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        assert_eq!(publication.proposals().await.unwrap().len(), 5);
+
+        publication.search_covers();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        let covers: Vec<String> = publication
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(describe)
+            .collect();
+        let expected = [
+            14301313, 14301314, 14301315, 14301316, 14095634, 14095635, 12583098, 12789482,
+            12273050, 15154268,
+        ]
+        .map(|id| format!("cover https://covers.openlibrary.org/b/id/{id}-M.jpg"));
+        assert_eq!(covers, expected);
     }
 
     #[tokio::test]
@@ -513,16 +639,31 @@ mod tests {
                 "publisher Dover Publications",
                 "year 1987",
                 "link https://openlibrary.org/books/OL7636066M",
+                "cover https://covers.openlibrary.org/b/id/310277-M.jpg",
                 "contributor Ludwig van Beethoven author",
             ]
         );
 
         let proposals = publication.proposals().await.unwrap();
-        let Proposal::Contributor { person, .. } = &proposals[4].value else {
+        let Proposal::Contributor { person, .. } = &proposals[5].value else {
             panic!("expected a contributor proposal");
         };
         assert!(person.is_draft());
-        assert!(person.proposals().await.unwrap().is_empty());
+        let pictures: Vec<person::Proposal> = person
+            .proposals()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|proposal| proposal.value)
+            .collect();
+        assert_eq!(
+            pictures,
+            [person::Proposal::Profile(
+                "https://covers.openlibrary.org/a/id/14418181-M.jpg"
+                    .parse()
+                    .unwrap()
+            )]
+        );
         let links: Vec<String> = person
             .links()
             .iter()
@@ -586,7 +727,7 @@ mod tests {
             .unwrap();
 
         let proposals = publication.proposals().await.unwrap();
-        let Proposal::Contributor { person, role } = &proposals[4].value else {
+        let Proposal::Contributor { person, role } = &proposals[5].value else {
             panic!("expected a contributor proposal");
         };
         assert_eq!(person.id(), beethoven.id());
@@ -613,6 +754,7 @@ mod tests {
                 "https://librivox.org/author/4437",
                 "born 1770",
                 "died 1827",
+                "https://covers.openlibrary.org/a/id/14418181-M.jpg",
             ]
         );
     }

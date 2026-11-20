@@ -78,6 +78,22 @@ impl<'a> OpenLibrary<'a> {
         Ok(raw.map(Author::from))
     }
 
+    /// List the editions of the work `olid`, such as "OL45804W"
+    ///
+    /// Open Library returns the first 50 editions at most.
+    pub async fn work_editions(
+        &self,
+        olid: &str,
+        priority: Priority,
+    ) -> eyre::Result<Option<Vec<Edition>>> {
+        let url = url(["works", olid, "editions.json"])?;
+        let raw: Option<RawEditions> = self
+            .client
+            .get_json(url, HeaderMap::new(), priority)
+            .await?;
+        Ok(raw.map(|raw| raw.entries.into_iter().map(Edition::from).collect()))
+    }
+
     /// Search-as-you-type candidates for a title.
     ///
     /// Deciding when a query is long enough to be worth sending, and debouncing keystrokes, is the
@@ -134,6 +150,18 @@ impl Edition {
     }
 }
 
+/// Return the URL of the cover image `id`
+pub fn cover_url(id: i64) -> Url {
+    Url::parse(&format!("https://covers.openlibrary.org/b/id/{id}-M.jpg"))
+        .expect("a literal URL with a numeric id")
+}
+
+/// Return the URL of the author photo `id`
+pub fn photo_url(id: i64) -> Url {
+    Url::parse(&format!("https://covers.openlibrary.org/a/id/{id}-M.jpg"))
+        .expect("a literal URL with a numeric id")
+}
+
 /// A person Open Library credits on an edition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Author {
@@ -148,6 +176,8 @@ pub struct Author {
     pub remote_ids: HashMap<String, String>,
     /// URLs the record lists for the author
     pub links: Vec<String>,
+    /// Photo ids for covers.openlibrary.org
+    pub photos: Vec<i64>,
 }
 
 /// A work as the Open Library search API describes it
@@ -228,6 +258,12 @@ struct RawEdition {
 }
 
 #[derive(Deserialize)]
+struct RawEditions {
+    #[serde(default)]
+    entries: Vec<RawEdition>,
+}
+
+#[derive(Deserialize)]
 struct RawAuthor {
     key: String,
     name: String,
@@ -240,6 +276,8 @@ struct RawAuthor {
     remote_ids: HashMap<String, String>,
     #[serde(default)]
     links: Vec<RawLink>,
+    #[serde(default)]
+    photos: Vec<i64>,
 }
 
 /// A URL an editor attached to a record.
@@ -374,6 +412,7 @@ impl From<RawAuthor> for Author {
             death_date: raw.death_date,
             remote_ids: raw.remote_ids,
             links: raw.links.into_iter().filter_map(|link| link.url).collect(),
+            photos: raw.photos.into_iter().filter(|id| *id > 0).collect(),
         }
     }
 }
@@ -555,6 +594,7 @@ mod tests {
         assert_eq!(author.name, "Ludwig van Beethoven");
         assert_eq!(author.birth_date.as_deref(), Some("1770"));
         assert_eq!(author.remote_ids.get("wikidata").unwrap(), "Q255");
+        assert_eq!(author.photos, [14418181]);
     }
 
     #[tokio::test]
@@ -570,5 +610,18 @@ mod tests {
             author.links,
             ["http://en.wikipedia.org/wiki/Ambrose_Bierce"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_work_lists_its_editions() {
+        let editions = client()
+            .open_library()
+            .work_editions("OL45804W", Priority::Background)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(editions.len(), 50);
+        assert_eq!(editions[0].works, ["OL45804W"]);
     }
 }

@@ -193,6 +193,24 @@
         htmx.process(cell);
     };
 
+    // The search in progress: its button, and the cover candidates on the page when it began.
+    let search = null;
+
+    const coverCount = () => edit.querySelectorAll('[data-candidates="picture"] > [data-candidate]').length;
+
+    const settleSearch = () => {
+        const state = document.querySelector("[data-enrichment] [data-enrichment-state]")?.dataset.enrichmentState;
+        if (state === "in-progress") {
+            return;
+        }
+        const { button, covers } = search;
+        search = null;
+        button.disabled = false;
+        // A task with no subtask draws no state.
+        const finished = !state || state === "completed";
+        button.nextElementSibling.hidden = !finished || coverCount() > covers;
+    };
+
     let timer;
     let polling = false;
     let again = false;
@@ -205,6 +223,7 @@
         }
         polling = true;
         try {
+            const watched = search;
             const response = await fetch(edit.dataset.candidatesUrl, {
                 headers: { "HX-Current-URL": location.href },
             });
@@ -212,6 +231,9 @@
                 const answer = new DOMParser().parseFromString(await response.text(), "text/html");
                 showEnrichment(answer);
                 merge(answer);
+                if (watched && watched === search) {
+                    settleSearch();
+                }
             }
         } catch {
             // A failed poll is retried by the next one.
@@ -224,6 +246,27 @@
     if (edit) {
         timer = setTimeout(poll, 5000);
         document.addEventListener("enrichment:change", poll);
+        document.addEventListener("click", async (event) => {
+            const button = event.target.closest("[data-cover-search]");
+            if (!button) {
+                return;
+            }
+            button.disabled = true;
+            button.nextElementSibling.hidden = true;
+            const covers = coverCount();
+            let accepted = false;
+            try {
+                accepted = (await fetch(button.dataset.coverSearch, { method: "POST" })).ok;
+            } catch {
+                // A failed request enables the button again.
+            }
+            if (!accepted) {
+                button.disabled = false;
+                return;
+            }
+            search = { button, covers };
+            poll();
+        });
     }
 
     // A redrawn list draws its Accept all button hidden.

@@ -18,7 +18,7 @@ use crate::entity::{
 };
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
-use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, NewPerson, Person, PersonId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
@@ -440,6 +440,21 @@ impl Publication {
         let mut collected = work::collect_orphan_works(&mut tx, self.library).await?;
         collected.extend(person::collect_orphan_people(&mut tx, self.library).await?);
         entity::commit_rejection(&self.engine, tx, &collected).await
+    }
+
+    /// Search for more covers in the background, and propose up to five that are not yet proposed
+    ///
+    /// The search joins the publication's enrichment task in progress, or starts one.
+    pub fn search_covers(&self) -> Enrichment {
+        let key = open_library::EditionKey::of(self);
+        let engine = self.engine.clone();
+        let id = self.id;
+        self.engine
+            .extend_enrichment(AnyEntityId::Publication(id), |queue| {
+                if let Some(key) = key {
+                    queue.enqueue(open_library::covers(engine, id, key, queue.clone()));
+                }
+            })
     }
 
     /// Propose an edit from `source`, or return `None` if it is already held or proposed
@@ -1800,22 +1815,7 @@ impl Entity for Publication {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
-        let olid = self.links.iter().find_map(|link| {
-            link.record
-                .as_ref()
-                .filter(|record| record.kind() == LinkKind::OpenLibrary)
-                .map(|record| record.id().to_string())
-        });
-        let key = match olid {
-            // If we have the OLID for this publication, use it, otherwise try to use the ISBN if it exists
-            Some(olid) => Some(open_library::EditionKey::Olid(olid)),
-            None => self
-                .identifiers
-                .iter()
-                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
-                .cloned()
-                .map(open_library::EditionKey::Isbn),
-        };
+        let key = open_library::EditionKey::of(self);
         let engine = self.engine.clone();
         let id = self.id;
         Ok(self

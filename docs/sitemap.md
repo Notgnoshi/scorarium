@@ -6,6 +6,7 @@
 | `/api/import/candidates`                                               | GET    | External title candidates     |
 | `/api/library/{id}/publication/{publication}/contents/sequence/dialog` | POST   | Open the sequence dialog      |
 | `/api/library/{id}/publication/{publication}/contents/sequence`        | POST   | Draw Contents with a sequence |
+| `/api/library/{id}/publication/{publication}/covers`                   | POST   | Search for more covers        |
 | `/api/library/{id}/suggest/{field}`                                    | GET    | Field value suggestions       |
 | `/api/review/{kind}/{entity}/cancel`                                   | POST   | Cancel enrichment             |
 | `/api/review/{kind}/{entity}/discard`                                  | POST   | Confirm, then discard         |

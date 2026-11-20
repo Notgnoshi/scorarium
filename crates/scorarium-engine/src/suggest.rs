@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use scorarium_client::Priority;
-use scorarium_client::open_library::WorkHit;
+use scorarium_client::open_library::{WorkHit, cover_url};
 
 use crate::contributor::Role;
 use crate::enrich::open_library;
@@ -381,11 +381,10 @@ fn worth_searching(query: &str) -> bool {
 /// Describe an Open Library hit as a candidate, or `None` when it has no edition
 fn candidate(hit: WorkHit) -> Option<ExternalCandidate> {
     let edition = hit.edition?;
-    let cover = edition.cover_id.or(hit.cover_id).and_then(|id| {
-        format!("https://covers.openlibrary.org/b/id/{id}-M.jpg")
-            .parse()
-            .ok()
-    });
+    let cover = edition
+        .cover_id
+        .or(hit.cover_id)
+        .and_then(|id| cover_url(id).try_into().ok());
     let identifier = edition
         .isbn_13
         .iter()

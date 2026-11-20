@@ -47,6 +47,15 @@ pub(crate) struct Task {
 }
 
 impl Task {
+    fn new(root: AnyEntityId) -> Task {
+        Task {
+            root,
+            queued_at: chrono::Utc::now(),
+            status: watch::Sender::new(EnrichmentStatus::default()),
+            subtasks: Mutex::default(),
+        }
+    }
+
     fn subtasks(&self) -> MutexGuard<'_, Vec<AbortHandle>> {
         self.subtasks
             .lock()
@@ -190,16 +199,33 @@ impl Engine {
         {
             return Enrichment::new(task);
         }
-        let task = Arc::new(Task {
-            root,
-            queued_at: chrono::Utc::now(),
-            status: watch::Sender::new(EnrichmentStatus::default()),
-            subtasks: Mutex::default(),
-        });
+        let task = Arc::new(Task::new(root));
         enrichments.insert(root, Arc::clone(&task));
         let enrichment = Enrichment::new(&task);
         // The registry stays locked while the seeds are enqueued, so that no one can find the new
         // task before its seeds are counted and mistake it for a finished one.
+        enqueue_subtasks(&SubTaskQueue { task });
+        enrichment
+    }
+
+    /// Add subtasks to the enrichment task of `root` in progress, or start a task with them
+    pub(crate) fn extend_enrichment(
+        &self,
+        root: AnyEntityId,
+        enqueue_subtasks: impl FnOnce(&SubTaskQueue),
+    ) -> Enrichment {
+        let mut enrichments = self.enrichments();
+        let task = match enrichments.get(&root) {
+            Some(task) if task.status.borrow().state() == EnrichmentState::InProgress => {
+                Arc::clone(task)
+            }
+            _ => {
+                let task = Arc::new(Task::new(root));
+                enrichments.insert(root, Arc::clone(&task));
+                task
+            }
+        };
+        let enrichment = Enrichment::new(&task);
         enqueue_subtasks(&SubTaskQueue { task });
         enrichment
     }
@@ -391,5 +417,37 @@ mod tests {
             .await
             .unwrap();
         assert!(engine.enrichment_of(root).is_none());
+    }
+
+    #[tokio::test]
+    async fn extend_adds_to_a_task_in_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let root = AnyEntityId::Publication(PublicationId::new(1));
+        let (release, blocked) = tokio::sync::oneshot::channel::<()>();
+        engine.start_enrichment(root, |queue| {
+            queue.enqueue(async move {
+                let _ = blocked.await;
+                Ok(())
+            });
+        });
+
+        let extended = engine.extend_enrichment(root, |queue| queue.enqueue(async { Ok(()) }));
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            extended.status(),
+            EnrichmentStatus {
+                successful: 2,
+                pending: 0,
+                failed: 0,
+                cancelled: false
+            }
+        );
     }
 }

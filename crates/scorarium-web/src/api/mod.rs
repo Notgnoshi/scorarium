@@ -1,4 +1,5 @@
 pub mod contents;
+pub mod covers;
 pub mod import;
 mod query;
 pub mod review;

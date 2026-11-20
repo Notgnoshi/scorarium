@@ -2,13 +2,22 @@
     <span title="Requests to external sources">
         {% match state %}
         {% when EnrichmentState::InProgress %}
-        <span class="spinner-border spinner-border-sm" role="status" title="Enrichment in progress"></span>
+        <span class="spinner-border spinner-border-sm"
+              role="status"
+              title="Enrichment in progress"
+              data-enrichment-state="in-progress"></span>
         {% when EnrichmentState::Failed %}
-        <i class="bi bi-exclamation-triangle text-danger" title="Enrichment failed"></i>
+        <i class="bi bi-exclamation-triangle text-danger"
+           title="Enrichment failed"
+           data-enrichment-state="failed"></i>
         {% when EnrichmentState::Cancelled %}
-        <i class="bi bi-stop-circle text-body-secondary" title="Enrichment cancelled"></i>
+        <i class="bi bi-stop-circle text-body-secondary"
+           title="Enrichment cancelled"
+           data-enrichment-state="cancelled"></i>
         {% when EnrichmentState::Completed %}
-        <i class="bi bi-check-circle text-success" title="Enrichment finished"></i>
+        <i class="bi bi-check-circle text-success"
+           title="Enrichment finished"
+           data-enrichment-state="completed"></i>
 {% endmatch %}
 {{ text }}
 </span>

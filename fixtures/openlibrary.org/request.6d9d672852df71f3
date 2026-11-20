@@ -1,0 +1,15 @@
+https://openlibrary.org/books/OL27277998M.json
+
+200
+server: nginx/1.30.7
+date: Fri, 20 Nov 2026 04:16:22 GMT
+content-type: application/json
+transfer-encoding: chunked
+connection: keep-alive
+access-control-allow-origin: *
+access-control-allow-method: GET, OPTIONS
+access-control-max-age: 86400
+x-ol-stats: "MC 2 0.001 TT 0 0.005"
+referrer-policy: no-referrer-when-downgrade
+
+{"publishers": ["Puffin"], "number_of_pages": 32, "source_records": ["amazon:0142414549", "bwb:9780142414545"], "title": "Fantastic Mr. Fox: Movie Picture Book", "physical_format": "paperback", "identifiers": {"amazon": ["0142414549"]}, "covers": [8760472], "isbn_13": ["9780142414545"], "isbn_10": ["0142414549"], "publish_date": "Oct 01, 2009", "key": "/books/OL27277998M", "authors": [{"key": "/authors/OL34184A"}], "works": [{"key": "/works/OL45804W"}], "type": {"key": "/type/edition"}, "latest_revision": 6, "revision": 6, "created": {"type": "/type/datetime", "value": "2019-08-24T06:21:07.030414"}, "last_modified": {"type": "/type/datetime", "value": "2026-08-29T22:46:18.919740"}}
