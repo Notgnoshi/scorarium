@@ -140,6 +140,12 @@ pub fn cover_url(id: i64) -> Url {
         .expect("a literal URL with a numeric id")
 }
 
+/// Return the URL of the author photo `id`
+pub fn photo_url(id: i64) -> Url {
+    Url::parse(&format!("https://covers.openlibrary.org/a/id/{id}-M.jpg"))
+        .expect("a literal URL with a numeric id")
+}
+
 /// A person Open Library credits on an edition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Author {
@@ -154,6 +160,8 @@ pub struct Author {
     pub remote_ids: HashMap<String, String>,
     /// URLs the record lists for the author
     pub links: Vec<String>,
+    /// Photo ids for covers.openlibrary.org
+    pub photos: Vec<i64>,
 }
 
 /// A work as the Open Library search API describes it
@@ -246,6 +254,8 @@ struct RawAuthor {
     remote_ids: HashMap<String, String>,
     #[serde(default)]
     links: Vec<RawLink>,
+    #[serde(default)]
+    photos: Vec<i64>,
 }
 
 /// A URL an editor attached to a record.
@@ -380,6 +390,7 @@ impl From<RawAuthor> for Author {
             death_date: raw.death_date,
             remote_ids: raw.remote_ids,
             links: raw.links.into_iter().filter_map(|link| link.url).collect(),
+            photos: raw.photos.into_iter().filter(|id| *id > 0).collect(),
         }
     }
 }
@@ -561,6 +572,7 @@ mod tests {
         assert_eq!(author.name, "Ludwig van Beethoven");
         assert_eq!(author.birth_date.as_deref(), Some("1770"));
         assert_eq!(author.remote_ids.get("wikidata").unwrap(), "Q255");
+        assert_eq!(author.photos, [14418181]);
     }
 
     #[tokio::test]
