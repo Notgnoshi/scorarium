@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO person (library_id, name, sort_name, draft) VALUES (?, ?, ?, ?)\n           RETURNING id AS \"id!\"",
+  "query": "INSERT INTO person_link (person_id, url, kind, external_id) VALUES (?, ?, ?, ?)\n           ON CONFLICT DO NOTHING\n           RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "person",
+            "table": "person_link",
             "name": "id"
           }
         }
@@ -22,5 +22,5 @@
       null
     ]
   },
-  "hash": "1989592263a98f91f814b3dccec27a01c9cb302587cab2f7e4eedeea5798b3f8"
+  "hash": "7f20ba28220a5784f34f5348463c882cea2cedecc56d9eb69eaa5cbeaeee3342"
 }

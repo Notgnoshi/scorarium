@@ -15,7 +15,7 @@ use crate::entity::{
 };
 use crate::library::LibraryId;
 use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
-use crate::person::{self, Person, PersonId};
+use crate::person::{self, NewPerson, Person, PersonId};
 use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
@@ -458,21 +458,20 @@ impl Work {
         Ok(id.map(ProposalId::new))
     }
 
-    /// Create a draft person and propose that they contributed to the work
+    /// Create a draft person from `person` and propose that they contributed to the work
     ///
     /// Returns [Error::NotFound] if the work has been deleted.
     pub async fn propose_new_contributor(
         &self,
         source: Source,
-        name: &str,
+        person: NewPerson,
         role: &Role,
     ) -> Result<Person> {
-        let name = name.parse::<NonBlank>()?;
         let mut tx = self.engine.begin_write().await?;
         Work::fetch(&self.engine, &mut tx, self.id)
             .await?
             .ok_or(Error::NotFound)?;
-        let person = person::insert(&self.engine, &mut tx, self.library, &name, true).await?;
+        let person = person::insert(&self.engine, &mut tx, self.library, &person, true).await?;
         let source = source.to_string();
         sqlx::query!(
             r#"INSERT INTO work_proposal
@@ -871,7 +870,14 @@ impl Contributed for Work {
     async fn create_contributor(&mut self, name: NonBlank, role: Role) -> Result<Person> {
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        let person = person::insert(&self.engine, &mut tx, self.library, &name, self.draft).await?;
+        let person = person::insert(
+            &self.engine,
+            &mut tx,
+            self.library,
+            &NewPerson::new(name),
+            self.draft,
+        )
+        .await?;
         sqlx::query!(
             "INSERT INTO work_contributor (library_id, work_id, person_id, role) VALUES (?, ?, ?, ?)",
             self.library.get(),

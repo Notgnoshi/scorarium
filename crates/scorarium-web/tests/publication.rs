@@ -4,7 +4,7 @@ use scorarium_engine::contributor::Role;
 use scorarium_engine::entity::{Contributed, Entity, ProposalId, Source};
 use scorarium_engine::holding::{HoldingKind, NewHolding};
 use scorarium_engine::library::Library;
-use scorarium_engine::person::Person;
+use scorarium_engine::person::{NewPerson, Person};
 use scorarium_engine::publication::{
     Identifier, IdentifierKind, ImportSeed, Proposal, Publication,
 };
@@ -639,7 +639,11 @@ async fn edit_keeps_a_proposed_person_that_was_accepted() {
     let expected = ids().await;
     let editor: Role = "editor".parse().unwrap();
     let person = publication
-        .propose_new_contributor(Source::OpenLibrary, "Vladimir Ashkenazy", &editor)
+        .propose_new_contributor(
+            Source::OpenLibrary,
+            NewPerson::new("Vladimir Ashkenazy".parse().unwrap()),
+            &editor,
+        )
         .await
         .unwrap();
     let proposal = ids().await.pop().unwrap().to_string();

@@ -297,6 +297,7 @@ mod tests {
     use crate::entity::{Contributed, Source};
     use crate::holding::NewHolding;
     use crate::link::HttpUrl;
+    use crate::person::NewPerson;
     use crate::publication::{Identifier, IdentifierKind, ImportSeed};
 
     #[tokio::test]
@@ -369,7 +370,11 @@ mod tests {
             .await
             .unwrap();
         let proposed = gymnopedies
-            .propose_new_contributor(Source::OpenLibrary, "Erik Satie", &composer)
+            .propose_new_contributor(
+                Source::OpenLibrary,
+                NewPerson::new("Erik Satie".parse().unwrap()),
+                &composer,
+            )
             .await
             .unwrap();
         assert!(library.duplicate_people().await.unwrap().is_empty());

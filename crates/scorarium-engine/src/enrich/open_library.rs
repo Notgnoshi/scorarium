@@ -6,9 +6,9 @@ use crate::enrich::SubTaskQueue;
 use crate::entity::{AnyEntityId, Entity, EntityKind};
 use crate::fuzzy::normalize;
 use crate::link::{ExternalRecord, LinkKind};
-use crate::person::{self, Person};
+use crate::person::{self, NewPerson, Person};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
-use crate::value::{Classification, Year};
+use crate::value::{Classification, NonBlank, Year};
 use crate::{Engine, Error, Result};
 
 /// How to ask Open Library for information on an edition
@@ -280,17 +280,18 @@ pub(crate) async fn author(
             publication.propose(Source::OpenLibrary, proposal).await?;
             person
         }
-        None => match publication
-            .propose_new_contributor(Source::OpenLibrary, &record.name, &author)
-            .await
-        {
-            Ok(person) => person,
-            Err(Error::InvalidValue(reason)) => {
-                tracing::error!("Open Library author {olid} invalid: {reason}");
-                return Ok(());
-            }
-            Err(error) => return Err(error),
-        },
+        None => {
+            let name = match record.name.parse::<NonBlank>() {
+                Ok(name) => name,
+                Err(error) => {
+                    tracing::error!("Open Library author {olid} invalid: {error}");
+                    return Ok(());
+                }
+            };
+            publication
+                .propose_new_contributor(Source::OpenLibrary, NewPerson::new(name), &author)
+                .await?
+        }
     };
 
     // Links are proposals too; the person may be committed, and the user decides.

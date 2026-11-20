@@ -2,7 +2,7 @@ use crate::contributor::Role;
 use crate::entity::{Contributed, Entity, Source};
 use crate::holding::NewHolding;
 use crate::library::Library;
-use crate::person::{self, PersonId};
+use crate::person::{self, NewPerson, PersonId};
 use crate::publication::IdentifierKind::{Isbn, PlateNumber, PublisherNumber};
 use crate::publication::{self, Identifier, ImportSeed, Publication};
 use crate::value::Classification::{self, Music, Prose};
@@ -339,7 +339,7 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         )
         .await?;
     let baylor = fantaisie
-        .propose_new_contributor(source, "Murray Baylor", &editor)
+        .propose_new_contributor(source, NewPerson::new("Murray Baylor".parse()?), &editor)
         .await?;
     fantaisie
         .propose(source, publication::Proposal::Contents(prelude.clone()))
@@ -381,7 +381,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         )
         .await?;
     melodie
-        .propose_new_contributor(source, "Sergei Rachmaninov", &composer)
+        .propose_new_contributor(
+            source,
+            NewPerson::new("Sergei Rachmaninov".parse()?),
+            &composer,
+        )
         .await?;
 
     pro_git
@@ -419,7 +423,11 @@ pub(crate) async fn populate(engine: &Engine) -> Result<()> {
         )
         .await?;
     bierce
-        .propose_new_contributor(source, "Clifton Fadiman", &"introduction".parse()?)
+        .propose_new_contributor(
+            source,
+            NewPerson::new("Clifton Fadiman".parse()?),
+            &"introduction".parse()?,
+        )
         .await?;
     satie
         .propose(
