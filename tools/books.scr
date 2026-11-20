@@ -1,0 +1,883 @@
+# Books, exported with publications only
+
+library create Books public
+library Books select
+
+import Flatland --as p-abbott-flatland
+publication @p-abbott-flatland add contributor 'Edwin Abbott Abbott' author --new --as c-edwin-abbott-abbott
+publication @p-abbott-flatland commit
+
+import 978-0-8218-4817-3 --as p-adams-riot-at-the-calc-exam
+publication @p-adams-riot-at-the-calc-exam set title 'Riot at the calc exam'
+publication @p-adams-riot-at-the-calc-exam add contributor 'Colin Conrad Adams' author --new --as c-colin-conrad-adams
+publication @p-adams-riot-at-the-calc-exam commit
+
+import 978-0-330-50853-7 --as p-adams-the-hitchhiker-s-guide-to-the-galaxy
+publication @p-adams-the-hitchhiker-s-guide-to-the-galaxy set title "The Hitchhiker's Guide to the Galaxy"
+publication @p-adams-the-hitchhiker-s-guide-to-the-galaxy add contributor 'Douglas Adams' author --new --as c-douglas-adams
+publication @p-adams-the-hitchhiker-s-guide-to-the-galaxy commit
+
+import 978-1-5098-4492-0 --as p-adams-life-the-universe-and-everything
+publication @p-adams-life-the-universe-and-everything set title 'Life, The Universe And Everything'
+publication @p-adams-life-the-universe-and-everything add contributor @c-douglas-adams author
+publication @p-adams-life-the-universe-and-everything commit
+
+import 978-1-5098-4491-3 --as p-adams-mostly-harmless
+publication @p-adams-mostly-harmless set title 'Mostly Harmless'
+publication @p-adams-mostly-harmless add contributor @c-douglas-adams author
+publication @p-adams-mostly-harmless commit
+
+import 'The Restaurant at the End of the Universe' --as p-adams-the-restaurant-at-the-end-of-the-universe
+publication @p-adams-the-restaurant-at-the-end-of-the-universe add contributor @c-douglas-adams author
+publication @p-adams-the-restaurant-at-the-end-of-the-universe commit
+
+import 978-1-5098-4490-6 --as p-adams-so-long-and-thanks-for-all-the-fish
+publication @p-adams-so-long-and-thanks-for-all-the-fish set title 'So long and thanks for all the fish'
+publication @p-adams-so-long-and-thanks-for-all-the-fish add contributor @c-douglas-adams author
+publication @p-adams-so-long-and-thanks-for-all-the-fish commit
+
+import 978-0-07-000657-7 --as p-ahlfors-complex-analysis
+publication @p-ahlfors-complex-analysis set title 'Complex analysis'
+publication @p-ahlfors-complex-analysis add contributor 'Lars Valerian Ahlfors' author --new --as c-lars-valerian-ahlfors
+publication @p-ahlfors-complex-analysis commit
+
+import 978-1-4919-8938-8 --as p-albon-machine-learning-with-python-cookbook
+publication @p-albon-machine-learning-with-python-cookbook set title 'Machine Learning with Python Cookbook'
+publication @p-albon-machine-learning-with-python-cookbook add contributor 'Chris Albon' author --new --as c-chris-albon
+publication @p-albon-machine-learning-with-python-cookbook commit
+
+import 978-0-486-68252-5 --as p-andrews-number-theory
+publication @p-andrews-number-theory set title 'Number theory'
+publication @p-andrews-number-theory add contributor 'George E. Andrews' author --new --as c-george-e-andrews
+publication @p-andrews-number-theory commit
+
+import 978-1-9850-8659-3 --as p-arpaci-dusseau-operating-systems
+publication @p-arpaci-dusseau-operating-systems set title 'Operating Systems'
+publication @p-arpaci-dusseau-operating-systems add contributor 'Andrea C Arpaci-Dusseau' author --new --as c-andrea-c-arpaci-dusseau
+publication @p-arpaci-dusseau-operating-systems add contributor 'Remzi H Arpaci-Dusseau' author --new --as c-remzi-h-arpaci-dusseau
+publication @p-arpaci-dusseau-operating-systems commit
+
+import 978-0-929392-78-3 --as p-ayre-embedded-networking-with-can-and-canopen
+publication @p-ayre-embedded-networking-with-can-and-canopen set title 'Embedded Networking with CAN and CANopen'
+publication @p-ayre-embedded-networking-with-can-and-canopen add contributor 'Andrew Ayre' author --new --as c-andrew-ayre
+publication @p-ayre-embedded-networking-with-can-and-canopen add contributor 'Christian Keydel' author --new --as c-christian-keydel
+publication @p-ayre-embedded-networking-with-can-and-canopen add contributor 'Olaf Pfeiffer' author --new --as c-olaf-pfeiffer
+publication @p-ayre-embedded-networking-with-can-and-canopen commit
+
+import 978-1-4471-4075-7 --as p-baerentzen-guide-to-computational-geometry-processing
+publication @p-baerentzen-guide-to-computational-geometry-processing set title 'Guide to Computational Geometry Processing'
+publication @p-baerentzen-guide-to-computational-geometry-processing add contributor 'Jakob Andreas Bærentzen' author --new --as c-jakob-andreas-baerentzen
+publication @p-baerentzen-guide-to-computational-geometry-processing add contributor 'Jens Gravesen' author --new --as c-jens-gravesen
+publication @p-baerentzen-guide-to-computational-geometry-processing add contributor 'Francois Anton' author --new --as c-francois-anton
+publication @p-baerentzen-guide-to-computational-geometry-processing add contributor 'Henrik Aanæs' author --new --as c-henrik-aanaes
+publication @p-baerentzen-guide-to-computational-geometry-processing commit
+
+import 978-0-262-52258-8 --as p-ballard-an-introduction-to-natural-computation
+publication @p-ballard-an-introduction-to-natural-computation set title 'An Introduction to Natural Computation'
+publication @p-ballard-an-introduction-to-natural-computation add contributor 'Dana H. Ballard' author --new --as c-dana-h-ballard
+publication @p-ballard-an-introduction-to-natural-computation commit
+
+import 978-0-19-984631-3 --as p-baronett-logic
+publication @p-baronett-logic set title Logic
+publication @p-baronett-logic add contributor 'Stan Baronett' author --new --as c-stan-baronett
+publication @p-baronett-logic commit
+
+import 978-3-540-61270-4 --as p-berg-computational-geometry
+publication @p-berg-computational-geometry set title 'Computational geometry'
+publication @p-berg-computational-geometry add contributor 'Mark de Berg' author --new --as c-mark-de-berg
+publication @p-berg-computational-geometry add contributor 'Otfried Cheong' author --new --as c-otfried-cheong
+publication @p-berg-computational-geometry add contributor 'Marc van Kreveld' author --new --as c-marc-van-kreveld
+publication @p-berg-computational-geometry add contributor 'Mark Overmars' author --new --as c-mark-overmars
+publication @p-berg-computational-geometry commit
+
+import 'The collected works of Ambrose Bierce Volume V' --as p-bierce-the-collected-works-of-ambrose-bierce-volume-v
+publication @p-bierce-the-collected-works-of-ambrose-bierce-volume-v add contributor 'Ambrose Bierce' author --new --as c-ambrose-bierce
+publication @p-bierce-the-collected-works-of-ambrose-bierce-volume-v commit
+
+import 978-0-8065-0180-2 --as p-bierce-the-collected-writings-of-ambrose-bierce
+publication @p-bierce-the-collected-writings-of-ambrose-bierce set title 'The Collected Writings of Ambrose Bierce'
+publication @p-bierce-the-collected-writings-of-ambrose-bierce add contributor @c-ambrose-bierce author
+publication @p-bierce-the-collected-writings-of-ambrose-bierce commit
+
+import 978-0-19-853916-2 --as p-biggs-graph-theory
+publication @p-biggs-graph-theory set title 'Graph theory'
+publication @p-biggs-graph-theory add contributor 'Norman Biggs' author --new --as c-norman-biggs
+publication @p-biggs-graph-theory commit
+
+import 978-1-4919-6304-3 --as p-bilbro-applied-text-analysis-with-python
+publication @p-bilbro-applied-text-analysis-with-python set title 'Applied Text Analysis with Python'
+publication @p-bilbro-applied-text-analysis-with-python add contributor 'Rebecca Bilbro' author --new --as c-rebecca-bilbro
+publication @p-bilbro-applied-text-analysis-with-python add contributor 'Tony Ojeda' author --new --as c-tony-ojeda
+publication @p-bilbro-applied-text-analysis-with-python add contributor 'Benjamin Bengfort' author --new --as c-benjamin-bengfort
+publication @p-bilbro-applied-text-analysis-with-python commit
+
+import 978-1-0981-1944-7 --as p-bos-rust-atomics-and-locks
+publication @p-bos-rust-atomics-and-locks set title 'Rust Atomics and Locks'
+publication @p-bos-rust-atomics-and-locks add contributor 'Mara Bos' author --new --as c-mara-bos
+publication @p-bos-rust-atomics-and-locks commit
+
+import 978-0-521-78048-3 --as p-bouillon-the-language-of-word-meaning
+publication @p-bouillon-the-language-of-word-meaning set title 'The language of word meaning'
+publication @p-bouillon-the-language-of-word-meaning add contributor 'Pierrette Bouillon' editor --new --as c-pierrette-bouillon
+publication @p-bouillon-the-language-of-word-meaning add contributor 'Federica Busa' editor --new --as c-federica-busa
+publication @p-bouillon-the-language-of-word-meaning commit
+
+import 978-0-408-01303-1 --as p-bowyer-a-programmer-s-geometry
+publication @p-bowyer-a-programmer-s-geometry set title "A programmer's geometry"
+publication @p-bowyer-a-programmer-s-geometry add contributor 'Adrian Bowyer' author --new --as c-adrian-bowyer
+publication @p-bowyer-a-programmer-s-geometry add contributor 'John Woodwark' author --new --as c-john-woodwark
+publication @p-bowyer-a-programmer-s-geometry commit
+
+import 978-0-201-36298-5 --as p-brooks-the-design-of-design
+publication @p-brooks-the-design-of-design set title 'The design of design'
+publication @p-brooks-the-design-of-design add contributor 'Frederick P. Brooks' author --new --as c-frederick-p-brooks
+publication @p-brooks-the-design-of-design commit
+
+import 978-0-13-034074-0 --as p-bryant-computer-systems
+publication @p-bryant-computer-systems set title 'Computer systems'
+publication @p-bryant-computer-systems add contributor 'Randal Bryant' author --new --as c-randal-bryant
+publication @p-bryant-computer-systems commit
+
+import 978-0-07-008728-6 --as p-buck-advanced-calculus
+publication @p-buck-advanced-calculus set title 'Advanced calculus'
+publication @p-buck-advanced-calculus add contributor 'Robert Creighton Buck' author --new --as c-robert-creighton-buck
+publication @p-buck-advanced-calculus commit
+
+import 978-1-305-25366-7 --as p-burden-numerical-analysis
+publication @p-burden-numerical-analysis set title 'Numerical Analysis'
+publication @p-burden-numerical-analysis add contributor 'Richard L. Burden' author --new --as c-richard-l-burden
+publication @p-burden-numerical-analysis add contributor 'J. Douglas Faires' author --new --as c-j-douglas-faires
+publication @p-burden-numerical-analysis commit
+
+import 978-0-471-95869-7 --as p-buschmann-pattern-oriented-software-architecture-volume-1
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 set title 'Pattern-Oriented Software Architecture Volume 1'
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 add contributor 'Frank Buschmann' author --new --as c-frank-buschmann
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 add contributor 'Regine Meunier' author --new --as c-regine-meunier
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 add contributor 'Hans Rohnert' author --new --as c-hans-rohnert
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 add contributor 'Peter Sommerlad' author --new --as c-peter-sommerlad
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 add contributor 'Michael Stal' author --new --as c-michael-stal
+publication @p-buschmann-pattern-oriented-software-architecture-volume-1 commit
+
+import 978-1-282-34568-3 --as p-buschmann-pattern-oriented-software-architecture-volume-2
+publication @p-buschmann-pattern-oriented-software-architecture-volume-2 set title 'Pattern-Oriented Software Architecture Volume 2'
+publication @p-buschmann-pattern-oriented-software-architecture-volume-2 add contributor @c-frank-buschmann author
+publication @p-buschmann-pattern-oriented-software-architecture-volume-2 add contributor 'Kevlin Henney' author --new --as c-kevlin-henney
+publication @p-buschmann-pattern-oriented-software-architecture-volume-2 add contributor 'Douglas C. Schmidt' author --new --as c-douglas-c-schmidt
+publication @p-buschmann-pattern-oriented-software-architecture-volume-2 commit
+
+import 978-1-02-233393-2 --as p-byrne-the-elements-of-euclid
+publication @p-byrne-the-elements-of-euclid set title 'The Elements of Euclid'
+publication @p-byrne-the-elements-of-euclid add contributor 'Oliver Byrne' author --new --as c-oliver-byrne
+publication @p-byrne-the-elements-of-euclid commit
+
+import "Euclid's Elements of Geometry" --as p-byrne-euclid-s-elements-of-geometry
+publication @p-byrne-euclid-s-elements-of-geometry add contributor @c-oliver-byrne author
+publication @p-byrne-euclid-s-elements-of-geometry commit
+
+import 978-1-59327-972-1 --as p-calcote-autotools
+publication @p-calcote-autotools set title Autotools
+publication @p-calcote-autotools add contributor 'John Calcote' author --new --as c-john-calcote
+publication @p-calcote-autotools commit
+
+import 978-1-58488-643-3 --as p-castro-fundamentals-of-natural-computing
+publication @p-castro-fundamentals-of-natural-computing set title 'Fundamentals of Natural Computing'
+publication @p-castro-fundamentals-of-natural-computing add contributor 'Leandro Nunes de Castro' author --new --as c-leandro-nunes-de-castro
+publication @p-castro-fundamentals-of-natural-computing commit
+
+import 'Pro Git' --as p-chacon-pro-git
+publication @p-chacon-pro-git add contributor 'Scott Chacon' author --new --as c-scott-chacon
+publication @p-chacon-pro-git add contributor 'Ben Straub' author --new --as c-ben-straub
+publication @p-chacon-pro-git commit
+
+import 978-0-486-24775-5 --as p-chartrand-introductory-graph-theory
+publication @p-chartrand-introductory-graph-theory set title 'Introductory graph theory'
+publication @p-chartrand-introductory-graph-theory add contributor 'Gary Chartrand' author --new --as c-gary-chartrand
+publication @p-chartrand-introductory-graph-theory commit
+
+import 978-1-63835-204-4 --as p-chollet-deep-learning-with-python
+publication @p-chollet-deep-learning-with-python set title 'Deep Learning with Python'
+publication @p-chollet-deep-learning-with-python add contributor 'Francois Chollet' author --new --as c-francois-chollet
+publication @p-chollet-deep-learning-with-python commit
+
+import 978-1-78067-413-1 --as p-choma-morphing
+publication @p-choma-morphing set title Morphing
+publication @p-choma-morphing add contributor 'Joseph Choma' author --new --as c-joseph-choma
+publication @p-choma-morphing commit
+
+import 978-0-07-287252-1 --as p-churchill-complex-variables-and-applications
+publication @p-churchill-complex-variables-and-applications set title 'Complex Variables and Applications'
+publication @p-churchill-complex-variables-and-applications add contributor 'Ruel Vance Churchill' author --new --as c-ruel-vance-churchill
+publication @p-churchill-complex-variables-and-applications add contributor 'James Ward Brown' author --new --as c-james-ward-brown
+publication @p-churchill-complex-variables-and-applications commit
+
+import 'Farm Kid' --as p-collins-farm-kid
+publication @p-collins-farm-kid add contributor 'Oz Collins' author --new --as c-oz-collins
+publication @p-collins-farm-kid commit
+
+import 978-0-387-90061-2 --as p-conway-functions-of-one-complex-variable
+publication @p-conway-functions-of-one-complex-variable set title 'Functions of one complex variable'
+publication @p-conway-functions-of-one-complex-variable add identifier isbn 978-0-387-90062-9
+publication @p-conway-functions-of-one-complex-variable add contributor 'John B. Conway' author --new --as c-john-b-conway
+publication @p-conway-functions-of-one-complex-variable commit
+
+import 'Introduction to vector analysis' --as p-davis-introduction-to-vector-analysis
+publication @p-davis-introduction-to-vector-analysis add contributor 'Harry F. Davis' author --new --as c-harry-f-davis
+publication @p-davis-introduction-to-vector-analysis add contributor 'Arthur David Snider' author --new --as c-arthur-david-snider
+publication @p-davis-introduction-to-vector-analysis commit
+
+import 978-981-13-3848-9 --as p-deng-deep-learning-in-natural-language-processing
+publication @p-deng-deep-learning-in-natural-language-processing set title 'Deep Learning in Natural Language Processing'
+publication @p-deng-deep-learning-in-natural-language-processing add contributor 'Li Deng' editor --new --as c-li-deng
+publication @p-deng-deep-learning-in-natural-language-processing add contributor 'Yang Liu' editor --new --as c-yang-liu
+publication @p-deng-deep-learning-in-natural-language-processing commit
+
+import 978-0-691-14553-2 --as p-devadoss-discrete-and-computational-geometry
+publication @p-devadoss-discrete-and-computational-geometry set title 'Discrete and computational geometry'
+publication @p-devadoss-discrete-and-computational-geometry add contributor 'Satyan L. Devadoss' author --new --as c-satyan-l-devadoss
+publication @p-devadoss-discrete-and-computational-geometry add contributor "Joseph O'Rourke" author --new --as c-joseph-o-rourke
+publication @p-devadoss-discrete-and-computational-geometry commit
+
+import 978-0-14-014739-1 --as p-dunham-journey-through-genius
+publication @p-dunham-journey-through-genius set title 'Journey through genius'
+publication @p-dunham-journey-through-genius add contributor 'William Dunham' author --new --as c-william-dunham
+publication @p-dunham-journey-through-genius commit
+
+import 978-0-262-04284-0 --as p-eisenstein-introduction-to-natural-language-processing
+publication @p-eisenstein-introduction-to-natural-language-processing set title 'Introduction to Natural Language Processing'
+publication @p-eisenstein-introduction-to-natural-language-processing add contributor 'Jacob Eisenstein' author --new --as c-jacob-eisenstein
+publication @p-eisenstein-introduction-to-natural-language-processing commit
+
+import 978-1-59327-977-6 --as p-evans-your-linux-toolbox
+publication @p-evans-your-linux-toolbox set title 'Your Linux Toolbox'
+publication @p-evans-your-linux-toolbox add contributor 'Julia Evans' author --new --as c-julia-evans
+publication @p-evans-your-linux-toolbox commit
+
+import 978-0-9846181-0-1 --as p-fairbanks-just-enough-software-architecture
+publication @p-fairbanks-just-enough-software-architecture set title 'Just enough software architecture'
+publication @p-fairbanks-just-enough-software-architecture add contributor 'George Fairbanks' author --new --as c-george-fairbanks
+publication @p-fairbanks-just-enough-software-architecture commit
+
+import 978-0-13-293175-5 --as p-feathers-working-effectively-with-legacy-code
+publication @p-feathers-working-effectively-with-legacy-code set title 'Working Effectively with Legacy Code'
+publication @p-feathers-working-effectively-with-legacy-code add contributor 'Michael C. Feathers' author --new --as c-michael-c-feathers
+publication @p-feathers-working-effectively-with-legacy-code commit
+
+import 'Projective and Euclidean geometry' --as p-fishback-projective-and-euclidean-geometry
+publication @p-fishback-projective-and-euclidean-geometry add contributor 'W. T. Fishback' author --new --as c-w-t-fishback
+publication @p-fishback-projective-and-euclidean-geometry commit
+
+import 'The design of experiments' --as p-fisher-the-design-of-experiments
+publication @p-fisher-the-design-of-experiments add contributor 'Ronald Aylmer Fisher' author --new --as c-ronald-aylmer-fisher
+publication @p-fisher-the-design-of-experiments commit
+
+import 978-1-4920-4194-8 --as p-foster-generative-deep-learning
+publication @p-foster-generative-deep-learning set title 'Generative Deep Learning'
+publication @p-foster-generative-deep-learning add contributor 'David Foster' author --new --as c-david-foster
+publication @p-foster-generative-deep-learning commit
+
+import 978-0-201-48567-7 --as p-fowler-refactoring
+publication @p-fowler-refactoring set title Refactoring
+publication @p-fowler-refactoring add contributor 'Martin Fowler' author --new --as c-martin-fowler
+publication @p-fowler-refactoring commit
+
+import 978-0-201-32563-8 --as p-fowler-uml-distilled
+publication @p-fowler-uml-distilled set title 'UML distilled'
+publication @p-fowler-uml-distilled add contributor @c-martin-fowler author
+publication @p-fowler-uml-distilled commit
+
+import 978-1-4920-7800-5 --as p-freeman-head-first-design-patterns
+publication @p-freeman-head-first-design-patterns set title 'Head First Design Patterns'
+publication @p-freeman-head-first-design-patterns add contributor 'Eric Freeman' author --new --as c-eric-freeman
+publication @p-freeman-head-first-design-patterns add contributor 'Elisabeth Robson' author --new --as c-elisabeth-robson
+publication @p-freeman-head-first-design-patterns commit
+
+import 978-0-201-45563-2 --as p-gamma-design-patterns
+publication @p-gamma-design-patterns set title 'Design Patterns'
+publication @p-gamma-design-patterns add contributor 'Erich Gamma' author --new --as c-erich-gamma
+publication @p-gamma-design-patterns add contributor 'Richard Helm' author --new --as c-richard-helm
+publication @p-gamma-design-patterns add contributor 'Ralph Johnson' author --new --as c-ralph-johnson
+publication @p-gamma-design-patterns add contributor 'John Vlissides' author --new --as c-john-vlissides
+publication @p-gamma-design-patterns commit
+
+import 978-0-593-23951-3 --as p-gardner-how-big-things-get-done
+publication @p-gardner-how-big-things-get-done set title 'How Big Things Get Done'
+publication @p-gardner-how-big-things-get-done add contributor 'Dan Gardner' author --new --as c-dan-gardner
+publication @p-gardner-how-big-things-get-done add contributor 'Bent Flyvbjerg' author --new --as c-bent-flyvbjerg
+publication @p-gardner-how-big-things-get-done commit
+
+import 978-0-19-768007-0 --as p-gebrian-learn-faster-perform-better
+publication @p-gebrian-learn-faster-perform-better set title 'Learn Faster, Perform Better'
+publication @p-gebrian-learn-faster-perform-better add contributor 'Molly Gebrian' author --new --as c-molly-gebrian
+publication @p-gebrian-learn-faster-perform-better commit
+
+import 978-1-4919-6229-9 --as p-geron-hands-on-machine-learning-with-scikit-learn-and-tensorflow
+publication @p-geron-hands-on-machine-learning-with-scikit-learn-and-tensorflow set title 'Hands-On Machine Learning with Scikit-Learn and TensorFlow'
+publication @p-geron-hands-on-machine-learning-with-scikit-learn-and-tensorflow add contributor 'Aurélien Géron' author --new --as c-aurelien-geron
+publication @p-geron-hands-on-machine-learning-with-scikit-learn-and-tensorflow commit
+
+import 978-0-88284-730-6 --as p-gerou-essential-dictionary-of-music-notation
+publication @p-gerou-essential-dictionary-of-music-notation set title 'Essential Dictionary of Music Notation'
+publication @p-gerou-essential-dictionary-of-music-notation add contributor 'Tom Gerou' editor --new --as c-tom-gerou
+publication @p-gerou-essential-dictionary-of-music-notation add contributor 'Linda Lusk' editor --new --as c-linda-lusk
+publication @p-gerou-essential-dictionary-of-music-notation commit
+
+import 978-0-8048-1110-1 --as p-giroux-the-haiku-form
+publication @p-giroux-the-haiku-form set title 'The haiku form.'
+publication @p-giroux-the-haiku-form add contributor 'Joan Giroux' author --new --as c-joan-giroux
+publication @p-giroux-the-haiku-form commit
+
+import 978-1-7185-0185-0 --as p-gjengset-rust-for-rustaceans
+publication @p-gjengset-rust-for-rustaceans set title 'Rust for Rustaceans'
+publication @p-gjengset-rust-for-rustaceans add contributor 'Jon Gjengset' author --new --as c-jon-gjengset
+publication @p-gjengset-rust-for-rustaceans commit
+
+import 978-0-321-11742-7 --as p-glass-facts-and-fallacies-of-software-engineering
+publication @p-glass-facts-and-fallacies-of-software-engineering set title 'Facts and fallacies of software engineering'
+publication @p-glass-facts-and-fallacies-of-software-engineering add contributor 'Robert L. Glass' author --new --as c-robert-l-glass
+publication @p-glass-facts-and-fallacies-of-software-engineering commit
+
+import 978-3-031-01037-8 --as p-goldberg-neural-network-methods-for-natural-language-processing
+publication @p-goldberg-neural-network-methods-for-natural-language-processing set title 'Neural Network Methods for Natural Language Processing'
+publication @p-goldberg-neural-network-methods-for-natural-language-processing add contributor 'Yoav Goldberg' author --new --as c-yoav-goldberg
+publication @p-goldberg-neural-network-methods-for-natural-language-processing commit
+
+import 978-1-78839-292-1 --as p-gonzalez-embedded-linux-development-using-yocto-project-cookbook
+publication @p-gonzalez-embedded-linux-development-using-yocto-project-cookbook set title 'Embedded Linux Development Using Yocto Project Cookbook'
+publication @p-gonzalez-embedded-linux-development-using-yocto-project-cookbook add contributor 'Alex Gonzalez' author --new --as c-alex-gonzalez
+publication @p-gonzalez-embedded-linux-development-using-yocto-project-cookbook commit
+
+import 978-0-262-03561-3 --as p-goodfellow-deep-learning
+publication @p-goodfellow-deep-learning set title 'Deep Learning'
+publication @p-goodfellow-deep-learning add contributor 'Ian Goodfellow' author --new --as c-ian-goodfellow
+publication @p-goodfellow-deep-learning add contributor 'Yoshua Bengio' author --new --as c-yoshua-bengio
+publication @p-goodfellow-deep-learning add contributor 'Aaron Courville' author --new --as c-aaron-courville
+publication @p-goodfellow-deep-learning commit
+
+import 978-0-13-662454-7 --as p-gregg-bpf-performance-tools
+publication @p-gregg-bpf-performance-tools set title 'BPF Performance Tools'
+publication @p-gregg-bpf-performance-tools add contributor 'Brendan Gregg' author --new --as c-brendan-gregg
+publication @p-gregg-bpf-performance-tools commit
+
+import 978-0-13-682167-0 --as p-gregg-systems-performance
+publication @p-gregg-systems-performance set title 'Systems Performance'
+publication @p-gregg-systems-performance add contributor @c-brendan-gregg author
+publication @p-gregg-systems-performance commit
+
+import 978-0-684-81201-4 --as p-hafner-where-wizards-stay-up-late
+publication @p-hafner-where-wizards-stay-up-late set title 'Where Wizards Stay Up Late'
+publication @p-hafner-where-wizards-stay-up-late add contributor 'Katie Hafner' author --new --as c-katie-hafner
+publication @p-hafner-where-wizards-stay-up-late commit
+
+import 978-1-7322651-7-2 --as p-hamming-the-art-of-doing-science-and-engineering
+publication @p-hamming-the-art-of-doing-science-and-engineering set title 'The Art of Doing Science and Engineering'
+publication @p-hamming-the-art-of-doing-science-and-engineering add contributor 'Richard Hamming' author --new --as c-richard-hamming
+publication @p-hamming-the-art-of-doing-science-and-engineering commit
+
+import 978-0-486-65241-2 --as p-hamming-numerical-methods-for-scientists-and-engineers
+publication @p-hamming-numerical-methods-for-scientists-and-engineers set title 'Numerical methods for scientists and engineers'
+publication @p-hamming-numerical-methods-for-scientists-and-engineers add contributor @c-richard-hamming author
+publication @p-hamming-numerical-methods-for-scientists-and-engineers commit
+
+import "A Mathematician's Apology" --as p-hardy-a-mathematician-s-apology
+publication @p-hardy-a-mathematician-s-apology add contributor 'G. H. Hardy' author --new --as c-g-h-hardy
+publication @p-hardy-a-mathematician-s-apology commit
+
+import 978-0-8195-2238-2 --as p-hartman-virtual-muse
+publication @p-hartman-virtual-muse set title 'Virtual muse'
+publication @p-hartman-virtual-muse add identifier isbn 978-0-8195-2239-9
+publication @p-hartman-virtual-muse add contributor 'Charles O. Hartman' author --new --as c-charles-o-hartman
+publication @p-hartman-virtual-muse commit
+
+import 978-0-486-60109-0 --as p-hay-vector-and-tensor-analysis
+publication @p-hay-vector-and-tensor-analysis set title 'Vector and Tensor Analysis'
+publication @p-hay-vector-and-tensor-analysis add contributor 'G. E. Hay' author --new --as c-g-e-hay
+publication @p-hay-vector-and-tensor-analysis commit
+
+import 978-0-201-61622-4 --as p-hunt-the-pragmatic-programmer
+publication @p-hunt-the-pragmatic-programmer set title 'The Pragmatic Programmer'
+publication @p-hunt-the-pragmatic-programmer add contributor 'Andrew Hunt' author --new --as c-andrew-hunt
+publication @p-hunt-the-pragmatic-programmer add contributor 'David Thomas' author --new --as c-david-thomas
+publication @p-hunt-the-pragmatic-programmer commit
+
+import 'Brave New World' --as p-huxley-brave-new-world
+publication @p-huxley-brave-new-world add contributor 'Aldous Huxley' author --new --as c-aldous-huxley
+publication @p-huxley-brave-new-world commit
+
+import 978-0-470-84525-7 --as p-jain-pattern-oriented-software-architecture-volume-3
+publication @p-jain-pattern-oriented-software-architecture-volume-3 set title 'Pattern-Oriented Software Architecture Volume 3'
+publication @p-jain-pattern-oriented-software-architecture-volume-3 add contributor 'Prashant Jain' author --new --as c-prashant-jain
+publication @p-jain-pattern-oriented-software-architecture-volume-3 add contributor 'Michael Kircher' author --new --as c-michael-kircher
+publication @p-jain-pattern-oriented-software-architecture-volume-3 commit
+
+import 978-0-7803-3426-7 --as p-john-ones-and-zeros
+publication @p-john-ones-and-zeros set title 'Ones and zeros'
+publication @p-john-ones-and-zeros add contributor 'Gregg, John.' author --new --as c-gregg-john
+publication @p-john-ones-and-zeros commit
+
+import 978-0-385-67651-9 --as p-kahneman-thinking-fast-and-slow
+publication @p-kahneman-thinking-fast-and-slow set title 'Thinking, fast and slow'
+publication @p-kahneman-thinking-fast-and-slow add contributor 'Daniel Kahneman' author --new --as c-daniel-kahneman
+publication @p-kahneman-thinking-fast-and-slow commit
+
+import 978-1-63835-192-4 --as p-kaleniuk-geometry-for-programmers
+publication @p-kaleniuk-geometry-for-programmers set title 'Geometry for Programmers'
+publication @p-kaleniuk-geometry-for-programmers add contributor 'Oleksandr Kaleniuk' author --new --as c-oleksandr-kaleniuk
+publication @p-kaleniuk-geometry-for-programmers commit
+
+import 978-0-262-11202-4 --as p-kelly-bootle-the-computer-contradictionary
+publication @p-kelly-bootle-the-computer-contradictionary set title 'The computer contradictionary'
+publication @p-kelly-bootle-the-computer-contradictionary add identifier isbn 978-0-262-61112-1
+publication @p-kelly-bootle-the-computer-contradictionary add contributor 'Stan Kelly-Bootle' author --new --as c-stan-kelly-bootle
+publication @p-kelly-bootle-the-computer-contradictionary commit
+
+import 978-0-13-110163-0 --as p-kernighan-the-c-programming-language
+publication @p-kernighan-the-c-programming-language set title 'The C Programming Language'
+publication @p-kernighan-the-c-programming-language add contributor 'Brian W. Kernighan' author --new --as c-brian-w-kernighan
+publication @p-kernighan-the-c-programming-language add contributor 'Dennis Ritchie' author --new --as c-dennis-ritchie
+publication @p-kernighan-the-c-programming-language commit
+
+import 978-1-5489-5580-9 --as p-kerrisk-the-linux-programming-interface
+publication @p-kerrisk-the-linux-programming-interface set title 'The Linux Programming Interface'
+publication @p-kerrisk-the-linux-programming-interface add contributor 'Michael Kerrisk' author --new --as c-michael-kerrisk
+publication @p-kerrisk-the-linux-programming-interface commit
+
+import 978-0-380-59931-8 --as p-kidder-the-soul-of-a-new-machine
+publication @p-kidder-the-soul-of-a-new-machine set title 'The Soul of a New Machine'
+publication @p-kidder-the-soul-of-a-new-machine add contributor 'Tracy Kidder' author --new --as c-tracy-kidder
+publication @p-kidder-the-soul-of-a-new-machine commit
+
+import 978-1-942788-00-3 --as p-kim-the-devops-handbook
+publication @p-kim-the-devops-handbook set title 'The Devops Handbook'
+publication @p-kim-the-devops-handbook add contributor 'Gene Kim' author --new --as c-gene-kim
+publication @p-kim-the-devops-handbook commit
+
+import 978-1-942788-77-5 --as p-kim-unicorn-project
+publication @p-kim-unicorn-project set title 'Unicorn Project'
+publication @p-kim-unicorn-project add contributor @c-gene-kim author
+publication @p-kim-unicorn-project commit
+
+import 978-0-201-03812-5 --as p-knuth-surreal-numbers
+publication @p-knuth-surreal-numbers set title 'Surreal numbers'
+publication @p-knuth-surreal-numbers add contributor 'Donald Knuth' author --new --as c-donald-knuth
+publication @p-knuth-surreal-numbers commit
+
+import 978-0-486-25202-5 --as p-krause-taxicab-geometry
+publication @p-krause-taxicab-geometry set title 'Taxicab Geometry'
+publication @p-krause-taxicab-geometry add contributor 'Eugene F. Krause' author --new --as c-eugene-f-krause
+publication @p-krause-taxicab-geometry commit
+
+import 978-0-226-46801-3 --as p-lakoff-metaphors-we-live-by
+publication @p-lakoff-metaphors-we-live-by set title 'Metaphors We Live By'
+publication @p-lakoff-metaphors-we-live-by add contributor 'George Lakoff' author --new --as c-george-lakoff
+publication @p-lakoff-metaphors-we-live-by commit
+
+import 978-1-63835-689-9 --as p-lane-natural-language-processing-in-action
+publication @p-lane-natural-language-processing-in-action set title 'Natural Language Processing in Action'
+publication @p-lane-natural-language-processing-in-action add contributor 'Hobson Lane' author --new --as c-hobson-lane
+publication @p-lane-natural-language-processing-in-action add contributor 'Hannes Hapke' author --new --as c-hannes-hapke
+publication @p-lane-natural-language-processing-in-action add contributor 'Cole Howard' author --new --as c-cole-howard
+publication @p-lane-natural-language-processing-in-action commit
+
+import 978-1-61729-556-0 --as p-langr-gans-in-action
+publication @p-langr-gans-in-action set title 'GANs in Action'
+publication @p-langr-gans-in-action add contributor 'Jakub Langr' author --new --as c-jakub-langr
+publication @p-langr-gans-in-action add contributor 'Vladimir Bok' author --new --as c-vladimir-bok
+publication @p-langr-gans-in-action commit
+
+import 978-0-19-860698-7 --as p-latham-the-oxford-dictionary-of-musical-terms
+publication @p-latham-the-oxford-dictionary-of-musical-terms set title 'The Oxford Dictionary of Musical Terms'
+publication @p-latham-the-oxford-dictionary-of-musical-terms add contributor 'Alison Latham' editor --new --as c-alison-latham
+publication @p-latham-the-oxford-dictionary-of-musical-terms commit
+
+import 978-0-521-86205-9 --as p-lavalle-planning-algorithms
+publication @p-lavalle-planning-algorithms set title 'Planning Algorithms'
+publication @p-lavalle-planning-algorithms add contributor 'Steven M. LaValle' author --new --as c-steven-m-lavalle
+publication @p-lavalle-planning-algorithms commit
+
+import 978-1-4521-6120-4 --as p-leong-star-wars-super-graphic-a-visual-guide-to-a-galaxy-far-far-away
+publication @p-leong-star-wars-super-graphic-a-visual-guide-to-a-galaxy-far-far-away set title 'Star Wars Super Graphic: A Visual Guide to a Galaxy Far, Far Away'
+publication @p-leong-star-wars-super-graphic-a-visual-guide-to-a-galaxy-far-far-away add contributor 'Tim Leong' author --new --as c-tim-leong
+publication @p-leong-star-wars-super-graphic-a-visual-guide-to-a-galaxy-far-far-away commit
+
+import 978-1-282-45845-1 --as p-levi-the-mathematical-mechanic
+publication @p-levi-the-mathematical-mechanic set title 'The Mathematical Mechanic'
+publication @p-levi-the-mathematical-mechanic add contributor 'Mark Levi' author --new --as c-mark-levi
+publication @p-levi-the-mathematical-mechanic commit
+
+import 978-0-262-54204-3 --as p-levin-code-as-creative-medium
+publication @p-levin-code-as-creative-medium set title 'Code As Creative Medium'
+publication @p-levin-code-as-creative-medium add contributor 'Golan Levin' author --new --as c-golan-levin
+publication @p-levin-code-as-creative-medium add contributor 'Tega Brain' author --new --as c-tega-brain
+publication @p-levin-code-as-creative-medium commit
+
+import 978-1-55860-496-4 --as p-levine-linkers-and-loaders
+publication @p-levine-linkers-and-loaders set title 'Linkers and Loaders'
+publication @p-levine-linkers-and-loaders add contributor 'John R. Levine' author --new --as c-john-r-levine
+publication @p-levine-linkers-and-loaders commit
+
+import 978-1-934137-17-8 --as p-lockhart-a-mathematician-s-lament
+publication @p-lockhart-a-mathematician-s-lament set title "A Mathematician's Lament"
+publication @p-lockhart-a-mathematician-s-lament add contributor 'Paul Lockhart' author --new --as c-paul-lockhart
+publication @p-lockhart-a-mathematician-s-lament commit
+
+import 978-0-387-98439-1 --as p-logan-applied-partial-differential-equations
+publication @p-logan-applied-partial-differential-equations set title 'Applied partial differential equations'
+publication @p-logan-applied-partial-differential-equations add identifier isbn 978-0-387-98441-4
+publication @p-logan-applied-partial-differential-equations add contributor 'J. David Logan' author --new --as c-j-david-logan
+publication @p-logan-applied-partial-differential-equations commit
+
+import 978-1-4842-7115-5 --as p-lopp-managing-humans
+publication @p-lopp-managing-humans set title 'Managing Humans'
+publication @p-lopp-managing-humans add contributor 'Michael Lopp' author --new --as c-michael-lopp
+publication @p-lopp-managing-humans commit
+
+import 978-1-957183-45-9 --as p-lostritto-computational-drawing
+publication @p-lostritto-computational-drawing set title 'Computational Drawing'
+publication @p-lostritto-computational-drawing add contributor 'Carl Lostritto' author --new --as c-carl-lostritto
+publication @p-lostritto-computational-drawing commit
+
+import 978-0-672-32946-3 --as p-love-linux-kernel-development
+publication @p-love-linux-kernel-development set title 'Linux Kernel Development'
+publication @p-love-linux-kernel-development add contributor 'Robert Love' author --new --as c-robert-love
+publication @p-love-linux-kernel-development commit
+
+import 978-0-262-31212-7 --as p-manning-foundations-of-statistical-natural-language-processing
+publication @p-manning-foundations-of-statistical-natural-language-processing set title 'Foundations of Statistical Natural Language Processing'
+publication @p-manning-foundations-of-statistical-natural-language-processing add contributor 'Christopher Manning' author --new --as c-christopher-manning
+publication @p-manning-foundations-of-statistical-natural-language-processing add contributor 'Hinrich Schütze' author --new --as c-hinrich-schutze
+publication @p-manning-foundations-of-statistical-natural-language-processing commit
+
+import 978-0-13-449416-6 --as p-martin-clean-architecture
+publication @p-martin-clean-architecture set title 'Clean Architecture'
+publication @p-martin-clean-architecture add contributor 'Robert Martin' author --new --as c-robert-martin
+publication @p-martin-clean-architecture commit
+
+import 978-0-13-235088-4 --as p-martin-clean-code
+publication @p-martin-clean-code set title 'Clean Code'
+publication @p-martin-clean-code add contributor @c-robert-martin author
+publication @p-martin-clean-code commit
+
+import 978-0-486-66352-4 --as p-mendelson-introduction-to-topology
+publication @p-mendelson-introduction-to-topology set title 'Introduction to topology'
+publication @p-mendelson-introduction-to-topology add contributor 'Bert Mendelson' author --new --as c-bert-mendelson
+publication @p-mendelson-introduction-to-topology commit
+
+import 978-0-262-53962-3 --as p-miller-artist-in-the-machine
+publication @p-miller-artist-in-the-machine set title 'Artist in the Machine'
+publication @p-miller-artist-in-the-machine add contributor 'Arthur I. Miller' author --new --as c-arthur-i-miller
+publication @p-miller-artist-in-the-machine commit
+
+import 978-93-325-4953-1 --as p-munkres-topology
+publication @p-munkres-topology set title Topology
+publication @p-munkres-topology add contributor 'James R. Munkres' author --new --as c-james-r-munkres
+publication @p-munkres-topology commit
+
+import 978-0-691-02795-1 --as p-nahin-an-imaginary-tale
+publication @p-nahin-an-imaginary-tale set title 'An imaginary tale'
+publication @p-nahin-an-imaginary-tale add contributor 'Paul J. Nahin' author --new --as c-paul-j-nahin
+publication @p-nahin-an-imaginary-tale commit
+
+import 978-1-4939-1277-3 --as p-nahin-inside-interesting-integrals
+publication @p-nahin-inside-interesting-integrals set title 'Inside Interesting Integrals'
+publication @p-nahin-inside-interesting-integrals add contributor @c-paul-j-nahin author
+publication @p-nahin-inside-interesting-integrals commit
+
+import 978-0-19-853447-1 --as p-needham-visual-complex-analysis
+publication @p-needham-visual-complex-analysis set title 'Visual complex analysis'
+publication @p-needham-visual-complex-analysis add contributor 'Tristan Needham' author --new --as c-tristan-needham
+publication @p-needham-visual-complex-analysis commit
+
+import 978-1-934356-98-2 --as p-neil-practical-vim
+publication @p-neil-practical-vim set title 'Practical Vim'
+publication @p-neil-practical-vim add contributor 'Drew Neil' author --new --as c-drew-neil
+publication @p-neil-practical-vim commit
+
+import 'Thinking with a pencil' --as p-nelms-thinking-with-a-pencil
+publication @p-nelms-thinking-with-a-pencil add contributor 'Henning Nelms' author --new --as c-henning-nelms
+publication @p-nelms-thinking-with-a-pencil commit
+
+import 978-1-5443-0785-5 --as p-newman-building-leadership-character
+publication @p-newman-building-leadership-character set title 'Building Leadership Character'
+publication @p-newman-building-leadership-character add contributor 'Amy Newman' author --new --as c-amy-newman
+publication @p-newman-building-leadership-character commit
+
+import "Newton's Principia" --as p-newton-newton-s-principia
+publication @p-newton-newton-s-principia add contributor 'Sir Isaac Newton' author --new --as c-sir-isaac-newton
+publication @p-newton-newton-s-principia commit
+
+import 978-1-4767-5385-0 --as p-nosrat-salt-fat-acid-heat
+publication @p-nosrat-salt-fat-acid-heat set title 'Salt, Fat, Acid, Heat'
+publication @p-nosrat-salt-fat-acid-heat add contributor 'Samin Nosrat' author --new --as c-samin-nosrat
+publication @p-nosrat-salt-fat-acid-heat commit
+
+import 978-0-521-64010-7 --as p-o-rourke-computational-geometry-in-c
+publication @p-o-rourke-computational-geometry-in-c set title 'Computational geometry in C'
+publication @p-o-rourke-computational-geometry-in-c add identifier isbn 978-0-521-64976-6
+publication @p-o-rourke-computational-geometry-in-c add contributor @c-joseph-o-rourke author
+publication @p-o-rourke-computational-geometry-in-c commit
+
+import 978-0-89871-250-6 --as p-ortega-numerical-analysis
+publication @p-ortega-numerical-analysis set title 'Numerical analysis'
+publication @p-ortega-numerical-analysis add contributor 'James M. Ortega' author --new --as c-james-m-ortega
+publication @p-ortega-numerical-analysis commit
+
+import 978-0-451-52493-5 --as p-orwell-1984
+publication @p-orwell-1984 set title 1984
+publication @p-orwell-1984 add contributor 'George Orwell' author --new --as c-george-orwell
+publication @p-orwell-1984 commit
+
+import 978-1-7321022-0-0 --as p-ousterhout-a-philosophy-of-software-design
+publication @p-ousterhout-a-philosophy-of-software-design set title 'A Philosophy of Software Design'
+publication @p-ousterhout-a-philosophy-of-software-design add contributor 'John K. Ousterhout' author --new --as c-john-k-ousterhout
+publication @p-ousterhout-a-philosophy-of-software-design commit
+
+import 978-0-486-65812-4 --as p-pedoe-geometry-a-comprehensive-course
+publication @p-pedoe-geometry-a-comprehensive-course set title 'Geometry, a comprehensive course'
+publication @p-pedoe-geometry-a-comprehensive-course add contributor 'Daniel Pedoe' author --new --as c-daniel-pedoe
+publication @p-pedoe-geometry-a-comprehensive-course commit
+
+import 978-0-7356-1131-3 --as p-petzold-code
+publication @p-petzold-code set title Code
+publication @p-petzold-code add contributor 'Charles Petzold' author --new --as c-charles-petzold
+publication @p-petzold-code commit
+
+import 978-0-486-24061-9 --as p-pierce-an-introduction-to-information-theory
+publication @p-pierce-an-introduction-to-information-theory set title 'An introduction to information theory'
+publication @p-pierce-an-introduction-to-information-theory add contributor 'John Robinson Pierce' author --new --as c-john-robinson-pierce
+publication @p-pierce-an-introduction-to-information-theory commit
+
+import 978-0-486-47417-5 --as p-pinter-a-book-of-abstract-algebra
+publication @p-pinter-a-book-of-abstract-algebra set title 'A book of abstract algebra'
+publication @p-pinter-a-book-of-abstract-algebra add contributor 'Charles C. Pinter' author --new --as c-charles-c-pinter
+publication @p-pinter-a-book-of-abstract-algebra commit
+
+import 'How to solve it' --as p-polya-how-to-solve-it
+publication @p-polya-how-to-solve-it add contributor 'George Pólya' author --new --as c-george-polya
+publication @p-polya-how-to-solve-it commit
+
+import 978-0-387-97297-8 --as p-prusinkiewicz-the-algorithmic-beauty-of-plants
+publication @p-prusinkiewicz-the-algorithmic-beauty-of-plants set title 'The algorithmic beauty of plants'
+publication @p-prusinkiewicz-the-algorithmic-beauty-of-plants add identifier isbn 978-3-540-97297-6
+publication @p-prusinkiewicz-the-algorithmic-beauty-of-plants add contributor 'Przemyslaw Prusinkiewicz' author --new --as c-przemyslaw-prusinkiewicz
+publication @p-prusinkiewicz-the-algorithmic-beauty-of-plants add contributor 'Aristid Lindenmayer' author --new --as c-aristid-lindenmayer
+publication @p-prusinkiewicz-the-algorithmic-beauty-of-plants commit
+
+import 978-1-7364179-1-1 --as p-reilly-staff-engineer
+publication @p-reilly-staff-engineer set title 'Staff Engineer'
+publication @p-reilly-staff-engineer add contributor 'Tanya Reilly' author --new --as c-tanya-reilly
+publication @p-reilly-staff-engineer add contributor 'Will Larson' author --new --as c-will-larson
+publication @p-reilly-staff-engineer commit
+
+import 978-0-486-63544-6 --as p-rozanov-probability-theory
+publication @p-rozanov-probability-theory set title 'Probability Theory'
+publication @p-rozanov-probability-theory add contributor 'Y.A. Rozanov' author --new --as c-y-a-rozanov
+publication @p-rozanov-probability-theory commit
+
+import 978-0-14-139562-3 --as p-rubin-the-penguin-book-of-japanese-short-stories
+publication @p-rubin-the-penguin-book-of-japanese-short-stories set title 'The Penguin book of Japanese short stories'
+publication @p-rubin-the-penguin-book-of-japanese-short-stories add contributor 'Jay Rubin' author --new --as c-jay-rubin
+publication @p-rubin-the-penguin-book-of-japanese-short-stories commit
+
+import 978-0-07-054231-0 --as p-rudin-principles-of-mathematical-analysis
+publication @p-rudin-principles-of-mathematical-analysis set title 'Principles of Mathematical Analysis'
+publication @p-rudin-principles-of-mathematical-analysis add contributor 'Walter Rudin' author --new --as c-walter-rudin
+publication @p-rudin-principles-of-mathematical-analysis commit
+
+import 'Real and complex analysis' --as p-rudin-real-and-complex-analysis
+publication @p-rudin-real-and-complex-analysis add contributor @c-walter-rudin author
+publication @p-rudin-real-and-complex-analysis commit
+
+import 978-0-575-09097-2 --as p-sapkowski-baptism-of-fire
+publication @p-sapkowski-baptism-of-fire set title 'Baptism of Fire'
+publication @p-sapkowski-baptism-of-fire add contributor 'Andrzej Sapkowski' author --new --as c-andrzej-sapkowski
+publication @p-sapkowski-baptism-of-fire commit
+
+import 978-0-575-08484-1 --as p-sapkowski-blood-of-elves
+publication @p-sapkowski-blood-of-elves set title 'Blood of elves'
+publication @p-sapkowski-blood-of-elves add contributor @c-andrzej-sapkowski author
+publication @p-sapkowski-blood-of-elves commit
+
+import 978-0-575-08244-1 --as p-sapkowski-the-last-wish
+publication @p-sapkowski-the-last-wish set title 'The last wish'
+publication @p-sapkowski-the-last-wish add contributor @c-andrzej-sapkowski author
+publication @p-sapkowski-the-last-wish commit
+
+import 978-1-4732-1154-4 --as p-sapkowski-sword-of-destiny
+publication @p-sapkowski-sword-of-destiny set title 'Sword of Destiny'
+publication @p-sapkowski-sword-of-destiny add contributor @c-andrzej-sapkowski author
+publication @p-sapkowski-sword-of-destiny commit
+
+import 978-0-575-09094-1 --as p-sapkowski-time-of-contempt
+publication @p-sapkowski-time-of-contempt set title 'Time of Contempt'
+publication @p-sapkowski-time-of-contempt add contributor @c-andrzej-sapkowski author
+publication @p-sapkowski-time-of-contempt commit
+
+import 978-1-4732-1157-5 --as p-sapkowski-the-tower-of-the-swallow
+publication @p-sapkowski-the-tower-of-the-swallow set title 'The Tower of the Swallow'
+publication @p-sapkowski-the-tower-of-the-swallow add contributor @c-andrzej-sapkowski author
+publication @p-sapkowski-the-tower-of-the-swallow commit
+
+import 978-0-674-98813-2 --as p-sautoy-the-creativity-code
+publication @p-sautoy-the-creativity-code set title 'The Creativity Code'
+publication @p-sautoy-the-creativity-code add contributor 'Marcus du Sautoy' author --new --as c-marcus-du-sautoy
+publication @p-sautoy-the-creativity-code commit
+
+import 978-1-925904-38-3 --as p-scott-professional-cmake
+publication @p-scott-professional-cmake set title 'Professional CMake'
+publication @p-scott-professional-cmake add contributor 'Craig Scott' author --new --as c-craig-scott
+publication @p-scott-professional-cmake commit
+
+import 978-0-670-88457-5 --as p-seife-zero
+publication @p-seife-zero set title Zero
+publication @p-seife-zero add contributor 'Charles Seife' author --new --as c-charles-seife
+publication @p-seife-zero commit
+
+import 'The Last Man' --as p-shelley-the-last-man
+publication @p-shelley-the-last-man add contributor 'Mary Shelley' author --new --as c-mary-shelley
+publication @p-shelley-the-last-man commit
+
+import 978-0-13-758973-9 --as p-sites-understanding-software-dynamics
+publication @p-sites-understanding-software-dynamics set title 'Understanding Software Dynamics'
+publication @p-sites-understanding-software-dynamics add contributor 'Richard Sites' author --new --as c-richard-sites
+publication @p-sites-understanding-software-dynamics commit
+
+import 978-1-84800-069-8 --as p-skiena-the-algorithm-design-manual
+publication @p-skiena-the-algorithm-design-manual set title 'The algorithm design manual'
+publication @p-skiena-the-algorithm-design-manual add identifier isbn 978-1-84800-070-4
+publication @p-skiena-the-algorithm-design-manual add contributor 'Steven S. Skiena' author --new --as c-steven-s-skiena
+publication @p-skiena-the-algorithm-design-manual commit
+
+import 978-0-8053-9021-6 --as p-spivak-calculus-on-manifolds
+publication @p-spivak-calculus-on-manifolds set title 'Calculus on manifolds'
+publication @p-spivak-calculus-on-manifolds add contributor 'Michael Spivak' author --new --as c-michael-spivak
+publication @p-spivak-calculus-on-manifolds commit
+
+import 978-0-486-31929-2 --as p-steen-counterexamples-in-topology
+publication @p-steen-counterexamples-in-topology set title 'Counterexamples in Topology'
+publication @p-steen-counterexamples-in-topology add contributor 'Lynn Arthur Steen' author --new --as c-lynn-arthur-steen
+publication @p-steen-counterexamples-in-topology add contributor 'Seebach, J. Arthur, Jr.' author --new --as c-seebach-j-arthur-jr
+publication @p-steen-counterexamples-in-topology commit
+
+import 978-1-4302-6667-9 --as p-stevanovic-advanced-c-and-c-compiling
+publication @p-stevanovic-advanced-c-and-c-compiling set title 'Advanced C and C++ Compiling'
+publication @p-stevanovic-advanced-c-and-c-compiling add contributor 'Milan Stevanovic' author --new --as c-milan-stevanovic
+publication @p-stevanovic-advanced-c-and-c-compiling commit
+
+import 978-0-201-63346-7 --as p-stevens-tcp-ip-illustrated
+publication @p-stevens-tcp-ip-illustrated set title 'TCP/IP illustrated'
+publication @p-stevens-tcp-ip-illustrated add identifier isbn 978-0-201-63354-2
+publication @p-stevens-tcp-ip-illustrated add identifier isbn 978-0-201-63495-2
+publication @p-stevens-tcp-ip-illustrated add contributor 'W. Richard Stevens' author --new --as c-w-richard-stevens
+publication @p-stevens-tcp-ip-illustrated commit
+
+import 978-0-03-010568-5 --as p-strang-linear-algebra-its-applications
+publication @p-strang-linear-algebra-its-applications set title 'Linear Algebra & Its Applications'
+publication @p-strang-linear-algebra-its-applications add contributor 'Gilbert Strang' author --new --as c-gilbert-strang
+publication @p-strang-linear-algebra-its-applications commit
+
+import 978-0-534-93672-3 --as p-strayer-elementary-number-theory
+publication @p-strayer-elementary-number-theory set title 'Elementary number theory'
+publication @p-strayer-elementary-number-theory add contributor 'James K. Strayer' author --new --as c-james-k-strayer
+publication @p-strayer-elementary-number-theory commit
+
+import 978-0-547-51765-0 --as p-strogatz-the-joy-of-x
+publication @p-strogatz-the-joy-of-x set title 'The joy of X'
+publication @p-strogatz-the-joy-of-x add contributor 'Steven H. Strogatz' author --new --as c-steven-h-strogatz
+publication @p-strogatz-the-joy-of-x commit
+
+import 978-0-486-63612-2 --as p-synge-tensor-calculus
+publication @p-synge-tensor-calculus set title 'Tensor calculus'
+publication @p-synge-tensor-calculus add contributor 'J. L. Synge' author --new --as c-j-l-synge
+publication @p-synge-tensor-calculus commit
+
+import 'Topological structures' --as p-thron-topological-structures
+publication @p-thron-topological-structures add contributor 'Wolfgang J. Thron' author --new --as c-wolfgang-j-thron
+publication @p-thron-topological-structures commit
+
+import 978-0-544-70626-2 --as p-tolkien-the-story-of-kullervo
+publication @p-tolkien-the-story-of-kullervo set title 'The story of Kullervo'
+publication @p-tolkien-the-story-of-kullervo add contributor 'J.R.R. Tolkien' author --new --as c-j-r-r-tolkien
+publication @p-tolkien-the-story-of-kullervo commit
+
+import 978-0-486-67870-2 --as p-trudeau-introduction-to-graph-theory
+publication @p-trudeau-introduction-to-graph-theory set title 'Introduction to graph theory'
+publication @p-trudeau-introduction-to-graph-theory add contributor 'Richard J. Trudeau' author --new --as c-richard-j-trudeau
+publication @p-trudeau-introduction-to-graph-theory commit
+
+import 978-1-78953-038-4 --as p-vasquez-mastering-embedded-linux-programming
+publication @p-vasquez-mastering-embedded-linux-programming set title 'Mastering Embedded Linux Programming'
+publication @p-vasquez-mastering-embedded-linux-programming add contributor 'Frank Vasquez' author --new --as c-frank-vasquez
+publication @p-vasquez-mastering-embedded-linux-programming add contributor 'Chris Simmonds' author --new --as c-chris-simmonds
+publication @p-vasquez-mastering-embedded-linux-programming commit
+
+import 978-1-108-42418-9 --as p-velleman-how-to-prove-it
+publication @p-velleman-how-to-prove-it set title 'How to Prove It'
+publication @p-velleman-how-to-prove-it add contributor 'Daniel J. Velleman' author --new --as c-daniel-j-velleman
+publication @p-velleman-how-to-prove-it commit
+
+import 978-0-521-35502-5 --as p-vetterling-numerical-recipes
+publication @p-vetterling-numerical-recipes set title 'Numerical Recipes'
+publication @p-vetterling-numerical-recipes add contributor 'William T. Vetterling' author --new --as c-william-t-vetterling
+publication @p-vetterling-numerical-recipes add contributor 'William H. Press' author --new --as c-william-h-press
+publication @p-vetterling-numerical-recipes add contributor 'Saul A. Teukolsky' author --new --as c-saul-a-teukolsky
+publication @p-vetterling-numerical-recipes add contributor 'Brian P. Flannery' author --new --as c-brian-p-flannery
+publication @p-vetterling-numerical-recipes commit
+
+import 978-0-9765116-0-1 --as p-voss-a-comprehensible-guide-to-controller-area-network
+publication @p-voss-a-comprehensible-guide-to-controller-area-network set title 'A Comprehensible Guide to Controller Area Network'
+publication @p-voss-a-comprehensible-guide-to-controller-area-network add contributor 'Wilfried Voss' author --new --as c-wilfried-voss
+publication @p-voss-a-comprehensible-guide-to-controller-area-network commit
+
+import 978-0-9765116-3-2 --as p-voss-a-comprehensible-guide-to-j1939
+publication @p-voss-a-comprehensible-guide-to-j1939 set title 'A Comprehensible Guide to J1939'
+publication @p-voss-a-comprehensible-guide-to-j1939 add contributor @c-wilfried-voss author
+publication @p-voss-a-comprehensible-guide-to-j1939 commit
+
+import 'The Elements of Style, Fourth Edition' --as p-white-the-elements-of-style-fourth-edition
+publication @p-white-the-elements-of-style-fourth-edition add contributor 'E.B. White' author --new --as c-e-b-white
+publication @p-white-the-elements-of-style-fourth-edition add contributor 'William Strunk, Jr.' author --new --as c-william-strunk-jr
+publication @p-white-the-elements-of-style-fourth-edition commit
+
+import 978-0-415-77986-9 --as p-woodbury-elements-of-parametric-design
+publication @p-woodbury-elements-of-parametric-design set title 'Elements of parametric design'
+publication @p-woodbury-elements-of-parametric-design add identifier isbn 978-0-415-77987-6
+publication @p-woodbury-elements-of-parametric-design add contributor 'Robert Woodbury' author --new --as c-robert-woodbury
+publication @p-woodbury-elements-of-parametric-design commit
+
+import 978-1-5029-5808-2 --as p-xorpd-xchg-rax-rax
+publication @p-xorpd-xchg-rax-rax set title 'xchg rax,rax'
+publication @p-xorpd-xchg-rax-rax add contributor xorpd author --new --as c-xorpd
+publication @p-xorpd-xchg-rax-rax commit
+
+import 978-0-521-56322-2 --as p-yvinec-algorithmic-geometry
+publication @p-yvinec-algorithmic-geometry set title 'Algorithmic geometry'
+publication @p-yvinec-algorithmic-geometry add identifier isbn 978-0-521-56529-5
+publication @p-yvinec-algorithmic-geometry add contributor 'M. Yvinec' author --new --as c-m-yvinec
+publication @p-yvinec-algorithmic-geometry add contributor 'JD Boissonnat' author --new --as c-jd-boissonnat
+publication @p-yvinec-algorithmic-geometry commit
+
+import 978-1-62779-036-9 --as p-algorithms-to-live-by
+publication @p-algorithms-to-live-by set title 'Algorithms to live by'
+publication @p-algorithms-to-live-by commit
+
+import 978-0-465-05065-9 --as p-the-design-of-everyday-things
+publication @p-the-design-of-everyday-things set title 'The Design of Everyday Things'
+publication @p-the-design-of-everyday-things commit
+
+import 978-0-8493-8524-7 --as p-handbook-of-discrete-and-computational-geometry
+publication @p-handbook-of-discrete-and-computational-geometry set title 'Handbook of discrete and computational geometry'
+publication @p-handbook-of-discrete-and-computational-geometry commit
+
+import 978-0-9882625-0-8 --as p-the-phoenix-project
+publication @p-the-phoenix-project set title 'The Phoenix Project'
+publication @p-the-phoenix-project commit
+
+import 978-1-934356-05-0 --as p-pragmatic-thinking-and-learning
+publication @p-pragmatic-thinking-and-learning set title 'Pragmatic Thinking and Learning'
+publication @p-pragmatic-thinking-and-learning commit
+
+import 978-1-937785-65-9 --as p-seven-concurrency-models-in-seven-weeks
+publication @p-seven-concurrency-models-in-seven-weeks set title 'Seven Concurrency Models In Seven Weeks'
+publication @p-seven-concurrency-models-in-seven-weeks commit
+
+wait

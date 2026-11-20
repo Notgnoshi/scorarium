@@ -1,840 +1,262 @@
-# Build the music library in an empty data directory:
-#
-#   cargo run -- --data-dir ./data shell --no-enrich tools/music.scr
+# Music, exported with publications only
 
 library create Music public
 library Music select
 
-import "The well-tempered clavier" --as p-bach-well-tempered-clavier
-publication @p-bach-well-tempered-clavier add identifier isbn 0-486-24532-2
-publication @p-bach-well-tempered-clavier add contributor "Johann Sebastian Bach" composer
-publication @p-bach-well-tempered-clavier commit
+import 978-0-486-24532-4 --as p-bach-the-well-tempered-clavier
+publication @p-bach-the-well-tempered-clavier set title 'The Well-Tempered Clavier'
+publication @p-bach-the-well-tempered-clavier add contributor 'Johann Sebastian Bach' composer --new --as c-johann-sebastian-bach
+publication @p-bach-the-well-tempered-clavier commit
 
-import "Mikrokosmos vol 1" --as p-bartok-mikrokosmos-1
-publication @p-bartok-mikrokosmos-1 add identifier isbn 978-1-4234-9304-4
-publication @p-bartok-mikrokosmos-1 add identifier ismn M-060-08001-2
-publication @p-bartok-mikrokosmos-1 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-1 commit
+import 978-0-85162-603-1 --as p-bartok-mikrokosmos-vol-4
+publication @p-bartok-mikrokosmos-vol-4 set title 'Mikrokosmos vol 4'
+publication @p-bartok-mikrokosmos-vol-4 add identifier ismn 979-0-060-08004-3
+publication @p-bartok-mikrokosmos-vol-4 add contributor 'Bela Bartok' composer --new --as c-bela-bartok
+publication @p-bartok-mikrokosmos-vol-4 commit
 
-import "Mikrokosmos vol 2" --as p-bartok-mikrokosmos-2
-publication @p-bartok-mikrokosmos-2 add identifier isbn 978-0-85162-602-4
-publication @p-bartok-mikrokosmos-2 add identifier ismn 979-0-060-08002-9
-publication @p-bartok-mikrokosmos-2 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-2 commit
+import 978-0-85162-630-7 --as p-bartok-mikrokosmos-vol-5
+publication @p-bartok-mikrokosmos-vol-5 set title 'Mikrokosmos vol 5'
+publication @p-bartok-mikrokosmos-vol-5 add identifier ismn 979-0-060-08005-0
+publication @p-bartok-mikrokosmos-vol-5 add contributor @c-bela-bartok composer
+publication @p-bartok-mikrokosmos-vol-5 commit
 
-import "Mikrokosmos vol 3" --as p-bartok-mikrokosmos-3
-publication @p-bartok-mikrokosmos-3 add identifier isbn 978-0-85162-636-9
-publication @p-bartok-mikrokosmos-3 add identifier ismn 979-0-060-08003-6
-publication @p-bartok-mikrokosmos-3 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-3 commit
+import 978-1-4234-9304-4 --as p-bartok-mikrokosmos-volume-1
+publication @p-bartok-mikrokosmos-volume-1 set title 'Mikrokosmos Volume 1'
+publication @p-bartok-mikrokosmos-volume-1 add identifier ismn 979-0-060-08001-2
+publication @p-bartok-mikrokosmos-volume-1 add contributor @c-bela-bartok composer
+publication @p-bartok-mikrokosmos-volume-1 commit
 
-import "Mikrokosmos vol 4" --as p-bartok-mikrokosmos-4
-publication @p-bartok-mikrokosmos-4 add identifier isbn 978-0-85162-603-1
-publication @p-bartok-mikrokosmos-4 add identifier ismn 979-0-060-08004-3
-publication @p-bartok-mikrokosmos-4 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-4 commit
+import 978-0-85162-602-4 --as p-bartok-mikrokosmos-volume-2
+publication @p-bartok-mikrokosmos-volume-2 set title 'Mikrokosmos Volume 2'
+publication @p-bartok-mikrokosmos-volume-2 add identifier ismn 979-0-060-08002-9
+publication @p-bartok-mikrokosmos-volume-2 add contributor @c-bela-bartok composer
+publication @p-bartok-mikrokosmos-volume-2 commit
 
-import "Mikrokosmos vol 5" --as p-bartok-mikrokosmos-5
-publication @p-bartok-mikrokosmos-5 add identifier isbn 978-0-85162-630-7
-publication @p-bartok-mikrokosmos-5 add identifier ismn 979-0-060-08005-0
-publication @p-bartok-mikrokosmos-5 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-5 commit
+import 978-0-85162-636-9 --as p-bartok-mikrokosmos-volume-3
+publication @p-bartok-mikrokosmos-volume-3 set title 'Mikrokosmos Volume 3'
+publication @p-bartok-mikrokosmos-volume-3 add identifier ismn 979-0-060-08003-6
+publication @p-bartok-mikrokosmos-volume-3 add contributor @c-bela-bartok composer
+publication @p-bartok-mikrokosmos-volume-3 commit
 
-import "Mikrokosmos vol 6" --as p-bartok-mikrokosmos-6
-publication @p-bartok-mikrokosmos-6 add identifier isbn 978-0-85162-641-3
-publication @p-bartok-mikrokosmos-6 add identifier ismn 979-0-060-08006-7
-publication @p-bartok-mikrokosmos-6 add contributor "Bela Bartok" composer
-publication @p-bartok-mikrokosmos-6 commit
+import 978-0-85162-641-3 --as p-bartok-mikrokosmos-volume-6
+publication @p-bartok-mikrokosmos-volume-6 set title 'Mikrokosmos Volume 6'
+publication @p-bartok-mikrokosmos-volume-6 add identifier ismn 979-0-060-08006-7
+publication @p-bartok-mikrokosmos-volume-6 add contributor @c-bela-bartok composer
+publication @p-bartok-mikrokosmos-volume-6 commit
 
-import "Complete piano sonatas volume I" --as p-beethoven-sonatas-1
-publication @p-beethoven-sonatas-1 add identifier isbn 0-486-23134-8
-publication @p-beethoven-sonatas-1 add contributor "Ludwig van Beethoven" composer
-publication @p-beethoven-sonatas-1 commit
+import 978-0-486-23134-1 --as p-beethoven-complete-piano-sonatas-volume-i-1-15
+publication @p-beethoven-complete-piano-sonatas-volume-i-1-15 set title 'Complete piano sonatas volume I (1-15)'
+publication @p-beethoven-complete-piano-sonatas-volume-i-1-15 add contributor 'Ludwig van Beethoven' composer --new --as c-ludwig-van-beethoven
+publication @p-beethoven-complete-piano-sonatas-volume-i-1-15 commit
 
-import "Complete piano sonatas volume II" --as p-beethoven-sonatas-2
-publication @p-beethoven-sonatas-2 add identifier isbn 0-486-23135-6
-publication @p-beethoven-sonatas-2 add contributor "Ludwig van Beethoven" composer
-publication @p-beethoven-sonatas-2 commit
+import 978-0-486-23135-8 --as p-beethoven-complete-piano-sonatas-volume-ii-16-32
+publication @p-beethoven-complete-piano-sonatas-volume-ii-16-32 set title 'Complete piano sonatas volume II (16-32)'
+publication @p-beethoven-complete-piano-sonatas-volume-ii-16-32 add contributor @c-ludwig-van-beethoven composer
+publication @p-beethoven-complete-piano-sonatas-volume-ii-16-32 commit
 
-import "Fifty-one exercises" --as p-brahms-fifty-one-exercises
-publication @p-brahms-fifty-one-exercises add identifier isbn 978-1-4584-2665-9
-publication @p-brahms-fifty-one-exercises add identifier publisher-number "Vol 1600"
-publication @p-brahms-fifty-one-exercises add contributor "Johannes Brahms" composer
+import 978-1-4584-2665-9 --as p-brahms-fifty-one-exercises
+publication @p-brahms-fifty-one-exercises set title 'Fifty-one exercises'
+publication @p-brahms-fifty-one-exercises add contributor 'Johannes Brahms' composer --new --as c-johannes-brahms
 publication @p-brahms-fifty-one-exercises commit
 
-import "Piano works vol I" --as p-brahms-piano-works-1
-publication @p-brahms-piano-works-1 add identifier publisher-number "K3254"
-publication @p-brahms-piano-works-1 add contributor "Johannes Brahms" composer
-publication @p-brahms-piano-works-1 commit
+import 'Piano works vol I' --as p-brahms-piano-works-vol-i
+publication @p-brahms-piano-works-vol-i add contributor @c-johannes-brahms composer
+publication @p-brahms-piano-works-vol-i commit
 
-import "Piano works vol II" --as p-brahms-piano-works-2
-publication @p-brahms-piano-works-2 add identifier isbn 0-7692-4077-1
-publication @p-brahms-piano-works-2 add identifier publisher-number "K03255"
-publication @p-brahms-piano-works-2 add contributor "Johannes Brahms" composer
-publication @p-brahms-piano-works-2 commit
+import 978-0-7692-4077-0 --as p-brahms-piano-works-vol-ii
+publication @p-brahms-piano-works-vol-ii set title 'Piano works vol II'
+publication @p-brahms-piano-works-vol-ii add contributor @c-johannes-brahms composer
+publication @p-brahms-piano-works-vol-ii commit
 
-import "Complete preludes & etudes" --as p-chopin-preludes-etudes
-publication @p-chopin-preludes-etudes add identifier isbn 0-486-24052-5
-publication @p-chopin-preludes-etudes add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in C major" --new --as w-chopin-op28-1
-work @w-chopin-op28-1 add catalog-number "Op. 28 No. 1"
-work @w-chopin-op28-1 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in A minor" --new --as w-chopin-op28-2
-work @w-chopin-op28-2 add catalog-number "Op. 28 No. 2"
-work @w-chopin-op28-2 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in G major" --new --as w-chopin-op28-3
-work @w-chopin-op28-3 add catalog-number "Op. 28 No. 3"
-work @w-chopin-op28-3 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in E minor" --new --as w-chopin-op28-4
-work @w-chopin-op28-4 add catalog-number "Op. 28 No. 4"
-work @w-chopin-op28-4 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in D major" --new --as w-chopin-op28-5
-work @w-chopin-op28-5 add catalog-number "Op. 28 No. 5"
-work @w-chopin-op28-5 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in B minor" --new --as w-chopin-op28-6
-work @w-chopin-op28-6 add catalog-number "Op. 28 No. 6"
-work @w-chopin-op28-6 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in A major" --new --as w-chopin-op28-7
-work @w-chopin-op28-7 add catalog-number "Op. 28 No. 7"
-work @w-chopin-op28-7 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in F-sharp minor" --new --as w-chopin-op28-8
-work @w-chopin-op28-8 add catalog-number "Op. 28 No. 8"
-work @w-chopin-op28-8 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in E major" --new --as w-chopin-op28-9
-work @w-chopin-op28-9 add catalog-number "Op. 28 No. 9"
-work @w-chopin-op28-9 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in C-sharp minor" --new --as w-chopin-op28-10
-work @w-chopin-op28-10 add catalog-number "Op. 28 No. 10"
-work @w-chopin-op28-10 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in B major" --new --as w-chopin-op28-11
-work @w-chopin-op28-11 add catalog-number "Op. 28 No. 11"
-work @w-chopin-op28-11 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in G-sharp minor" --new --as w-chopin-op28-12
-work @w-chopin-op28-12 add catalog-number "Op. 28 No. 12"
-work @w-chopin-op28-12 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in F-sharp major" --new --as w-chopin-op28-13
-work @w-chopin-op28-13 add catalog-number "Op. 28 No. 13"
-work @w-chopin-op28-13 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in E-flat minor" --new --as w-chopin-op28-14
-work @w-chopin-op28-14 add catalog-number "Op. 28 No. 14"
-work @w-chopin-op28-14 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in D-flat major" --new --as w-chopin-op28-15
-work @w-chopin-op28-15 add catalog-number "Op. 28 No. 15"
-work @w-chopin-op28-15 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in B-flat minor" --new --as w-chopin-op28-16
-work @w-chopin-op28-16 add catalog-number "Op. 28 No. 16"
-work @w-chopin-op28-16 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in A-flat major" --new --as w-chopin-op28-17
-work @w-chopin-op28-17 add catalog-number "Op. 28 No. 17"
-work @w-chopin-op28-17 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in F minor" --new --as w-chopin-op28-18
-work @w-chopin-op28-18 add catalog-number "Op. 28 No. 18"
-work @w-chopin-op28-18 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in E-flat major" --new --as w-chopin-op28-19
-work @w-chopin-op28-19 add catalog-number "Op. 28 No. 19"
-work @w-chopin-op28-19 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in C minor" --new --as w-chopin-op28-20
-work @w-chopin-op28-20 add catalog-number "Op. 28 No. 20"
-work @w-chopin-op28-20 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in B-flat major" --new --as w-chopin-op28-21
-work @w-chopin-op28-21 add catalog-number "Op. 28 No. 21"
-work @w-chopin-op28-21 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in G minor" --new --as w-chopin-op28-22
-work @w-chopin-op28-22 add catalog-number "Op. 28 No. 22"
-work @w-chopin-op28-22 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in F major" --new --as w-chopin-op28-23
-work @w-chopin-op28-23 add catalog-number "Op. 28 No. 23"
-work @w-chopin-op28-23 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in D minor" --new --as w-chopin-op28-24
-work @w-chopin-op28-24 add catalog-number "Op. 28 No. 24"
-work @w-chopin-op28-24 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Prelude in C-sharp minor" --new --as w-chopin-op45
-work @w-chopin-op45 add catalog-number "Op. 45"
-work @w-chopin-op45 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C major" --new --as w-chopin-op10-1
-work @w-chopin-op10-1 add catalog-number "Op. 10 No. 1"
-work @w-chopin-op10-1 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A minor" --new --as w-chopin-op10-2
-work @w-chopin-op10-2 add catalog-number "Op. 10 No. 2"
-work @w-chopin-op10-2 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in E major" --new --as w-chopin-op10-3
-work @w-chopin-op10-3 add catalog-number "Op. 10 No. 3"
-work @w-chopin-op10-3 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C-sharp minor" --new --as w-chopin-op10-4
-work @w-chopin-op10-4 add catalog-number "Op. 10 No. 4"
-work @w-chopin-op10-4 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in G-flat major" --new --as w-chopin-op10-5
-work @w-chopin-op10-5 add catalog-number "Op. 10 No. 5"
-work @w-chopin-op10-5 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in E-flat minor" --new --as w-chopin-op10-6
-work @w-chopin-op10-6 add catalog-number "Op. 10 No. 6"
-work @w-chopin-op10-6 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C major" --new --as w-chopin-op10-7
-work @w-chopin-op10-7 add catalog-number "Op. 10 No. 7"
-work @w-chopin-op10-7 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in F major" --new --as w-chopin-op10-8
-work @w-chopin-op10-8 add catalog-number "Op. 10 No. 8"
-work @w-chopin-op10-8 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in F minor" --new --as w-chopin-op10-9
-work @w-chopin-op10-9 add catalog-number "Op. 10 No. 9"
-work @w-chopin-op10-9 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A-flat major" --new --as w-chopin-op10-10
-work @w-chopin-op10-10 add catalog-number "Op. 10 No. 10"
-work @w-chopin-op10-10 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in E-flat major" --new --as w-chopin-op10-11
-work @w-chopin-op10-11 add catalog-number "Op. 10 No. 11"
-work @w-chopin-op10-11 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C minor" --new --as w-chopin-op10-12
-work @w-chopin-op10-12 add catalog-number "Op. 10 No. 12"
-work @w-chopin-op10-12 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A-flat major" --new --as w-chopin-op25-1
-work @w-chopin-op25-1 add catalog-number "Op. 25 No. 1"
-work @w-chopin-op25-1 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in F minor" --new --as w-chopin-op25-2
-work @w-chopin-op25-2 add catalog-number "Op. 25 No. 2"
-work @w-chopin-op25-2 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in F major" --new --as w-chopin-op25-3
-work @w-chopin-op25-3 add catalog-number "Op. 25 No. 3"
-work @w-chopin-op25-3 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A minor" --new --as w-chopin-op25-4
-work @w-chopin-op25-4 add catalog-number "Op. 25 No. 4"
-work @w-chopin-op25-4 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in E minor" --new --as w-chopin-op25-5
-work @w-chopin-op25-5 add catalog-number "Op. 25 No. 5"
-work @w-chopin-op25-5 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in G-sharp minor" --new --as w-chopin-op25-6
-work @w-chopin-op25-6 add catalog-number "Op. 25 No. 6"
-work @w-chopin-op25-6 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C-sharp minor" --new --as w-chopin-op25-7
-work @w-chopin-op25-7 add catalog-number "Op. 25 No. 7"
-work @w-chopin-op25-7 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in D-flat major" --new --as w-chopin-op25-8
-work @w-chopin-op25-8 add catalog-number "Op. 25 No. 8"
-work @w-chopin-op25-8 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in G-flat major" --new --as w-chopin-op25-9
-work @w-chopin-op25-9 add catalog-number "Op. 25 No. 9"
-work @w-chopin-op25-9 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in B minor" --new --as w-chopin-op25-10
-work @w-chopin-op25-10 add catalog-number "Op. 25 No. 10"
-work @w-chopin-op25-10 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A minor" --new --as w-chopin-op25-11
-work @w-chopin-op25-11 add catalog-number "Op. 25 No. 11"
-work @w-chopin-op25-11 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in C minor" --new --as w-chopin-op25-12
-work @w-chopin-op25-12 add catalog-number "Op. 25 No. 12"
-work @w-chopin-op25-12 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in F minor" --new --as w-chopin-b130-1
-work @w-chopin-b130-1 add catalog-number "B. 130 No. 1"
-work @w-chopin-b130-1 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in A-flat major" --new --as w-chopin-b130-2
-work @w-chopin-b130-2 add catalog-number "B. 130 No. 2"
-work @w-chopin-b130-2 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes add work "Etude in D-flat major" --new --as w-chopin-b130-3
-work @w-chopin-b130-3 add catalog-number "B. 130 No. 3"
-work @w-chopin-b130-3 add contributor "Frederic Chopin" composer
-publication @p-chopin-preludes-etudes commit
+import 978-0-486-24164-7 --as p-chopin-complete-ballades-impromptus-and-sonatas
+publication @p-chopin-complete-ballades-impromptus-and-sonatas set title 'Complete Ballades, Impromptus and Sonatas'
+publication @p-chopin-complete-ballades-impromptus-and-sonatas add contributor 'Frederic Chopin' composer --new --as c-frederic-chopin
+publication @p-chopin-complete-ballades-impromptus-and-sonatas commit
 
-import "Mazurkas" --as p-chopin-mazurkas
-publication @p-chopin-mazurkas add identifier isbn 0-486-25548-4
-publication @p-chopin-mazurkas add contributor "Frederic Chopin" composer
+import 978-0-486-24052-7 --as p-chopin-complete-preludes-etudes
+publication @p-chopin-complete-preludes-etudes set title 'Complete preludes & etudes'
+publication @p-chopin-complete-preludes-etudes add contributor @c-frederic-chopin composer
+publication @p-chopin-complete-preludes-etudes commit
+
+import 978-0-486-25950-5 --as p-chopin-fantasy-in-f-minor-barcarolle-berceuse-and-other-works-for-solo-piano
+publication @p-chopin-fantasy-in-f-minor-barcarolle-berceuse-and-other-works-for-solo-piano set title 'Fantasy in F Minor, Barcarolle, Berceuse and Other Works for Solo Piano'
+publication @p-chopin-fantasy-in-f-minor-barcarolle-berceuse-and-other-works-for-solo-piano add contributor @c-frederic-chopin composer
+publication @p-chopin-fantasy-in-f-minor-barcarolle-berceuse-and-other-works-for-solo-piano commit
+
+import 978-0-486-25548-4 --as p-chopin-mazurkas
+publication @p-chopin-mazurkas set title Mazurkas
+publication @p-chopin-mazurkas add contributor @c-frederic-chopin composer
 publication @p-chopin-mazurkas commit
 
-import "Nocturnes & polonaises" --as p-chopin-nocturnes-polonaises
-publication @p-chopin-nocturnes-polonaises add identifier isbn 0-486-24564-0
-publication @p-chopin-nocturnes-polonaises add contributor "Frederic Chopin" composer
-publication @p-chopin-nocturnes-polonaises commit
+import 978-0-486-24564-5 --as p-chopin-nocturnes-and-polonaises
+publication @p-chopin-nocturnes-and-polonaises set title 'Nocturnes and Polonaises'
+publication @p-chopin-nocturnes-and-polonaises add contributor @c-frederic-chopin composer
+publication @p-chopin-nocturnes-and-polonaises commit
 
-import "Scherzi" --as p-chopin-scherzi
-publication @p-chopin-scherzi add identifier publisher-number "UT 50061"
-publication @p-chopin-scherzi add contributor "Frederic Chopin" composer
+import Scherzi --as p-chopin-scherzi
+publication @p-chopin-scherzi add contributor @c-frederic-chopin composer
 publication @p-chopin-scherzi commit
 
-import "Favorite piano works" --as p-debussy-favorite-piano-works
-publication @p-debussy-favorite-piano-works add identifier isbn 978-1-4234-2741-4
-publication @p-debussy-favorite-piano-works add identifier publisher-number "Vol 2070"
-publication @p-debussy-favorite-piano-works add contributor "Claude Debussy" composer
+import 978-1-4234-2741-4 --as p-debussy-favorite-piano-works
+publication @p-debussy-favorite-piano-works set title 'Favorite piano works'
+publication @p-debussy-favorite-piano-works add contributor 'Claude Debussy' composer --new --as c-claude-debussy
 publication @p-debussy-favorite-piano-works commit
 
-import "Concerto for the piano" --as p-grieg-concerto
-publication @p-grieg-concerto add identifier isbn 0-7935-7224-X
-publication @p-grieg-concerto add identifier publisher-number "Vol 1399"
-publication @p-grieg-concerto add contributor "Edvard Grieg" composer
-publication @p-grieg-concerto commit
+import 979-0-2018-1823-8 --as p-grieg-15-well-known-original-pieces
+publication @p-grieg-15-well-known-original-pieces set title '15 well-known original pieces'
+publication @p-grieg-15-well-known-original-pieces add contributor 'Edvard Grieg' composer --new --as c-edvard-grieg
+publication @p-grieg-15-well-known-original-pieces commit
 
-import "Andalucia for piano" --as p-lecuona-andalucia
-publication @p-lecuona-andalucia add identifier isbn 0-7935-2515-2
-publication @p-lecuona-andalucia add contributor "Ernesto Lecuona" composer
-publication @p-lecuona-andalucia commit
+import 978-0-7935-4325-0 --as p-grieg-complete-lyric-pieces
+publication @p-grieg-complete-lyric-pieces set title 'Complete Lyric Pieces'
+publication @p-grieg-complete-lyric-pieces add contributor @c-edvard-grieg composer
+publication @p-grieg-complete-lyric-pieces commit
 
-import "Liszt masterpieces for solo piano" --as p-liszt-masterpieces
-publication @p-liszt-masterpieces add identifier isbn 0-486-41379-9
-publication @p-liszt-masterpieces add contributor "Franz Liszt" composer
-publication @p-liszt-masterpieces commit
+import 978-0-7935-7224-3 --as p-grieg-concerto-in-a-minor-op-16
+publication @p-grieg-concerto-in-a-minor-op-16 set title 'Concerto in A Minor, Op. 16'
+publication @p-grieg-concerto-in-a-minor-op-16 add contributor @c-edvard-grieg composer
+publication @p-grieg-concerto-in-a-minor-op-16 commit
 
-import "Masterpieces for piano" --as p-mendelssohn-masterpieces
-publication @p-mendelssohn-masterpieces add identifier ismn 979-0-57702-578-0
-publication @p-mendelssohn-masterpieces add identifier publisher-number "EP 20036"
-publication @p-mendelssohn-masterpieces add contributor "Felix Mendelssohn" composer
-publication @p-mendelssohn-masterpieces commit
+import 978-0-7935-8926-5 --as p-kabalevsky-dmitri-kabalevsky-complete-sonatas-for-piano
+publication @p-kabalevsky-dmitri-kabalevsky-complete-sonatas-for-piano set title 'Dmitri Kabalevsky - Complete Sonatas for Piano'
+publication @p-kabalevsky-dmitri-kabalevsky-complete-sonatas-for-piano add contributor 'Dmitry Kabalevsky' composer --new --as c-dmitry-kabalevsky
+publication @p-kabalevsky-dmitri-kabalevsky-complete-sonatas-for-piano commit
 
-import "Pictures at an exhibition" --as p-mussorgsky-pictures
-publication @p-mussorgsky-pictures add identifier isbn 0-7390-1194-4
-publication @p-mussorgsky-pictures add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Promenade I" --new --as w-mussorgsky-promenade-1
-work @w-mussorgsky-promenade-1 add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "The Gnome" --new --as w-mussorgsky-gnome
-work @w-mussorgsky-gnome add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Promenade II" --new --as w-mussorgsky-promenade-2
-work @w-mussorgsky-promenade-2 add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "The Old Castle" --new --as w-mussorgsky-old-castle
-work @w-mussorgsky-old-castle add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Promenade III" --new --as w-mussorgsky-promenade-3
-work @w-mussorgsky-promenade-3 add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Tuileries" --new --as w-mussorgsky-tuileries
-work @w-mussorgsky-tuileries add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Bydlo" --new --as w-mussorgsky-bydlo
-work @w-mussorgsky-bydlo add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Promenade IV" --new --as w-mussorgsky-promenade-4
-work @w-mussorgsky-promenade-4 add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Ballet of the Unhatched Chicks" --new --as w-mussorgsky-chicks
-work @w-mussorgsky-chicks add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Samuel Goldenberg and Schmuyle" --new --as w-mussorgsky-goldenberg
-work @w-mussorgsky-goldenberg add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Promenade V" --new --as w-mussorgsky-promenade-5
-work @w-mussorgsky-promenade-5 add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "The Market Place at Limoges" --new --as w-mussorgsky-limoges
-work @w-mussorgsky-limoges add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "Catacombs" --new --as w-mussorgsky-catacombs
-work @w-mussorgsky-catacombs add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "The Hut on Fowl's Legs" --new --as w-mussorgsky-baba-yaga
-work @w-mussorgsky-baba-yaga add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures add work "The Great Gate of Kiev" --new --as w-mussorgsky-great-gate
-work @w-mussorgsky-great-gate add contributor "Modest Mussorgsky" composer
-publication @p-mussorgsky-pictures commit
+import 978-1-4234-9020-3 --as p-khachaturian-khachaturian-selected-piano-works
+publication @p-khachaturian-khachaturian-selected-piano-works set title 'Khachaturian - Selected Piano Works'
+publication @p-khachaturian-khachaturian-selected-piano-works add contributor 'Aram Ilʹich Khachaturi͡an' composer --new --as c-aram-il-ich-khachaturian
+publication @p-khachaturian-khachaturian-selected-piano-works commit
 
-import "Etudes-tableaux" --as p-rachmaninoff-etudes-tableaux
-publication @p-rachmaninoff-etudes-tableaux add identifier isbn 978-0-7692-3976-7
-publication @p-rachmaninoff-etudes-tableaux add identifier publisher-number "EL03494"
-publication @p-rachmaninoff-etudes-tableaux add identifier publisher-number "Vol II"
-publication @p-rachmaninoff-etudes-tableaux add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in F minor" --new --as w-rachmaninoff-op33-1
-work @w-rachmaninoff-op33-1 add catalog-number "Op. 33 No. 1"
-work @w-rachmaninoff-op33-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in C major" --new --as w-rachmaninoff-op33-2
-work @w-rachmaninoff-op33-2 add catalog-number "Op. 33 No. 2"
-work @w-rachmaninoff-op33-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in E-flat minor" --new --as w-rachmaninoff-op33-5
-work @w-rachmaninoff-op33-5 add catalog-number "Op. 33 No. 5"
-work @w-rachmaninoff-op33-5 add contributor "Sergei Rachmaninoff" composer
-work @w-rachmaninoff-op33-5 set note "Published as Op. 33 No. 3 (first edition) and Op. 33 No. 6 (original nine-piece plan). The modern convention is Op. 33 No. 5."
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in E-flat major" --new --as w-rachmaninoff-op33-6
-work @w-rachmaninoff-op33-6 add catalog-number "Op. 33 No. 6"
-work @w-rachmaninoff-op33-6 add contributor "Sergei Rachmaninoff" composer
-work @w-rachmaninoff-op33-6 set note "Published as Op. 33 No. 4 (first edition) and Op. 33 No. 7 (original nine-piece plan). The modern convention is Op. 33 No. 6."
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in G minor" --new --as w-rachmaninoff-op33-7
-work @w-rachmaninoff-op33-7 add catalog-number "Op. 33 No. 7"
-work @w-rachmaninoff-op33-7 add contributor "Sergei Rachmaninoff" composer
-work @w-rachmaninoff-op33-7 set note "Published as Op. 33 No. 5 (first edition) and Op. 33 No. 8 (original nine-piece plan). The modern convention is Op. 33 No. 7."
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in C-sharp minor" --new --as w-rachmaninoff-op33-8
-work @w-rachmaninoff-op33-8 add catalog-number "Op. 33 No. 8"
-work @w-rachmaninoff-op33-8 add contributor "Sergei Rachmaninoff" composer
-work @w-rachmaninoff-op33-8 set note "Published as Op. 33 No. 6 (first edition) and Op. 33 No. 9 (original nine-piece plan). The modern convention is Op. 33 No. 8."
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in C minor" --new --as w-rachmaninoff-op39-1
-work @w-rachmaninoff-op39-1 add catalog-number "Op. 39 No. 1"
-work @w-rachmaninoff-op39-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in A minor" --new --as w-rachmaninoff-op39-2
-work @w-rachmaninoff-op39-2 add catalog-number "Op. 39 No. 2"
-work @w-rachmaninoff-op39-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in F-sharp minor" --new --as w-rachmaninoff-op39-3
-work @w-rachmaninoff-op39-3 add catalog-number "Op. 39 No. 3"
-work @w-rachmaninoff-op39-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in B minor" --new --as w-rachmaninoff-op39-4
-work @w-rachmaninoff-op39-4 add catalog-number "Op. 39 No. 4"
-work @w-rachmaninoff-op39-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in E-flat minor" --new --as w-rachmaninoff-op39-5
-work @w-rachmaninoff-op39-5 add catalog-number "Op. 39 No. 5"
-work @w-rachmaninoff-op39-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in A minor" --new --as w-rachmaninoff-op39-6
-work @w-rachmaninoff-op39-6 add catalog-number "Op. 39 No. 6"
-work @w-rachmaninoff-op39-6 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in C minor" --new --as w-rachmaninoff-op39-7
-work @w-rachmaninoff-op39-7 add catalog-number "Op. 39 No. 7"
-work @w-rachmaninoff-op39-7 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in D minor" --new --as w-rachmaninoff-op39-8
-work @w-rachmaninoff-op39-8 add catalog-number "Op. 39 No. 8"
-work @w-rachmaninoff-op39-8 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-etudes-tableaux add work "Etude-tableau in D major" --new --as w-rachmaninoff-op39-9
-work @w-rachmaninoff-op39-9 add catalog-number "Op. 39 No. 9"
-work @w-rachmaninoff-op39-9 add contributor "Sergei Rachmaninoff" composer
+import 978-0-7935-2515-7 --as p-lecuona-andalucia-suite
+publication @p-lecuona-andalucia-suite set title 'Andalucia Suite'
+publication @p-lecuona-andalucia-suite add contributor 'Ernesto Lecuona' composer --new --as c-ernesto-lecuona
+publication @p-lecuona-andalucia-suite commit
+
+import 978-0-486-41379-2 --as p-liszt-liszt-masterpieces-for-solo-piano
+publication @p-liszt-liszt-masterpieces-for-solo-piano set title 'Liszt Masterpieces for Solo Piano'
+publication @p-liszt-liszt-masterpieces-for-solo-piano add contributor 'Franz Liszt' composer --new --as c-franz-liszt
+publication @p-liszt-liszt-masterpieces-for-solo-piano commit
+
+import 979-0-57702-578-0 --as p-mendelssohn-masterpieces-for-piano
+publication @p-mendelssohn-masterpieces-for-piano set title 'Masterpieces for piano'
+publication @p-mendelssohn-masterpieces-for-piano add contributor 'Felix Mendelssohn' composer --new --as c-felix-mendelssohn
+publication @p-mendelssohn-masterpieces-for-piano commit
+
+import 978-0-7390-1194-2 --as p-mussorgsky-pictures-at-an-exhibition
+publication @p-mussorgsky-pictures-at-an-exhibition set title 'Pictures at an exhibition'
+publication @p-mussorgsky-pictures-at-an-exhibition add contributor 'Modest Mussorgsky' composer --new --as c-modest-mussorgsky
+publication @p-mussorgsky-pictures-at-an-exhibition commit
+
+import 978-0-7692-3976-7 --as p-rachmaninoff-etudes-tableaux
+publication @p-rachmaninoff-etudes-tableaux set title Etudes-tableaux
+publication @p-rachmaninoff-etudes-tableaux add contributor 'Sergei Rachmaninoff' composer --new --as c-sergei-rachmaninoff
 publication @p-rachmaninoff-etudes-tableaux commit
 
-import "The Island of the Dead arr. Kirkor" --as p-rachmaninoff-island-of-the-dead-kirkor
-publication @p-rachmaninoff-island-of-the-dead-kirkor add identifier publisher-number "M 26277"
-publication @p-rachmaninoff-island-of-the-dead-kirkor add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-island-of-the-dead-kirkor add contributor "Georgy Kirkor" arranger
-publication @p-rachmaninoff-island-of-the-dead-kirkor add work "Isle of the Dead" --new --as w-rachmaninoff-op29
-work @w-rachmaninoff-op29 add catalog-number "Op. 29"
-work @w-rachmaninoff-op29 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-island-of-the-dead-kirkor commit
+import 'The Island of the Dead arr. Kirkor' --as p-rachmaninoff-the-island-of-the-dead-arr-kirkor
+publication @p-rachmaninoff-the-island-of-the-dead-arr-kirkor add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-the-island-of-the-dead-arr-kirkor add contributor 'Georgy Kirkor' arranger --new --as c-georgy-kirkor
+publication @p-rachmaninoff-the-island-of-the-dead-arr-kirkor commit
 
-import "Isle of the Dead" --as p-rachmaninoff-isle-of-the-dead
-publication @p-rachmaninoff-isle-of-the-dead add identifier ismn M-060-11163-1
-publication @p-rachmaninoff-isle-of-the-dead add identifier publisher-number "A 9081 G"
-publication @p-rachmaninoff-isle-of-the-dead add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-isle-of-the-dead add work @w-rachmaninoff-op29
+import 979-0-060-11163-1 --as p-rachmaninoff-isle-of-the-dead
+publication @p-rachmaninoff-isle-of-the-dead set title 'Isle of the Dead'
+publication @p-rachmaninoff-isle-of-the-dead add contributor @c-sergei-rachmaninoff composer
 publication @p-rachmaninoff-isle-of-the-dead commit
 
-import "Miscellaneous pieces" --as p-rachmaninoff-miscellaneous
-publication @p-rachmaninoff-miscellaneous add identifier isbn 978-0-7692-3954-5
-publication @p-rachmaninoff-miscellaneous add identifier publisher-number "EL03496"
-publication @p-rachmaninoff-miscellaneous add identifier publisher-number "Vol IV"
-publication @p-rachmaninoff-miscellaneous add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous set note "Contains both the original (1892) and revised (1940) versions of Melodie, Op. 3 No. 3."
-publication @p-rachmaninoff-miscellaneous add work "Piece in D minor" --new --as w-rachmaninoff-piece-in-d-minor
-work @w-rachmaninoff-piece-in-d-minor add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Nocturne No. 1" --new --as w-rachmaninoff-tn-ii-13-1
-work @w-rachmaninoff-tn-ii-13-1 add catalog-number "TN ii/13/1"
-work @w-rachmaninoff-tn-ii-13-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Nocturne No. 2" --new --as w-rachmaninoff-tn-ii-13-2
-work @w-rachmaninoff-tn-ii-13-2 add catalog-number "TN ii/13/2"
-work @w-rachmaninoff-tn-ii-13-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Nocturne No. 3" --new --as w-rachmaninoff-tn-ii-13-3
-work @w-rachmaninoff-tn-ii-13-3 add catalog-number "TN ii/13/3"
-work @w-rachmaninoff-tn-ii-13-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Elegie" --new --as w-rachmaninoff-op3-1
-work @w-rachmaninoff-op3-1 add catalog-number "Op. 3 No. 1"
-work @w-rachmaninoff-op3-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Prelude in C-sharp minor" --new --as w-rachmaninoff-op3-2
-work @w-rachmaninoff-op3-2 add catalog-number "Op. 3 No. 2"
-work @w-rachmaninoff-op3-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Melodie" --new --as w-rachmaninoff-op3-3
-work @w-rachmaninoff-op3-3 add catalog-number "Op. 3 No. 3"
-work @w-rachmaninoff-op3-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Polichinelle" --new --as w-rachmaninoff-op3-4
-work @w-rachmaninoff-op3-4 add catalog-number "Op. 3 No. 4"
-work @w-rachmaninoff-op3-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Serenade" --new --as w-rachmaninoff-op3-5
-work @w-rachmaninoff-op3-5 add catalog-number "Op. 3 No. 5"
-work @w-rachmaninoff-op3-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Prelude (posthumous)" --new --as w-rachmaninoff-prelude-posthumous
-work @w-rachmaninoff-prelude-posthumous add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Oriental Sketch" --new --as w-rachmaninoff-tn-ii-19-2
-work @w-rachmaninoff-tn-ii-19-2 add catalog-number "TN ii/19/2"
-work @w-rachmaninoff-tn-ii-19-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Fragments" --new --as w-rachmaninoff-tn-ii-19-3
-work @w-rachmaninoff-tn-ii-19-3 add catalog-number "TN ii/19/3"
-work @w-rachmaninoff-tn-ii-19-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous add work "Variation 18 from Rhapsody on a Theme of Paganini" --new --as w-rachmaninoff-op43-18
-work @w-rachmaninoff-op43-18 add catalog-number "Op. 43"
-work @w-rachmaninoff-op43-18 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-miscellaneous commit
+import 978-0-7692-3954-5 --as p-rachmaninoff-miscellaneous-pieces
+publication @p-rachmaninoff-miscellaneous-pieces set title 'Miscellaneous pieces'
+publication @p-rachmaninoff-miscellaneous-pieces add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-miscellaneous-pieces commit
 
-import "Morceaux de salon and moments musicaux" --as p-rachmaninoff-morceaux-moments
-publication @p-rachmaninoff-morceaux-moments add identifier isbn 978-0-7692-3974-3
-publication @p-rachmaninoff-morceaux-moments add identifier publisher-number "EL03495"
-publication @p-rachmaninoff-morceaux-moments add identifier publisher-number "Vol III"
-publication @p-rachmaninoff-morceaux-moments add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Nocturne" --new --as w-rachmaninoff-op10-1
-work @w-rachmaninoff-op10-1 add catalog-number "Op. 10 No. 1"
-work @w-rachmaninoff-op10-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Valse" --new --as w-rachmaninoff-op10-2
-work @w-rachmaninoff-op10-2 add catalog-number "Op. 10 No. 2"
-work @w-rachmaninoff-op10-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Barcarolle" --new --as w-rachmaninoff-op10-3
-work @w-rachmaninoff-op10-3 add catalog-number "Op. 10 No. 3"
-work @w-rachmaninoff-op10-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Melodie" --new --as w-rachmaninoff-op10-4
-work @w-rachmaninoff-op10-4 add catalog-number "Op. 10 No. 4"
-work @w-rachmaninoff-op10-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Humoresque" --new --as w-rachmaninoff-op10-5
-work @w-rachmaninoff-op10-5 add catalog-number "Op. 10 No. 5"
-work @w-rachmaninoff-op10-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Romance" --new --as w-rachmaninoff-op10-6
-work @w-rachmaninoff-op10-6 add catalog-number "Op. 10 No. 6"
-work @w-rachmaninoff-op10-6 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Mazurka" --new --as w-rachmaninoff-op10-7
-work @w-rachmaninoff-op10-7 add catalog-number "Op. 10 No. 7"
-work @w-rachmaninoff-op10-7 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in B-flat minor" --new --as w-rachmaninoff-op16-1
-work @w-rachmaninoff-op16-1 add catalog-number "Op. 16 No. 1"
-work @w-rachmaninoff-op16-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in E-flat minor" --new --as w-rachmaninoff-op16-2
-work @w-rachmaninoff-op16-2 add catalog-number "Op. 16 No. 2"
-work @w-rachmaninoff-op16-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in B minor" --new --as w-rachmaninoff-op16-3
-work @w-rachmaninoff-op16-3 add catalog-number "Op. 16 No. 3"
-work @w-rachmaninoff-op16-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in E minor" --new --as w-rachmaninoff-op16-4
-work @w-rachmaninoff-op16-4 add catalog-number "Op. 16 No. 4"
-work @w-rachmaninoff-op16-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in D-flat major" --new --as w-rachmaninoff-op16-5
-work @w-rachmaninoff-op16-5 add catalog-number "Op. 16 No. 5"
-work @w-rachmaninoff-op16-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments add work "Moment musical in C major" --new --as w-rachmaninoff-op16-6
-work @w-rachmaninoff-op16-6 add catalog-number "Op. 16 No. 6"
-work @w-rachmaninoff-op16-6 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-morceaux-moments commit
+import 978-0-7692-3974-3 --as p-rachmaninoff-morceaux-de-salon-and-moments-musicaux
+publication @p-rachmaninoff-morceaux-de-salon-and-moments-musicaux set title 'Morceaux de salon and moments musicaux'
+publication @p-rachmaninoff-morceaux-de-salon-and-moments-musicaux add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-morceaux-de-salon-and-moments-musicaux commit
 
-import "Preludes" --as p-rachmaninoff-preludes
-publication @p-rachmaninoff-preludes add identifier isbn 978-0-7692-2991-1
-publication @p-rachmaninoff-preludes add identifier publisher-number "EL03493"
-publication @p-rachmaninoff-preludes add identifier publisher-number "Vol I"
-publication @p-rachmaninoff-preludes add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work @w-rachmaninoff-op3-2
-publication @p-rachmaninoff-preludes add work "Prelude in F-sharp minor" --new --as w-rachmaninoff-op23-1
-work @w-rachmaninoff-op23-1 add catalog-number "Op. 23 No. 1"
-work @w-rachmaninoff-op23-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in B-flat major" --new --as w-rachmaninoff-op23-2
-work @w-rachmaninoff-op23-2 add catalog-number "Op. 23 No. 2"
-work @w-rachmaninoff-op23-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in D minor" --new --as w-rachmaninoff-op23-3
-work @w-rachmaninoff-op23-3 add catalog-number "Op. 23 No. 3"
-work @w-rachmaninoff-op23-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in D major" --new --as w-rachmaninoff-op23-4
-work @w-rachmaninoff-op23-4 add catalog-number "Op. 23 No. 4"
-work @w-rachmaninoff-op23-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in G minor" --new --as w-rachmaninoff-op23-5
-work @w-rachmaninoff-op23-5 add catalog-number "Op. 23 No. 5"
-work @w-rachmaninoff-op23-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in E-flat major" --new --as w-rachmaninoff-op23-6
-work @w-rachmaninoff-op23-6 add catalog-number "Op. 23 No. 6"
-work @w-rachmaninoff-op23-6 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in C minor" --new --as w-rachmaninoff-op23-7
-work @w-rachmaninoff-op23-7 add catalog-number "Op. 23 No. 7"
-work @w-rachmaninoff-op23-7 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in A-flat major" --new --as w-rachmaninoff-op23-8
-work @w-rachmaninoff-op23-8 add catalog-number "Op. 23 No. 8"
-work @w-rachmaninoff-op23-8 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in E-flat minor" --new --as w-rachmaninoff-op23-9
-work @w-rachmaninoff-op23-9 add catalog-number "Op. 23 No. 9"
-work @w-rachmaninoff-op23-9 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in G-flat major" --new --as w-rachmaninoff-op23-10
-work @w-rachmaninoff-op23-10 add catalog-number "Op. 23 No. 10"
-work @w-rachmaninoff-op23-10 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in C major" --new --as w-rachmaninoff-op32-1
-work @w-rachmaninoff-op32-1 add catalog-number "Op. 32 No. 1"
-work @w-rachmaninoff-op32-1 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in B-flat minor" --new --as w-rachmaninoff-op32-2
-work @w-rachmaninoff-op32-2 add catalog-number "Op. 32 No. 2"
-work @w-rachmaninoff-op32-2 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in E major" --new --as w-rachmaninoff-op32-3
-work @w-rachmaninoff-op32-3 add catalog-number "Op. 32 No. 3"
-work @w-rachmaninoff-op32-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in E minor" --new --as w-rachmaninoff-op32-4
-work @w-rachmaninoff-op32-4 add catalog-number "Op. 32 No. 4"
-work @w-rachmaninoff-op32-4 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in G major" --new --as w-rachmaninoff-op32-5
-work @w-rachmaninoff-op32-5 add catalog-number "Op. 32 No. 5"
-work @w-rachmaninoff-op32-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in F minor" --new --as w-rachmaninoff-op32-6
-work @w-rachmaninoff-op32-6 add catalog-number "Op. 32 No. 6"
-work @w-rachmaninoff-op32-6 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in F major" --new --as w-rachmaninoff-op32-7
-work @w-rachmaninoff-op32-7 add catalog-number "Op. 32 No. 7"
-work @w-rachmaninoff-op32-7 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in A minor" --new --as w-rachmaninoff-op32-8
-work @w-rachmaninoff-op32-8 add catalog-number "Op. 32 No. 8"
-work @w-rachmaninoff-op32-8 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in A major" --new --as w-rachmaninoff-op32-9
-work @w-rachmaninoff-op32-9 add catalog-number "Op. 32 No. 9"
-work @w-rachmaninoff-op32-9 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in B minor" --new --as w-rachmaninoff-op32-10
-work @w-rachmaninoff-op32-10 add catalog-number "Op. 32 No. 10"
-work @w-rachmaninoff-op32-10 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in B major" --new --as w-rachmaninoff-op32-11
-work @w-rachmaninoff-op32-11 add catalog-number "Op. 32 No. 11"
-work @w-rachmaninoff-op32-11 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in G-sharp minor" --new --as w-rachmaninoff-op32-12
-work @w-rachmaninoff-op32-12 add catalog-number "Op. 32 No. 12"
-work @w-rachmaninoff-op32-12 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-preludes add work "Prelude in D-flat major" --new --as w-rachmaninoff-op32-13
-work @w-rachmaninoff-op32-13 add catalog-number "Op. 32 No. 13"
-work @w-rachmaninoff-op32-13 add contributor "Sergei Rachmaninoff" composer
+import 978-0-7692-2991-1 --as p-rachmaninoff-preludes
+publication @p-rachmaninoff-preludes set title Preludes
+publication @p-rachmaninoff-preludes add contributor @c-sergei-rachmaninoff composer
 publication @p-rachmaninoff-preludes commit
 
-import "Rachmaninoff masterpieces for solo piano" --as p-rachmaninoff-masterpieces
-publication @p-rachmaninoff-masterpieces add identifier isbn 0-486-43122-3
-publication @p-rachmaninoff-masterpieces add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op3-2
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op3-4
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op10-3
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op10-5
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op16-3
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op16-4
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op16-5
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op23-1
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op23-4
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op23-5
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op23-6
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op32-2
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op32-10
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op32-12
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op33-2
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op33-7
-publication @p-rachmaninoff-masterpieces add work @w-rachmaninoff-op39-5
-publication @p-rachmaninoff-masterpieces commit
+import 978-0-486-43122-2 --as p-rachmaninoff-rachmaninoff-masterpieces-for-solo-piano
+publication @p-rachmaninoff-rachmaninoff-masterpieces-for-solo-piano set title 'Rachmaninoff Masterpieces for Solo Piano'
+publication @p-rachmaninoff-rachmaninoff-masterpieces-for-solo-piano add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-rachmaninoff-masterpieces-for-solo-piano commit
 
-import "Sonatas" --as p-rachmaninoff-sonatas
-publication @p-rachmaninoff-sonatas add identifier isbn 978-0-7692-3971-2
-publication @p-rachmaninoff-sonatas add identifier publisher-number "EL03497"
-publication @p-rachmaninoff-sonatas add identifier publisher-number "Vol V"
-publication @p-rachmaninoff-sonatas add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-sonatas add work "Piano Sonata No. 1" --new --as w-rachmaninoff-op28
-work @w-rachmaninoff-op28 add catalog-number "Op. 28"
-work @w-rachmaninoff-op28 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-sonatas add work "Piano Sonata No. 2" --new --as w-rachmaninoff-op36
-work @w-rachmaninoff-op36 add catalog-number "Op. 36"
-work @w-rachmaninoff-op36 add contributor "Sergei Rachmaninoff" composer
+import 978-0-7692-3971-2 --as p-rachmaninoff-sonatas
+publication @p-rachmaninoff-sonatas set title Sonatas
+publication @p-rachmaninoff-sonatas add contributor @c-sergei-rachmaninoff composer
 publication @p-rachmaninoff-sonatas commit
 
-import "Three piano concertos" --as p-rachmaninoff-concertos
-publication @p-rachmaninoff-concertos add identifier isbn 978-1-4234-8916-0
-publication @p-rachmaninoff-concertos add identifier publisher-number "Vol 2087"
-publication @p-rachmaninoff-concertos add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-concertos commit
+import 'Symphony No. 2 arr. Kirkor' --as p-rachmaninoff-symphony-no-2-arr-kirkor
+publication @p-rachmaninoff-symphony-no-2-arr-kirkor add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-symphony-no-2-arr-kirkor add contributor @c-georgy-kirkor arr
+publication @p-rachmaninoff-symphony-no-2-arr-kirkor commit
 
-import "Transcriptions" --as p-rachmaninoff-transcriptions
-publication @p-rachmaninoff-transcriptions add identifier isbn 978-0-7692-3450-2
-publication @p-rachmaninoff-transcriptions add identifier publisher-number "EL03499"
-publication @p-rachmaninoff-transcriptions add identifier publisher-number "Vol VII"
-publication @p-rachmaninoff-transcriptions add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-transcriptions add work "Lilacs" --new --as w-rachmaninoff-op21-5
-work @w-rachmaninoff-op21-5 add catalog-number "Op. 21 No. 5"
-work @w-rachmaninoff-op21-5 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-transcriptions add work "Daisies" --new --as w-rachmaninoff-op38-3
-work @w-rachmaninoff-op38-3 add catalog-number "Op. 38 No. 3"
-work @w-rachmaninoff-op38-3 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-transcriptions add work "Scherzo" --new --as w-mendelssohn-tn-iii-7
-work @w-mendelssohn-tn-iii-7 add catalog-number "TN iii/7"
-work @w-mendelssohn-tn-iii-7 add contributor "Felix Mendelssohn" composer
-work @w-mendelssohn-tn-iii-7 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "The Brooklet" --new --as w-schubert-tn-iii-10
-work @w-schubert-tn-iii-10 add catalog-number "TN iii/10"
-work @w-schubert-tn-iii-10 add contributor "Franz Schubert" composer
-work @w-schubert-tn-iii-10 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Minuet" --new --as w-bizet-tn-iii-3
-work @w-bizet-tn-iii-3 add catalog-number "TN iii/3"
-work @w-bizet-tn-iii-3 add contributor "Georges Bizet" composer
-work @w-bizet-tn-iii-3 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Liebesleid" --new --as w-kreisler-tn-iii-5-1
-work @w-kreisler-tn-iii-5-1 add catalog-number "TN iii/5/1"
-work @w-kreisler-tn-iii-5-1 add contributor "Fritz Kreisler" composer
-work @w-kreisler-tn-iii-5-1 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Liebesfreud" --new --as w-kreisler-tn-iii-5-2
-work @w-kreisler-tn-iii-5-2 add catalog-number "TN iii/5/2"
-work @w-kreisler-tn-iii-5-2 add contributor "Fritz Kreisler" composer
-work @w-kreisler-tn-iii-5-2 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Lullaby" --new --as w-tchaikovsky-tn-iii-14
-work @w-tchaikovsky-tn-iii-14 add catalog-number "TN iii/14"
-work @w-tchaikovsky-tn-iii-14 add contributor "Pyotr Ilyich Tchaikovsky" composer
-work @w-tchaikovsky-tn-iii-14 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Hopak" --new --as w-mussorgsky-tn-iii-8
-work @w-mussorgsky-tn-iii-8 add catalog-number "TN iii/8"
-work @w-mussorgsky-tn-iii-8 add contributor "Modest Mussorgsky" composer
-work @w-mussorgsky-tn-iii-8 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "The Bumble-Bee" --new --as w-rimsky-korsakov-tn-iii-9
-work @w-rimsky-korsakov-tn-iii-9 add catalog-number "TN iii/9"
-work @w-rimsky-korsakov-tn-iii-9 add contributor "Nikolai Rimsky-Korsakov" composer
-work @w-rimsky-korsakov-tn-iii-9 add contributor "Sergei Rachmaninoff" arranger
-publication @p-rachmaninoff-transcriptions add work "Suite from the Partita in E major" --new --as w-bach-tn-iii-1
-work @w-bach-tn-iii-1 add catalog-number "TN iii/1"
-work @w-bach-tn-iii-1 add contributor "Johann Sebastian Bach" composer
-work @w-bach-tn-iii-1 add contributor "Sergei Rachmaninoff" arranger
+import 978-1-4234-8916-0 --as p-rachmaninoff-three-piano-concertos
+publication @p-rachmaninoff-three-piano-concertos set title 'Three piano concertos'
+publication @p-rachmaninoff-three-piano-concertos add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-three-piano-concertos commit
+
+import 978-0-7692-3450-2 --as p-rachmaninoff-transcriptions
+publication @p-rachmaninoff-transcriptions set title Transcriptions
+publication @p-rachmaninoff-transcriptions add contributor @c-sergei-rachmaninoff composer
 publication @p-rachmaninoff-transcriptions commit
 
-import "Variations on a theme of Chopin and Corelli" --as p-rachmaninoff-variations
-publication @p-rachmaninoff-variations add identifier isbn 0-7692-3972-2
-publication @p-rachmaninoff-variations add identifier publisher-number "EL03498"
-publication @p-rachmaninoff-variations add identifier publisher-number "Vol VI"
-publication @p-rachmaninoff-variations add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-variations add work "Variations on a Theme of Chopin" --new --as w-rachmaninoff-op22
-work @w-rachmaninoff-op22 add catalog-number "Op. 22"
-work @w-rachmaninoff-op22 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-variations add work "Variations on a Theme of Corelli" --new --as w-rachmaninoff-op42
-work @w-rachmaninoff-op42 add catalog-number "Op. 42"
-work @w-rachmaninoff-op42 add contributor "Sergei Rachmaninoff" composer
-publication @p-rachmaninoff-variations commit
+import 978-0-7692-3972-9 --as p-rachmaninoff-variations-on-a-theme-of-chopin-and-corelli
+publication @p-rachmaninoff-variations-on-a-theme-of-chopin-and-corelli set title 'Variations on a theme of Chopin and Corelli'
+publication @p-rachmaninoff-variations-on-a-theme-of-chopin-and-corelli add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-variations-on-a-theme-of-chopin-and-corelli commit
 
-import "Three gymnopedies for the piano" --as p-satie-gymnopedies
-publication @p-satie-gymnopedies add identifier isbn 978-0-7935-2590-4
-publication @p-satie-gymnopedies add identifier publisher-number "Vol 1869"
-publication @p-satie-gymnopedies add contributor "Erik Satie" composer
-publication @p-satie-gymnopedies commit
+import 978-0-7935-2590-4 --as p-satie-three-gymnopedies-for-the-piano
+publication @p-satie-three-gymnopedies-for-the-piano set title 'Three gymnopedies for the piano'
+publication @p-satie-three-gymnopedies-for-the-piano add contributor 'Erik Satie' composer --new --as c-erik-satie
+publication @p-satie-three-gymnopedies-for-the-piano commit
 
-import "Scenes from childhood" --as p-schumann-scenes-from-childhood
-publication @p-schumann-scenes-from-childhood add identifier isbn 1-56939-408-3
-publication @p-schumann-scenes-from-childhood add identifier publisher-number "H 1013"
-publication @p-schumann-scenes-from-childhood add contributor "Robert Schumann" composer
-publication @p-schumann-scenes-from-childhood commit
+import 978-1-56939-408-3 --as p-schumann-scenes-from-childhood-op-15
+publication @p-schumann-scenes-from-childhood-op-15 set title 'Scenes From Childhood Op. 15'
+publication @p-schumann-scenes-from-childhood-op-15 add contributor 'Robert Schumann' composer --new --as c-robert-schumann
+publication @p-schumann-scenes-from-childhood-op-15 commit
 
-import "Concerto no 1" --as p-tchaikovsky-concerto-1
-publication @p-tchaikovsky-concerto-1 add identifier isbn 978-1-4234-6595-9
-publication @p-tchaikovsky-concerto-1 add identifier publisher-number "Vol 1045"
-publication @p-tchaikovsky-concerto-1 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-tchaikovsky-concerto-1 commit
+import 978-0-486-22919-5 --as p-scriabin-the-complete-preludes-etudes-for-pianoforte-solo
+publication @p-scriabin-the-complete-preludes-etudes-for-pianoforte-solo set title 'The complete preludes & etudes for pianoforte solo'
+publication @p-scriabin-the-complete-preludes-etudes-for-pianoforte-solo add contributor 'Aleksandr Nikolayevich Scriabin' composer --new --as c-aleksandr-nikolayevich-scriabin
+publication @p-scriabin-the-complete-preludes-etudes-for-pianoforte-solo commit
 
-import "Russian piano album" --as p-russian-piano-album
-publication @p-russian-piano-album add identifier isbn 978-1-4950-0871-9
-publication @p-russian-piano-album add identifier publisher-number "Vol 2115"
-publication @p-russian-piano-album add work "Clowns" --new --as w-kabalevsky-op39-20
-work @w-kabalevsky-op39-20 add catalog-number "Op. 39 No. 20"
-work @w-kabalevsky-op39-20 add contributor "Dmitry Kabalevsky" composer
-publication @p-russian-piano-album add work "Piano Sonata No. 3" --new --as w-kabalevsky-op46
-work @w-kabalevsky-op46 add catalog-number "Op. 46"
-work @w-kabalevsky-op46 add contributor "Dmitry Kabalevsky" composer
-publication @p-russian-piano-album add work @w-mussorgsky-promenade-1
-publication @p-russian-piano-album add work @w-mussorgsky-gnome
-publication @p-russian-piano-album add work @w-mussorgsky-promenade-2
-publication @p-russian-piano-album add work @w-mussorgsky-old-castle
-publication @p-russian-piano-album add work @w-mussorgsky-promenade-3
-publication @p-russian-piano-album add work @w-mussorgsky-tuileries
-publication @p-russian-piano-album add work @w-mussorgsky-bydlo
-publication @p-russian-piano-album add work @w-mussorgsky-promenade-4
-publication @p-russian-piano-album add work @w-mussorgsky-chicks
-publication @p-russian-piano-album add work @w-mussorgsky-goldenberg
-publication @p-russian-piano-album add work @w-mussorgsky-promenade-5
-publication @p-russian-piano-album add work @w-mussorgsky-limoges
-publication @p-russian-piano-album add work @w-mussorgsky-catacombs
-publication @p-russian-piano-album add work @w-mussorgsky-baba-yaga
-publication @p-russian-piano-album add work @w-mussorgsky-great-gate
-publication @p-russian-piano-album add work "Visions fugitives No. 1" --new --as w-prokofiev-op22-1
-work @w-prokofiev-op22-1 add catalog-number "Op. 22 No. 1"
-work @w-prokofiev-op22-1 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 2" --new --as w-prokofiev-op22-2
-work @w-prokofiev-op22-2 add catalog-number "Op. 22 No. 2"
-work @w-prokofiev-op22-2 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 3" --new --as w-prokofiev-op22-3
-work @w-prokofiev-op22-3 add catalog-number "Op. 22 No. 3"
-work @w-prokofiev-op22-3 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 4" --new --as w-prokofiev-op22-4
-work @w-prokofiev-op22-4 add catalog-number "Op. 22 No. 4"
-work @w-prokofiev-op22-4 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 5" --new --as w-prokofiev-op22-5
-work @w-prokofiev-op22-5 add catalog-number "Op. 22 No. 5"
-work @w-prokofiev-op22-5 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 6" --new --as w-prokofiev-op22-6
-work @w-prokofiev-op22-6 add catalog-number "Op. 22 No. 6"
-work @w-prokofiev-op22-6 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 7" --new --as w-prokofiev-op22-7
-work @w-prokofiev-op22-7 add catalog-number "Op. 22 No. 7"
-work @w-prokofiev-op22-7 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 8" --new --as w-prokofiev-op22-8
-work @w-prokofiev-op22-8 add catalog-number "Op. 22 No. 8"
-work @w-prokofiev-op22-8 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 9" --new --as w-prokofiev-op22-9
-work @w-prokofiev-op22-9 add catalog-number "Op. 22 No. 9"
-work @w-prokofiev-op22-9 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 10" --new --as w-prokofiev-op22-10
-work @w-prokofiev-op22-10 add catalog-number "Op. 22 No. 10"
-work @w-prokofiev-op22-10 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 11" --new --as w-prokofiev-op22-11
-work @w-prokofiev-op22-11 add catalog-number "Op. 22 No. 11"
-work @w-prokofiev-op22-11 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 12" --new --as w-prokofiev-op22-12
-work @w-prokofiev-op22-12 add catalog-number "Op. 22 No. 12"
-work @w-prokofiev-op22-12 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 13" --new --as w-prokofiev-op22-13
-work @w-prokofiev-op22-13 add catalog-number "Op. 22 No. 13"
-work @w-prokofiev-op22-13 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 14" --new --as w-prokofiev-op22-14
-work @w-prokofiev-op22-14 add catalog-number "Op. 22 No. 14"
-work @w-prokofiev-op22-14 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 15" --new --as w-prokofiev-op22-15
-work @w-prokofiev-op22-15 add catalog-number "Op. 22 No. 15"
-work @w-prokofiev-op22-15 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 16" --new --as w-prokofiev-op22-16
-work @w-prokofiev-op22-16 add catalog-number "Op. 22 No. 16"
-work @w-prokofiev-op22-16 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 17" --new --as w-prokofiev-op22-17
-work @w-prokofiev-op22-17 add catalog-number "Op. 22 No. 17"
-work @w-prokofiev-op22-17 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 18" --new --as w-prokofiev-op22-18
-work @w-prokofiev-op22-18 add catalog-number "Op. 22 No. 18"
-work @w-prokofiev-op22-18 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 19" --new --as w-prokofiev-op22-19
-work @w-prokofiev-op22-19 add catalog-number "Op. 22 No. 19"
-work @w-prokofiev-op22-19 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Visions fugitives No. 20" --new --as w-prokofiev-op22-20
-work @w-prokofiev-op22-20 add catalog-number "Op. 22 No. 20"
-work @w-prokofiev-op22-20 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work "Prelude in C major" --new --as w-prokofiev-op12-7
-work @w-prokofiev-op12-7 add catalog-number "Op. 12 No. 7"
-work @w-prokofiev-op12-7 add contributor "Sergei Prokofiev" composer
-publication @p-russian-piano-album add work @w-rachmaninoff-op3-2
-publication @p-russian-piano-album add work @w-rachmaninoff-op23-1
-publication @p-russian-piano-album add work @w-rachmaninoff-op23-4
-publication @p-russian-piano-album add work @w-rachmaninoff-op23-5
-publication @p-russian-piano-album add work @w-rachmaninoff-op23-10
-publication @p-russian-piano-album add work @w-rachmaninoff-op32-5
-publication @p-russian-piano-album add work @w-rachmaninoff-op32-7
-publication @p-russian-piano-album add work @w-rachmaninoff-op32-10
-publication @p-russian-piano-album add work @w-rachmaninoff-op32-11
-publication @p-russian-piano-album add work @w-rachmaninoff-op32-12
-publication @p-russian-piano-album add work @w-rachmaninoff-op33-2
-publication @p-russian-piano-album add work @w-rachmaninoff-op33-5
-publication @p-russian-piano-album add work @w-rachmaninoff-op33-7
-publication @p-russian-piano-album add work @w-rachmaninoff-op39-2
-publication @p-russian-piano-album add work "Adagio" --new --as w-shostakovich-adagio
-work @w-shostakovich-adagio add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Dance" --new --as w-shostakovich-dance
-work @w-shostakovich-dance add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Polka" --new --as w-shostakovich-polka
-work @w-shostakovich-polka add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Lyrical Waltz" --new --as w-shostakovich-lyrical-waltz
-work @w-shostakovich-lyrical-waltz add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Nocturne" --new --as w-shostakovich-nocturne
-work @w-shostakovich-nocturne add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Spanish Dance" --new --as w-shostakovich-spanish-dance
-work @w-shostakovich-spanish-dance add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "Spring Waltz" --new --as w-shostakovich-spring-waltz
-work @w-shostakovich-spring-waltz add contributor "Dmitri Shostakovich" composer
-publication @p-russian-piano-album add work "January: By the Hearth" --new --as w-tchaikovsky-op37a-1
-work @w-tchaikovsky-op37a-1 add catalog-number "Op. 37a No. 1"
-work @w-tchaikovsky-op37a-1 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "February: Carnival" --new --as w-tchaikovsky-op37a-2
-work @w-tchaikovsky-op37a-2 add catalog-number "Op. 37a No. 2"
-work @w-tchaikovsky-op37a-2 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "March: Song of the Lark" --new --as w-tchaikovsky-op37a-3
-work @w-tchaikovsky-op37a-3 add catalog-number "Op. 37a No. 3"
-work @w-tchaikovsky-op37a-3 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "April: Snowdrop" --new --as w-tchaikovsky-op37a-4
-work @w-tchaikovsky-op37a-4 add catalog-number "Op. 37a No. 4"
-work @w-tchaikovsky-op37a-4 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "May: Starlit Nights" --new --as w-tchaikovsky-op37a-5
-work @w-tchaikovsky-op37a-5 add catalog-number "Op. 37a No. 5"
-work @w-tchaikovsky-op37a-5 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "June: Barcarolle" --new --as w-tchaikovsky-op37a-6
-work @w-tchaikovsky-op37a-6 add catalog-number "Op. 37a No. 6"
-work @w-tchaikovsky-op37a-6 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "July: Song of the Reaper" --new --as w-tchaikovsky-op37a-7
-work @w-tchaikovsky-op37a-7 add catalog-number "Op. 37a No. 7"
-work @w-tchaikovsky-op37a-7 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "August: Harvest Song" --new --as w-tchaikovsky-op37a-8
-work @w-tchaikovsky-op37a-8 add catalog-number "Op. 37a No. 8"
-work @w-tchaikovsky-op37a-8 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "September: Hunter's Song" --new --as w-tchaikovsky-op37a-9
-work @w-tchaikovsky-op37a-9 add catalog-number "Op. 37a No. 9"
-work @w-tchaikovsky-op37a-9 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "October: Autumn Song" --new --as w-tchaikovsky-op37a-10
-work @w-tchaikovsky-op37a-10 add catalog-number "Op. 37a No. 10"
-work @w-tchaikovsky-op37a-10 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "November: Troika" --new --as w-tchaikovsky-op37a-11
-work @w-tchaikovsky-op37a-11 add catalog-number "Op. 37a No. 11"
-work @w-tchaikovsky-op37a-11 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "December: Christmas" --new --as w-tchaikovsky-op37a-12
-work @w-tchaikovsky-op37a-12 add catalog-number "Op. 37a No. 12"
-work @w-tchaikovsky-op37a-12 add contributor "Pyotr Ilyich Tchaikovsky" composer
-publication @p-russian-piano-album add work "The Nutcracker Suite" --new --as w-tchaikovsky-op71a
-work @w-tchaikovsky-op71a add catalog-number "Op. 71a"
-work @w-tchaikovsky-op71a add contributor "Pyotr Ilyich Tchaikovsky" composer
+import 978-0-7935-3011-3 --as p-scriabin-piano-sonatas
+publication @p-scriabin-piano-sonatas set title 'Piano Sonatas'
+publication @p-scriabin-piano-sonatas add contributor @c-aleksandr-nikolayevich-scriabin composer
+publication @p-scriabin-piano-sonatas commit
+
+import 979-0-014-03139-8 --as p-shostakovich-24-preludes-and-fugues
+publication @p-shostakovich-24-preludes-and-fugues set title '24 Preludes and Fugues'
+publication @p-shostakovich-24-preludes-and-fugues add contributor 'Dmitri Shostakovich' composer --new --as c-dmitri-shostakovich
+publication @p-shostakovich-24-preludes-and-fugues commit
+
+import 979-8-2711-4303-8 --as p-shostakovich-piano-preludes-op-34
+publication @p-shostakovich-piano-preludes-op-34 set title 'Piano Preludes Op 34'
+publication @p-shostakovich-piano-preludes-op-34 add contributor @c-dmitri-shostakovich composer
+publication @p-shostakovich-piano-preludes-op-34 commit
+
+import 978-0-634-06945-1 --as p-tchaikovsky-album-for-the-young-op-39
+publication @p-tchaikovsky-album-for-the-young-op-39 set title 'Album for the Young Op 39'
+publication @p-tchaikovsky-album-for-the-young-op-39 add contributor 'Pyotr Ilyich Tchaikovsky' composer --new --as c-pyotr-ilyich-tchaikovsky
+publication @p-tchaikovsky-album-for-the-young-op-39 commit
+
+import 978-1-4234-6595-9 --as p-tchaikovsky-concerto-no-1-in-b-minor-for-the-piano-op-23
+publication @p-tchaikovsky-concerto-no-1-in-b-minor-for-the-piano-op-23 set title 'Concerto No 1 In B Minor For The Piano Op 23'
+publication @p-tchaikovsky-concerto-no-1-in-b-minor-for-the-piano-op-23 add contributor @c-pyotr-ilyich-tchaikovsky composer
+publication @p-tchaikovsky-concerto-no-1-in-b-minor-for-the-piano-op-23 commit
+
+import 978-1-4950-0871-9 --as p-russian-piano-album
+publication @p-russian-piano-album set title 'Russian Piano Album'
 publication @p-russian-piano-album commit
 
-import "Scales and chords" --as p-scales-and-chords
-publication @p-scales-and-chords add identifier isbn 978-1-4950-7239-0
-publication @p-scales-and-chords add identifier publisher-number "Vol 392"
+import 978-1-4950-7239-0 --as p-scales-and-chords
+publication @p-scales-and-chords set title 'Scales and chords'
 publication @p-scales-and-chords commit
 
-import "Scales and finger exercises" --as p-scales-and-finger-exercises
-publication @p-scales-and-finger-exercises add identifier isbn 978-1-4950-0547-3
-publication @p-scales-and-finger-exercises add identifier publisher-number "Vol 2107"
+import 978-1-4950-0547-3 --as p-scales-and-finger-exercises
+publication @p-scales-and-finger-exercises set title 'Scales and finger exercises'
 publication @p-scales-and-finger-exercises commit
+
+wait

@@ -750,22 +750,22 @@ async fn isbn_import_review() {
 }
 
 #[tokio::test]
-async fn the_music_script_runs() {
-    let (engine, _dir) = scorarium_test::demo_engine().await;
-    let script = include_str!("../../../tools/music.scr");
-    let mut out = Vec::new();
-    scorarium_cli::run_script(&engine, script.as_bytes(), &mut out, false)
-        .await
-        .unwrap();
+async fn the_library_scripts_run() {
+    let scripts = [
+        ("Music", include_str!("../../../tools/music.scr")),
+        ("Books", include_str!("../../../tools/books.scr")),
+    ];
+    for (name, script) in scripts {
+        let (engine, _dir) = scorarium_test::empty_engine().await;
+        scorarium_cli::run_script(&engine, script.as_bytes(), &mut Vec::new(), false)
+            .await
+            .unwrap();
 
-    let libraries = engine.libraries().await.unwrap();
-    let music = libraries.iter().find(|l| l.name() == "Music").unwrap();
-    let publications = music.publications().await.unwrap();
-    assert!(
-        publications
-            .iter()
-            .any(|p| p.title() == Some("Isle of the Dead"))
-    );
+        let libraries = engine.libraries().await.unwrap();
+        let library = libraries.iter().find(|l| l.name() == name).unwrap();
+        let imports = script.lines().filter(|l| l.starts_with("import ")).count();
+        assert_eq!(library.publication_count(false).await.unwrap(), imports);
+    }
 }
 
 #[tokio::test]
