@@ -1,4 +1,4 @@
-use scorarium_client::open_library::Edition;
+use scorarium_client::open_library::{Edition, cover_url};
 use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
@@ -70,6 +70,13 @@ pub(crate) async fn edition(
         }
     }
     proposals.push(Proposal::Link(edition.url().parse()?));
+    // A cover stored on disk cannot be compared to a URL, so we only make cover proposals if
+    // there's no existing cover.
+    if publication.cover().is_none() {
+        for id in &edition.covers {
+            proposals.push(Proposal::Cover(cover_url(*id).try_into()?));
+        }
+    }
 
     let (mut accepted, mut present) = (0, 0);
     for proposal in proposals {
@@ -513,12 +520,13 @@ mod tests {
                 "publisher Dover Publications",
                 "year 1987",
                 "link https://openlibrary.org/books/OL7636066M",
+                "cover https://covers.openlibrary.org/b/id/310277-M.jpg",
                 "contributor Ludwig van Beethoven author",
             ]
         );
 
         let proposals = publication.proposals().await.unwrap();
-        let Proposal::Contributor { person, .. } = &proposals[4].value else {
+        let Proposal::Contributor { person, .. } = &proposals[5].value else {
             panic!("expected a contributor proposal");
         };
         assert!(person.is_draft());
@@ -586,7 +594,7 @@ mod tests {
             .unwrap();
 
         let proposals = publication.proposals().await.unwrap();
-        let Proposal::Contributor { person, role } = &proposals[4].value else {
+        let Proposal::Contributor { person, role } = &proposals[5].value else {
             panic!("expected a contributor proposal");
         };
         assert_eq!(person.id(), beethoven.id());
