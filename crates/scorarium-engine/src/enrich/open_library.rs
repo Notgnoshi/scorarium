@@ -1,4 +1,4 @@
-use scorarium_client::open_library::{Edition, cover_url};
+use scorarium_client::open_library::{Edition, cover_url, photo_url};
 use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
@@ -289,6 +289,11 @@ pub(crate) async fn author(
         .collect();
     let birth_year = record.birth_date.as_deref().and_then(year);
     let death_year = record.death_date.as_deref().and_then(year);
+    let pictures: Vec<person::Proposal> = record
+        .photos
+        .iter()
+        .map(|id| photo_url(*id).try_into().map(person::Proposal::Profile))
+        .collect::<Result<_>>()?;
 
     let author: Role = "author".parse().expect("a literal role");
     let Some(person) = best_match(matches) else {
@@ -303,9 +308,12 @@ pub(crate) async fn author(
             .birth_year(birth_year)
             .death_year(death_year)
             .links(links);
-        publication
+        let person = publication
             .propose_new_contributor(Source::OpenLibrary, person, &author)
             .await?;
+        for picture in pictures {
+            person.propose(Source::OpenLibrary, picture).await?;
+        }
         return Ok(());
     };
     let proposal = Proposal::Contributor {
@@ -322,6 +330,9 @@ pub(crate) async fn author(
     }
     if let Some(year) = death_year {
         proposals.push(person::Proposal::DeathYear(year));
+    }
+    if person.profile().is_none() {
+        proposals.extend(pictures);
     }
     for proposal in proposals {
         if queue.is_cancelled() {
@@ -422,12 +433,10 @@ mod tests {
     /// Render a person proposal as its URL or its year
     fn fact_of(proposal: &entity::Proposal<Person>) -> String {
         match &proposal.value {
-            person::Proposal::Link(url) => url.to_string(),
+            person::Proposal::Link(url) | person::Proposal::Profile(url) => url.to_string(),
             person::Proposal::BirthYear(year) => format!("born {year}"),
             person::Proposal::DeathYear(year) => format!("died {year}"),
-            person::Proposal::Name(_) | person::Proposal::Profile(_) => {
-                panic!("expected a link or a year proposal")
-            }
+            person::Proposal::Name(_) => panic!("expected a link, a picture, or a year proposal"),
         }
     }
 
@@ -530,7 +539,21 @@ mod tests {
             panic!("expected a contributor proposal");
         };
         assert!(person.is_draft());
-        assert!(person.proposals().await.unwrap().is_empty());
+        let pictures: Vec<person::Proposal> = person
+            .proposals()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|proposal| proposal.value)
+            .collect();
+        assert_eq!(
+            pictures,
+            [person::Proposal::Profile(
+                "https://covers.openlibrary.org/a/id/14418181-M.jpg"
+                    .parse()
+                    .unwrap()
+            )]
+        );
         let links: Vec<String> = person
             .links()
             .iter()
@@ -621,6 +644,7 @@ mod tests {
                 "https://librivox.org/author/4437",
                 "born 1770",
                 "died 1827",
+                "https://covers.openlibrary.org/a/id/14418181-M.jpg",
             ]
         );
     }
