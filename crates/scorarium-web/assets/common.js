@@ -58,7 +58,7 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("keydown", (event) => {
     if (!isShortcut(event)) return;
     const element = document.querySelector(`[data-hotkey="${CSS.escape(event.key)}"]`);
-    if (element) {
+    if (element?.checkVisibility()) {
         event.preventDefault();
         element.click();
     }
