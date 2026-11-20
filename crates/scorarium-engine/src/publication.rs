@@ -18,7 +18,7 @@ use crate::entity::{
 };
 use crate::holding::{Holding, HoldingId, HoldingKind, NewHolding};
 use crate::library::LibraryId;
-use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
 use crate::person::{self, NewPerson, Person, PersonId};
 use crate::review::{self, ReviewItem};
 use crate::suggest::{Candidate, CandidateScope};
@@ -1800,22 +1800,7 @@ impl Entity for Publication {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
-        let olid = self.links.iter().find_map(|link| {
-            link.record
-                .as_ref()
-                .filter(|record| record.kind() == LinkKind::OpenLibrary)
-                .map(|record| record.id().to_string())
-        });
-        let key = match olid {
-            // If we have the OLID for this publication, use it, otherwise try to use the ISBN if it exists
-            Some(olid) => Some(open_library::EditionKey::Olid(olid)),
-            None => self
-                .identifiers
-                .iter()
-                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
-                .cloned()
-                .map(open_library::EditionKey::Isbn),
-        };
+        let key = open_library::EditionKey::of(self);
         let engine = self.engine.clone();
         let id = self.id;
         Ok(self

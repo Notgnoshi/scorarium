@@ -12,9 +12,44 @@ use crate::value::{Classification, NonBlank, Year};
 use crate::{Engine, Error, Result};
 
 /// How to ask Open Library for information on an edition
+#[derive(Debug)]
 pub(crate) enum EditionKey {
     Olid(String),
     Isbn(Identifier),
+}
+
+impl EditionKey {
+    /// Derive the key from the Open Library link of `publication`, or else its first ISBN
+    pub(crate) fn of(publication: &Publication) -> Option<EditionKey> {
+        let olid = publication.links().iter().find_map(|link| {
+            link.record
+                .as_ref()
+                .filter(|record| record.kind() == LinkKind::OpenLibrary)
+                .map(|record| EditionKey::Olid(record.id().to_string()))
+        });
+        olid.or_else(|| {
+            publication
+                .identifiers()
+                .iter()
+                .find(|identifier| identifier.kind() == IdentifierKind::Isbn)
+                .cloned()
+                .map(EditionKey::Isbn)
+        })
+    }
+
+    /// Look up the edition that the key addresses
+    async fn fetch(&self, engine: &Engine) -> Result<Option<Edition>> {
+        let open_library = engine.client().open_library();
+        let edition = match self {
+            EditionKey::Olid(olid) => open_library.edition(olid, Priority::Background).await?,
+            EditionKey::Isbn(isbn) => {
+                open_library
+                    .edition_by_isbn(isbn.as_str(), Priority::Background)
+                    .await?
+            }
+        };
+        Ok(edition)
+    }
 }
 
 /// Start Open Library enrichment from the edition `key`
@@ -27,20 +62,8 @@ pub(crate) async fn edition(
     if queue.is_cancelled() {
         return Ok(());
     }
-    let open_library = engine.client().open_library();
-    let edition = match &key {
-        EditionKey::Olid(olid) => {
-            tracing::debug!("enriching publication {publication} from Open Library by OLID {olid}");
-            open_library.edition(olid, Priority::Background).await?
-        }
-        EditionKey::Isbn(isbn) => {
-            tracing::debug!("enriching publication {publication} from Open Library by ISBN {isbn}");
-            open_library
-                .edition_by_isbn(isbn.as_str(), Priority::Background)
-                .await?
-        }
-    };
-    let Some(edition) = edition else {
+    tracing::debug!("enriching publication {publication} from Open Library by {key:?}");
+    let Some(edition) = key.fetch(&engine).await? else {
         // A 404 is a definite answer, so there is nothing to propose.
         return Ok(());
     };
