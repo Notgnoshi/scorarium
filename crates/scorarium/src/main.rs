@@ -59,9 +59,13 @@ enum Command {
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
-    let filter = EnvFilter::builder()
+    let mut filter = EnvFilter::builder()
         .with_default_directive(args.log_level.into())
         .from_env_lossy();
+    if std::env::var_os(EnvFilter::DEFAULT_ENV).is_none() {
+        let level = args.log_level.min(LevelFilter::INFO);
+        filter = filter.add_directive(format!("hyper_util={level}").parse()?);
+    }
 
     let log = LogWriter::default();
 

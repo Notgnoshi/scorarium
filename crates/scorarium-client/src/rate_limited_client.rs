@@ -10,6 +10,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
+use tracing::{Instrument, Span};
 use url::Url;
 
 use crate::disk_cache::DiskCache;
@@ -47,6 +48,8 @@ struct Job {
     priority: Priority,
     retry: bool,
     attempts: u8,
+    /// A root tracing span to anchor logs to
+    span: Span,
     reply: oneshot::Sender<eyre::Result<http::Response<Bytes>>>,
 }
 
@@ -65,13 +68,15 @@ struct JobDeque {
 }
 
 impl JobDeque {
-    /// Leaves the source alone for a while
-    fn pause(&mut self, duration: Duration, by: Outcome) {
-        let until = Instant::now() + duration.min(MAX_PAUSE);
+    /// Leave the source alone for a while, and return for how long
+    fn pause(&mut self, duration: Duration, by: Outcome) -> Duration {
+        let duration = duration.min(MAX_PAUSE);
+        let until = Instant::now() + duration;
         if self.paused_until.is_none_or(|paused| until > paused) {
             self.paused_until = Some(until);
             self.paused_by = Some(by);
         }
+        duration
     }
 
     /// How long to leave the source alone after one more failure in a row
@@ -256,6 +261,7 @@ fn enqueue(
         priority,
         retry: priority == Priority::Background,
         attempts: 0,
+        span: Span::current(),
         reply,
     });
     wake.notify_one();
@@ -300,7 +306,9 @@ async fn work(
         if let Some(cache) = &cache
             && let Some(cached) = cache.get(&job.url, &job.headers).await
         {
-            tracing::debug!(source = name, url = %job.url, "Cached response while queued");
+            job.span.in_scope(|| {
+                tracing::debug!(source = name, url = %job.url, "Cached response while queued");
+            });
             let _eat_err = job.reply.send(Ok(cached));
             continue;
         }
@@ -309,7 +317,9 @@ async fn work(
         let url = job.url.clone();
         let attempt = tokio::time::timeout(
             limits.timeout,
-            transport.get(job.url.clone(), job.headers.clone()),
+            transport
+                .get(job.url.clone(), job.headers.clone())
+                .instrument(job.span.clone()),
         );
         let at = SystemTime::now();
         let started = Instant::now();
@@ -333,14 +343,19 @@ async fn work(
             ),
         };
         let duration = started.elapsed();
-        match &outcome {
+        let (status, error) = match &outcome {
+            Outcome::Status(status) => (Some(status.as_u16()), None),
+            Outcome::Error(text) => (None, Some(text.clone())),
+            Outcome::Timeout => (None, Some(format!("timed out after {:?}", limits.timeout))),
+        };
+        job.span.in_scope(|| match &outcome {
             // An answer, even a 404, is the source working as intended
-            Outcome::Status(status) if status.is_success() || *status == StatusCode::NOT_FOUND => {
+            Outcome::Status(code) if code.is_success() || *code == StatusCode::NOT_FOUND => {
                 tracing::info!(
                     source = name,
                     %url,
                     attempt = job.attempts,
-                    ?outcome,
+                    status,
                     duration_ms = duration.as_millis(),
                     "API request"
                 );
@@ -350,12 +365,13 @@ async fn work(
                     source = name,
                     %url,
                     attempt = job.attempts,
-                    ?outcome,
+                    status,
+                    error,
                     duration_ms = duration.as_millis(),
                     "API request failed"
                 );
             }
-        }
+        });
         log.record(CallRecord {
             source: name,
             url: url.clone(),
@@ -396,7 +412,9 @@ async fn work(
             let _eat_err = job.reply.send(result);
             continue;
         };
-        deque.lock().unwrap().pause(pause, outcome);
+        let pause = deque.lock().unwrap().pause(pause, outcome);
+        job.span
+            .in_scope(|| tracing::error!("{name} paused for {pause:?}"));
         if job.retry && job.attempts < MAX_ATTEMPTS {
             deque.lock().unwrap().push(job);
             continue;

@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio::sync::watch;
 use tokio::task::AbortHandle;
+use tracing::{Instrument, Span, info_span};
 
 use crate::entity::{AnyEntityId, Timestamp};
 use crate::{Engine, Result};
@@ -44,15 +45,25 @@ pub(crate) struct Task {
     queued_at: Timestamp,
     status: watch::Sender<EnrichmentStatus>,
     subtasks: Mutex<Vec<AbortHandle>>,
+    span: Span,
 }
 
 impl Task {
     fn new(root: AnyEntityId) -> Task {
+        // The task outlives the web request that starts it, so it must not log under its span.
+        let span = match root {
+            AnyEntityId::Publication(id) => {
+                info_span!(parent: None, "enrich", publication = id.get())
+            }
+            AnyEntityId::Work(id) => info_span!(parent: None, "enrich", work = id.get()),
+            AnyEntityId::Person(id) => info_span!(parent: None, "enrich", person = id.get()),
+        };
         Task {
             root,
             queued_at: chrono::Utc::now(),
             status: watch::Sender::new(EnrichmentStatus::default()),
             subtasks: Mutex::default(),
+            span,
         }
     }
 
@@ -74,6 +85,7 @@ impl Task {
             in_progress
         });
         if cancelled {
+            self.span.in_scope(|| tracing::info!("cancelled"));
             for subtask in subtasks.drain(..) {
                 subtask.abort();
             }
@@ -97,14 +109,16 @@ impl SubTaskQueue {
             task: Arc::clone(&self.task),
             succeeded: false,
         };
-        let root = self.task.root;
-        let handle = tokio::spawn(async move {
-            let mut outcome = outcome;
-            match subtask.await {
-                Ok(()) => outcome.succeeded = true,
-                Err(e) => tracing::error!("Enrichment subtask of {root:?} failed: {e}"),
+        let handle = tokio::spawn(
+            async move {
+                let mut outcome = outcome;
+                match subtask.await {
+                    Ok(()) => outcome.succeeded = true,
+                    Err(e) => tracing::error!("lookup failed: {e}"),
+                }
             }
-        });
+            .instrument(self.task.span.clone()),
+        );
         subtasks.push(handle.abort_handle());
     }
 
@@ -121,14 +135,31 @@ struct Outcome {
 
 impl Drop for Outcome {
     fn drop(&mut self) {
-        self.task.status.send_modify(|status| {
-            status.pending -= 1;
+        let mut status = EnrichmentStatus::default();
+        self.task.status.send_modify(|current| {
+            current.pending -= 1;
             if self.succeeded {
-                status.successful += 1;
+                current.successful += 1;
             } else {
-                status.failed += 1;
+                current.failed += 1;
             }
+            // Copy under the lock, so that only the last subtask to end sees none pending.
+            status = *current;
         });
+        let _entered = self.task.span.enter();
+        match status.state() {
+            EnrichmentState::Completed => tracing::info!(
+                successful = status.successful,
+                failed = status.failed,
+                "finished"
+            ),
+            EnrichmentState::Failed => tracing::error!(
+                successful = status.successful,
+                failed = status.failed,
+                "finished"
+            ),
+            EnrichmentState::InProgress | EnrichmentState::Cancelled => {}
+        }
     }
 }
 
@@ -204,7 +235,8 @@ impl Engine {
         let enrichment = Enrichment::new(&task);
         // The registry stays locked while the seeds are enqueued, so that no one can find the new
         // task before its seeds are counted and mistake it for a finished one.
-        enqueue_subtasks(&SubTaskQueue { task });
+        let span = task.span.clone();
+        span.in_scope(|| enqueue_subtasks(&SubTaskQueue { task }));
         enrichment
     }
 
@@ -226,7 +258,8 @@ impl Engine {
             }
         };
         let enrichment = Enrichment::new(&task);
-        enqueue_subtasks(&SubTaskQueue { task });
+        let span = task.span.clone();
+        span.in_scope(|| enqueue_subtasks(&SubTaskQueue { task }));
         enrichment
     }
 

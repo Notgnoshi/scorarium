@@ -178,6 +178,23 @@ pub enum Proposal {
     Cover(HttpUrl),
 }
 
+impl Proposal {
+    /// Return the name of the field the proposal edits
+    pub(crate) fn field(&self) -> &'static str {
+        match self {
+            Proposal::Title(_) => "title",
+            Proposal::Subtitle(_) => "subtitle",
+            Proposal::Publisher(_) => "publisher",
+            Proposal::Year(_) => "year",
+            Proposal::Identifier(_) => "identifier",
+            Proposal::Contributor { .. } => "contributor",
+            Proposal::Contents(_) => "contents",
+            Proposal::Link(_) => "link",
+            Proposal::Cover(_) => "cover",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Publication {
     engine: Engine,
@@ -450,10 +467,9 @@ impl Publication {
         let engine = self.engine.clone();
         let id = self.id;
         self.engine
-            .extend_enrichment(AnyEntityId::Publication(id), |queue| {
-                if let Some(key) = key {
-                    queue.enqueue(open_library::covers(engine, id, key, queue.clone()));
-                }
+            .extend_enrichment(AnyEntityId::Publication(id), |queue| match key {
+                Some(key) => queue.enqueue(open_library::covers(engine, id, key, queue.clone())),
+                None => tracing::info!("no ISBN or Open Library link to look up"),
             })
     }
 
@@ -462,36 +478,35 @@ impl Publication {
     /// Returns [Error::NotFound] if the publication has been deleted.
     pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
         let (mut work, mut person) = (None, None);
-        let (field, text) = match &value {
-            Proposal::Title(title) => ("title", Some(title.parse::<NonBlank>()?.to_string())),
+        let field = value.field();
+        let text = match &value {
+            Proposal::Title(title) => Some(title.parse::<NonBlank>()?.to_string()),
             Proposal::Subtitle(subtitle) => {
                 let subtitle = clean_text(Some(subtitle))
                     .ok_or_else(|| Error::InvalidValue("A subtitle cannot be blank.".into()))?;
-                ("subtitle", Some(subtitle.to_string()))
+                Some(subtitle.to_string())
             }
             Proposal::Publisher(publisher) => {
                 let publisher = clean_text(Some(publisher))
                     .ok_or_else(|| Error::InvalidValue("A publisher cannot be blank.".into()))?;
-                ("publisher", Some(publisher.to_string()))
+                Some(publisher.to_string())
             }
-            Proposal::Year(year) => ("year", Some(year.to_string())),
-            Proposal::Identifier(identifier) => (
-                "identifier",
-                Some(format!("{} {}", identifier.kind(), identifier.as_str())),
-            ),
+            Proposal::Year(year) => Some(year.to_string()),
+            Proposal::Identifier(identifier) => {
+                Some(format!("{} {}", identifier.kind(), identifier.as_str()))
+            }
             Proposal::Contributor {
                 person: proposed,
                 role,
             } => {
                 person = Some(proposed);
-                ("contributor", Some(role.as_str().to_string()))
+                Some(role.as_str().to_string())
             }
             Proposal::Contents(proposed) => {
                 work = Some(proposed);
-                ("contents", None)
+                None
             }
-            Proposal::Link(url) => ("link", Some(url.to_string())),
-            Proposal::Cover(url) => ("cover", Some(url.to_string())),
+            Proposal::Link(url) | Proposal::Cover(url) => Some(url.to_string()),
         };
         let mut tx = self.engine.begin_write().await?;
         let current = Publication::fetch(&self.engine, &mut tx, self.id)
@@ -1820,10 +1835,9 @@ impl Entity for Publication {
         let id = self.id;
         Ok(self
             .engine
-            .start_enrichment(AnyEntityId::Publication(id), |queue| {
-                if let Some(key) = key {
-                    queue.enqueue(open_library::edition(engine, id, key, queue.clone()));
-                }
+            .start_enrichment(AnyEntityId::Publication(id), |queue| match key {
+                Some(key) => queue.enqueue(open_library::edition(engine, id, key, queue.clone())),
+                None => tracing::info!("no ISBN or Open Library link to look up"),
             }))
     }
 

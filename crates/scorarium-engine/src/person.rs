@@ -95,6 +95,19 @@ pub enum Proposal {
     Profile(HttpUrl),
 }
 
+impl Proposal {
+    /// Return the name of the field the proposal edits
+    pub(crate) fn field(&self) -> &'static str {
+        match self {
+            Proposal::Name(_) => "name",
+            Proposal::BirthYear(_) => "birth_year",
+            Proposal::DeathYear(_) => "death_year",
+            Proposal::Link(_) => "link",
+            Proposal::Profile(_) => "profile",
+        }
+    }
+}
+
 /// The values of a person to create
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewPerson {
@@ -469,12 +482,11 @@ impl Person {
     ///
     /// Returns [Error::NotFound] if the person has been deleted.
     pub async fn propose(&self, source: Source, value: Proposal) -> Result<Option<ProposalId>> {
-        let (field, text) = match &value {
-            Proposal::Name(name) => ("name", name.parse::<NonBlank>()?.to_string()),
-            Proposal::BirthYear(year) => ("birth_year", year.to_string()),
-            Proposal::DeathYear(year) => ("death_year", year.to_string()),
-            Proposal::Link(url) => ("link", url.to_string()),
-            Proposal::Profile(url) => ("profile", url.to_string()),
+        let field = value.field();
+        let text = match &value {
+            Proposal::Name(name) => name.parse::<NonBlank>()?.to_string(),
+            Proposal::BirthYear(year) | Proposal::DeathYear(year) => year.to_string(),
+            Proposal::Link(url) | Proposal::Profile(url) => url.to_string(),
         };
         let mut tx = self.engine.begin_write().await?;
         let current = Person::fetch(&self.engine, &mut tx, self.id)
@@ -718,6 +730,9 @@ impl Entity for Person {
         Ok(self
             .engine
             .start_enrichment(AnyEntityId::Person(id), |queue| {
+                if olids.is_empty() {
+                    tracing::info!("no Open Library link to look up");
+                }
                 for olid in olids {
                     queue.enqueue(open_library::person(
                         engine.clone(),

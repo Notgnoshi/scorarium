@@ -1,3 +1,5 @@
+use std::fmt;
+
 use scorarium_client::open_library::{Author, Edition, cover_url, photo_url};
 use scorarium_client::{Priority, Source};
 
@@ -37,6 +39,14 @@ impl EditionKey {
         })
     }
 
+    /// Log that Open Library holds no edition under the key
+    fn log_not_found(&self) {
+        match self {
+            EditionKey::Olid(_) => tracing::info!("no {self}"),
+            EditionKey::Isbn(_) => tracing::info!("no edition with {self}"),
+        }
+    }
+
     /// Look up the edition that the key addresses
     async fn fetch(&self, engine: &Engine) -> Result<Option<Edition>> {
         let open_library = engine.client().open_library();
@@ -52,6 +62,21 @@ impl EditionKey {
     }
 }
 
+impl fmt::Display for EditionKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EditionKey::Olid(olid) => write!(f, "edition {olid}"),
+            EditionKey::Isbn(isbn) => write!(f, "ISBN {isbn}"),
+        }
+    }
+}
+
+/// Join the names of proposal fields, listing each run of the same field once
+fn field_list(mut fields: Vec<&'static str>) -> String {
+    fields.dedup();
+    fields.join(", ")
+}
+
 /// Start Open Library enrichment from the edition `key`
 pub(crate) async fn edition(
     engine: Engine,
@@ -62,9 +87,10 @@ pub(crate) async fn edition(
     if queue.is_cancelled() {
         return Ok(());
     }
-    tracing::debug!("enriching publication {publication} from Open Library by {key:?}");
+    tracing::debug!("looking up {key}");
     let Some(edition) = key.fetch(&engine).await? else {
         // A 404 is a definite answer, so there is nothing to propose.
+        key.log_not_found();
         return Ok(());
     };
     let Some(publication) = Publication::load(&engine, publication).await? else {
@@ -101,14 +127,15 @@ pub(crate) async fn edition(
         }
     }
 
-    let (mut accepted, mut present) = (0, 0);
+    let (mut proposed, mut held) = (Vec::new(), Vec::new());
     for proposal in proposals {
         if queue.is_cancelled() {
             return Ok(());
         }
+        let field = proposal.field();
         match publication.propose(Source::OpenLibrary, proposal).await {
-            Ok(Some(_)) => accepted += 1,
-            Ok(None) => present += 1,
+            Ok(Some(_)) => proposed.push(field),
+            Ok(None) => held.push(field),
             // A retry cannot fix a value the engine rejects as invalid
             Err(Error::InvalidValue(reason)) => {
                 tracing::error!("Open Library edition {} invalid: {reason}", edition.olid);
@@ -116,21 +143,27 @@ pub(crate) async fn edition(
             Err(error) => return Err(error),
         }
     }
-    tracing::debug!(
-        "Open Library edition {}: proposed {accepted}, already present {present}",
-        edition.olid
-    );
     if let Some(classification) = classify(&edition, publication.identifiers()) {
         if queue.is_cancelled() {
             return Ok(());
         }
         if publication.classify_if_unset(classification).await? {
-            tracing::debug!(
-                "Open Library edition {}: classified as {classification}",
-                edition.olid
-            );
+            tracing::debug!("edition {}: classified as {classification}", edition.olid);
         }
     }
+    let mut clauses = Vec::new();
+    if !proposed.is_empty() {
+        clauses.push(format!("proposed {}", field_list(proposed)));
+    }
+    if !held.is_empty() {
+        clauses.push(format!("already held {}", field_list(held)));
+    }
+    match edition.authors.len() {
+        0 => {}
+        1 => clauses.push("1 author to look up".to_string()),
+        n => clauses.push(format!("{n} authors to look up")),
+    }
+    tracing::info!("edition {}: {}", edition.olid, clauses.join("; "));
     for olid in edition.authors {
         queue.enqueue(author(
             engine.clone(),
@@ -269,13 +302,14 @@ pub(crate) async fn author(
     if queue.is_cancelled() {
         return Ok(());
     }
-    tracing::debug!("enriching publication {publication} from Open Library author {olid}");
+    tracing::debug!("looking up author {olid}");
     let Some(record) = engine
         .client()
         .open_library()
         .author(&olid, Priority::Background)
         .await?
     else {
+        tracing::info!("no author {olid}");
         return Ok(());
     };
     let Some(publication) = Publication::load(&engine, publication).await? else {
@@ -301,14 +335,15 @@ pub(crate) async fn author(
         return Ok(());
     }
     let author: Role = "author".parse().expect("a literal role");
-    let person = match best_match(matches) {
+    let (person, outcome) = match best_match(matches) {
         Some(person) => {
             let proposal = Proposal::Contributor {
                 person: person.clone(),
                 role: author,
             };
             publication.propose(Source::OpenLibrary, proposal).await?;
-            person
+            let outcome = format!("matched person {}", person.id());
+            (person, outcome)
         }
         None => {
             let name = match record.name.parse::<NonBlank>() {
@@ -322,13 +357,25 @@ pub(crate) async fn author(
                 .birth_year(record.birth_date.as_deref().and_then(year))
                 .death_year(record.death_date.as_deref().and_then(year))
                 .links(author_links(&record));
-            publication
+            let person = publication
                 .propose_new_contributor(Source::OpenLibrary, person, &author)
-                .await?
+                .await?;
+            let outcome = format!("created draft person {}", person.id());
+            (person, outcome)
         }
     };
     // A match is not proof of identity, so the user decides.
-    propose_author_facts(&person, &record, &queue).await
+    let proposed = propose_author_facts(&person, &record, &queue).await?;
+    if proposed.is_empty() {
+        tracing::info!("author {olid} \"{}\": {outcome}", record.name);
+    } else {
+        tracing::info!(
+            "author {olid} \"{}\": {outcome}; proposed {}",
+            record.name,
+            field_list(proposed)
+        );
+    }
+    Ok(())
 }
 
 /// Propose facts from the Open Library author `olid` for `person`
@@ -341,20 +388,27 @@ pub(crate) async fn person(
     if queue.is_cancelled() {
         return Ok(());
     }
-    tracing::debug!("enriching person {person} from Open Library author {olid}");
+    tracing::debug!("looking up author {olid}");
     let Some(record) = engine
         .client()
         .open_library()
         .author(&olid, Priority::Background)
         .await?
     else {
+        tracing::info!("no author {olid}");
         return Ok(());
     };
     let Some(person) = Person::load(&engine, person).await? else {
         engine.forget_enrichment(AnyEntityId::Person(person));
         return Ok(());
     };
-    propose_author_facts(&person, &record, &queue).await
+    let proposed = propose_author_facts(&person, &record, &queue).await?;
+    if proposed.is_empty() {
+        tracing::info!("author {olid}: nothing to propose");
+    } else {
+        tracing::info!("author {olid}: proposed {}", field_list(proposed));
+    }
+    Ok(())
 }
 
 /// The Open Library URL of `record`, followed by its URLs in other authorities
@@ -372,11 +426,13 @@ fn author_links(record: &Author) -> Vec<HttpUrl> {
 }
 
 /// Propose the links, life years, and pictures of the Open Library author `record` for `person`
+///
+/// Return the fields of the proposals made.
 async fn propose_author_facts(
     person: &Person,
     record: &Author,
     queue: &SubTaskQueue,
-) -> Result<()> {
+) -> Result<Vec<&'static str>> {
     let mut proposals: Vec<person::Proposal> = author_links(record)
         .into_iter()
         .map(person::Proposal::Link)
@@ -392,12 +448,15 @@ async fn propose_author_facts(
             proposals.push(person::Proposal::Profile(photo_url(*id).try_into()?));
         }
     }
+    let mut proposed = Vec::new();
     for proposal in proposals {
         if queue.is_cancelled() {
-            return Ok(());
+            return Ok(proposed);
         }
+        let field = proposal.field();
         match person.propose(Source::OpenLibrary, proposal).await {
-            Ok(_) => {}
+            Ok(Some(_)) => proposed.push(field),
+            Ok(None) => {}
             // A retry cannot fix a value the engine rejects as invalid
             Err(Error::InvalidValue(reason)) => {
                 tracing::error!("Open Library author {} invalid: {reason}", record.olid)
@@ -405,7 +464,7 @@ async fn propose_author_facts(
             Err(error) => return Err(error),
         }
     }
-    Ok(())
+    Ok(proposed)
 }
 
 /// Propose covers from the other editions of the work that the edition `key` belongs to
@@ -419,9 +478,11 @@ pub(crate) async fn covers(
         return Ok(());
     }
     let Some(edition) = key.fetch(&engine).await? else {
+        key.log_not_found();
         return Ok(());
     };
     let Some(work) = edition.works.first() else {
+        tracing::info!("edition {} belongs to no work", edition.olid);
         return Ok(());
     };
     let editions = engine
@@ -447,6 +508,10 @@ pub(crate) async fn covers(
         {
             proposed += 1;
         }
+    }
+    match proposed {
+        1 => tracing::info!("proposed 1 cover from other editions"),
+        n => tracing::info!("proposed {n} covers from other editions"),
     }
     Ok(())
 }
