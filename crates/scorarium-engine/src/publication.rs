@@ -1025,27 +1025,23 @@ impl Publication {
         let record = ExternalRecord::recognize(EntityKind::Publication, &url);
         let mut tx = self.engine.begin_write().await?;
         self.refresh(&mut tx).await?;
-        if self
-            .links
-            .iter()
-            .any(|link| link.url == url || (link.record.is_some() && link.record == record))
-        {
-            return Ok(());
-        }
         let kind = record
             .as_ref()
             .map_or_else(|| "generic".to_string(), |record| record.kind().to_string());
         let external_id = record.as_ref().map(ExternalRecord::id);
         let id = sqlx::query_scalar!(
             r#"INSERT INTO publication_link (publication_id, url, kind, external_id)
-               VALUES (?, ?, ?, ?) RETURNING id AS "id!""#,
+               VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id AS "id!""#,
             self.id.get(),
             url.as_url().as_str(),
             kind,
             external_id
         )
-        .fetch_one(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
+        let Some(id) = id else {
+            return Ok(());
+        };
         let last_modified_at = sqlx::query_scalar!(
             r#"UPDATE publication SET last_modified_at = unixepoch() WHERE id = ?
                RETURNING last_modified_at AS "last_modified_at: Timestamp""#,

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO work_link (work_id, url, kind, external_id) VALUES (?, ?, ?, ?)\n               RETURNING id AS \"id!\"",
+  "query": "INSERT INTO publication_link (publication_id, url, kind, external_id)\n               VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "work_link",
+            "table": "publication_link",
             "name": "id"
           }
         }
@@ -22,5 +22,5 @@
       null
     ]
   },
-  "hash": "1216c5d9396cbc0296a74d4f13cecbd768d677300a3c7e4881c50ddfd4834410"
+  "hash": "c4dbf4fddded6d93450d6f092061dcd0a38e1f38e822400bb9c6fa48a817284f"
 }
