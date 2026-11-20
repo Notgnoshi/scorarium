@@ -1,4 +1,4 @@
-use scorarium_client::open_library::{Edition, cover_url, photo_url};
+use scorarium_client::open_library::{Author, Edition, cover_url, photo_url};
 use scorarium_client::{Priority, Source};
 
 use crate::contributor::Role;
@@ -300,62 +300,71 @@ pub(crate) async fn author(
     if queue.is_cancelled() {
         return Ok(());
     }
-    let mut records = vec![this];
+    let author: Role = "author".parse().expect("a literal role");
+    let person = match best_match(matches) {
+        Some(person) => {
+            let proposal = Proposal::Contributor {
+                person: person.clone(),
+                role: author,
+            };
+            publication.propose(Source::OpenLibrary, proposal).await?;
+            person
+        }
+        None => {
+            let name = match record.name.parse::<NonBlank>() {
+                Ok(name) => name,
+                Err(error) => {
+                    tracing::error!("Open Library author {olid} invalid: {error}");
+                    return Ok(());
+                }
+            };
+            let person = NewPerson::new(name)
+                .birth_year(record.birth_date.as_deref().and_then(year))
+                .death_year(record.death_date.as_deref().and_then(year))
+                .links(author_links(&record));
+            publication
+                .propose_new_contributor(Source::OpenLibrary, person, &author)
+                .await?
+        }
+    };
+    // A match is not proof of identity, so the user decides.
+    propose_author_facts(&person, &record, &queue).await
+}
+
+/// The Open Library URL of `record`, followed by its URLs in other authorities
+fn author_links(record: &Author) -> Vec<HttpUrl> {
+    let mut records = vec![ExternalRecord::new(LinkKind::OpenLibrary, &record.olid)];
     for (key, kind) in AUTHOR_IDS {
         if let Some(id) = record.remote_ids.get(key) {
             records.push(ExternalRecord::new(kind, id));
         }
     }
-    let links: Vec<HttpUrl> = records
+    records
         .iter()
         .filter_map(|external| external.url(EntityKind::Person))
+        .collect()
+}
+
+/// Propose the links, life years, and pictures of the Open Library author `record` for `person`
+async fn propose_author_facts(
+    person: &Person,
+    record: &Author,
+    queue: &SubTaskQueue,
+) -> Result<()> {
+    let mut proposals: Vec<person::Proposal> = author_links(record)
+        .into_iter()
+        .map(person::Proposal::Link)
         .collect();
-    let birth_year = record.birth_date.as_deref().and_then(year);
-    let death_year = record.death_date.as_deref().and_then(year);
-    let pictures: Vec<person::Proposal> = record
-        .photos
-        .iter()
-        .map(|id| photo_url(*id).try_into().map(person::Proposal::Profile))
-        .collect::<Result<_>>()?;
-
-    let author: Role = "author".parse().expect("a literal role");
-    let Some(person) = best_match(matches) else {
-        let name = match record.name.parse::<NonBlank>() {
-            Ok(name) => name,
-            Err(error) => {
-                tracing::error!("Open Library author {olid} invalid: {error}");
-                return Ok(());
-            }
-        };
-        let person = NewPerson::new(name)
-            .birth_year(birth_year)
-            .death_year(death_year)
-            .links(links);
-        let person = publication
-            .propose_new_contributor(Source::OpenLibrary, person, &author)
-            .await?;
-        for picture in pictures {
-            person.propose(Source::OpenLibrary, picture).await?;
-        }
-        return Ok(());
-    };
-    let proposal = Proposal::Contributor {
-        person: person.clone(),
-        role: author,
-    };
-    publication.propose(Source::OpenLibrary, proposal).await?;
-
-    // A match is not proof of identity, so the user decides.
-    let mut proposals: Vec<person::Proposal> =
-        links.into_iter().map(person::Proposal::Link).collect();
-    if let Some(year) = birth_year {
+    if let Some(year) = record.birth_date.as_deref().and_then(year) {
         proposals.push(person::Proposal::BirthYear(year));
     }
-    if let Some(year) = death_year {
+    if let Some(year) = record.death_date.as_deref().and_then(year) {
         proposals.push(person::Proposal::DeathYear(year));
     }
     if person.profile().is_none() {
-        proposals.extend(pictures);
+        for id in &record.photos {
+            proposals.push(person::Proposal::Profile(photo_url(*id).try_into()?));
+        }
     }
     for proposal in proposals {
         if queue.is_cancelled() {
@@ -363,8 +372,9 @@ pub(crate) async fn author(
         }
         match person.propose(Source::OpenLibrary, proposal).await {
             Ok(_) => {}
+            // A retry cannot fix a value the engine rejects as invalid
             Err(Error::InvalidValue(reason)) => {
-                tracing::error!("Open Library author {olid} invalid: {reason}")
+                tracing::error!("Open Library author {} invalid: {reason}", record.olid)
             }
             Err(error) => return Err(error),
         }
