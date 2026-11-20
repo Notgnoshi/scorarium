@@ -134,6 +134,12 @@ impl Edition {
     }
 }
 
+/// Return the URL of the cover image `id`
+pub fn cover_url(id: i64) -> Url {
+    Url::parse(&format!("https://covers.openlibrary.org/b/id/{id}-M.jpg"))
+        .expect("a literal URL with a numeric id")
+}
+
 /// A person Open Library credits on an edition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Author {
