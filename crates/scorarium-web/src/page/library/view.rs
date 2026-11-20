@@ -3,7 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::{Method, Uri};
 use axum::response::{Html, IntoResponse, Response};
 use scorarium_engine::Engine;
-use scorarium_engine::entity::{Contributed, Entity};
+use scorarium_engine::entity::{Contributed, Entity, Timestamp};
 use scorarium_engine::library::LibraryId;
 use scorarium_engine::publication::PublicationId;
 use scorarium_engine::value::{Tag, Year, title_sort_key};
@@ -38,6 +38,7 @@ struct Summary {
     contributors: Vec<entity::Contributor>,
     contributor_sort_name: Option<String>,
     year: Option<Year>,
+    added: Timestamp,
     stars: Option<Stars>,
     tags: Vec<Tag>,
 }
@@ -48,6 +49,7 @@ enum Column {
     #[default]
     Contributors,
     Year,
+    Added,
     Stars,
 }
 
@@ -56,6 +58,7 @@ impl sort::Column for Column {
         Column::Title,
         Column::Contributors,
         Column::Year,
+        Column::Added,
         Column::Stars,
     ];
 
@@ -64,12 +67,13 @@ impl sort::Column for Column {
             Column::Title => "title",
             Column::Contributors => "contributors",
             Column::Year => "year",
+            Column::Added => "added",
             Column::Stars => "stars",
         }
     }
 
     fn descending_first(self) -> bool {
-        matches!(self, Column::Year | Column::Stars)
+        matches!(self, Column::Year | Column::Added | Column::Stars)
     }
 }
 
@@ -101,6 +105,7 @@ fn sort_summaries(summaries: &mut [Summary], sort: &Sort) {
                 sort.descending,
             ),
             Column::Year => compare(a.year, b.year, sort.descending),
+            Column::Added => compare(Some(a.added), Some(b.added), sort.descending),
             Column::Stars => compare(a.stars, b.stars, sort.descending),
         };
         by_column.then_with(|| a_title.cmp(&b_title))
@@ -139,6 +144,7 @@ pub async fn get(
                 contributor_sort_name: contributors.first().map(|c| c.sort_name.clone()),
                 contributors,
                 year: publication.year(),
+                added: publication.created_at(),
                 stars: publication.stars().map(Into::into),
                 tags: publication.tags().to_vec(),
             }
@@ -193,6 +199,7 @@ mod tests {
             contributors: Vec::new(),
             contributor_sort_name: None,
             year: year.map(|y| Year::try_from(y).unwrap()),
+            added: Timestamp::UNIX_EPOCH,
             stars: None,
             tags: Vec::new(),
         };
@@ -223,6 +230,7 @@ mod tests {
             contributors: Vec::new(),
             contributor_sort_name: None,
             year: None,
+            added: Timestamp::UNIX_EPOCH,
             stars: None,
             tags: Vec::new(),
         };

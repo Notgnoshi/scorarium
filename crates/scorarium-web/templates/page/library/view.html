@@ -15,6 +15,8 @@
                     {% endcall %}
                     {% call sort::header(sort, Column::Year, "Year") %}
                     {% endcall %}
+                    {% call sort::header(sort, Column::Added, "Added") %}
+                    {% endcall %}
                     {% if logged_in %}
                         {% call sort::header(sort, Column::Stars, "Stars") %}
                         {% endcall %}
@@ -44,6 +46,10 @@
                             {%- endfor %}
                         </td>
                         <td>{% if let Some(year) = publication.year %}{{ year }}{% endif %}</td>
+                        <td class="text-nowrap">
+                            <time datetime="{{ publication.added.to_rfc3339() }}"
+                                  title="{{ publication.added.to_rfc3339() }}">{{ publication.added.format("%Y-%m-%d") }}</time>
+                        </td>
                         {% if logged_in %}
                             <td>{% if let Some(stars) = publication.stars %}{{ stars }}{% endif %}</td>
                             <td>
