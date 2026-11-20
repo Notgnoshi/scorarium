@@ -372,6 +372,49 @@ pub(crate) async fn author(
     Ok(())
 }
 
+/// Propose covers from the other editions of the work that the edition `key` belongs to
+pub(crate) async fn covers(
+    engine: Engine,
+    publication: PublicationId,
+    key: EditionKey,
+    queue: SubTaskQueue,
+) -> Result<()> {
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    let Some(edition) = key.fetch(&engine).await? else {
+        return Ok(());
+    };
+    let Some(work) = edition.works.first() else {
+        return Ok(());
+    };
+    let editions = engine
+        .client()
+        .open_library()
+        .work_editions(work, Priority::Background)
+        .await?
+        .unwrap_or_default();
+    let Some(publication) = Publication::load(&engine, publication).await? else {
+        engine.forget_enrichment(AnyEntityId::Publication(publication));
+        return Ok(());
+    };
+    let mut proposed = 0;
+    for id in editions.iter().flat_map(|edition| &edition.covers) {
+        if proposed == 5 || queue.is_cancelled() {
+            break;
+        }
+        let cover = Proposal::Cover(cover_url(*id).try_into()?);
+        if publication
+            .propose(Source::OpenLibrary, cover)
+            .await?
+            .is_some()
+        {
+            proposed += 1;
+        }
+    }
+    Ok(())
+}
+
 /// Choose a committed person over a draft, and among equals the lowest id
 fn best_match(matches: Vec<Person>) -> Option<Person> {
     matches
@@ -461,6 +504,50 @@ mod tests {
             person::Proposal::DeathYear(year) => format!("died {year}"),
             person::Proposal::Name(_) => panic!("expected a link, a picture, or a year proposal"),
         }
+    }
+
+    #[tokio::test]
+    async fn a_search_proposes_the_next_five_covers() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine
+            .create_library("Books".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let publication = library
+            .import(
+                ImportSeed::title("Fantastic Mr Fox")
+                    .record(ExternalRecord::new(LinkKind::OpenLibrary, "OL27277998M")),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+
+        publication.search_covers();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        assert_eq!(publication.proposals().await.unwrap().len(), 5);
+
+        publication.search_covers();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+        let covers: Vec<String> = publication
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(describe)
+            .collect();
+        let expected = [
+            14301313, 14301314, 14301315, 14301316, 14095634, 14095635, 12583098, 12789482,
+            12273050, 15154268,
+        ]
+        .map(|id| format!("cover https://covers.openlibrary.org/b/id/{id}-M.jpg"));
+        assert_eq!(covers, expected);
     }
 
     #[tokio::test]

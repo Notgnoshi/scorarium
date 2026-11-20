@@ -442,6 +442,21 @@ impl Publication {
         entity::commit_rejection(&self.engine, tx, &collected).await
     }
 
+    /// Search for more covers in the background, and propose up to five that are not yet proposed
+    ///
+    /// The search joins the publication's enrichment task in progress, or starts one.
+    pub fn search_covers(&self) -> Enrichment {
+        let key = open_library::EditionKey::of(self);
+        let engine = self.engine.clone();
+        let id = self.id;
+        self.engine
+            .extend_enrichment(AnyEntityId::Publication(id), |queue| {
+                if let Some(key) = key {
+                    queue.enqueue(open_library::covers(engine, id, key, queue.clone()));
+                }
+            })
+    }
+
     /// Propose an edit from `source`, or return `None` if it is already held or proposed
     ///
     /// Returns [Error::NotFound] if the publication has been deleted.
