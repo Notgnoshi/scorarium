@@ -10,10 +10,10 @@ use sqlx::SqliteConnection;
 use crate::asset::{self, AssetSource};
 use crate::audit::{Action, AuditPage, AuditSource, AuditSubject, Audited};
 use crate::contributor::Role;
-use crate::enrich::Enrichment;
+use crate::enrich::{Enrichment, open_library};
 use crate::entity::{self, AnyEntity, AnyEntityId, Entity, EntityKind, ProposalId, Timestamp};
 use crate::library::LibraryId;
-use crate::link::{ExternalRecord, HttpUrl, Link, LinkId};
+use crate::link::{ExternalRecord, HttpUrl, Link, LinkId, LinkKind};
 use crate::publication::{self, Publication, PublicationId};
 use crate::review::{self, ReviewItem};
 use crate::search::same_name;
@@ -705,9 +705,28 @@ impl Entity for Person {
     }
 
     async fn enrich(&self) -> Result<Enrichment> {
+        // Open Library often holds duplicate records for one author, each with facts the others lack.
+        let olids: Vec<String> = self
+            .links
+            .iter()
+            .filter_map(|link| link.record.as_ref())
+            .filter(|record| record.kind() == LinkKind::OpenLibrary)
+            .map(|record| record.id().to_string())
+            .collect();
+        let engine = self.engine.clone();
+        let id = self.id;
         Ok(self
             .engine
-            .start_enrichment(AnyEntityId::Person(self.id), |_| {}))
+            .start_enrichment(AnyEntityId::Person(id), |queue| {
+                for olid in olids {
+                    queue.enqueue(open_library::person(
+                        engine.clone(),
+                        id,
+                        olid,
+                        queue.clone(),
+                    ));
+                }
+            }))
     }
 
     fn enrichment(&self) -> Option<Enrichment> {
