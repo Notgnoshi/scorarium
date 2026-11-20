@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use reedline::{
     ColumnarMenu, DefaultHinter, DefaultPrompt, DefaultPromptSegment, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
-    default_emacs_keybindings,
+    ValidationResult, Validator, default_emacs_keybindings,
 };
 use scorarium_engine::Engine;
 use tokio::runtime::Handle;
@@ -14,6 +14,19 @@ use crate::completer::ShellCompleter;
 use crate::log::LogWriter;
 
 const HIST_SIZE: usize = 1000;
+
+/// Keep reading lines while the command has an open quote or a trailing backslash.
+struct Continuation;
+
+impl Validator for Continuation {
+    fn validate(&self, line: &str) -> ValidationResult {
+        if shlex::split(line).is_none() {
+            ValidationResult::Incomplete
+        } else {
+            ValidationResult::Complete
+        }
+    }
+}
 
 /// Read and run commands from a line editor until `quit` or ctrl-d on an empty line.
 pub(crate) async fn run(
@@ -33,6 +46,7 @@ pub(crate) async fn run(
     );
     let mut editor = Reedline::create()
         .with_hinter(Box::new(DefaultHinter::default()))
+        .with_validator(Box::new(Continuation))
         .with_external_printer(log.take_printer())
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(
             ColumnarMenu::default().with_name("completion"),

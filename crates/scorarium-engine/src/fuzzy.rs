@@ -1,7 +1,7 @@
 use frizbee::{CaseMatching, Config, Matcher, SortStrategy, UnicodeMatching};
 
-/// Normalize unicode text with punctuation into search tokens
-pub(crate) fn normalize(text: &str) -> String {
+/// Fold text into lowercase ASCII words separated by single spaces.
+pub fn normalize(text: &str) -> String {
     let ascii = deunicode::deunicode(text).to_ascii_lowercase();
     let mut normalized = String::with_capacity(ascii.len());
     for word in ascii

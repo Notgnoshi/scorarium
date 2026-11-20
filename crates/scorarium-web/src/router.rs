@@ -60,6 +60,10 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route("/library", post(page::index::post))
         .route("/library/{id}", get(page::library::view::get))
         .route(
+            "/library/{id}/export/{level}",
+            get(page::library::export::get),
+        )
+        .route(
             "/library/{id}/publication/{publication}",
             get(page::library::publication::get),
         )
@@ -157,6 +161,7 @@ pub fn router(engine: Engine, settings: Settings) -> Router {
         .route("/settings/audit", get(page::audit::get))
         .route("/settings/catalog", get(page::catalog::get))
         .route("/settings/duplicates", get(page::duplicates::get))
+        .route("/settings/export", get(page::export::get))
         .route("/settings/loans", get(page::loans::get))
         .route("/assets/{name}", get(assets::get))
         .fallback(error::not_found)

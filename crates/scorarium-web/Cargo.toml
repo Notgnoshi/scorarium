@@ -17,6 +17,7 @@ indexmap.workspace = true
 infer.workspace = true
 percent-encoding.workspace = true
 rust-embed.workspace = true
+scorarium-cli.workspace = true
 scorarium-engine.workspace = true
 serde.workspace = true
 serde_qs.workspace = true

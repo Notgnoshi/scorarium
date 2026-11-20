@@ -1,0 +1,48 @@
+# Music, exported in full
+
+library create Music public
+library Music select
+
+import 'Album of "Russian" Pieces' --as p-rachmaninoff-album-of-russian-pieces
+publication @p-rachmaninoff-album-of-russian-pieces add contributor 'Sergei Rachmaninoff' composer --new --as c-sergei-rachmaninoff
+person @c-sergei-rachmaninoff set birth-year 1873
+person @c-sergei-rachmaninoff set death-year 1943
+person @c-sergei-rachmaninoff add link https://example.com/rachmaninoff
+publication @p-rachmaninoff-album-of-russian-pieces add contributor 'John Smith' editor --new --as c-john-smith
+publication @p-rachmaninoff-album-of-russian-pieces add work Lilacs --new --as w-rachmaninoff-op-21-no-5
+work @w-rachmaninoff-op-21-no-5 set key 'A-flat major'
+work @w-rachmaninoff-op-21-no-5 set classification music
+work @w-rachmaninoff-op-21-no-5 set note -- '- First item.
+
+Second paragraph.'
+work @w-rachmaninoff-op-21-no-5 add catalog-number 'Op. 21 No. 5'
+work @w-rachmaninoff-op-21-no-5 add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-album-of-russian-pieces add work Prelude --new --as w-rachmaninoff-prelude
+work @w-rachmaninoff-prelude add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-album-of-russian-pieces add work Prelude --new --as w-rachmaninoff-prelude-2
+work @w-rachmaninoff-prelude-2 add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-album-of-russian-pieces commit
+
+import 978-1-4234-9304-4 --location 'Shelf 2' --as p-rachmaninoff-transcriptions
+publication @p-rachmaninoff-transcriptions set title Transcriptions
+publication @p-rachmaninoff-transcriptions set publisher 'Belwin Mills'
+publication @p-rachmaninoff-transcriptions set year 1990
+publication @p-rachmaninoff-transcriptions set stars 4
+publication @p-rachmaninoff-transcriptions set classification music
+publication @p-rachmaninoff-transcriptions set note 'One line.'
+publication @p-rachmaninoff-transcriptions add tag recital
+publication @p-rachmaninoff-transcriptions add identifier ismn 979-0-060-08001-2
+publication @p-rachmaninoff-transcriptions add identifier plate-number 'AB 123'
+publication @p-rachmaninoff-transcriptions add link https://example.com/transcriptions
+publication @p-rachmaninoff-transcriptions add holding physical --location 'Shelf 3'
+publication @p-rachmaninoff-transcriptions add contributor @c-sergei-rachmaninoff composer
+publication @p-rachmaninoff-transcriptions add contributor 'John Smith' editor --new --as c-john-smith-2
+publication @p-rachmaninoff-transcriptions add work @w-rachmaninoff-op-21-no-5
+publication @p-rachmaninoff-transcriptions commit
+
+import 'Songs of Travel' --as p-vaughan-williams-songs-of-travel
+publication @p-vaughan-williams-songs-of-travel add contributor 'Ralph Vaughan Williams' composer --new --as c-ralph-vaughan-williams
+person @c-ralph-vaughan-williams set sort-name 'Vaughan Williams, Ralph'
+publication @p-vaughan-williams-songs-of-travel commit
+
+wait

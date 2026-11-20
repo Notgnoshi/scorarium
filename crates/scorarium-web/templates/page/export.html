@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>{{ base.title }}</h1>
+    {% if libraries.is_empty() %}
+        <p>There are no libraries.</p>
+    {% else %}
+        <table class="table table-striped table-hover align-middle">
+            <thead class="small text-uppercase text-nowrap">
+                <tr>
+                    <th class="text-body-secondary fw-normal">Library</th>
+                    <th class="text-body-secondary fw-normal">Publications</th>
+                    <th class="text-body-secondary fw-normal">Download</th>
+                </tr>
+            </thead>
+            <tbody class="table-group-divider">
+                {% for library in libraries %}
+                    <tr>
+                        <td>{{ library.name }}</td>
+                        <td>
+                            {{ library.publications }}
+                            {% if library.drafts != 0 %}
+                                ({{ library.drafts }} draft{% if library.drafts != 1 %}s{% endif %} not exported)
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="/library/{{ library.id }}/export/publications"
+                               title="A minimal export of just publications">Publications</a>
+                            <a class="ms-2"
+                               href="/library/{{ library.id }}/export/works"
+                               title="Publications and works">Publications and works</a>
+                            <a class="ms-2"
+                               href="/library/{{ library.id }}/export/full"
+                               title="Everything the CLI script can import">Full</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+{% endblock %}

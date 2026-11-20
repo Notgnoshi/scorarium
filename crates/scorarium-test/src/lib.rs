@@ -17,7 +17,8 @@ fn engine_options() -> EngineOptions {
     EngineOptions::new(user_agent).unwrap().client(client)
 }
 
-async fn open_engine() -> (Engine, TempDir) {
+/// Open an empty [Engine] configured for test [FakeTransport]
+pub async fn empty_engine() -> (Engine, TempDir) {
     let dir = TempDir::new().unwrap();
     let engine = Engine::open(dir.path(), engine_options()).await.unwrap();
     (engine, dir)
@@ -67,7 +68,7 @@ impl TestApp {
         let (engine, dir) = if demo {
             demo_engine().await
         } else {
-            open_engine().await
+            empty_engine().await
         };
         TestApp {
             server: server(&engine, true),

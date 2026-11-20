@@ -37,6 +37,35 @@ async fn a_failing_script_stops_at_the_failing_line() {
 }
 
 #[tokio::test]
+async fn a_command_spans_lines_until_it_is_complete() {
+    let (engine, _dir) = scorarium_test::demo_engine().await;
+    let script = r#"library books select
+import Annotated --as annotated
+publication @annotated set note "First paragraph.
+
+Second paragraph."
+publication @annotated set title "Unfinished
+and never closed
+"#;
+    let (_, result) = run(&engine, script).await;
+    assert_eq!(
+        format!("{:#}", result.unwrap_err()),
+        "line 6: unterminated quote or trailing backslash"
+    );
+    let libraries = engine.libraries().await.unwrap();
+    let books = libraries.iter().find(|l| l.name() == "Books").unwrap();
+    let publications = books.publications().await.unwrap();
+    let annotated = publications
+        .iter()
+        .find(|p| p.title() == Some("Annotated"))
+        .unwrap();
+    assert_eq!(
+        annotated.note(),
+        Some("First paragraph.\n\nSecond paragraph.")
+    );
+}
+
+#[tokio::test]
 async fn library_show_rejects_an_ambiguous_reference() {
     let (engine, _dir) = scorarium_test::demo_engine().await;
     // A library named after another library's id, and a second "Books" differing only in case

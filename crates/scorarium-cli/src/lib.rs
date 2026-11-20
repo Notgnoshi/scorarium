@@ -2,6 +2,7 @@ mod audit;
 mod command;
 mod completer;
 mod enrichment;
+mod export;
 mod interactive;
 mod label;
 mod library;
@@ -21,6 +22,7 @@ use std::path::PathBuf;
 
 use scorarium_engine::Engine;
 
+pub use crate::export::{ExportLevel, export_script};
 pub use crate::log::LogWriter;
 pub use crate::script::run_script;
 
