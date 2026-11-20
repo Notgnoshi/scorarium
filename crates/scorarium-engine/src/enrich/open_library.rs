@@ -6,7 +6,7 @@ use crate::enrich::SubTaskQueue;
 use crate::entity::{AnyEntityId, Entity, EntityKind};
 use crate::fuzzy::normalize;
 use crate::link::{ExternalRecord, HttpUrl, LinkKind};
-use crate::person::{self, NewPerson, Person};
+use crate::person::{self, NewPerson, Person, PersonId};
 use crate::publication::{Identifier, IdentifierKind, Proposal, Publication, PublicationId};
 use crate::value::{Classification, NonBlank, Year};
 use crate::{Engine, Error, Result};
@@ -328,6 +328,32 @@ pub(crate) async fn author(
         }
     };
     // A match is not proof of identity, so the user decides.
+    propose_author_facts(&person, &record, &queue).await
+}
+
+/// Propose facts from the Open Library author `olid` for `person`
+pub(crate) async fn person(
+    engine: Engine,
+    person: PersonId,
+    olid: String,
+    queue: SubTaskQueue,
+) -> Result<()> {
+    if queue.is_cancelled() {
+        return Ok(());
+    }
+    tracing::debug!("enriching person {person} from Open Library author {olid}");
+    let Some(record) = engine
+        .client()
+        .open_library()
+        .author(&olid, Priority::Background)
+        .await?
+    else {
+        return Ok(());
+    };
+    let Some(person) = Person::load(&engine, person).await? else {
+        engine.forget_enrichment(AnyEntityId::Person(person));
+        return Ok(());
+    };
     propose_author_facts(&person, &record, &queue).await
 }
 
@@ -754,6 +780,75 @@ mod tests {
             facts,
             [
                 "https://openlibrary.org/authors/OL127077A",
+                "https://www.wikidata.org/wiki/Q255",
+                "https://viaf.org/viaf/32182557",
+                "https://isni.org/isni/0000000121268987",
+                "https://id.loc.gov/authorities/names/n79107741",
+                "https://musicbrainz.org/artist/1f9df192-a621-4f54-8850-2c5373b7eac9",
+                "https://www.librarything.com/author/beethovenludwigvan",
+                "https://www.gutenberg.org/ebooks/author/75",
+                "https://librivox.org/author/4437",
+                "born 1770",
+                "died 1827",
+                "https://covers.openlibrary.org/a/id/14418181-M.jpg",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_person_enriches_from_its_open_library_author() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::open(dir.path(), crate::test::options())
+            .await
+            .unwrap();
+        let library = engine
+            .create_library("Sheet music".parse().unwrap(), false)
+            .await
+            .unwrap();
+        let mut sonatas = library
+            .import(
+                ImportSeed::title("Piano sonatas"),
+                NewHolding::Physical { location: None },
+            )
+            .await
+            .unwrap();
+        let mut beethoven = sonatas
+            .create_contributor(
+                "Ludwig van Beethoven".parse().unwrap(),
+                "composer".parse().unwrap(),
+            )
+            .await
+            .unwrap();
+        beethoven
+            .add_link("https://openlibrary.org/authors/OL127077A".parse().unwrap())
+            .await
+            .unwrap();
+        sonatas.commit().await.unwrap();
+
+        beethoven.enrich().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), engine.wait_for_enrichment())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            beethoven.enrichment().unwrap().status(),
+            EnrichmentStatus {
+                successful: 1,
+                pending: 0,
+                failed: 0,
+                cancelled: false
+            }
+        );
+        let facts: Vec<String> = beethoven
+            .proposals()
+            .await
+            .unwrap()
+            .iter()
+            .map(fact_of)
+            .collect();
+        assert_eq!(
+            facts,
+            [
                 "https://www.wikidata.org/wiki/Q255",
                 "https://viaf.org/viaf/32182557",
                 "https://isni.org/isni/0000000121268987",
